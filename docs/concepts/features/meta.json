@@ -1,0 +1,14 @@
+{
+  "title": "Features",
+  "pages": [
+    "issues",
+    "chat",
+    "automations",
+    "decide",
+    "artifacts",
+    "skills",
+    "teams",
+    "permissions",
+    "handbook"
+  ]
+}

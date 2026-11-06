@@ -11,8 +11,9 @@ const mcpSource = readFileSync(
 )
 
 describe('Executor MCP transport timeout', () => {
-  it('matches Decide’s documented four-minute analysis window', () => {
-    expect(EXECUTOR_MCP_RPC_TIMEOUT_MS).toBe(4 * 60 * 1000)
+  it('extends past Decide’s documented four-minute analysis window', () => {
+    expect(EXECUTOR_MCP_RPC_TIMEOUT_MS).toBeGreaterThan(4 * 60 * 1000)
+    expect(EXECUTOR_MCP_RPC_TIMEOUT_MS).toBe(4 * 60 * 1000 + 30 * 1000)
   })
 
   it('uses the value on the Executor MCP session transport', () => {

@@ -39,7 +39,7 @@ const teamUpdated: RealtimePublishableEvent = {
   payload: {
     workspace_id: 'ws-1',
     team_id: 'team-1',
-    team: {} as never,
+    owner_user_id: 'user-owner',
   },
 }
 
@@ -131,6 +131,33 @@ describe('canReceiveRealtimeEvent', () => {
     expect(canReceiveRealtimeEvent(teamOwner, deletedUnassigned)).toBe(true)
   })
 
+  it('gates comment events like the issue they belong to', () => {
+    const comment = (
+      teamId: string | null,
+      assigneeId: string | null,
+    ): RealtimePublishableEvent => ({
+      type: 'comment:created',
+      payload: {
+        issue_id: 'issue-1',
+        comment_id: 'comment-1',
+        team_id: teamId,
+        assignee_id: assigneeId,
+      },
+    })
+    expect(canReceiveRealtimeEvent(outsider, comment(null, null))).toBe(true)
+    expect(
+      canReceiveRealtimeEvent(member, comment('team-1', 'user-member')),
+    ).toBe(true)
+    expect(canReceiveRealtimeEvent(member, comment('team-1', null))).toBe(false)
+    expect(canReceiveRealtimeEvent(outsider, comment('team-1', null))).toBe(
+      false,
+    )
+    expect(canReceiveRealtimeEvent(teamOwner, comment('team-1', null))).toBe(
+      true,
+    )
+    expect(canReceiveRealtimeEvent(manager, comment('team-1', null))).toBe(true)
+  })
+
   it('delivers workspace issue events to every member', () => {
     expect(
       canReceiveRealtimeEvent(
@@ -170,7 +197,7 @@ describe('applyRealtimeProfileUpdate', () => {
       payload: {
         workspace_id: 'ws-1',
         team_id: 'team-1',
-        team: { owner_user_id: 'user-member' } as never,
+        owner_user_id: 'user-member',
       },
     })
     expect(newOwner.ownedTeamIds).toEqual(['team-1'])
@@ -180,7 +207,7 @@ describe('applyRealtimeProfileUpdate', () => {
       payload: {
         workspace_id: 'ws-1',
         team_id: 'team-1',
-        team: { owner_user_id: 'user-member' } as never,
+        owner_user_id: 'user-member',
       },
     })
     expect(previousOwner.ownedTeamIds).toEqual([])
@@ -189,7 +216,7 @@ describe('applyRealtimeProfileUpdate', () => {
   it('drops deleted Teams from every profile', () => {
     const updated = applyRealtimeProfileUpdate(teamOwner, {
       type: 'team:deleted',
-      payload: { workspace_id: 'ws-1', team_id: 'team-1', name: 'Alpha' },
+      payload: { workspace_id: 'ws-1', team_id: 'team-1' },
     })
     expect(updated.teamIds).toEqual([])
     expect(updated.ownedTeamIds).toEqual([])

@@ -198,7 +198,7 @@ function MentionRow({
         onClick={onSelect}
       >
         {item.status && (
-          <StatusIcon status={item.status} className="h-3.5 w-3.5 shrink-0" />
+          <StatusIcon status={item.status} className="size-3.5 shrink-0" />
         )}
         <span className="shrink-0 text-muted-foreground">{item.label}</span>
         {item.description && (

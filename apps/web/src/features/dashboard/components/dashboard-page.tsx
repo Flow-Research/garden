@@ -32,6 +32,8 @@ import {
 } from '@garden/ui/components/ui/empty'
 import { cn } from '@garden/ui/lib/utils'
 import { useWorkspaceId } from '@garden/app-state/hooks'
+import { useIssueViewStore } from '@garden/app-state/issues/stores/view-store'
+import { useIssuesScopeStore } from '@garden/app-state/issues/stores/issues-scope-store'
 import { timeAgo } from '@garden/core/format'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
 import { PriorityIcon, StatusIcon } from '@/features/issues/components'
@@ -94,7 +96,7 @@ function MetricCard({
             </div>
           ) : null}
         </div>
-        <Icon className="mt-1 h-4 w-4 shrink-0 text-text-neutral-tertiary" />
+        <Icon className="mt-1 size-4 shrink-0 text-text-neutral-tertiary" />
       </div>
     </div>
   )
@@ -157,7 +159,7 @@ function DistributionBars({
             <div className="flex items-center justify-between gap-2 text-xs">
               <span className="flex items-center gap-1.5 truncate text-foreground">
                 <span
-                  className="h-1.5 w-1.5 shrink-0 rounded-full"
+                  className="size-1.5 shrink-0 rounded-full"
                   style={{ backgroundColor: entry.color }}
                 />
                 <span className="truncate capitalize">{entry.name}</span>
@@ -269,7 +271,7 @@ function DashboardResourceSectionFallback({ title }: { title: string }) {
             key={`${title}-resource-${index}`}
             className="flex items-center gap-3 px-4 py-3"
           >
-            <SectionPlaceholder className="h-4 w-4 rounded-full" />
+            <SectionPlaceholder className="size-4 rounded-full" />
             <div className="min-w-0 flex-1">
               <SectionPlaceholder className="h-4 w-28" />
               <SectionPlaceholder className="mt-2 h-3 w-20" />
@@ -394,7 +396,7 @@ function DashboardPageFixture() {
                     {label}
                   </p>
                 </div>
-                <div className="mt-1.5 h-4 w-4 rounded-full bg-muted-foreground/30" />
+                <div className="mt-1.5 size-4 rounded-full bg-muted-foreground/30" />
               </div>
             </div>
           ))}
@@ -441,7 +443,7 @@ function DashboardPageFixture() {
                     Updated a moment ago
                   </p>
                 </div>
-                <div className="h-2 w-2 rounded-full bg-background-success-default" />
+                <div className="size-2 rounded-full bg-background-success-default" />
               </div>
             ))}
           </div>
@@ -484,10 +486,14 @@ export function DashboardPageSkeleton() {
 function DashboardOverviewSection({
   wsId,
   openIssues,
+  openBlockedIssues,
+  openAgents,
   openConnections,
 }: {
   wsId: string
   openIssues: () => void
+  openBlockedIssues: () => void
+  openAgents: () => void
   openConnections: () => void
 }) {
   const { data } = useSuspenseQuery(dashboardOverviewOptions(wsId))
@@ -503,7 +509,7 @@ function DashboardOverviewSection({
             <Button
               variant="link"
               size="sm"
-              onClick={openConnections}
+              onClick={openAgents}
               className="h-auto p-0 text-warning underline underline-offset-2 hover:text-warning/80"
             >
               Set one up
@@ -529,7 +535,7 @@ function DashboardOverviewSection({
           icon={ShieldAlert}
           value={data.summary.blockedIssues}
           label="Blocked"
-          onClick={openIssues}
+          onClick={openBlockedIssues}
           description={
             <span>
               {data.summary.blockedIssues === 0
@@ -596,11 +602,13 @@ function DashboardChartsSection({ wsId }: { wsId: string }) {
 function DashboardActivitySection({
   wsId,
   openInbox,
+  openInboxItem,
   openIssues,
   openIssueDetail,
 }: {
   wsId: string
   openInbox: () => void
+  openInboxItem: (itemId: string) => void
   openIssues: () => void
   openIssueDetail: (issue: { id: string; title: string }) => void
 }) {
@@ -640,8 +648,12 @@ function DashboardActivitySection({
               <button
                 key={item.id}
                 type="button"
+                // Items with no issue (connector prompts, run notices) used to
+                // navigate to /tasks/ with an empty id.
                 onClick={() =>
-                  openIssueDetail({ id: item.issue_id, title: item.title })
+                  item.issue_id
+                    ? openIssueDetail({ id: item.issue_id, title: item.title })
+                    : openInboxItem(item.id)
                 }
                 className="block w-full cursor-pointer px-4 py-2 text-left text-sm transition-colors hover:bg-accent/50"
               >
@@ -693,10 +705,10 @@ function DashboardActivitySection({
                 className="block w-full cursor-pointer px-4 py-3 text-left text-sm transition-colors hover:bg-accent/50"
               >
                 <div className="flex items-center gap-3">
-                  <StatusIcon status={issue.status} className="h-3.5 w-3.5" />
+                  <StatusIcon status={issue.status} className="size-3.5" />
                   <PriorityIcon
                     priority={issue.priority}
-                    className="h-3.5 w-3.5"
+                    className="size-3.5"
                   />
                   <span className="min-w-0 flex-1 truncate">{issue.title}</span>
                   <span className="shrink-0 text-xs capitalize text-muted-foreground">
@@ -741,7 +753,7 @@ function DashboardResourcesSection({
                 key={agent.id}
                 className="flex items-center gap-3 px-4 py-2 text-sm"
               >
-                <Bot className="h-4 w-4 shrink-0 text-muted-foreground" />
+                <Bot className="size-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{agent.name}</div>
                   <div className="truncate text-xs text-muted-foreground">
@@ -785,7 +797,7 @@ function DashboardResourcesSection({
                   onClick={openConnections}
                   className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left text-sm transition-colors hover:bg-accent/50"
                 >
-                  <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <Icon className="size-4 shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">
                       {connection.label}
@@ -826,6 +838,24 @@ export function DashboardPage() {
     () => void navigate({ to: '/inbox' }),
     [navigate],
   )
+  const openInboxItem = useCallback(
+    (itemId: string) =>
+      void navigate({ href: `/inbox?item=${encodeURIComponent(itemId)}` }),
+    [navigate],
+  )
+  const openAgents = useCallback(
+    () => void navigate({ to: '/agents' }),
+    [navigate],
+  )
+  // "Blocked" opened the unfiltered list. Its count is workspace-wide, so the
+  // scope and the other filters are reset for the list to match it.
+  const openBlockedIssues = useCallback(() => {
+    useIssuesScopeStore.getState().setScope('all')
+    const view = useIssueViewStore.getState()
+    view.clearFilters()
+    view.toggleStatusFilter('blocked')
+    void navigate({ to: '/tasks' })
+  }, [navigate])
   const openIssueDetail = useCallback(
     (issue: { id: string; title: string }) =>
       openIssue({ id: issue.id, title: issue.title }),
@@ -839,6 +869,8 @@ export function DashboardPage() {
           <DashboardOverviewSection
             wsId={wsId}
             openIssues={openIssues}
+            openBlockedIssues={openBlockedIssues}
+            openAgents={openAgents}
             openConnections={openConnections}
           />
         </DashboardSectionBoundary>
@@ -858,6 +890,7 @@ export function DashboardPage() {
           <DashboardActivitySection
             wsId={wsId}
             openInbox={openInbox}
+            openInboxItem={openInboxItem}
             openIssues={openIssues}
             openIssueDetail={openIssueDetail}
           />

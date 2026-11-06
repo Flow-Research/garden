@@ -19,5 +19,13 @@ export const Route = createFileRoute('/_authenticated/_app/skills')({
 
 function SkillsRoute() {
   const { focus } = Route.useSearch()
-  return <SkillsPage focusedSkillId={focus} />
+  const navigate = Route.useNavigate()
+  return (
+    <SkillsPage
+      focusedSkillId={focus}
+      onSelectSkill={(skillId) =>
+        void navigate({ search: { focus: skillId }, replace: true })
+      }
+    />
+  )
 }

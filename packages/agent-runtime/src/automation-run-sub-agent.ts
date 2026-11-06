@@ -42,6 +42,21 @@ import { createSandboxTools } from './sandbox-tools'
 import { createWebTools, type WebToolsSqlValue } from './agent-tools/web'
 import { createBrainTools } from './agent-tools/brain'
 import type { RunUsageSnapshot } from './run-usage'
+import type { RunWorkflowWait } from './run-workflow'
+import {
+  getDecideAnalysisFinishedEventType,
+  type DecideAnalysisOwner,
+} from './decide-analysis-types'
+import {
+  decideAnalysisAutomationResumeText,
+  stopAfterAutomationDecideAnalysisStarts,
+} from './decide-analysis-automation'
+import {
+  automationDecidePausedMs,
+  cancelActiveAutomationDecideAnalysis,
+  readAutomationDecideWait,
+  takeAutomationDecideOutcome,
+} from './decide-analysis-run-state'
 import { errorMessage, objectOrNull } from './runtime-utils'
 import {
   RunSubAgentBase,
@@ -56,6 +71,12 @@ import {
 type AutomationRunEnv = RunSubAgentEnv & {
   BROWSER: Fetcher
 }
+
+/**
+ * A turn input. `decideRunId` is set on the resume turn after a Decide
+ * pause, naming the analysis whose outcome the turn hands to the agent.
+ */
+type AutomationRunTurnInput = RunTurnInput & { decideRunId?: string }
 
 type AutomationTraceEvent = {
   ts: string
@@ -115,6 +136,7 @@ const AUTOMATION_RUN_CONFIG: RunSubAgentConfig = {
 }
 const AUTOMATION_RUN_TERMINAL_TOOL_STOP_CONDITIONS = [
   hasToolCall('complete_automation'),
+  stopAfterAutomationDecideAnalysisStarts,
 ]
 const ACTIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
 const TERMINAL_AUTOMATION_RUN_STATUSES = [
@@ -179,7 +201,7 @@ function automationAllowsBrowser(
 
 export class AutomationRunSubAgent extends RunSubAgentBase<
   LoadedAutomationRunContext,
-  RunTurnInput,
+  AutomationRunTurnInput,
   AutomationRunEnv
 > {
   private currentBrowserAllowed = false
@@ -211,6 +233,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
           'Complete the configured automation task directly, then call complete_automation exactly once with a non-empty output.',
           'Do not call complete_automation until required connector/tool work is finished.',
           'Only inspect or modify Garden issues when the automation prompt explicitly asks for issue work.',
+          "When decide_analyze starts an analysis, this turn ends. Garden resumes the run with Decide's findings, files, or failure reason when the analysis ends. Do not call complete_automation before that.",
         ].join('\n'),
     }
   }
@@ -340,6 +363,113 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     return mode === 'resume'
       ? 'Resume this automation run using the injected automation context. Complete required work, then call complete_automation with the final result.'
       : 'Start this automation run using the injected automation context. Complete the task directly, then call complete_automation. Respect the injected closure controls: do not create issues, update GitHub, draft PRs, update QA artifacts, or mutate source unless the run payload explicitly enables that closure action.'
+  }
+
+  /**
+   * An automation's `decide_analyze` calls belong to this run. Before, the
+   * MCP wrapper labelled every call as a chat call with the facet name as
+   * thread ID, so an automation's analysis had no owner the service could
+   * resolve. The facet name is the run ID (`AgentDO.subAgent(
+   * AutomationRunSubAgent, runId)`), so it is trusted, unlike model input.
+   */
+  protected override decideAnalysisOwner(): DecideAnalysisOwner {
+    return { kind: 'automation_run', automationRunId: this.name }
+  }
+
+  /**
+   * The resume turn after a Decide pause carries the analysis outcome.
+   * Before, an automation had no resume turn. The outcome is read from the
+   * Decide run by the ID the Workflow passed, not from the event payload, so
+   * a timed-out wait still gets an answer, and it is marked delivered so the
+   * run never waits on it again.
+   */
+  protected override async buildTurnPrompt(
+    mode: RunTurnMode,
+    input: AutomationRunTurnInput,
+  ): Promise<ResultValue<string, RunSubAgentError>> {
+    const decideRunId = input.decideRunId
+    if (mode !== 'resume' || decideRunId === undefined) {
+      return Result.ok(this.turnPrompt(mode))
+    }
+    return (
+      await Result.tryPromise({
+        try: () =>
+          takeAutomationDecideOutcome(this.getDb(), {
+            automationRunId: input.runId,
+            decideRunId,
+          }),
+        catch: (cause) => this.dbError('read automation Decide outcome', cause),
+      })
+    ).andThen((outcome) =>
+      outcome === null
+        ? Result.err(
+            new AutomationRunSubAgentError({
+              code: 'not_found',
+              message: `Decide analysis ${decideRunId} does not belong to automation run ${input.runId}.`,
+            }),
+          )
+        : Result.ok(decideAnalysisAutomationResumeText(outcome)),
+    )
+  }
+
+  /**
+   * After a turn that started a Decide analysis, the run waits on it. A
+   * lookup failure is thrown so the Workflow step retries instead of
+   * finishing a run that is still waiting.
+   */
+  protected override async readWorkflowWait(
+    runId: string,
+    status: string,
+  ): Promise<RunWorkflowWait | null> {
+    if (!isActiveAutomationRunStatus(status)) return null
+    const result = await Result.tryPromise({
+      try: () => readAutomationDecideWait(this.getDb(), runId),
+      catch: (cause) => this.dbError('read automation Decide wait', cause),
+    })
+    if (result.isErr()) throw result.error
+    return result.value
+  }
+
+  /** Time spent waiting on Decide does not count against `runTimeoutSec`. */
+  protected override async loadPausedMs(
+    loaded: LoadedAutomationRunContext,
+  ): Promise<ResultValue<number, RunSubAgentError>> {
+    return await Result.tryPromise({
+      try: () => automationDecidePausedMs(this.getDb(), loaded.run.id),
+      catch: (cause) => this.dbError('load automation Decide pause', cause),
+    })
+  }
+
+  /**
+   * Cancelling the run also requests cancel on its active Decide analysis.
+   * A run paused on Decide has no turn to abort, so the RunWorkflow is woken
+   * with the analysis's finished event; its next turn sees the cancel
+   * request and closes the run as cancelled, instead of waiting out the
+   * analysis. A failure here is logged: the run cancel itself has happened.
+   */
+  override async requestCancel(input: { runId: string }): Promise<void> {
+    await super.requestCancel(input)
+    const cancelled = await Result.tryPromise({
+      try: async () => {
+        const decideRunId = await cancelActiveAutomationDecideAnalysis(
+          this.getDb(),
+          input.runId,
+        )
+        if (decideRunId === null) return
+        const instance = await this.env.RUN_WORKFLOW.get(input.runId)
+        await instance.sendEvent({
+          type: getDecideAnalysisFinishedEventType(decideRunId),
+          payload: { decideRunId, status: 'cancel_requested' },
+        })
+      },
+      catch: (cause) => cause,
+    })
+    if (cancelled.isErr()) {
+      this.logRunWarning('decide_cancel_failed', {
+        runId: input.runId,
+        ...errorFields(cancelled.error),
+      })
+    }
   }
 
   protected turnMetadata(mode: RunTurnMode, input: RunTurnInput) {
@@ -502,6 +632,20 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ) {
       return
     }
+
+    // A turn that started a Decide analysis leaves the run running; the
+    // Workflow waits for the analysis and resumes the agent with it.
+    const decideWait = await Result.tryPromise({
+      try: () => readAutomationDecideWait(this.getDb(), runId),
+      catch: (cause) => this.dbError('read automation Decide wait', cause),
+    })
+    if (decideWait.isErr()) {
+      this.logRunWarning('decide_wait_read_failed', {
+        runId,
+        ...errorFields(decideWait.error),
+      })
+    }
+    if (decideWait.isOk() && decideWait.value !== null) return
 
     const output = result.message.parts
       .filter((part) => part.type === 'text')
@@ -945,7 +1089,15 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
         await this.getDb()
           .update(schema.automationRun)
           .set({ status: 'running', updatedAt: now })
-          .where(eq(schema.automationRun.id, loaded.run.id))
+          .where(
+            and(
+              eq(schema.automationRun.id, loaded.run.id),
+              inArray(
+                schema.automationRun.status,
+                ACTIVE_AUTOMATION_RUN_STATUSES,
+              ),
+            ),
+          )
       },
       catch: (cause) => this.dbError('mark automation run resumed', cause),
     })
@@ -971,25 +1123,34 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     const db = this.getDb()
     const result = await Result.tryPromise({
       try: async () => {
-        const [row] = await db
-          .select({ resultJson: schema.automationRun.resultJson })
-          .from(schema.automationRun)
-          .where(eq(schema.automationRun.id, runId))
-          .limit(1)
-        const existing = objectOrNull(row?.resultJson) ?? {}
         await db
           .update(schema.automationRun)
           .set({
-            resultJson: {
-              ...existing,
-              observability: {
-                trace: nextTrace,
-                traceUpdatedAt: event.ts,
-              },
-            },
+            resultJson: sql`jsonb_set(
+              jsonb_set(
+                coalesce(${schema.automationRun.resultJson}, '{}'::jsonb),
+                '{observability,trace}',
+                coalesce(
+                  ${schema.automationRun.resultJson}->'observability'->'trace',
+                  '[]'::jsonb
+                ) || jsonb_build_array(${JSON.stringify(event)}::jsonb),
+                true
+              ),
+              '{observability,traceUpdatedAt}',
+              to_jsonb(${event.ts}::text),
+              true
+            )`,
             updatedAt: new Date(),
           })
-          .where(eq(schema.automationRun.id, runId))
+          .where(
+            and(
+              eq(schema.automationRun.id, runId),
+              inArray(
+                schema.automationRun.status,
+                ACTIVE_AUTOMATION_RUN_STATUSES,
+              ),
+            ),
+          )
       },
       catch: (cause) => this.dbError('persist automation trace', cause),
     })
@@ -1015,7 +1176,15 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
             error: reason,
             updatedAt: new Date(),
           })
-          .where(eq(schema.automationRun.id, runId))
+          .where(
+            and(
+              eq(schema.automationRun.id, runId),
+              inArray(
+                schema.automationRun.status,
+                ACTIVE_AUTOMATION_RUN_STATUSES,
+              ),
+            ),
+          )
       },
       catch: (cause) =>
         this.dbError('request automation run cancellation', cause),
@@ -1048,46 +1217,37 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       kind: 'run_completed',
       textPreview: previewString(output),
     })
-    const trace = this.currentTrace
-
     const result = await Result.tryPromise({
       try: async () =>
         await db.transaction(async (tx) => {
-          const [automationRun] = await tx
-            .select({
-              automationId: schema.automationRun.automationId,
-              status: schema.automationRun.status,
-            })
-            .from(schema.automationRun)
-            .where(eq(schema.automationRun.id, runId))
-            .limit(1)
-          if (
-            !automationRun ||
-            isTerminalAutomationRunStatus(automationRun.status)
-          ) {
-            return false
-          }
-
-          await tx
+          const [completedRun] = await tx
             .update(schema.automationRun)
             .set({
               status: 'completed',
-              resultJson: {
-                resolution: 'automation_completed',
-                output,
-                data: completion.data,
-                source: completion.source,
-                observability: {
-                  trace,
-                  traceUpdatedAt: now.toISOString(),
+              resultJson: sql`coalesce(${schema.automationRun.resultJson}, '{}'::jsonb) || ${JSON.stringify(
+                {
+                  resolution: 'automation_completed',
+                  output,
+                  data: completion.data,
+                  source: completion.source,
                 },
-              },
+              )}::jsonb`,
               completedAt: now,
               failureReason: null,
               error: null,
               updatedAt: now,
             })
-            .where(eq(schema.automationRun.id, runId))
+            .where(
+              and(
+                eq(schema.automationRun.id, runId),
+                inArray(
+                  schema.automationRun.status,
+                  ACTIVE_AUTOMATION_RUN_STATUSES,
+                ),
+              ),
+            )
+            .returning({ automationId: schema.automationRun.automationId })
+          if (!completedRun) return false
           await tx
             .update(schema.automation)
             .set({
@@ -1096,7 +1256,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
               runCount: sql`${schema.automation.runCount} + 1`,
               successCount: sql`${schema.automation.successCount} + 1`,
             })
-            .where(eq(schema.automation.id, automationRun.automationId))
+            .where(eq(schema.automation.id, completedRun.automationId))
           return true
         }),
       catch: (cause) => this.dbError('finish automation run', cause),
@@ -1125,32 +1285,32 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     const result = await Result.tryPromise({
       try: async () =>
         await db.transaction(async (tx) => {
-          const [automationRun] = await tx
-            .select({
-              automationId: schema.automationRun.automationId,
-              status: schema.automationRun.status,
-            })
-            .from(schema.automationRun)
-            .where(eq(schema.automationRun.id, runId))
-            .limit(1)
-          if (
-            !automationRun ||
-            isTerminalAutomationRunStatus(automationRun.status)
-          ) {
-            return false
-          }
-
-          await tx
+          const [cancelledRun] = await tx
             .update(schema.automationRun)
             .set({
               status: 'cancelled',
               error: reason,
-              resultJson: { resolution: 'cancelled', reason },
+              resultJson: sql`coalesce(${schema.automationRun.resultJson}, '{}'::jsonb) || ${JSON.stringify(
+                {
+                  resolution: 'cancelled',
+                  reason,
+                },
+              )}::jsonb`,
               completedAt: now,
               failureReason: reason,
               updatedAt: now,
             })
-            .where(eq(schema.automationRun.id, runId))
+            .where(
+              and(
+                eq(schema.automationRun.id, runId),
+                inArray(
+                  schema.automationRun.status,
+                  ACTIVE_AUTOMATION_RUN_STATUSES,
+                ),
+              ),
+            )
+            .returning({ automationId: schema.automationRun.automationId })
+          if (!cancelledRun) return false
           await tx
             .update(schema.automation)
             .set({
@@ -1158,7 +1318,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
               updatedAt: now,
               runCount: sql`${schema.automation.runCount} + 1`,
             })
-            .where(eq(schema.automation.id, automationRun.automationId))
+            .where(eq(schema.automation.id, cancelledRun.automationId))
           return true
         }),
       catch: (cause) => this.dbError('cancel automation run', cause),
@@ -1194,44 +1354,35 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       kind: 'run_failed',
       error: reason,
     })
-    const trace = this.currentTrace
-
     const writeResult = await Result.tryPromise({
       try: async () =>
         await db.transaction(async (tx) => {
-          const [automationRun] = await tx
-            .select({
-              automationId: schema.automationRun.automationId,
-              status: schema.automationRun.status,
-            })
-            .from(schema.automationRun)
-            .where(eq(schema.automationRun.id, runId))
-            .limit(1)
-          if (
-            !automationRun ||
-            isTerminalAutomationRunStatus(automationRun.status)
-          ) {
-            return false
-          }
-
-          await tx
+          const [failedRun] = await tx
             .update(schema.automationRun)
             .set({
               status: 'failed',
               error: reason,
-              resultJson: {
-                resolution: 'failed',
-                reason,
-                observability: {
-                  trace,
-                  traceUpdatedAt: now.toISOString(),
+              resultJson: sql`coalesce(${schema.automationRun.resultJson}, '{}'::jsonb) || ${JSON.stringify(
+                {
+                  resolution: 'failed',
+                  reason,
                 },
-              },
+              )}::jsonb`,
               completedAt: now,
               failureReason: reason,
               updatedAt: now,
             })
-            .where(eq(schema.automationRun.id, runId))
+            .where(
+              and(
+                eq(schema.automationRun.id, runId),
+                inArray(
+                  schema.automationRun.status,
+                  ACTIVE_AUTOMATION_RUN_STATUSES,
+                ),
+              ),
+            )
+            .returning({ automationId: schema.automationRun.automationId })
+          if (!failedRun) return false
           await tx
             .update(schema.automation)
             .set({
@@ -1240,7 +1391,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
               runCount: sql`${schema.automation.runCount} + 1`,
               failureCount: sql`${schema.automation.failureCount} + 1`,
             })
-            .where(eq(schema.automation.id, automationRun.automationId))
+            .where(eq(schema.automation.id, failedRun.automationId))
           return true
         }),
       catch: (cause) =>

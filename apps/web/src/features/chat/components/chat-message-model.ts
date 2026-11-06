@@ -7,13 +7,18 @@
  */
 import { getToolInput, getToolPartState } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
-import { canonicalizeJson } from '@garden/connectors/capabilities'
+import {
+  canonicalizeJson,
+  extractExecutorToolRefs,
+} from '@garden/connectors/capabilities'
 import { isToolStateActive } from './chat-tool-state'
 import {
   normalizeGardenArtifact,
   type GardenArtifactData,
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
+import type { DecideAnalysisStatus } from '@/lib/api/decide-analyses'
+import { isMissingError } from '@/lib/api/errors'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 
@@ -46,10 +51,182 @@ export type ChatWorkEntry = {
 }
 
 export type ToolActivityItem = ChatWorkEntry & {
+  /** Set when this step started a background Decide run the UI can poll. */
+  decideRunId: string | null
   input: unknown
   output: unknown
   state: string
   toolName: string
+}
+
+const DECIDE_ANALYSIS_RESULT_KIND = 'decide_analysis_result'
+
+/**
+ * True for Garden's internal Decide result hand-off. The runtime sends it as a
+ * user message so the model can write the answer; the user never typed it,
+ * so the timeline must not show it.
+ */
+export function isInternalChatMessage(message: ChatUiMessage) {
+  const metadata = message.metadata
+  if (!metadata || typeof metadata !== 'object') return false
+  const garden = (metadata as Record<string, unknown>).garden
+  return (
+    !!garden &&
+    typeof garden === 'object' &&
+    (garden as Record<string, unknown>).kind === DECIDE_ANALYSIS_RESULT_KIND
+  )
+}
+
+export type DecideAnalysisStepView = {
+  label: string
+  detail: string | null
+  active: boolean
+  canCancel: boolean
+}
+
+/**
+ * What the Decide chat step shows for a run status. Only Decide's progress
+ * note is passed through; run and session IDs never reach the step.
+ * `unavailable` means the status request itself failed, so the step settles
+ * as failed instead of spinning.
+ */
+export function decideAnalysisStepView(
+  status: DecideAnalysisStatus | 'unavailable' | null,
+  progressMessage: string | null,
+): DecideAnalysisStepView {
+  switch (status) {
+    case 'completed':
+      return {
+        label: 'Analysis complete',
+        detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'failed':
+      return {
+        label: 'Analysis failed',
+        detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'unavailable':
+      return {
+        label: 'Analysis failed',
+        detail:
+          'Garden could not load this analysis. Ask again to start a new one.',
+        active: false,
+        canCancel: false,
+      }
+    case 'cancelled':
+      return {
+        label: 'Analysis cancelled',
+        detail: null,
+        active: false,
+        canCancel: false,
+      }
+    case 'cancel_requested':
+      return {
+        label: 'Cancelling analysis',
+        detail: null,
+        active: true,
+        canCancel: false,
+      }
+    default:
+      return {
+        label: 'Analyzing your data…',
+        detail: progressMessage?.trim() || null,
+        active: true,
+        canCancel: true,
+      }
+  }
+}
+
+/**
+ * The card's step once failed requests are counted. Before, a failed status
+ * read kept the spinner going and a failed Cancel was silently ignored, so a
+ * card pointing at a run the thread does not own spun forever. Now a failed
+ * read, or a Cancel that finds no run (404/403), settles the card as failed;
+ * any other Cancel failure keeps the run live and says Cancel did not work.
+ */
+export function decideAnalysisCardView(input: {
+  status: DecideAnalysisStatus | null
+  progressMessage: string | null
+  failureMessage: string | null
+  isLongRun: boolean
+  loadFailed: boolean
+  cancelError: unknown
+}): DecideAnalysisStepView {
+  if (input.loadFailed || isMissingError(input.cancelError)) {
+    return decideAnalysisStepView('unavailable', null)
+  }
+  const view = decideAnalysisStepView(input.status, input.progressMessage)
+  // The run stores a plain reason (Decide's error, or Garden's time-limit
+  // message). Before, the card dropped it and said only "Analysis failed".
+  if (input.status === 'failed') {
+    return { ...view, detail: input.failureMessage?.trim() || null }
+  }
+  if (view.canCancel && !view.detail && input.isLongRun) {
+    return { ...view, detail: LONG_RUN_NOTE }
+  }
+  return input.cancelError && view.canCancel
+    ? { ...view, detail: 'Garden could not cancel this analysis. Try again.' }
+    : view
+}
+
+/**
+ * A run longer than this tells the user it is still working and that they can
+ * leave. Dev runs finished in one to two minutes, so past two minutes a run is
+ * unusually long and a silent spinner starts to look stuck.
+ */
+export const DECIDE_LONG_RUN_MS = 2 * 60 * 1000
+
+const LONG_RUN_NOTE =
+  "Still working in the background. You can leave this chat; the answer will appear here when it's ready."
+
+/** Elapsed run time as a person reads it: "42s", then "1m 05s". */
+export function formatElapsed(ms: number) {
+  const seconds = Math.max(0, Math.floor(ms / 1000))
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
+
+export type DecideFileKind = 'image' | 'spreadsheet' | 'document' | 'file'
+
+const DECIDE_FILE_KINDS: Record<string, DecideFileKind> = {
+  png: 'image',
+  jpg: 'image',
+  jpeg: 'image',
+  gif: 'image',
+  webp: 'image',
+  xlsx: 'spreadsheet',
+  xls: 'spreadsheet',
+  csv: 'spreadsheet',
+  pdf: 'document',
+  docx: 'document',
+  pptx: 'document',
+  md: 'document',
+  txt: 'document',
+  html: 'document',
+}
+
+/** Picks a Decide file card's icon; images also get an inline preview. */
+export function decideFileKind(filename: string): DecideFileKind {
+  const extension = filename.split('.').at(-1)?.toLowerCase() ?? ''
+  return DECIDE_FILE_KINDS[extension] ?? 'file'
+}
+
+const isDecideAnalyzeTool = (toolName: string) =>
+  toolName.includes('executor') && toolName.endsWith('_decide_analyze')
+
+/** Reads the background run ID from a Decide analyze start result. */
+export function decideAnalysisRunId(toolName: string, output: unknown) {
+  if (!isDecideAnalyzeTool(toolName) || !output || typeof output !== 'object') {
+    return null
+  }
+  const structured = (output as Record<string, unknown>).structuredContent
+  if (!structured || typeof structured !== 'object') return null
+  const runId = (structured as Record<string, unknown>).run_id
+  return typeof runId === 'string' && runId ? runId : null
 }
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -112,6 +289,19 @@ export function getToolActivityItem(args: {
     state === 'output-error' && typeof record.errorText === 'string'
       ? record.errorText
       : undefined
+  const mcpFailure = extractMcpFailure(output)
+  const mcpFailureDetail = mcpFailure
+    ? [
+        mcpFailure.stage ? `error — ${mcpFailure.stage}` : 'error',
+        mcpFailure.message,
+        mcpFailure.status === undefined ? null : `status ${mcpFailure.status}`,
+        mcpFailure.mcpCode === undefined
+          ? null
+          : `MCP code ${mcpFailure.mcpCode}`,
+      ]
+        .filter(Boolean)
+        .join(' — ')
+    : null
   const label = args.debugMode
     ? toolName
     : productToolLabel(toolName, input, output)
@@ -126,20 +316,122 @@ export function getToolActivityItem(args: {
       ]
         .filter(Boolean)
         .join('\n\n')
-    : errorText
-      ? `error — ${errorText}`
+    : errorText || mcpFailure
+      ? (mcpFailureDetail ?? `error — ${errorText}`)
       : toolStateLabel(state)
 
   return {
     active,
+    decideRunId: mcpFailure ? null : decideAnalysisRunId(toolName, output),
     detail,
     id: `${args.messageId}:tool:${args.index}`,
     input,
     label,
     output,
     state,
-    tone: errorText ? 'error' : active ? 'tool' : 'info',
+    tone: errorText || mcpFailure ? 'error' : active ? 'tool' : 'info',
     toolName,
+  }
+}
+
+/**
+ * Extracts the customer-safe error from an MCP result envelope. Decide returns
+ * domain failures as `isError: true` with `structuredContent`; AI SDK failures
+ * use `errorText`. The UI must show both shapes instead of treating the MCP
+ * envelope as a completed tool call. Only error text is read, never file data.
+ */
+export function extractMcpFailure(output: unknown) {
+  if (!output || typeof output !== 'object') return null
+  const record = output as Record<string, unknown>
+  const structured =
+    record.structuredContent && typeof record.structuredContent === 'object'
+      ? (record.structuredContent as Record<string, unknown>)
+      : null
+  const structuredError =
+    structured?.error && typeof structured.error === 'object'
+      ? (structured.error as Record<string, unknown>)
+      : null
+  const recordError =
+    record.error && typeof record.error === 'object'
+      ? (record.error as Record<string, unknown>)
+      : null
+  const executionResult =
+    structured?.result && typeof structured.result === 'object'
+      ? (structured.result as Record<string, unknown>)
+      : record.result && typeof record.result === 'object'
+        ? (record.result as Record<string, unknown>)
+        : null
+  const nestedError =
+    executionResult?.error && typeof executionResult.error === 'object'
+      ? (executionResult.error as Record<string, unknown>)
+      : null
+  const details =
+    (structuredError?.details && typeof structuredError.details === 'object'
+      ? (structuredError.details as Record<string, unknown>)
+      : null) ??
+    (recordError?.details && typeof recordError.details === 'object'
+      ? (recordError.details as Record<string, unknown>)
+      : null) ??
+    (structured?.details && typeof structured.details === 'object'
+      ? (structured.details as Record<string, unknown>)
+      : null)
+  const failed =
+    record.isError === true ||
+    record.ok === false ||
+    structured?.status === 'error' ||
+    executionResult?.ok === false
+  if (!failed) return null
+  const contentText = Array.isArray(record.content)
+    ? record.content
+        .map((block) => {
+          if (!block || typeof block !== 'object') return ''
+          const item = block as Record<string, unknown>
+          return item.type === 'text' && typeof item.text === 'string'
+            ? item.text.trim()
+            : ''
+        })
+        .filter(Boolean)
+        .join('\n')
+    : ''
+  const errorText = (value: unknown) => {
+    if (typeof value === 'string' && value.trim()) return value.trim()
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return ''
+    const error = value as Record<string, unknown>
+    return typeof error.message === 'string' ? error.message.trim() : ''
+  }
+  const message =
+    errorText(structured?.error) ||
+    errorText(record.error) ||
+    errorText(nestedError) ||
+    contentText ||
+    'The integration returned an error.'
+  const status =
+    typeof details?.status === 'number'
+      ? details.status
+      : typeof structuredError?.status === 'number'
+        ? structuredError.status
+        : typeof recordError?.status === 'number'
+          ? recordError.status
+          : undefined
+  const mcpCode =
+    typeof details?.mcpCode === 'number'
+      ? details.mcpCode
+      : typeof structuredError?.mcpCode === 'number'
+        ? structuredError.mcpCode
+        : typeof recordError?.mcpCode === 'number'
+          ? recordError.mcpCode
+          : undefined
+  const stage =
+    typeof structured?.failureStage === 'string'
+      ? structured.failureStage
+      : typeof record.failureStage === 'string'
+        ? record.failureStage
+        : undefined
+  return {
+    message,
+    stage,
+    ...(status === undefined ? {} : { status }),
+    ...(mcpCode === undefined ? {} : { mcpCode }),
   }
 }
 
@@ -234,6 +526,12 @@ export function toolStateLabel(state: string) {
   }
 }
 
+/**
+ * Maps internal tool names to stable user-facing activity labels.
+ * Before this mapping, analysis rows exposed the selected connector name,
+ * which made a capability-based workflow look connector-specific. The public
+ * row now describes the user task while technical details keep the connector.
+ */
 export function productToolLabel(
   toolName: string,
   input: unknown,
@@ -253,6 +551,24 @@ export function productToolLabel(
         : typeof record.title === 'string'
           ? record.title
           : null
+  const executorRefs =
+    typeof record.code === 'string' ? extractExecutorToolRefs(record.code) : []
+  const executorRef = executorRefs[0]
+  if (isDecideAnalyzeTool(toolName)) {
+    return 'Analyzing your data'
+  }
+  if (toolName.includes('executor') && toolName.includes('_decide_')) {
+    return 'Working with your data'
+  }
+  if (toolName.includes('executor') && executorRef) {
+    if (executorRef.tool.toLowerCase().includes('analy')) {
+      return 'Analyzing the data'
+    }
+    return 'Working with your connected tools'
+  }
+  if (toolName.includes('executor') && toolName.endsWith('_skills')) {
+    return 'Preparing integration tools'
+  }
   switch (toolName) {
     case 'listDocuments':
       return 'Checking available documents'
@@ -291,6 +607,7 @@ type MessageRenderNode =
       stepCount: number
     }
   | { kind: 'artifact'; key: string; artifact: GardenArtifactData }
+  | { kind: 'decide'; key: string; runId: string }
   | {
       kind: 'raw'
       key: string
@@ -394,6 +711,18 @@ export function buildMessageRenderModel(
         messageId: message.id,
         part,
       })
+      // A Decide run outlives its tool call, so it renders as its own status
+      // card. Inside the work group it hid under a collapsed header that
+      // read "Completed" while Decide was still running.
+      if (activity?.decideRunId && !debugMode) {
+        flushWork()
+        nodes.push({
+          kind: 'decide',
+          key: `${message.id}:decide:${index}`,
+          runId: activity.decideRunId,
+        })
+        return
+      }
       if (activity) {
         if (work.length === 0) workFirstIndex = index
         work.push(activity)

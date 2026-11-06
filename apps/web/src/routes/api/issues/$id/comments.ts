@@ -15,6 +15,7 @@ import {
 } from '@/lib/server/validation/issues'
 import { badRequest } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
@@ -92,6 +93,17 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           })
         }
 
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, existingIssue.workspaceId, {
+            type: 'comment:created',
+            payload: {
+              issue_id: existingIssue.id,
+              comment_id: commentResult.value.comment.id,
+              team_id: existingIssue.teamId,
+              assignee_id: existingIssue.assigneeId,
+            },
+          }),
+        )
         return Response.json(commentResult.value.comment, { status: 201 })
       },
     },

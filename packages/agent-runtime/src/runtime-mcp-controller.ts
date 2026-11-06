@@ -1,4 +1,4 @@
-import type { MCPServerFilter } from 'agents/mcp/client'
+import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
@@ -23,9 +23,15 @@ import {
   resolveEffectiveTrust,
 } from '@garden/connectors/capabilities'
 import {
+  extractExecutorToolFailure,
   extractExecutorToolRefsFromInput,
   mentionsUnparsedExecutorTools,
+  type ExecutorToolFailure,
 } from './executor-codemode'
+import type {
+  DecideAnalysisOwner,
+  GardenDecideMeta,
+} from './decide-analysis-types'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
@@ -67,6 +73,136 @@ export const PERMISSION_APPROVAL_REUSE_WINDOW_MS = 60 * 1000
 
 const EXECUTOR_MCP_SERVER_ID = 'executor'
 
+/**
+ * Summarizes an Executor call for lifecycle logs without logging code or input
+ * data. The earlier logs showed only the generic MCP method result, so these
+ * fields identify the selected integration and tool call safely.
+ */
+function executorToolCallFields(args: readonly unknown[]) {
+  const input = args[0]
+  const options =
+    args[1] && typeof args[1] === 'object'
+      ? (args[1] as Record<string, unknown>)
+      : null
+  const code =
+    input && typeof input === 'object'
+      ? (input as Record<string, unknown>).code
+      : undefined
+  const refs = extractExecutorToolRefsFromInput(input)
+  return {
+    ...(typeof options?.toolCallId === 'string'
+      ? { toolCallId: options.toolCallId }
+      : {}),
+    executorRefCount: refs.length,
+    executorSlugs: [...new Set(refs.map((ref) => ref.executorSlug))],
+    hasCode: typeof code === 'string',
+    ...(typeof code === 'string' ? { codeLength: code.length } : {}),
+  }
+}
+
+/**
+ * Summarizes an Executor result for lifecycle logs without logging returned
+ * text, file contents, or resource URLs. Counts make delayed or malformed
+ * responses visible while the original result remains unchanged.
+ */
+function executorResultFields(output: unknown) {
+  if (!output || typeof output !== 'object') {
+    return {
+      contentBlockCount: 0,
+      generatedFileUrlCount: 0,
+      hasContinuationId: false,
+    }
+  }
+  const record = output as Record<string, unknown>
+  const content = Array.isArray(record.content) ? record.content : []
+  const structured =
+    record.structuredContent && typeof record.structuredContent === 'object'
+      ? (record.structuredContent as Record<string, unknown>)
+      : null
+  const generatedFileUrlCount = content.filter((block) => {
+    if (!block || typeof block !== 'object') return false
+    const item = block as Record<string, unknown>
+    const resource =
+      item.resource &&
+      typeof item.resource === 'object' &&
+      !Array.isArray(item.resource)
+        ? (item.resource as Record<string, unknown>)
+        : null
+    return (
+      (item.type === 'resource' &&
+        ((typeof item.uri === 'string' && item.uri.length > 0) ||
+          (typeof resource?.uri === 'string' && resource.uri.length > 0))) ||
+      (item.type === 'text' &&
+        typeof item.text === 'string' &&
+        /https?:\/\/\S+/u.test(item.text))
+    )
+  }).length
+  return {
+    contentBlockCount: content.length,
+    generatedFileUrlCount,
+    hasContinuationId: typeof structured?.session_id === 'string',
+  }
+}
+
+/**
+ * Converts an AI SDK tool input into the object shape required by an MCP tool.
+ * Executor tools use object schemas, but this boundary still guards the
+ * transport from receiving an invalid primitive or array.
+ */
+function asMcpToolArguments(
+  input: unknown,
+): NonNullable<McpCallToolParams['arguments']> {
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? (input as NonNullable<McpCallToolParams['arguments']>)
+    : {}
+}
+
+/**
+ * Converts a thrown Executor/MCP error into the same safe result shape used by
+ * provider-reported MCP errors. Returning this envelope preserves the failure
+ * stage and cause for the chat UI while keeping stacks and request data private.
+ */
+function executorToolFailureResult(
+  error: Error,
+  failure: ExecutorToolFailure | null,
+) {
+  const message = failure?.message || error.message || 'MCP tool call failed.'
+  const details = {
+    ...(failure?.kind === undefined ? {} : { kind: failure.kind }),
+    ...(failure?.status === undefined ? {} : { status: failure.status }),
+    ...(failure?.mcpCode === undefined ? {} : { mcpCode: failure.mcpCode }),
+    ...(failure?.transportFailure === undefined
+      ? {}
+      : { transportFailure: failure.transportFailure }),
+    ...(failure?.transportKind === undefined
+      ? {}
+      : { transportKind: failure.transportKind }),
+    ...(failure?.transportMessage === undefined
+      ? {}
+      : { transportMessage: failure.transportMessage }),
+    ...(failure?.retryable === undefined
+      ? {}
+      : { retryable: failure.retryable }),
+    ...(failure?.userAction === undefined
+      ? {}
+      : { userAction: failure.userAction }),
+  }
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: message }],
+    structuredContent: {
+      status: 'error' as const,
+      failureStage: failure?.stage ?? 'mcp_handoff',
+      ...(failure?.code === undefined ? {} : { errorCode: failure.code }),
+      error: {
+        message,
+        ...(failure?.code === undefined ? {} : { code: failure.code }),
+      },
+      ...(Object.keys(details).length === 0 ? {} : { details }),
+    },
+  }
+}
+
 export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   EXECUTOR_MCP_SERVER_ID,
   '',
@@ -92,6 +228,28 @@ export type ThreadRuntimeIdentity = {
   agentId: string
   issueId?: string
   runId?: string
+}
+
+/**
+ * Builds the remote Executor MCP name for one Garden runtime scope.
+ *
+ * Before this scope was explicit, every runtime used `rpc:executor`. Agents
+ * maps that name to one Durable Object, so the first initialized Executor
+ * runtime could serve later workspaces or users. The installed agents@0.17.3
+ * `addMcpServer()` and PartyServer `getServerByName()` implementations use the
+ * remote name for Durable Object addressing. This name therefore includes the
+ * opaque Garden workspace, member, agent, thread, and run identifiers.
+ */
+export function buildExecutorMcpServerName(identity: ThreadRuntimeIdentity) {
+  return [
+    'executor',
+    identity.workspaceId,
+    identity.userId,
+    identity.agentId,
+    identity.threadId,
+    identity.issueId ?? 'chat',
+    identity.runId ?? 'session',
+  ].join(':')
 }
 
 type StoredConnectorServerRowRecord = {
@@ -142,6 +300,10 @@ export type McpToolRecord = {
   serverId: string
 }
 
+type McpCallToolParams = Parameters<MCPClientManager['callTool']>[0]
+type McpCallToolResultSchema = Parameters<MCPClientManager['callTool']>[1]
+type McpCallToolOptions = Parameters<MCPClientManager['callTool']>[2]
+
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
 
 function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
@@ -154,6 +316,11 @@ function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
 
 export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet
+  callTool: (
+    params: McpCallToolParams,
+    resultSchema?: McpCallToolResultSchema,
+    options?: McpCallToolOptions,
+  ) => Promise<unknown>
   listTools: (filter?: MCPServerFilter) => McpToolRecord[]
   listServers: () => Array<{
     id: string
@@ -183,6 +350,7 @@ export type McpHost = {
   }) => Promise<McpRegistration & { id?: string }>
   addExecutorMcpServer?: (input: {
     id: string
+    remoteName: string
     props: {
       session: {
         organizationId: string
@@ -207,6 +375,12 @@ export type McpHost = {
   resolveRuntimeIdentity?: () => Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >
+  /**
+   * The Decide owner this host's `decide_analyze` calls belong to. Omitted
+   * means a chat facet, whose name is the thread key. Run facets supply it
+   * so an automation's analysis is owned by its run, never by a chat.
+   */
+  decideAnalysisOwner?: () => DecideAnalysisOwner
 }
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
@@ -316,8 +490,134 @@ export class RuntimeMcpController {
         wrappedRawToolKeys.add(rawToolKey)
 
         if (!connectorId) {
+          const baseExecute = rawTool.execute
           acc[rawToolKey] = {
             ...rawTool,
+            ...(baseExecute
+              ? {
+                  execute: async (
+                    ...args: Parameters<NonNullable<typeof baseExecute>>
+                  ) => {
+                    const startedAt = Date.now()
+                    const callFields = executorToolCallFields(args)
+                    runtimeMcpLogger.info('mcp.tool_call.started', {
+                      agentName: this.host.name,
+                      serverId: tool.serverId,
+                      toolName: tool.name,
+                      ...callFields,
+                    })
+
+                    const executeOptions = args[1]
+                    const toolCallId =
+                      executeOptions &&
+                      typeof executeOptions === 'object' &&
+                      'toolCallId' in executeOptions &&
+                      typeof executeOptions.toolCallId === 'string'
+                        ? executeOptions.toolCallId
+                        : null
+                    // Trusted owner metadata comes from the host, never from
+                    // model arguments, so a start cannot be attributed to
+                    // another thread or run.
+                    const decideOwner: DecideAnalysisOwner =
+                      this.host.decideAnalysisOwner?.() ?? {
+                        kind: 'chat',
+                        threadId: this.host.name,
+                      }
+                    const gardenMeta: { garden: GardenDecideMeta } | undefined =
+                      tool.serverId === EXECUTOR_MCP_SERVER_ID &&
+                      tool.name === 'decide_analyze'
+                        ? {
+                            garden: {
+                              ...decideOwner,
+                              ...(toolCallId === null ? {} : { toolCallId }),
+                            },
+                          }
+                        : undefined
+
+                    const result = await Result.tryPromise({
+                      try: async () => {
+                        const output = await this.host.mcp.callTool(
+                          {
+                            arguments: asMcpToolArguments(args[0]),
+                            name: tool.name,
+                            serverId: tool.serverId,
+                            ...(gardenMeta === undefined
+                              ? {}
+                              : { _meta: gardenMeta }),
+                          },
+                          undefined,
+                          {
+                            timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            maxTotalTimeout:
+                              mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            resetTimeoutOnProgress: true,
+                          },
+                        )
+                        return output
+                      },
+                      catch: (cause) =>
+                        cause instanceof Error
+                          ? cause
+                          : new Error(String(cause)),
+                    })
+
+                    if (result.isErr()) {
+                      const failure = extractExecutorToolFailure({
+                        error: result.error,
+                        toolName: tool.name,
+                        toolInput: args[0],
+                      })
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure?.stage ?? 'mcp_handoff',
+                        ...callFields,
+                        ...errorFields(result.error),
+                      })
+                      return executorToolFailureResult(result.error, failure)
+                    }
+
+                    const failure = extractExecutorToolFailure({
+                      output: result.value,
+                      toolName: tool.name,
+                      toolInput: args[0],
+                    })
+                    if (failure) {
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure.stage,
+                        failureCode: failure.code,
+                        failureMessage: failure.message,
+                        failureKind: failure.kind,
+                        failureStatus: failure.status,
+                        mcpCode: failure.mcpCode,
+                        transportKind: failure.transportKind,
+                        transportMessage: failure.transportMessage,
+                        retryable: failure.retryable,
+                        userAction: failure.userAction,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    } else {
+                      runtimeMcpLogger.info('mcp.tool_call.completed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    }
+
+                    return result.value
+                  },
+                }
+              : {}),
             needsApproval: async (
               input: unknown,
               options: {
@@ -1274,6 +1574,15 @@ export class RuntimeMcpController {
     return Result.ok(connectorIdsToSync)
   }
 
+  /**
+   * Ensures the current runtime has one correctly scoped Executor MCP server.
+   *
+   * Previously this method registered every runtime as `executor`, which
+   * addressed the shared `rpc:executor` Durable Object. The remote name now
+   * includes the resolved runtime identity while the local server id remains
+   * `executor` for stable Garden tool keys. An old global registration is
+   * removed before the scoped registration is created.
+   */
   async ensureProxyMcpConnections(_options?: {
     allowReplacingRegisteredServers?: boolean
   }) {
@@ -1299,18 +1608,23 @@ export class RuntimeMcpController {
     this.activateNativeConnectorBindings(bindingsResult.value)
     await this.refreshGitHubHostedMcpTools()
     const executorServerId = EXECUTOR_MCP_SERVER_ID
+    const executorRemoteName = buildExecutorMcpServerName(identityResult.value)
+    let executorServer = this.host.mcp
+      .listServers()
+      .find((server) => server.id === executorServerId)
+    if (executorServer && executorServer.name !== executorRemoteName) {
+      await this.host.removeMcpServer(executorServerId)
+      executorServer = undefined
+    }
     for (const server of this.host.mcp.listServers()) {
       if (server.id !== executorServerId && getConnectorById(server.id)) {
         await this.host.removeMcpServer(server.id)
       }
     }
-    if (
-      !this.host.mcp
-        .listServers()
-        .some((server) => server.id === executorServerId)
-    ) {
+    if (!executorServer) {
       const registration = await addExecutorMcpServer({
         id: executorServerId,
+        remoteName: executorRemoteName,
         props: {
           session: {
             organizationId: identityResult.value.workspaceId,
@@ -1404,41 +1718,43 @@ export class RuntimeMcpController {
       this.host.env.BETTER_AUTH_URL,
     ).toString()
 
-    for (const connectorId of uniqueConnectorIds) {
-      const syncResult = await Result.tryPromise({
-        try: async () => {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-garden-internal-secret': this.host.env.BETTER_AUTH_SECRET,
-            },
-            body: JSON.stringify({
-              connectorId,
-              userId: identityResult.value.userId,
-              workspaceId: identityResult.value.workspaceId,
-            }),
-          })
+    // Each connector syncs independently, so request them all at once.
+    const syncResults = await Promise.all(
+      uniqueConnectorIds.map((connectorId) =>
+        Result.tryPromise({
+          try: async () => {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-garden-internal-secret': this.host.env.BETTER_AUTH_SECRET,
+              },
+              body: JSON.stringify({
+                connectorId,
+                userId: identityResult.value.userId,
+                workspaceId: identityResult.value.workspaceId,
+              }),
+            })
 
-          if (!response.ok) {
-            throw new Error(
-              `Capability sync failed for ${connectorId} with ${response.status}`,
-            )
-          }
-        },
-        catch: (cause) =>
-          new RuntimeMcpError({
-            code: 'database_failed',
-            message:
-              cause instanceof Error
-                ? cause.message
-                : `Failed to request capability sync for ${connectorId}`,
-          }),
-      })
-      if (syncResult.isErr()) {
-        return syncResult
-      }
-    }
+            if (!response.ok) {
+              throw new Error(
+                `Capability sync failed for ${connectorId} with ${response.status}`,
+              )
+            }
+          },
+          catch: (cause) =>
+            new RuntimeMcpError({
+              code: 'database_failed',
+              message:
+                cause instanceof Error
+                  ? cause.message
+                  : `Failed to request capability sync for ${connectorId}`,
+            }),
+        }),
+      ),
+    )
+    const failed = syncResults.find((syncResult) => syncResult.isErr())
+    if (failed) return failed
 
     return Result.ok(undefined)
   }

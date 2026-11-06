@@ -56,7 +56,10 @@ import {
   type RunWorkflowBinding,
   type RunWorkflowTurnCompleteEvent,
   type RunWorkflowTurnStartResult,
+  type RunWorkflowWait,
 } from './run-workflow'
+import type { DecideAnalysisOwner } from './decide-analysis-types'
+import { runExceededTimeout } from './run-timeout'
 import { latestUserText, loadBrainInjection } from './brain-injection'
 import { logAgentSocketError } from './websocket-errors'
 import {
@@ -322,8 +325,23 @@ export abstract class RunSubAgentBase<
    */
   protected brainInjectionIdentity(
     _loaded: TLoaded,
-  ): { workspaceId: string; userId: string } | null {
+  ): { workspaceId: string; userId: string | undefined } | null {
     return null
+  }
+
+  /**
+   * Runs after the run boundary guards on every turn and before a run is marked
+   * started or resumed. Issue runs use it to verify the facet's Brain audience,
+   * so a shared run never resumes history created under another audience.
+   * `initializeEmpty` is true only on the Workflow-driven start/resume path,
+   * where a fresh facet may be stamped before its first turn is persisted.
+   * Run kinds without such a requirement keep the default no-op.
+   */
+  protected async prepareRun(
+    _loaded: TLoaded,
+    _initializeEmpty: boolean,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
   }
 
   /**
@@ -337,6 +355,49 @@ export abstract class RunSubAgentBase<
     summary: string
   }> {
     return { workspaceId: null, ownerUserId: null, summary: '' }
+  }
+
+  /**
+   * What a settled turn left the run waiting on outside the agent loop.
+   * `RunWorkflow` waits on it before the next turn. Run kinds that never
+   * pause this way keep the default.
+   */
+  protected async readWorkflowWait(
+    _runId: string,
+    _status: string,
+  ): Promise<RunWorkflowWait | null> {
+    return null
+  }
+
+  /**
+   * Time the run spent paused in its Workflow, which the `runTimeoutSec`
+   * guard does not count as working time. Run kinds that never pause keep 0.
+   */
+  protected async loadPausedMs(
+    _loaded: TLoaded,
+  ): Promise<ResultValue<number, RunSubAgentError>> {
+    return Result.ok(0)
+  }
+
+  /**
+   * The user text that opens a Workflow turn. Most turns send the fixed
+   * prompt; an automation resume after a Decide pause also carries the
+   * analysis outcome. The text must be the same on a Workflow retry, since
+   * the submission is idempotent by ID and only the first text is kept.
+   */
+  protected async buildTurnPrompt(
+    mode: RunTurnMode,
+    _input: TInput,
+  ): Promise<ResultValue<string, RunSubAgentError>> {
+    return Result.ok(this.turnPrompt(mode))
+  }
+
+  /**
+   * The owner of a `decide_analyze` call made from this facet, or null for
+   * the controller's chat default. Automation runs own their analyses.
+   */
+  protected decideAnalysisOwner(): DecideAnalysisOwner | null {
+    return null
   }
 
   protected telemetryMetadata(runId: string): Record<string, string> {
@@ -405,6 +466,9 @@ export abstract class RunSubAgentBase<
     if (guardResult.value !== 'continue') {
       throw new RunTurnStopped(this.turnStoppedName(), guardResult.value)
     }
+
+    const prepareResult = await this.prepareRun(loadedResult.value, false)
+    if (prepareResult.isErr()) throw prepareResult.error
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
@@ -704,6 +768,7 @@ export abstract class RunSubAgentBase<
     workspaceId: string | null
     ownerUserId: string | null
     summary: string
+    waitingOn?: RunWorkflowWait
   }> {
     const kind = this.runConfig().kind
     const inspectionResult = await Result.tryPromise({
@@ -766,11 +831,16 @@ export abstract class RunSubAgentBase<
       throw statusResult.error
     }
     const turnSummary = await this.readWorkflowTurnSummary(input.runId)
+    const waitingOn = await this.readWorkflowWait(
+      input.runId,
+      statusResult.value,
+    )
     return {
       status: statusResult.value,
       workspaceId: turnSummary.workspaceId,
       ownerUserId: turnSummary.ownerUserId,
       summary: turnSummary.summary,
+      ...(waitingOn === null ? {} : { waitingOn }),
     }
   }
 
@@ -873,6 +943,9 @@ export abstract class RunSubAgentBase<
       return Result.ok({ kind: 'stopped' })
     }
 
+    const prepareResult = await this.prepareRun(loadedResult.value, true)
+    if (prepareResult.isErr()) return Result.err(prepareResult.error)
+
     const statusResult =
       mode === 'start'
         ? await this.markRunStarted(loadedResult.value)
@@ -883,11 +956,14 @@ export abstract class RunSubAgentBase<
     this.currentPermissions = loadedResult.value.permissions
     this.activateRun(loadedResult.value)
 
+    const promptResult = await this.buildTurnPrompt(mode, input)
+    if (promptResult.isErr()) return Result.err(promptResult.error)
+
     const submissionId = `${this.runConfig().kind}-run:${input.runId}:${input.turn}:${mode}`
     const message: UIMessage = {
       id: `${submissionId}:user`,
       role: 'user',
-      parts: [{ type: 'text', text: this.turnPrompt(mode) }],
+      parts: [{ type: 'text', text: promptResult.value }],
     }
 
     return await this.submitWorkflowTurn({
@@ -1053,9 +1129,16 @@ export abstract class RunSubAgentBase<
 
     const timeoutSec = await this.loadRunTimeoutSec(loaded.run.agentId)
     if (timeoutSec.isErr()) return Result.err(timeoutSec.error)
-    const startedAt = loaded.run.startedAt ?? loaded.run.createdAt
-    const elapsedMs = startedAt ? Date.now() - startedAt.getTime() : 0
-    if (elapsedMs > timeoutSec.value * 1000) {
+    const pausedMs = await this.loadPausedMs(loaded)
+    if (pausedMs.isErr()) return Result.err(pausedMs.error)
+    if (
+      runExceededTimeout({
+        startedAt: loaded.run.startedAt ?? loaded.run.createdAt,
+        timeoutSec: timeoutSec.value,
+        pausedMs: pausedMs.value,
+        now: new Date(),
+      })
+    ) {
       const cancelResult = await this.setCancelRequested(
         loaded.run.id,
         'timeout',
@@ -1145,15 +1228,20 @@ export abstract class RunSubAgentBase<
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addExecutorMcpServer: async ({ id, props }) =>
-        await this.addMcpServer(id, this.env.EXECUTOR_MCP_SESSION, {
+      addExecutorMcpServer: async ({ id, remoteName, props }) =>
+        await this.addMcpServer(remoteName, this.env.EXECUTOR_MCP_SESSION, {
           id,
           props,
         }),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveMcpIdentity(),
     }
-    return new RuntimeMcpController(host)
+    const decideOwner = this.decideAnalysisOwner()
+    return new RuntimeMcpController(
+      decideOwner === null
+        ? host
+        : { ...host, decideAnalysisOwner: () => decideOwner },
+    )
   }
 
   /** Loads MCP connections on demand for a tool that needs them mid-turn. */

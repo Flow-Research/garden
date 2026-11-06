@@ -1,5 +1,5 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import type { ConnectorError } from '@garden/core/connectors/errors'
 import type {
@@ -8,6 +8,7 @@ import type {
   IssueRunEventType,
   IssueRunStatus,
 } from '@garden/core/types/issue-run'
+import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import * as schema from '@garden/db/schema'
 import type { GardenAnalyticsEventName } from '@garden/observability/analytics/events'
 import { operationFailedMessage } from '../runtime-utils'
@@ -195,6 +196,13 @@ export async function appendIssueRunEvent(args: {
   return Result.ok()
 }
 
+/**
+ * Applies an issue-run status update and clears ownership only for the run that
+ * still owns the issue. Before this guard, a late completion could overwrite a
+ * terminal run or clear a newer run's `activeRunId`. The live-status predicate
+ * makes terminal writes single-winner; callers must skip terminal events when
+ * the update returns `false`.
+ */
 export async function updateRunStatus(args: {
   db: IssueRunDb
   run: IssueRunToolState
@@ -202,12 +210,12 @@ export async function updateRunStatus(args: {
   error?: string | null
   resultJson?: Record<string, unknown> | null
   finished?: boolean
-}): Promise<ResultValue<void, IssueRunToolError>> {
+}): Promise<ResultValue<boolean, IssueRunToolError>> {
   const now = new Date()
   const result = await Result.tryPromise({
     try: async () => {
-      await args.db.transaction(async (tx) => {
-        await tx
+      return await args.db.transaction(async (tx) => {
+        const [updatedRun] = await tx
           .update(schema.issueRun)
           .set({
             status: args.status,
@@ -218,20 +226,34 @@ export async function updateRunStatus(args: {
             ...(args.finished ? { finishedAt: now } : {}),
             updatedAt: now,
           })
-          .where(eq(schema.issueRun.id, args.run.runId))
+          .where(
+            args.finished
+              ? and(
+                  eq(schema.issueRun.id, args.run.runId),
+                  inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+                )
+              : eq(schema.issueRun.id, args.run.runId),
+          )
+          .returning({ id: schema.issueRun.id })
 
-        if (args.finished) {
-          await tx
-            .update(schema.issue)
-            .set({ activeRunId: null, updatedAt: now })
-            .where(eq(schema.issue.id, args.run.issueId))
-        }
+        if (!args.finished || !updatedRun) return Boolean(updatedRun)
+
+        await tx
+          .update(schema.issue)
+          .set({ activeRunId: null, updatedAt: now })
+          .where(
+            and(
+              eq(schema.issue.id, args.run.issueId),
+              eq(schema.issue.activeRunId, args.run.runId),
+            ),
+          )
+        return true
       })
     },
     catch: (cause) => dbError('update issue run status', cause),
   })
   if (result.isErr()) return Result.err(result.error)
-  return Result.ok()
+  return Result.ok(result.value)
 }
 
 export function previousVersionsCount(payload: unknown) {

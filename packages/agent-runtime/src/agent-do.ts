@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  Session,
+  type Session,
   Think,
   type ChatResponseResult,
   type MessageConcurrency,
@@ -88,7 +88,11 @@ import {
 } from './runtime-mcp-controller'
 import { latestUserText } from './brain-injection'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
-import { extractExecutorToolRefsFromInput } from './executor-codemode'
+import {
+  extractExecutorToolFailure,
+  extractExecutorToolRefsFromInput,
+  type ExecutorToolFailure,
+} from './executor-codemode'
 import {
   renderIntegrationRouteDirective,
   isIntegrationToolAllowed,
@@ -97,6 +101,14 @@ import {
   type IntegrationRouteDecision,
   type RouteAttachment,
 } from './integration-router'
+import {
+  DECIDE_ANALYSIS_DELIVERY_INSTRUCTIONS,
+  DECIDE_ANALYZE_TOOL_KEY,
+  decideAnalysisDeliveryMessage,
+  isDecideAnalysisDeliveryTurn,
+  chatTurnActiveTools,
+  stopAfterDecideAnalysisStarts,
+} from './decide-analysis-chat'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import { isChatToolAllowed } from './chat-permissions'
 import {
@@ -144,6 +156,7 @@ import {
 import {
   RunWorkflowCreateError,
   type RunWorkflowBinding,
+  type RunWorkflowTurnCompletion,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
 import { logAgentSocketError } from './websocket-errors'
@@ -624,6 +637,59 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.readDocumentBytes(documentId)
   }
 
+  /**
+   * Hands one finished Decide run to its chat as a model turn. Before, the
+   * Workflow appended Decide's raw blocks as an assistant message, which
+   * landed mid-turn with session IDs and progress logs, and it addressed the
+   * facet by `chat_thread.id` although facets are named by `runtime_key`.
+   * Now the run is joined to its thread to find the facet, and the facet
+   * submits an internal user message that the model turns into the answer.
+   * Returns `delivered: false` for runs that need no message (cancelled).
+   */
+  async deliverDecideAnalysisResult(input: {
+    threadId: string
+    runId: string
+    attempt: number
+  }): Promise<{ delivered: boolean }> {
+    const [run] = await this.getDb()
+      .select({
+        runId: schema.decideAnalysisRun.id,
+        attempt: schema.decideAnalysisRun.attempt,
+        status: schema.decideAnalysisRun.status,
+        resultJson: schema.decideAnalysisRun.resultJson,
+        errorJson: schema.decideAnalysisRun.errorJson,
+        runtimeKey: schema.chatThread.runtimeKey,
+      })
+      .from(schema.decideAnalysisRun)
+      .innerJoin(
+        schema.chatThread,
+        eq(schema.chatThread.id, schema.decideAnalysisRun.threadId),
+      )
+      .where(
+        and(
+          eq(schema.decideAnalysisRun.id, input.runId),
+          eq(schema.decideAnalysisRun.threadId, input.threadId),
+          eq(schema.decideAnalysisRun.attempt, input.attempt),
+        ),
+      )
+      .limit(1)
+
+    if (!run) throw new Error('Decide analysis run not found')
+    if (
+      run.status !== 'completed' &&
+      run.status !== 'failed' &&
+      run.status !== 'cancelled'
+    ) {
+      throw new Error('Decide analysis run is not terminal')
+    }
+
+    const message = decideAnalysisDeliveryMessage(run)
+    if (!message) return { delivered: false }
+    const thread = await this.subAgent(ChatSubAgent, run.runtimeKey)
+    await thread.deliverDecideAnalysisResult(message)
+    return { delivered: true }
+  }
+
   @callable()
   async readThreadDocumentVersionBytes(
     threadId: string,
@@ -1065,11 +1131,14 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   /**
    * Workflow-facing RPC that delegates automation turn submission to the run
    * facet and returns the durable Think submission id without blocking the DO.
+   * `decideRunId` is set on the resume turn after a Decide pause, so the facet
+   * hands the agent that analysis's outcome.
    */
   async executeAutomationRunTurn(input: {
     runId: string
     mode: 'start' | 'resume'
     turn: number
+    decideRunId?: string
   }): Promise<RunWorkflowTurnStartResult> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
@@ -1079,6 +1148,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return await automationAgent.executeWorkflowTurn(input.mode, {
       runId: input.runId,
       turn: input.turn,
+      ...(input.decideRunId === undefined
+        ? {}
+        : { decideRunId: input.decideRunId }),
     })
   }
 
@@ -1089,7 +1161,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   async completeAutomationRunTurn(input: {
     runId: string
     submissionId: string
-  }): Promise<{ status: string }> {
+  }): Promise<RunWorkflowTurnCompletion> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
       AutomationRunSubAgent,
@@ -1105,7 +1177,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       runKind: 'automation',
       statuses: AUTOMATION_WRITE_BACK_STATUSES,
     })
-    return { status: result.status }
+    return result.waitingOn === undefined
+      ? { status: result.status }
+      : { status: result.status, waitingOn: result.waitingOn }
   }
 
   /**
@@ -1500,6 +1574,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private currentPermissions: AgentPermissions | null = null
   private currentIntegrationRoute: IntegrationRouteDecision | null = null
+  private currentIntegrationFailure: ExecutorToolFailure | null = null
   private mcpController: RuntimeMcpController | null = null
   private chatExecutorCatalogCache: {
     key: string
@@ -1905,6 +1980,25 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return { ok: true }
   }
 
+  /**
+   * Queues the Decide result hand-off as a durable Think submission keyed by
+   * the message ID. A replayed Workflow step finds the existing submission
+   * and starts no second turn, and the turn queue runs it after any active
+   * turn so it never splices into one. `submitMessages` is used instead of
+   * `saveMessages` because it persists the turn in the facet and returns at
+   * once; `saveMessages` would hold the Workflow step's RPC open for the
+   * whole model turn, and its `shouldApplyMessages` option is not part of
+   * the published `SaveMessagesOptions` type (agents 0.17.3). Reference:
+   * `Think.submitMessages` in @cloudflare/think 0.10.0.
+   */
+  async deliverDecideAnalysisResult(message: UIMessage) {
+    const submission = await this.submitMessages([message], {
+      submissionId: message.id,
+      idempotencyKey: message.id,
+    })
+    return { accepted: submission.accepted, status: submission.status }
+  }
+
   async continueAfterGardenApproval(input: {
     approved: boolean
     permissionRequestId: string
@@ -1986,6 +2080,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
+    this.currentIntegrationFailure = null
     const [identity] = await this.getDb()
       .select({
         id: schema.chatThread.id,
@@ -2028,22 +2123,46 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         : null
     const userAttachments = latestUserAttachments(ctx.messages)
     const userText = latestUserText(ctx.messages)
+    // `ctx.messages` are model messages without UI metadata, so the hand-off
+    // marker is read from the persisted UI history.
+    const isDecideDelivery = isDecideAnalysisDeliveryTurn(this.messages)
 
-    const executorCatalog = identity
-      ? await this.loadChatExecutorCatalog({
-          workspaceId: identity.workspaceId,
-          userId: identity.ownerUserId,
+    const executorCatalog =
+      identity && !isDecideDelivery
+        ? await this.loadChatExecutorCatalog({
+            workspaceId: identity.workspaceId,
+            userId: identity.ownerUserId,
+          })
+        : null
+    // A delivery turn presents a finished result, so the hand-off text must
+    // not route the turn back to Decide.
+    const routeDecision: IntegrationRouteDecision = isDecideDelivery
+      ? {
+          status: 'none',
+          skill: null,
+          routes: [],
+          reason: 'Presenting a finished Decide analysis.',
+        }
+      : selectIntegrationRoute({
+          userText,
+          documentContext,
+          attachments: userAttachments,
+          catalog: executorCatalog,
         })
-      : null
-    const routeDecision: IntegrationRouteDecision = selectIntegrationRoute({
-      userText,
-      documentContext,
-      attachments: userAttachments,
-      catalog: executorCatalog,
-    })
     this.currentIntegrationRoute = routeDecision
     const needsConnectedTools = requestNeedsConnectedTools(routeDecision)
-    const integrationDirective = renderIntegrationRouteDirective(routeDecision)
+    const integrationDirective = isDecideDelivery
+      ? DECIDE_ANALYSIS_DELIVERY_INSTRUCTIONS
+      : renderIntegrationRouteDirective(routeDecision)
+    // A selected Decide call is the requested source of truth for this turn.
+    // Stop the AI SDK loop after a failed tool result so the model cannot
+    // continue with a local analysis. The failed tool output remains in the
+    // UI, where the chat model renders its exact error and stage.
+    const stopAfterSelectedDecideFailure =
+      routeDecision.status === 'selected' &&
+      routeDecision.routes[0]?.slug === 'decide'
+        ? () => this.currentIntegrationFailure !== null
+        : undefined
 
     const mcpControllerResult = await Result.tryPromise({
       try: async () =>
@@ -2114,7 +2233,18 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const visibleTools = Object.fromEntries(
       Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
     ) as ToolSet
-    const visibleActiveTools = activeTools.filter((key) => isToolVisible(key))
+    const visibleActiveTools = chatTurnActiveTools(activeTools, {
+      isDecideDelivery,
+      isVisible: isToolVisible,
+    })
+    const stopWhen = [
+      ...(visibleActiveTools.includes(DECIDE_ANALYZE_TOOL_KEY)
+        ? [stopAfterDecideAnalysisStarts]
+        : []),
+      ...(stopAfterSelectedDecideFailure
+        ? [stopAfterSelectedDecideFailure]
+        : []),
+    ]
 
     return {
       model: createAgentModel({
@@ -2140,6 +2270,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ...(systemAdditions
         ? { system: `${ctx.system}\n\n${systemAdditions}` }
         : {}),
+      ...(stopWhen.length > 0 ? { stopWhen } : {}),
       tools: visibleTools,
       activeTools: visibleActiveTools,
     } satisfies TurnConfig
@@ -2152,6 +2283,29 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       })
     }
     const selectedRoute = this.currentIntegrationRoute?.routes[0]
+    if (selectedRoute && this.currentIntegrationFailure) {
+      return {
+        action: 'block',
+        reason: [
+          `The selected ${selectedRoute.name} call failed at ${this.currentIntegrationFailure.stage}.`,
+          this.currentIntegrationFailure.message,
+          'Do not retry the integration or replace it with local analysis. Report the failure to the user and ask for a narrower request or a smaller file.',
+        ].join(' '),
+      } as const
+    }
+    if (
+      ctx.toolName === `${EXECUTOR_TOOL_KEY_PREFIX}execute` &&
+      (selectedRoute?.slug === 'decide' ||
+        extractExecutorToolRefsFromInput(ctx.input).some(
+          (ref) => ref.executorSlug === 'decide',
+        ))
+    ) {
+      return {
+        action: 'block',
+        reason:
+          'Use the direct Decide tools. Do not call Executor execute for Decide.',
+      } as const
+    }
     if (selectedRoute && ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)) {
       const disallowedRef = extractExecutorToolRefsFromInput(ctx.input).find(
         (ref) =>
@@ -2173,6 +2327,37 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async afterToolCall(ctx: ToolCallResultContext) {
+    const selectedRoute = this.currentIntegrationRoute?.routes[0]
+    const isRouteTool =
+      ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX) ||
+      ctx.toolName === 'readDocument'
+    if (selectedRoute && isRouteTool && !this.currentIntegrationFailure) {
+      const failure = extractExecutorToolFailure({
+        error: ctx.success ? undefined : ctx.error,
+        output: ctx.success ? ctx.output : undefined,
+        toolName: ctx.toolName,
+        toolInput: ctx.input,
+      })
+      if (failure) {
+        this.currentIntegrationFailure = failure
+        agentRuntimeLogger.error('chat.integration_call_failed', {
+          agentName: this.name,
+          integration: selectedRoute.slug,
+          toolName: ctx.toolName,
+          failureStage: failure.stage,
+          failureCode: failure.code,
+          failureMessage: failure.message,
+          failureKind: failure.kind,
+          failureStatus: failure.status,
+          mcpCode: failure.mcpCode,
+          transportKind: failure.transportKind,
+          transportMessage: failure.transportMessage,
+          retryable: failure.retryable,
+          userAction: failure.userAction,
+          durationMs: ctx.durationMs,
+        })
+      }
+    }
     this.aiObservation.afterToolCall(ctx)
   }
 
@@ -2818,8 +3003,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addExecutorMcpServer: async ({ id, props }) =>
-        await this.addMcpServer(id, this.env.EXECUTOR_MCP_SESSION, {
+      addExecutorMcpServer: async ({ id, remoteName, props }) =>
+        await this.addMcpServer(remoteName, this.env.EXECUTOR_MCP_SESSION, {
           id,
           props,
         }),

@@ -1,3 +1,4 @@
+import type { Issue } from '@garden/core/types'
 import { useCallback, useEffect, useMemo } from 'react'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
@@ -165,6 +166,8 @@ interface QuickAction {
 
 const ITEM_CLASS = 'mx-2 rounded-lg py-2.5'
 
+const NO_ISSUES: Issue[] = []
+
 export function SearchCommand() {
   const { openIssue, openChatSession, navigate } = useSurfaceNavigation()
   const { claimWarmSession } = useAgentSessions()
@@ -173,7 +176,13 @@ export function SearchCommand() {
   const setOpen = useSearchStore((s) => s.setOpen)
   const recentItems = useRecentIssuesStore((s) => s.items)
   const wsId = useWorkspaceId()
-  const { data: allIssues = [] } = useQuery(issueListOptions(wsId))
+  // Only while the palette is open. It is always mounted, and used to
+  // re-render on every change to the issue list even when closed.
+  const { data: allIssues = NO_ISSUES } = useQuery({
+    ...issueListOptions(wsId),
+    enabled: open,
+    subscribed: open,
+  })
 
   const recentIssues = useMemo(() => {
     const issueMap = new Map(allIssues.map((i) => [i.id, i]))

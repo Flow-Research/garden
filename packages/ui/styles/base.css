@@ -51,6 +51,14 @@
   margin-top: 2.5px;
 }
 
+/* Hides the scrollbar but keeps the element scrollable (used by Command's list). */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -60,6 +60,7 @@ vi.mock('../../navigation', () => ({
     pathname: '/issues',
     searchParams: new URLSearchParams(),
   }),
+  useNavigationActions: () => ({ push: vi.fn() }),
   NavigationProvider: ({ children }: { children: React.ReactNode }) => children,
 }))
 
@@ -98,6 +99,7 @@ vi.mock('@/lib/api', () => ({
 
 // Mock issue config
 vi.mock('@garden/core/issues/config', () => ({
+  STATUS_PILL_TEXT: 'text-gray-900',
   ALL_STATUSES: [
     'todo',
     'in_progress',
@@ -362,7 +364,7 @@ const issueDefaults = {
   team_id: null,
   parent_issue_id: null,
   project_id: null,
-  position: 0,
+  position: 'a0',
 }
 
 const mockIssues: Issue[] = [
@@ -494,7 +496,9 @@ describe('IssuesPage (shared)', () => {
 
     renderWithQuery(<IssuesPage />)
 
-    await screen.findByText('Implement auth')
+    // The first render in this file also pays for loading the board's
+    // modules, which can pass 1s when the whole suite runs at once.
+    await screen.findByText('Implement auth', undefined, { timeout: 5000 })
     expect(screen.getByText('Design landing page')).toBeInTheDocument()
     expect(screen.getByText('Write tests')).toBeInTheDocument()
   })

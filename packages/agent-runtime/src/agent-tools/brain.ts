@@ -14,18 +14,24 @@ export type BrainToolContext = {
   readonly agentId: string
   readonly runId: string
   readonly userId?: string
+  /** Shared outputs may read only org knowledge; userId still identifies the author. */
+  readonly readAudience?: 'org'
 }
 
 export type BrainToolOperations = Pick<
   BrainShape,
   | 'ensureIndexes'
   | 'search'
+  | 'read'
   | 'addText'
   | 'updateItemMetadata'
   | 'observeMention'
   | 'linkItems'
   | 'neighborhood'
->
+> & {
+  /** Optional for lightweight Brain test doubles; live Brain always provides it. */
+  readonly readFileItem?: BrainShape['readFileItem']
+}
 
 const MAX_SEARCH_K = 8
 const MAX_HIT_BODY_CHARS = 4_000
@@ -173,6 +179,16 @@ const brainNeighborhoodInputSchema = z
   })
   .strict()
 
+const brainReadFileInputSchema = z
+  .object({
+    itemId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('Brain file id returned by brain_search.'),
+  })
+  .strict()
+
 const toHit = (raw: {
   item: {
     id: string
@@ -247,6 +263,7 @@ export type BrainToolDependencies = {
 
 type BrainToolOutput = Record<string, unknown>
 type SearchInput = { readonly query: string; readonly k: number }
+type ReadFileInput = z.infer<typeof brainReadFileInputSchema>
 type AddInput = z.infer<typeof addToBrainInputSchema>
 type ObserveMentionInput = z.infer<typeof brainObserveMentionInputSchema>
 type LinkInput = z.infer<typeof brainLinkInputSchema>
@@ -272,6 +289,7 @@ class BrainToolInputError extends Schema.TaggedError<BrainToolInputError>()(
 
 interface BrainToolsServiceShape {
   readonly search: (input: SearchInput) => Effect.Effect<BrainToolOutput>
+  readonly readFile: (input: ReadFileInput) => Effect.Effect<BrainToolOutput>
   readonly add: (input: AddInput) => Effect.Effect<BrainToolOutput>
   readonly observeMention: (
     input: ObserveMentionInput,
@@ -369,9 +387,90 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       query: input.query,
       k: input.k,
-      viewer: { teamIds: new Set<string>(), userId: ctx.userId },
+      viewer: {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
     })
   })
+
+  /**
+   * Reads the complete extracted body for one visible Brain file. The chat
+   * preview route already proved that Brain stores XLSX as text, but the agent
+   * had no tool to retrieve that body. Returning the full body lets a selected
+   * Decide analysis receive the workbook rows instead of a search snippet.
+   */
+  const readFile = Effect.fn('BrainTools.readFile')(function* (
+    input: ReadFileInput,
+  ) {
+    const ctx = yield* resolveContext()
+    const service = yield* requireBrain()
+    if (service.readFileItem === undefined) {
+      return yield* new BrainToolsUnavailableError({
+        message: 'Full Brain file reads are not available in this runtime.',
+      })
+    }
+    const item = yield* service.readFileItem(
+      ItemId.make(input.itemId),
+      WorkspaceId.make(ctx.workspaceId),
+      {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
+    )
+    if (item === null) {
+      return yield* new BrainToolInputError({
+        message: 'The Brain file is unavailable for this run.',
+      })
+    }
+    if (item.body === undefined) {
+      return yield* new BrainToolInputError({
+        message: 'The Brain file has no extracted text yet.',
+      })
+    }
+    return item
+  })
+
+  /**
+   * Authorizes target visibility before a Brain mutation can reveal or change
+   * an item.
+   *
+   * Before (garden#143): mutation tools acted on any item id in the workspace.
+   * A shared issue run could probe or edit an owner-private item by id, and an
+   * error or success message confirmed that the private item existed.
+   *
+   * After: every mutation first reads the target through the same viewer the
+   * run may read with. For `readAudience: 'org'` that viewer has no user and no
+   * teams, so only org-scoped items are visible. An item the viewer cannot see
+   * returns the same generic "unavailable" error as a missing item, so the
+   * caller learns nothing about private items. No metadata or edge is changed
+   * before this check passes.
+   *
+   * Scope rules come from `canViewScope` in `packages/brain/src/domain/scope.ts`,
+   * which the Brain service read path applies; reusing the service read keeps
+   * this gate identical to search and injection visibility.
+   */
+  const requireVisibleTarget = Effect.fn('BrainTools.requireVisibleTarget')(
+    function* (
+      ctx: BrainToolContext,
+      service: BrainToolOperations,
+      itemId: string,
+    ) {
+      const item = yield* service.read(
+        ItemId.make(itemId),
+        WorkspaceId.make(ctx.workspaceId),
+        {
+          teamIds: new Set<string>(),
+          userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+        },
+      )
+      if (item === null) {
+        return yield* new BrainToolInputError({
+          message: 'The Brain item is unavailable for this run.',
+        })
+      }
+    },
+  )
 
   const add = Effect.fn('BrainTools.add')(function* (input: AddInput) {
     const ctx = yield* resolveContext()
@@ -386,6 +485,7 @@ const makeBrainToolsService = (
           message: 'mode "update" needs itemId, kind, and summary.',
         })
       }
+      yield* requireVisibleTarget(ctx, service, input.itemId)
       return yield* service.updateItemMetadata({
         tenantId: WorkspaceId.make(ctx.workspaceId),
         itemId: ItemId.make(input.itemId),
@@ -424,6 +524,7 @@ const makeBrainToolsService = (
   ) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
+    yield* requireVisibleTarget(ctx, service, input.itemId)
     return yield* service.observeMention({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
@@ -436,6 +537,8 @@ const makeBrainToolsService = (
   const link = Effect.fn('BrainTools.link')(function* (input: LinkInput) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
+    yield* requireVisibleTarget(ctx, service, input.from)
+    yield* requireVisibleTarget(ctx, service, input.to)
     return yield* service.linkItems({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       from: ItemId.make(input.from),
@@ -454,7 +557,10 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
       ...(input.depth === undefined ? {} : { depth: input.depth }),
-      viewer: { teamIds: new Set<string>(), userId: ctx.userId },
+      viewer: {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
     })
   })
 
@@ -463,6 +569,13 @@ const makeBrainToolsService = (
       toolOutcome('brain_search_failed', search(input), (hits) => ({
         ok: true,
         hits: hits.map(toHit),
+      })),
+    readFile: (input) =>
+      toolOutcome('brain_read_file_failed', readFile(input), (item) => ({
+        ok: true,
+        id: item.id,
+        label: item.label,
+        text: item.body,
       })),
     add: (input) =>
       toolOutcome('add_to_brain_failed', add(input), (item) => ({
@@ -527,7 +640,7 @@ const makeBrainToolsLayer = (
 }
 
 /**
- * Exposes Brain as five Effect-backed structured operations. Agents receive
+ * Exposes Brain as six Effect-backed structured operations. Agents receive
  * product outcomes only; Helix DSL and infrastructure failures remain behind
  * the service layer, with Promise conversion limited to AI SDK callbacks.
  */
@@ -551,6 +664,13 @@ export function createBrainTools(deps: BrainToolDependencies): ToolSet {
         runService((service) =>
           service.search({ query: input.query, k: input.k ?? 5 }),
         ),
+    }),
+
+    brain_read_file: tool({
+      description:
+        'Read the complete extracted text of one workspace Brain file. Use the id returned by brain_search. XLSX files are returned as tab-separated sheet text. Use this before sending a Brain file to a data-analysis integration. Do not use the search result body as the analysis input because it may be truncated.',
+      inputSchema: brainReadFileInputSchema,
+      execute: (input) => runService((service) => service.readFile(input)),
     }),
 
     add_to_brain: tool({

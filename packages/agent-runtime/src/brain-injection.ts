@@ -136,7 +136,7 @@ export async function loadBrainInjection(args: {
   const text = [
     'Org Brain memory for this turn. Scoped to what the asker may see, and it may be stale. Confirm against live tools when it matters.',
     ...lines,
-    'Call brain_search or brain_neighborhood with an id above for more.',
+    'Call brain_search, brain_read_file, or brain_neighborhood with an id above for more.',
   ].join('\n')
 
   args.log?.({

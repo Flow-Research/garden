@@ -34,8 +34,11 @@ import {
 } from '@executor-js/cloudflare/mcp/execution-owner-directory'
 import { mcpSessionStub } from '@executor-js/cloudflare/mcp/session-stub'
 import { makeDynamicWorkerExecutor } from '@executor-js/runtime-dynamic-worker'
+import type { DecideAnalysisWorkflowBinding } from '@garden/agent-runtime'
 
 import { createD1ExecutorDb } from './d1'
+import { registerDirectDecideTools } from './direct-decide-mcp'
+import { makeDecideAnalysisStarter } from './decide-analysis-starter'
 import { makeR2BlobStore } from './r2'
 import { makeExecutorPlugins, type GardenExecutorPlugins } from './plugins'
 import { boundExecutionEngine } from './output-bound'
@@ -49,6 +52,7 @@ type ExecutorMcpEnv = Env & {
   readonly EXECUTOR_BLOBS: R2Bucket
   readonly EXECUTOR_DB: D1Database
   readonly LOADER: WorkerLoader
+  readonly DECIDE_ANALYSIS_WORKFLOW: DecideAnalysisWorkflowBinding
 }
 
 type GardenExecutor = Executor<GardenExecutorPlugins>
@@ -101,6 +105,7 @@ const buildGardenExecutionStack = (
 ) =>
   Effect.gen(function* () {
     const hostedHttpOptions = { allowLocalNetwork: false }
+    const hostedFetch = makeHostedFetch(hostedHttpOptions)
     const webBaseUrl = session.webOrigin ?? env.BETTER_AUTH_URL
     const executor = yield* createExecutor({
       tenant: Tenant.make(session.organizationId),
@@ -112,9 +117,10 @@ const buildGardenExecutionStack = (
           session.resource.kind === 'toolkit'
             ? session.resource.slug
             : undefined,
+        fetch: hostedFetch,
       }),
       httpClientLayer: makeHostedHttpClientLayer(hostedHttpOptions),
-      fetch: makeHostedFetch(hostedHttpOptions),
+      fetch: hostedFetch,
       onElicitation: 'accept-all',
       ...(webBaseUrl === undefined
         ? {}
@@ -201,7 +207,19 @@ export class ExecutorMcpSession extends McpAgentSessionDOBase<
           resumeFallback: this.modelResumeFallback,
           parentSpan: () => this.currentParentSpan(),
           elicitationMode: { mode: 'model' as const },
-        }).pipe(Effect.map((mcpServer) => ({ mcpServer, engine }))),
+        }).pipe(
+          Effect.tap((mcpServer) =>
+            Effect.sync(() =>
+              registerDirectDecideTools(mcpServer, executor, {
+                startAnalysis: makeDecideAnalysisStarter({
+                  env: this.gardenEnv,
+                  session,
+                }),
+              }),
+            ),
+          ),
+          Effect.map((mcpServer) => ({ mcpServer, engine })),
+        ),
       ),
       Effect.catchCause((cause) =>
         Effect.promise(() => database.end()).pipe(

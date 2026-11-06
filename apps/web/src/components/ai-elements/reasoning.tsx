@@ -95,12 +95,15 @@ export const Reasoning = memo(
       }
     }, [isStreaming, setDuration])
 
-    // Auto-open when streaming starts (unless explicitly closed)
+    // Auto-open when streaming starts (unless explicitly closed). Only on the
+    // start: this used to run whenever the block was closed mid-stream, so
+    // collapsing it while the model was thinking reopened it at once.
+    const wasStreamingRef = useRef(isStreaming)
     useEffect(() => {
-      if (isStreaming && !isOpen && !isExplicitlyClosed) {
-        setIsOpen(true)
-      }
-    }, [isStreaming, isOpen, setIsOpen, isExplicitlyClosed])
+      const started = isStreaming && !wasStreamingRef.current
+      wasStreamingRef.current = isStreaming
+      if (started && !isExplicitlyClosed) setIsOpen(true)
+    }, [isStreaming, setIsOpen, isExplicitlyClosed])
 
     // Auto-close when streaming ends (once only, and only if it ever streamed)
     useEffect(() => {

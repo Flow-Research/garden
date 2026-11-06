@@ -41,7 +41,10 @@ export function canReceiveRealtimeEvent(
           event.payload.issue.assignee_id === profile.userId)
       )
     }
-    case 'issue:deleted': {
+    case 'issue:deleted':
+    case 'comment:created':
+    case 'comment:updated':
+    case 'comment:deleted': {
       const teamId = event.payload.team_id ?? null
       if (!teamId) return true
       return (
@@ -77,7 +80,7 @@ export function applyRealtimeProfileUpdate(
       }
     }
     case 'team:updated': {
-      const ownerId = event.payload.team.owner_user_id
+      const ownerId = event.payload.owner_user_id
       if (ownerId === profile.userId) {
         return {
           ...profile,
