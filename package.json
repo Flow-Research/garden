@@ -30,6 +30,7 @@
     "deploy:preview:alchemy": "GARDEN_DEPLOY_TARGET=preview ALCHEMY_TELEMETRY_DISABLED=1 alchemy deploy --stage preview --yes",
     "destroy:preview": "GARDEN_DEPLOY_TARGET=preview ALCHEMY_TELEMETRY_DISABLED=1 alchemy destroy --stage preview --yes",
     "verify:deploy-config": "node scripts/verify-deploy-config.mjs",
+    "verify:docs": "node scripts/verify-docs.mjs",
     "typecheck": "turbo run typecheck --concurrency=1",
     "test": "turbo run test",
     "lint": "turbo run lint && pnpm run lint:root",

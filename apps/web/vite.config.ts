@@ -17,6 +17,7 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 import posthogRollupPlugin from '@posthog/rollup-plugin'
 import agents from 'agents/vite'
 import codemode from '@cloudflare/codemode/vite'
+import { fumadocsMdx } from 'fumadocs-mdx/vite'
 
 const legacyEnvFiles = [
   fileURLToPath(new URL('./.env', import.meta.url)),
@@ -323,6 +324,7 @@ const config = defineConfig({
     }),
     agents(),
     codemode(),
+    fumadocsMdx(),
     tailwindcss(),
     tanstackStart(),
     viteReact(),

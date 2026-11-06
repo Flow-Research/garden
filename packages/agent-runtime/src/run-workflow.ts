@@ -25,7 +25,7 @@ import { isTerminalSubmissionStatus } from './runtime-utils'
  * injection, workflow tracking callbacks, and typed `this.agent` RPC. Garden
  * keeps only the product ledger state machine (`issue_run`/`automation_run`)
  * and the turn/wait loop. References: Cloudflare Agents Run Workflows docs,
- * installed `agents/dist/workflows.js`, and docs/core/workflows-engine.md.
+ * installed `agents/dist/workflows.js`, and docs/concepts/architecture/run-engine.md.
  */
 export type RunWorkflowParams =
   | {
@@ -277,7 +277,7 @@ export class RunWorkflow extends AgentWorkflow<
    * `DECIDE_ANALYSIS_OWNER_WAIT_MS`; a wait that times out still resumes the
    * agent, which reads the Decide run itself and reports that Garden stopped
    * waiting. References: workers-types `WorkflowStep.waitForEvent`
-   * (`timeout` accepts milliseconds) and docs/features/decide-automations-spec.md.
+   * (`timeout` accepts milliseconds) and docs/proposals/decide-automations.md.
    */
   private async waitForDecideAnalysis(input: {
     runId: string

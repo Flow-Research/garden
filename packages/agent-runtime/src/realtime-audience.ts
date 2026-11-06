@@ -80,7 +80,7 @@ export function applyRealtimeProfileUpdate(
       }
     }
     case 'team:updated': {
-      const ownerId = event.payload.team.owner_user_id
+      const ownerId = event.payload.owner_user_id
       if (ownerId === profile.userId) {
         return {
           ...profile,
