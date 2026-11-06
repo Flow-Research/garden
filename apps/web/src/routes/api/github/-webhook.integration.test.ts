@@ -243,7 +243,8 @@ describe('POST /api/github/webhook (integration)', () => {
     return {
       status: response.status,
       json,
-      body: results?.length === 1 ? (results[0] as Record<string, unknown>) : json,
+      body:
+        results?.length === 1 ? (results[0] as Record<string, unknown>) : json,
     }
   }
 
@@ -616,7 +617,10 @@ describe('POST /api/github/webhook (integration)', () => {
     expect(response.json.results).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ status: 'applied', issue_id: first.issueId }),
-        expect.objectContaining({ status: 'applied', issue_id: second.issueId }),
+        expect.objectContaining({
+          status: 'applied',
+          issue_id: second.issueId,
+        }),
       ]),
     )
     expect((await readIssue(first.issueId))?.status).toBe('done')

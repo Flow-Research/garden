@@ -10,10 +10,7 @@ import type {
 
 export type GitHubWebhookApplyField = 'title' | 'description' | 'status'
 
-export type GitHubWebhookSkipReason =
-  | 'own_app_sender'
-  | 'noop'
-  | 'unbound'
+export type GitHubWebhookSkipReason = 'own_app_sender' | 'noop' | 'unbound'
 
 export type GitHubWebhookIssueApplyOutcome =
   | { kind: 'skipped'; reason: GitHubWebhookSkipReason }

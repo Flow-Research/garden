@@ -64,7 +64,10 @@ async function deliverComment(
     bindingId: binding.bindingId,
     delivery: ctx.delivery,
     order: {
-      scope: githubWebhookCommentOrderScope(binding.bindingId, target.commentId),
+      scope: githubWebhookCommentOrderScope(
+        binding.bindingId,
+        target.commentId,
+      ),
       marker: target.updatedAtMs,
     },
     apply: (tx) =>
