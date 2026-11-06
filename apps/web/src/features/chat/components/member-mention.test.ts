@@ -13,7 +13,6 @@ import {
 function member(id: string, name: string, email: string): MemberWithUser {
   return {
     id: `membership-${id}`,
-    workspace_id: 'ws-1',
     user_id: id,
     workspace_id: 'workspace-1',
     name,

@@ -1,27 +1,27 @@
-import { and, eq, inArray } from 'drizzle-orm'
-import { Result, TaggedError } from 'better-result'
-import { isWorkspaceManager } from '@/lib/server/team-access'
-import { schema, type Db } from '@/lib/server/db'
+import { and, eq, inArray } from "drizzle-orm";
+import { Result, TaggedError } from "better-result";
+import { isWorkspaceManager } from "@/lib/server/team-access";
+import { schema, type Db } from "@/lib/server/db";
 
 export type WorkspaceMemberRow = {
-  id: string
-  workspaceId: string
-  userId: string
-  role: string
-  githubUserId: string | null
-  githubLogin: string | null
-  createdAt: Date | null
-  name: string
-  email: string
-  avatarUrl: string | null
-}
+  id: string;
+  workspaceId: string;
+  userId: string;
+  role: string;
+  githubUserId: string | null;
+  githubLogin: string | null;
+  createdAt: Date | null;
+  name: string;
+  email: string;
+  avatarUrl: string | null;
+};
 
 export class WorkspaceMemberGithubError extends TaggedError(
-  'WorkspaceMemberGithubError',
+  "WorkspaceMemberGithubError",
 )<{
-  message: string
-  status: number
-  cause?: unknown
+  message: string;
+  status: number;
+  cause?: unknown;
 }>() {}
 
 export function toMemberResponse(member: WorkspaceMemberRow) {
@@ -36,7 +36,7 @@ export function toMemberResponse(member: WorkspaceMemberRow) {
     name: member.name,
     email: member.email,
     avatar_url: member.avatarUrl,
-  }
+  };
 }
 
 /**
@@ -45,9 +45,9 @@ export function toMemberResponse(member: WorkspaceMemberRow) {
  * not Better Auth's list shape.
  */
 export async function readWorkspaceMember(args: {
-  db: Db
-  workspaceId: string
-  memberId: string
+  db: Db;
+  workspaceId: string;
+  memberId: string;
 }) {
   const [member] = await args.db
     .select({
@@ -70,9 +70,9 @@ export async function readWorkspaceMember(args: {
         eq(schema.member.organizationId, args.workspaceId),
       ),
     )
-    .limit(1)
+    .limit(1);
 
-  return member ?? null
+  return member ?? null;
 }
 
 /**
@@ -81,12 +81,15 @@ export async function readWorkspaceMember(args: {
  * would never appear on GET /members.
  */
 export async function githubIdentityByMemberId(args: {
-  db: Db
-  workspaceId: string
-  memberIds: string[]
+  db: Db;
+  workspaceId: string;
+  memberIds: string[];
 }) {
   if (args.memberIds.length === 0) {
-    return new Map<string, { githubUserId: string | null; githubLogin: string | null }>()
+    return new Map<
+      string,
+      { githubUserId: string | null; githubLogin: string | null }
+    >();
   }
 
   const rows = await args.db
@@ -101,28 +104,28 @@ export async function githubIdentityByMemberId(args: {
         eq(schema.member.organizationId, args.workspaceId),
         inArray(schema.member.id, args.memberIds),
       ),
-    )
+    );
 
   return new Map(
     rows.map((row) => [
       row.id,
       { githubUserId: row.githubUserId, githubLogin: row.githubLogin },
     ]),
-  )
+  );
 }
 
 /**
- * Self may link/unlink own GitHub identity; workspace owner/admin may edit any
- * member. Plain members cannot edit someone else's mapping.
+ * Only workspace owners/admins may link, change, or unlink any member's GitHub
+ * identity, their own row included. Before: members could self-link any id,
+ * which let them claim someone else's GitHub account and capture its mirrored
+ * issue assignments. Self-serve returns once Garden verifies ownership via
+ * GitHub OAuth (docs/reference/known-gaps.md).
  */
 export async function canEditMemberGithubIdentity(args: {
-  db: Db
-  workspaceId: string
-  actorUserId: string
-  targetUserId: string
+  db: Db;
+  workspaceId: string;
+  actorUserId: string;
 }) {
-  if (args.actorUserId === args.targetUserId) return true
-
   const [actor] = await args.db
     .select({ role: schema.member.role })
     .from(schema.member)
@@ -132,34 +135,32 @@ export async function canEditMemberGithubIdentity(args: {
         eq(schema.member.userId, args.actorUserId),
       ),
     )
-    .limit(1)
+    .limit(1);
 
-  return isWorkspaceManager(actor?.role)
+  return isWorkspaceManager(actor?.role);
 }
 
 /** Walks drizzle/pg wrapper causes for Postgres unique_violation. */
 function isUniqueViolation(cause: unknown) {
-  let current: unknown = cause
+  let current: unknown = cause;
   for (let depth = 0; depth < 4 && current; depth += 1) {
     if (
-      typeof current === 'object' &&
+      typeof current === "object" &&
       current !== null &&
-      'code' in current &&
-      current.code === '23505'
+      "code" in current &&
+      current.code === "23505"
     ) {
-      return true
+      return true;
     }
     current =
-      typeof current === 'object' &&
-      current !== null &&
-      'cause' in current
+      typeof current === "object" && current !== null && "cause" in current
         ? current.cause
-        : undefined
+        : undefined;
   }
-  return false
+  return false;
 }
 
-export type GithubIdentityWriteKind = 'unlink' | 'refresh_login' | 'link'
+export type GithubIdentityWriteKind = "unlink" | "refresh_login" | "link";
 
 /**
  * Classifies a GitHub identity write. Renames are refresh_login: same stable
@@ -167,21 +168,21 @@ export type GithubIdentityWriteKind = 'unlink' | 'refresh_login' | 'link'
  * key off login alone.
  */
 export function classifyGithubIdentityWrite(args: {
-  existingGithubUserId: string | null
-  nextGithubUserId: string | null
-  nextGithubLogin: string | null
+  existingGithubUserId: string | null;
+  nextGithubUserId: string | null;
+  nextGithubLogin: string | null;
 }): GithubIdentityWriteKind {
   if (args.nextGithubUserId === null && args.nextGithubLogin === null) {
-    return 'unlink'
+    return "unlink";
   }
   if (
     args.existingGithubUserId !== null &&
     args.nextGithubUserId !== null &&
     args.existingGithubUserId === args.nextGithubUserId
   ) {
-    return 'refresh_login'
+    return "refresh_login";
   }
-  return 'link'
+  return "link";
 }
 
 /**
@@ -189,11 +190,11 @@ export function classifyGithubIdentityWrite(args: {
  * duplicate github_user_id in the same workspace via the partial unique index.
  */
 export async function updateMemberGithubIdentity(args: {
-  db: Db
-  workspaceId: string
-  memberId: string
-  githubUserId: string | null
-  githubLogin: string | null
+  db: Db;
+  workspaceId: string;
+  memberId: string;
+  githubUserId: string | null;
+  githubLogin: string | null;
 }) {
   return Result.tryPromise({
     try: async () => {
@@ -209,35 +210,35 @@ export async function updateMemberGithubIdentity(args: {
             eq(schema.member.organizationId, args.workspaceId),
           ),
         )
-        .returning({ id: schema.member.id })
+        .returning({ id: schema.member.id });
 
       if (updated.length === 0) {
         throw new WorkspaceMemberGithubError({
-          message: 'Member not found',
+          message: "Member not found",
           status: 404,
-        })
+        });
       }
     },
     catch: (cause) => {
-      if (cause instanceof WorkspaceMemberGithubError) return cause
+      if (cause instanceof WorkspaceMemberGithubError) return cause;
       if (isUniqueViolation(cause)) {
         return new WorkspaceMemberGithubError({
           message:
-            'That GitHub identity is already linked to another member in this workspace',
+            "That GitHub identity is already linked to another member in this workspace",
           status: 409,
           cause,
-        })
+        });
       }
       return new WorkspaceMemberGithubError({
         message:
           cause instanceof Error
             ? cause.message
-            : 'Failed to update GitHub identity',
+            : "Failed to update GitHub identity",
         status: 500,
         cause,
-      })
+      });
     },
-  })
+  });
 }
 
 /**
@@ -246,10 +247,10 @@ export async function updateMemberGithubIdentity(args: {
  * Returns refreshed=false when no row matched (caller may link instead).
  */
 export async function refreshMemberGithubLoginByUserId(args: {
-  db: Db
-  workspaceId: string
-  githubUserId: string
-  githubLogin: string
+  db: Db;
+  workspaceId: string;
+  githubUserId: string;
+  githubLogin: string;
 }) {
   return Result.tryPromise({
     try: async () => {
@@ -262,20 +263,23 @@ export async function refreshMemberGithubLoginByUserId(args: {
             eq(schema.member.githubUserId, args.githubUserId),
           ),
         )
-        .returning({ id: schema.member.id })
+        .returning({ id: schema.member.id });
 
-      return { refreshed: updated.length > 0, memberId: updated[0]?.id ?? null }
+      return {
+        refreshed: updated.length > 0,
+        memberId: updated[0]?.id ?? null,
+      };
     },
     catch: (cause) =>
       new WorkspaceMemberGithubError({
         message:
           cause instanceof Error
             ? cause.message
-            : 'Failed to refresh GitHub login',
+            : "Failed to refresh GitHub login",
         status: 500,
         cause,
       }),
-  })
+  });
 }
 
 /**
@@ -283,37 +287,37 @@ export async function refreshMemberGithubLoginByUserId(args: {
  * linked to the same github_user_id, only login is refreshed (rename-safe).
  */
 export async function linkOrRefreshMemberGithubIdentity(args: {
-  db: Db
-  workspaceId: string
-  memberId: string
-  existingGithubUserId: string | null
-  githubUserId: string | null
-  githubLogin: string | null
+  db: Db;
+  workspaceId: string;
+  memberId: string;
+  existingGithubUserId: string | null;
+  githubUserId: string | null;
+  githubLogin: string | null;
 }) {
   const kind = classifyGithubIdentityWrite({
     existingGithubUserId: args.existingGithubUserId,
     nextGithubUserId: args.githubUserId,
     nextGithubLogin: args.githubLogin,
-  })
+  });
 
-  if (kind === 'refresh_login' && args.githubUserId && args.githubLogin) {
+  if (kind === "refresh_login" && args.githubUserId && args.githubLogin) {
     const refreshResult = await refreshMemberGithubLoginByUserId({
       db: args.db,
       workspaceId: args.workspaceId,
       githubUserId: args.githubUserId,
       githubLogin: args.githubLogin,
-    })
+    });
     return refreshResult.andThen((result) => {
       if (!result.refreshed) {
         return Result.err(
           new WorkspaceMemberGithubError({
-            message: 'Member GitHub identity not found for refresh',
+            message: "Member GitHub identity not found for refresh",
             status: 404,
           }),
-        )
+        );
       }
-      return Result.ok({ kind })
-    })
+      return Result.ok({ kind });
+    });
   }
 
   const writeResult = await updateMemberGithubIdentity({
@@ -322,6 +326,6 @@ export async function linkOrRefreshMemberGithubIdentity(args: {
     memberId: args.memberId,
     githubUserId: args.githubUserId,
     githubLogin: args.githubLogin,
-  })
-  return writeResult.map(() => ({ kind }))
+  });
+  return writeResult.map(() => ({ kind }));
 }

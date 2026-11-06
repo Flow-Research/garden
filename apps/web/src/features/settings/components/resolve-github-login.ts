@@ -45,7 +45,7 @@ export async function searchGithubUsers(
       ),
     catch: () => ({ message: 'Could not reach GitHub to search users' }),
   })
-  if (responseResult.isErr()) return responseResult
+  if (responseResult.isErr()) return Result.err(responseResult.error)
 
   const response = responseResult.value
   if (response.status === 403 || response.status === 429) {
@@ -69,7 +69,7 @@ export async function searchGithubUsers(
       },
     catch: () => ({ message: 'Could not read GitHub search response' }),
   })
-  if (bodyResult.isErr()) return bodyResult
+  if (bodyResult.isErr()) return Result.err(bodyResult.error)
 
   const items = bodyResult.value.items
   if (!Array.isArray(items)) {
@@ -112,7 +112,7 @@ export async function resolveGithubLogin(
       }),
     catch: () => ({ message: 'Could not reach GitHub to look up that user' }),
   })
-  if (responseResult.isErr()) return responseResult
+  if (responseResult.isErr()) return Result.err(responseResult.error)
 
   const response = responseResult.value
   if (response.status === 404) {
@@ -131,7 +131,7 @@ export async function resolveGithubLogin(
       },
     catch: () => ({ message: 'Could not read GitHub user response' }),
   })
-  if (bodyResult.isErr()) return bodyResult
+  if (bodyResult.isErr()) return Result.err(bodyResult.error)
 
   const id = bodyResult.value.id
   const resolvedLogin = bodyResult.value.login

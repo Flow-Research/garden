@@ -14,7 +14,7 @@ describe('resolveGithubLogin', () => {
     expect(
       result.match({
         ok: () => null,
-        err: (error) => error.message,
+        err: (error): unknown => error.message,
       }),
     ).toMatch(/enter a github username/i)
   })
@@ -33,8 +33,8 @@ describe('resolveGithubLogin', () => {
     const result = await resolveGithubLogin('@octocat')
     expect(
       result.match({
-        ok: (value) => value,
-        err: (error) => error.message,
+        ok: (value): unknown => value,
+        err: (error): unknown => error.message,
       }),
     ).toEqual({
       user_id: '583231',
@@ -57,7 +57,7 @@ describe('resolveGithubLogin', () => {
     expect(
       result.match({
         ok: () => null,
-        err: (error) => error.message,
+        err: (error): unknown => error.message,
       }),
     ).toMatch(/not a user/i)
   })
@@ -72,7 +72,7 @@ describe('resolveGithubLogin', () => {
     expect(
       result.match({
         ok: () => null,
-        err: (error) => error.message,
+        err: (error): unknown => error.message,
       }),
     ).toMatch(/no github user/i)
   })
@@ -91,8 +91,8 @@ describe('searchGithubUsers', () => {
     expect(fetchMock).not.toHaveBeenCalled()
     expect(
       result.match({
-        ok: (value) => value,
-        err: (error) => error.message,
+        ok: (value): unknown => value,
+        err: (error): unknown => error.message,
       }),
     ).toEqual([])
   })
@@ -118,8 +118,8 @@ describe('searchGithubUsers', () => {
     const result = await searchGithubUsers('octo')
     expect(
       result.match({
-        ok: (value) => value,
-        err: (error) => error.message,
+        ok: (value): unknown => value,
+        err: (error): unknown => error.message,
       }),
     ).toEqual([
       {
