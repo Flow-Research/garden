@@ -30,7 +30,7 @@ function timingSafeEqualHex(expected: string, provided: string) {
 }
 
 /** Copy into a standalone Uint8Array — SubtleCrypto rejects some ArrayBuffer views. */
-function asBodyBytes(source: BufferSource): Uint8Array {
+function asBodyBytes(source: BufferSource): Uint8Array<ArrayBuffer> {
   if (ArrayBuffer.isView(source)) {
     return new Uint8Array(
       source.buffer,
