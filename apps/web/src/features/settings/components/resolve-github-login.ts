@@ -73,7 +73,9 @@ export async function searchGithubUsers(
 
   const items = bodyResult.value.items
   if (!Array.isArray(items)) {
-    return Result.err({ message: 'GitHub returned an unexpected search payload' })
+    return Result.err({
+      message: 'GitHub returned an unexpected search payload',
+    })
   }
 
   const suggestions: GithubUserSuggestion[] = []
@@ -84,8 +86,7 @@ export async function searchGithubUsers(
     suggestions.push({
       user_id: String(item.id),
       login: item.login,
-      avatar_url:
-        typeof item.avatar_url === 'string' ? item.avatar_url : null,
+      avatar_url: typeof item.avatar_url === 'string' ? item.avatar_url : null,
     })
   }
 
@@ -138,10 +139,7 @@ export async function resolveGithubLogin(
   if (typeof id !== 'number' || typeof resolvedLogin !== 'string') {
     return Result.err({ message: 'GitHub returned an unexpected user payload' })
   }
-  if (
-    bodyResult.value.type !== undefined &&
-    bodyResult.value.type !== 'User'
-  ) {
+  if (bodyResult.value.type !== undefined && bodyResult.value.type !== 'User') {
     return Result.err({ message: 'That GitHub account is not a user' })
   }
 

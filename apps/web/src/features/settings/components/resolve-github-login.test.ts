@@ -1,8 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  resolveGithubLogin,
-  searchGithubUsers,
-} from './resolve-github-login'
+import { resolveGithubLogin, searchGithubUsers } from './resolve-github-login'
 
 describe('resolveGithubLogin', () => {
   afterEach(() => {

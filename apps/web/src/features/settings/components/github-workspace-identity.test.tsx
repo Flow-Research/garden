@@ -1,77 +1,77 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import type { MemberWithUser } from "@garden/core/types";
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { MemberWithUser } from '@garden/core/types'
 import {
   GithubIdentityLinkDialog,
   GithubWorkspaceIdentitySection,
   githubIdentityStatusLabel,
-} from "./github-workspace-identity";
+} from './github-workspace-identity'
 
-const mockUpdateMember = vi.hoisted(() => vi.fn());
-const mockToastSuccess = vi.hoisted(() => vi.fn());
-const mockToastError = vi.hoisted(() => vi.fn());
-const mockUseAuthStore = vi.hoisted(() => vi.fn());
-const mockUseWorkspaceStore = vi.hoisted(() => vi.fn());
-const mockUseWorkspaceId = vi.hoisted(() => vi.fn());
-const mockUseQuery = vi.hoisted(() => vi.fn());
+const mockUpdateMember = vi.hoisted(() => vi.fn())
+const mockToastSuccess = vi.hoisted(() => vi.fn())
+const mockToastError = vi.hoisted(() => vi.fn())
+const mockUseAuthStore = vi.hoisted(() => vi.fn())
+const mockUseWorkspaceStore = vi.hoisted(() => vi.fn())
+const mockUseWorkspaceId = vi.hoisted(() => vi.fn())
+const mockUseQuery = vi.hoisted(() => vi.fn())
 
-vi.mock("@/lib/api", () => ({
+vi.mock('@/lib/api', () => ({
   api: {
     updateMember: mockUpdateMember,
   },
-}));
+}))
 
-vi.mock("sonner", () => ({
+vi.mock('sonner', () => ({
   toast: {
     success: mockToastSuccess,
     error: mockToastError,
   },
-}));
+}))
 
-vi.mock("@garden/app-state/auth", () => ({
+vi.mock('@garden/app-state/auth', () => ({
   useAuthStore: mockUseAuthStore,
-}));
+}))
 
-vi.mock("@garden/app-state/workspace", () => ({
+vi.mock('@garden/app-state/workspace', () => ({
   useWorkspaceStore: mockUseWorkspaceStore,
-}));
+}))
 
-vi.mock("@garden/app-state/hooks", () => ({
+vi.mock('@garden/app-state/hooks', () => ({
   useWorkspaceId: mockUseWorkspaceId,
-}));
+}))
 
-vi.mock("@tanstack/react-query", async () => {
-  const actual = await vi.importActual<typeof import("@tanstack/react-query")>(
-    "@tanstack/react-query",
-  );
+vi.mock('@tanstack/react-query', async () => {
+  const actual = await vi.importActual<typeof import('@tanstack/react-query')>(
+    '@tanstack/react-query',
+  )
   return {
     ...actual,
     useQuery: mockUseQuery,
-  };
-});
+  }
+})
 
-vi.mock("./resolve-github-login", () => ({
-  normalizeGithubLogin: (raw: string) => raw.trim().replace(/^@+/, ""),
+vi.mock('./resolve-github-login', () => ({
+  normalizeGithubLogin: (raw: string) => raw.trim().replace(/^@+/, ''),
   resolveGithubLogin: vi.fn(async (login: string) => {
-    const { Result } = await import("better-result");
+    const { Result } = await import('better-result')
     if (!login.trim()) {
-      return Result.err({ message: "Enter a GitHub username" });
+      return Result.err({ message: 'Enter a GitHub username' })
     }
-    return Result.ok({ user_id: "583231", login: login.replace(/^@/, "") });
+    return Result.ok({ user_id: '583231', login: login.replace(/^@/, '') })
   }),
   searchGithubUsers: vi.fn(async () => {
-    const { Result } = await import("better-result");
+    const { Result } = await import('better-result')
     return Result.ok([
       {
-        user_id: "583231",
-        login: "octocat",
+        user_id: '583231',
+        login: 'octocat',
         avatar_url: null,
       },
-    ]);
+    ])
   }),
-}));
+}))
 
 function renderSection() {
   const queryClient = new QueryClient({
@@ -79,48 +79,48 @@ function renderSection() {
       queries: { retry: false },
       mutations: { retry: false },
     },
-  });
+  })
   render(
     <QueryClientProvider client={queryClient}>
       <GithubWorkspaceIdentitySection />
     </QueryClientProvider>,
-  );
+  )
 }
 
-describe("githubIdentityStatusLabel", () => {
-  it("formats linked and not-linked states", () => {
-    expect(githubIdentityStatusLabel({ github_login: "octocat" })).toBe(
-      "@octocat",
-    );
+describe('githubIdentityStatusLabel', () => {
+  it('formats linked and not-linked states', () => {
+    expect(githubIdentityStatusLabel({ github_login: 'octocat' })).toBe(
+      '@octocat',
+    )
     expect(githubIdentityStatusLabel({ github_login: null })).toBe(
-      "GitHub not linked",
-    );
-  });
-});
+      'GitHub not linked',
+    )
+  })
+})
 
-describe("GithubWorkspaceIdentitySection", () => {
+describe('GithubWorkspaceIdentitySection', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks()
     mockUseAuthStore.mockImplementation(
       (selector: (state: { user: { id: string } }) => unknown) =>
-        selector({ user: { id: "user-1" } }),
-    );
+        selector({ user: { id: 'user-1' } }),
+    )
     mockUseWorkspaceStore.mockImplementation(
       (
         selector: (state: {
-          workspace: { id: string; name: string };
+          workspace: { id: string; name: string }
         }) => unknown,
-      ) => selector({ workspace: { id: "ws-1", name: "Garden" } }),
-    );
-    mockUseWorkspaceId.mockReturnValue("ws-1");
+      ) => selector({ workspace: { id: 'ws-1', name: 'Garden' } }),
+    )
+    mockUseWorkspaceId.mockReturnValue('ws-1')
     mockUseQuery.mockImplementation(
       (options: { queryKey?: readonly unknown[] }) => {
-        if (options.queryKey?.[0] === "github-user-search") {
+        if (options.queryKey?.[0] === 'github-user-search') {
           return {
             data: [
               {
-                user_id: "583231",
-                login: "octocat",
+                user_id: '583231',
+                login: 'octocat',
                 avatar_url: null,
               },
             ],
@@ -128,57 +128,57 @@ describe("GithubWorkspaceIdentitySection", () => {
             isFetching: false,
             isError: false,
             error: null,
-          };
+          }
         }
         return {
           data: [
             {
-              id: "mem-1",
-              workspace_id: "ws-1",
-              user_id: "user-1",
-              role: "member",
+              id: 'mem-1',
+              workspace_id: 'ws-1',
+              user_id: 'user-1',
+              role: 'member',
               github_user_id: null,
               github_login: null,
-              created_at: "2026-01-01T00:00:00.000Z",
-              name: "Ada",
-              email: "ada@example.com",
+              created_at: '2026-01-01T00:00:00.000Z',
+              name: 'Ada',
+              email: 'ada@example.com',
               avatar_url: null,
             },
           ],
           isPending: false,
-        };
+        }
       },
-    );
-    mockUpdateMember.mockResolvedValue({});
-  });
+    )
+    mockUpdateMember.mockResolvedValue({})
+  })
 
-  it("shows the identity read-only with no self-link control", () => {
-    renderSection();
+  it('shows the identity read-only with no self-link control', () => {
+    renderSection()
 
-    expect(screen.getByText("Not linked")).toBeInTheDocument();
+    expect(screen.getByText('Not linked')).toBeInTheDocument()
     expect(
       screen.getByText(/workspace owner or admin links it from members/i),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole("button")).not.toBeInTheDocument();
-  });
-});
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+  })
+})
 
-describe("GithubIdentityLinkDialog", () => {
+describe('GithubIdentityLinkDialog', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.clearAllMocks()
     mockUseQuery.mockReturnValue({
-      data: [{ user_id: "583231", login: "octocat", avatar_url: null }],
+      data: [{ user_id: '583231', login: 'octocat', avatar_url: null }],
       isPending: false,
       isFetching: false,
       isError: false,
       error: null,
-    });
-    mockUpdateMember.mockResolvedValue({});
-  });
+    })
+    mockUpdateMember.mockResolvedValue({})
+  })
 
-  it("links the member after picking a suggestion", async () => {
-    const user = userEvent.setup();
-    const onSaved = vi.fn();
+  it('links the member after picking a suggestion', async () => {
+    const user = userEvent.setup()
+    const onSaved = vi.fn()
     render(
       <GithubIdentityLinkDialog
         open
@@ -186,41 +186,41 @@ describe("GithubIdentityLinkDialog", () => {
         workspaceId="ws-1"
         member={
           {
-            id: "mem-2",
-            workspace_id: "ws-1",
-            user_id: "user-2",
-            role: "member",
+            id: 'mem-2',
+            workspace_id: 'ws-1',
+            user_id: 'user-2',
+            role: 'member',
             github_user_id: null,
             github_login: null,
-            created_at: "2026-01-01T00:00:00.000Z",
-            name: "Grace",
-            email: "grace@example.com",
+            created_at: '2026-01-01T00:00:00.000Z',
+            name: 'Grace',
+            email: 'grace@example.com',
             avatar_url: null,
           } as MemberWithUser
         }
         onSaved={onSaved}
       />,
-    );
+    )
 
-    await user.type(screen.getByLabelText(/github username/i), "octo");
+    await user.type(screen.getByLabelText(/github username/i), 'octo')
     await waitFor(
       () => {
         expect(
-          screen.getByRole("option", { name: /@octocat/i }),
-        ).toBeInTheDocument();
+          screen.getByRole('option', { name: /@octocat/i }),
+        ).toBeInTheDocument()
       },
       { timeout: 2000 },
-    );
-    await user.click(screen.getByRole("option", { name: /@octocat/i }));
-    await user.click(screen.getByRole("button", { name: /^save$/i }));
+    )
+    await user.click(screen.getByRole('option', { name: /@octocat/i }))
+    await user.click(screen.getByRole('button', { name: /^save$/i }))
 
     await waitFor(() =>
-      expect(mockUpdateMember).toHaveBeenCalledWith("ws-1", "mem-2", {
-        github_user_id: "583231",
-        github_login: "octocat",
+      expect(mockUpdateMember).toHaveBeenCalledWith('ws-1', 'mem-2', {
+        github_user_id: '583231',
+        github_login: 'octocat',
       }),
-    );
-    expect(onSaved).toHaveBeenCalled();
-    expect(mockToastSuccess).toHaveBeenCalled();
-  });
-});
+    )
+    expect(onSaved).toHaveBeenCalled()
+    expect(mockToastSuccess).toHaveBeenCalled()
+  })
+})

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState } from 'react'
 import {
   Crown,
   Shield,
@@ -12,27 +12,23 @@ import {
   MailWarning,
   SendHorizontal,
   Unlink,
-} from "lucide-react";
-import { BrandGithubIcon } from "@/components/icons/brand-github-icon";
-import { ActorAvatar } from "../../common/actor-avatar";
-import type {
-  MemberWithUser,
-  MemberRole,
-  Invitation,
-} from "@garden/core/types";
-import { Input } from "@garden/ui/components/ui/input";
-import { Button } from "@garden/ui/components/ui/button";
-import { Skeleton } from "@garden/ui/components/ui/skeleton";
-import { LoadError } from "@garden/ui/components/common/load-error";
-import { Badge } from "@garden/ui/components/ui/badge";
-import { ConfirmDialog } from "@garden/ui/components/common/confirm-dialog";
+} from 'lucide-react'
+import { BrandGithubIcon } from '@/components/icons/brand-github-icon'
+import { ActorAvatar } from '../../common/actor-avatar'
+import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
+import { Input } from '@garden/ui/components/ui/input'
+import { Button } from '@garden/ui/components/ui/button'
+import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { LoadError } from '@garden/ui/components/common/load-error'
+import { Badge } from '@garden/ui/components/ui/badge'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Select,
   SelectTrigger,
   SelectValue,
   SelectContent,
   SelectItem,
-} from "@garden/ui/components/ui/select";
+} from '@garden/ui/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -42,44 +38,44 @@ import {
   DropdownMenuSub,
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
-} from "@garden/ui/components/ui/dropdown-menu";
-import { Result } from "better-result";
-import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useAuthStore } from "@garden/app-state/auth";
-import { useWorkspaceStore } from "@garden/app-state/workspace";
-import { useWorkspaceId } from "@garden/app-state/hooks";
+} from '@garden/ui/components/ui/dropdown-menu'
+import { Result } from 'better-result'
+import { toast } from 'sonner'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   memberListOptions,
   invitationListOptions,
   workspaceKeys,
-} from "@/lib/workspace/queries";
-import { api } from "@/lib/api";
+} from '@/lib/workspace/queries'
+import { api } from '@/lib/api'
 import {
   GithubIdentityLinkDialog,
   githubIdentityStatusLabel,
-} from "./github-workspace-identity";
+} from './github-workspace-identity'
 
 const roleConfig: Record<
   MemberRole,
   { label: string; icon: typeof Crown; description: string }
 > = {
   owner: {
-    label: "Owner",
+    label: 'Owner',
     icon: Crown,
-    description: "Full access, manage all settings",
+    description: 'Full access, manage all settings',
   },
   admin: {
-    label: "Admin",
+    label: 'Admin',
     icon: Shield,
-    description: "Manage members and settings",
+    description: 'Manage members and settings',
   },
   member: {
-    label: "Member",
+    label: 'Member',
     icon: User,
-    description: "Create and work on issues",
+    description: 'Create and work on issues',
   },
-};
+}
 
 function MemberRow({
   member,
@@ -92,26 +88,26 @@ function MemberRow({
   onLinkGithub,
   onUnlinkGithub,
 }: {
-  member: MemberWithUser;
-  canManage: boolean;
-  canManageOwners: boolean;
-  isSelf: boolean;
-  busy: boolean;
-  onRoleChange: (role: MemberRole) => void;
-  onRemove: () => void;
-  onLinkGithub: () => void;
-  onUnlinkGithub: () => void;
+  member: MemberWithUser
+  canManage: boolean
+  canManageOwners: boolean
+  isSelf: boolean
+  busy: boolean
+  onRoleChange: (role: MemberRole) => void
+  onRemove: () => void
+  onLinkGithub: () => void
+  onUnlinkGithub: () => void
 }) {
-  const rc = roleConfig[member.role];
-  const RoleIcon = rc.icon;
+  const rc = roleConfig[member.role]
+  const RoleIcon = rc.icon
   const canEditRole =
-    canManage && !isSelf && (member.role !== "owner" || canManageOwners);
+    canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
   const canRemove =
-    canManage && !isSelf && (member.role !== "owner" || canManageOwners);
+    canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
   /** Owner/admin only, own row included (matches API 403 for members). */
-  const canEditGithub = canManage;
-  const showMenu = canEditRole || canRemove || canEditGithub;
-  const githubLabel = githubIdentityStatusLabel(member);
+  const canEditGithub = canManage
+  const showMenu = canEditRole || canRemove || canEditGithub
+  const githubLabel = githubIdentityStatusLabel(member)
 
   return (
     <li className="flex items-center gap-3 py-3">
@@ -153,8 +149,8 @@ function MemberRow({
                       (typeof roleConfig)[MemberRole],
                     ][]
                   ).map(([role, config]) => {
-                    if (role === "owner" && !canManageOwners) return null;
-                    const Icon = config.icon;
+                    if (role === 'owner' && !canManageOwners) return null
+                    const Icon = config.icon
                     return (
                       <DropdownMenuItem
                         key={role}
@@ -173,7 +169,7 @@ function MemberRow({
                           </span>
                         )}
                       </DropdownMenuItem>
-                    );
+                    )
                   })}
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
@@ -181,7 +177,7 @@ function MemberRow({
             {canEditGithub && (
               <DropdownMenuItem onClick={onLinkGithub}>
                 <BrandGithubIcon className="h-3.5 w-3.5" />
-                {member.github_login ? "Edit GitHub identity" : "Link GitHub"}
+                {member.github_login ? 'Edit GitHub identity' : 'Link GitHub'}
               </DropdownMenuItem>
             )}
             {canEditGithub && member.github_login ? (
@@ -207,7 +203,7 @@ function MemberRow({
         {rc.label}
       </Badge>
     </li>
-  );
+  )
 }
 
 /**
@@ -223,14 +219,14 @@ function InvitationRow({
   onResend,
   busy,
 }: {
-  invitation: Invitation;
-  canManage: boolean;
-  onRevoke: () => void;
-  onResend: () => void;
-  busy: boolean;
+  invitation: Invitation
+  canManage: boolean
+  onRevoke: () => void
+  onResend: () => void
+  busy: boolean
 }) {
-  const rc = roleConfig[invitation.role];
-  const expired = new Date(invitation.expiresAt).getTime() <= Date.now();
+  const rc = roleConfig[invitation.role]
+  const expired = new Date(invitation.expiresAt).getTime() <= Date.now()
 
   return (
     <li className="flex items-center gap-3 py-3">
@@ -245,7 +241,7 @@ function InvitationRow({
         <div className="truncate text-sm font-medium">{invitation.email}</div>
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           <Clock className="size-3" />
-          <span>{expired ? "Expired — resend to reactivate" : "Pending"}</span>
+          <span>{expired ? 'Expired — resend to reactivate' : 'Pending'}</span>
         </div>
       </div>
       {canManage && (
@@ -255,7 +251,7 @@ function InvitationRow({
             size="icon-sm"
             disabled={busy}
             onClick={onResend}
-            title={expired ? "Resend (extends expiry)" : "Resend invitation"}
+            title={expired ? 'Resend (extends expiry)' : 'Resend invitation'}
           >
             <SendHorizontal className="size-4 text-muted-foreground" />
           </Button>
@@ -272,107 +268,107 @@ function InvitationRow({
       )}
       <Badge variant="outline">{rc.label}</Badge>
     </li>
-  );
+  )
 }
 
-const NO_MEMBERS: MemberWithUser[] = [];
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const NO_MEMBERS: MemberWithUser[] = []
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export function MembersTab() {
-  const user = useAuthStore((s) => s.user);
-  const workspace = useWorkspaceStore((s) => s.workspace);
-  const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user)
+  const workspace = useWorkspaceStore((s) => s.workspace)
+  const qc = useQueryClient()
   // The one workspace id for reads, writes and invalidation alike; writes
   // used the store's copy while invalidation used this one.
-  const wsId = useWorkspaceId();
-  const membersQuery = useQuery(memberListOptions(wsId));
-  const members = membersQuery.data ?? NO_MEMBERS;
-  const { data: invitations = [] } = useQuery(invitationListOptions(wsId));
+  const wsId = useWorkspaceId()
+  const membersQuery = useQuery(memberListOptions(wsId))
+  const members = membersQuery.data ?? NO_MEMBERS
+  const { data: invitations = [] } = useQuery(invitationListOptions(wsId))
 
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<MemberRole>("member");
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [memberActionId, setMemberActionId] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState<MemberRole>('member')
+  const [inviteLoading, setInviteLoading] = useState(false)
+  const [memberActionId, setMemberActionId] = useState<string | null>(null)
   const [invitationActionId, setInvitationActionId] = useState<string | null>(
     null,
-  );
+  )
   const [confirmAction, setConfirmAction] = useState<{
-    title: string;
-    description: string;
-    confirmLabel: string;
-    pendingLabel: string;
-    variant?: "destructive";
-    onConfirm: () => Promise<void>;
-  } | null>(null);
-  const [githubTarget, setGithubTarget] = useState<MemberWithUser | null>(null);
+    title: string
+    description: string
+    confirmLabel: string
+    pendingLabel: string
+    variant?: 'destructive'
+    onConfirm: () => Promise<void>
+  } | null>(null)
+  const [githubTarget, setGithubTarget] = useState<MemberWithUser | null>(null)
 
-  const currentMember = members.find((m) => m.user_id === user?.id) ?? null;
+  const currentMember = members.find((m) => m.user_id === user?.id) ?? null
   const pendingInvitations = invitations.filter(
-    (inv) => inv.status === "pending",
-  );
+    (inv) => inv.status === 'pending',
+  )
   const canManageWorkspace =
-    currentMember?.role === "owner" || currentMember?.role === "admin";
-  const isOwner = currentMember?.role === "owner";
+    currentMember?.role === 'owner' || currentMember?.role === 'admin'
+  const isOwner = currentMember?.role === 'owner'
 
   // Enter in the email field used to call this directly, past the disabled
   // button, so a second Enter sent a duplicate invitation.
-  const inviteInFlightRef = useRef(false);
+  const inviteInFlightRef = useRef(false)
   const handleInviteMember = async () => {
-    const email = inviteEmail.trim();
-    if (!workspace || !email || inviteInFlightRef.current) return;
+    const email = inviteEmail.trim()
+    if (!workspace || !email || inviteInFlightRef.current) return
     if (!EMAIL_PATTERN.test(email)) {
-      toast.error("Enter a valid email address");
-      return;
+      toast.error('Enter a valid email address')
+      return
     }
-    inviteInFlightRef.current = true;
-    setInviteLoading(true);
+    inviteInFlightRef.current = true
+    setInviteLoading(true)
     try {
       await api.createMember(wsId, {
         email,
         role: inviteRole,
-      });
-      setInviteEmail("");
-      setInviteRole("member");
-      qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) });
-      toast.success("Invitation sent");
+      })
+      setInviteEmail('')
+      setInviteRole('member')
+      qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
+      toast.success('Invitation sent')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to send invitation");
+      toast.error(e instanceof Error ? e.message : 'Failed to send invitation')
     } finally {
-      inviteInFlightRef.current = false;
-      setInviteLoading(false);
+      inviteInFlightRef.current = false
+      setInviteLoading(false)
     }
-  };
+  }
 
   const handleRevokeInvitation = (invitation: Invitation) => {
-    if (!workspace) return;
+    if (!workspace) return
     setConfirmAction({
-      title: "Revoke invitation",
+      title: 'Revoke invitation',
       description: `Revoke the invitation to ${invitation.email}? They will no longer be able to join this workspace.`,
-      confirmLabel: "Revoke",
-      pendingLabel: "Revoking…",
-      variant: "destructive",
+      confirmLabel: 'Revoke',
+      pendingLabel: 'Revoking…',
+      variant: 'destructive',
       onConfirm: () => {
-        setInvitationActionId(invitation.id);
+        setInvitationActionId(invitation.id)
         return api
           .revokeInvitation(wsId, invitation.id)
           .then(() => {
-            qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) });
-            toast.success("Invitation revoked");
+            qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
+            toast.success('Invitation revoked')
           })
           .catch((e: unknown) => {
             toast.error(
-              e instanceof Error ? e.message : "Failed to revoke invitation",
-            );
-            throw e;
+              e instanceof Error ? e.message : 'Failed to revoke invitation',
+            )
+            throw e
           })
-          .finally(() => setInvitationActionId(null));
+          .finally(() => setInvitationActionId(null))
       },
-    });
-  };
+    })
+  }
 
   const handleResendInvitation = (invitation: Invitation) => {
-    if (!workspace) return;
-    setInvitationActionId(invitation.id);
+    if (!workspace) return
+    setInvitationActionId(invitation.id)
     void api
       .createMember(wsId, {
         email: invitation.email,
@@ -380,68 +376,68 @@ export function MembersTab() {
         resend: true,
       })
       .then(() => {
-        qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) });
-        toast.success(`Invitation resent to ${invitation.email}`);
+        qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
+        toast.success(`Invitation resent to ${invitation.email}`)
       })
       .catch((e: unknown) => {
         toast.error(
-          e instanceof Error ? e.message : "Failed to resend invitation",
-        );
+          e instanceof Error ? e.message : 'Failed to resend invitation',
+        )
       })
-      .finally(() => setInvitationActionId(null));
-  };
+      .finally(() => setInvitationActionId(null))
+  }
 
   const handleRoleChange = async (memberId: string, role: MemberRole) => {
-    if (!workspace) return;
-    setMemberActionId(memberId);
+    if (!workspace) return
+    setMemberActionId(memberId)
     try {
-      await api.updateMember(wsId, memberId, { role });
-      qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
-      toast.success("Role updated");
+      await api.updateMember(wsId, memberId, { role })
+      qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+      toast.success('Role updated')
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update member");
+      toast.error(e instanceof Error ? e.message : 'Failed to update member')
     } finally {
-      setMemberActionId(null);
+      setMemberActionId(null)
     }
-  };
+  }
 
   const handleRemoveMember = (member: MemberWithUser) => {
-    if (!workspace) return;
+    if (!workspace) return
     setConfirmAction({
       title: `Remove ${member.name}`,
       description: `Remove ${member.name} from ${workspace.name}? They will lose access to this workspace.`,
-      confirmLabel: "Remove",
-      pendingLabel: "Removing…",
-      variant: "destructive",
+      confirmLabel: 'Remove',
+      pendingLabel: 'Removing…',
+      variant: 'destructive',
       onConfirm: () => {
-        setMemberActionId(member.id);
+        setMemberActionId(member.id)
         return api
           .deleteMember(wsId, member.id)
           .then(() => {
-            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
-            toast.success("Member removed");
+            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+            toast.success('Member removed')
           })
           .catch((e: unknown) => {
             toast.error(
-              e instanceof Error ? e.message : "Failed to remove member",
-            );
-            throw e;
+              e instanceof Error ? e.message : 'Failed to remove member',
+            )
+            throw e
           })
-          .finally(() => setMemberActionId(null));
+          .finally(() => setMemberActionId(null))
       },
-    });
-  };
+    })
+  }
 
   const handleUnlinkGithub = (member: MemberWithUser) => {
-    if (!workspace) return;
+    if (!workspace) return
     setConfirmAction({
       title: `Unlink GitHub for ${member.name}`,
       description: `Remove the GitHub identity for ${member.name}? Mirrored GitHub issue assignment will show not linked until an owner or admin links it again.`,
-      confirmLabel: "Unlink",
-      pendingLabel: "Unlinking...",
-      variant: "destructive",
+      confirmLabel: 'Unlink',
+      pendingLabel: 'Unlinking...',
+      variant: 'destructive',
       onConfirm: async () => {
-        setMemberActionId(member.id);
+        setMemberActionId(member.id)
         const result = await Result.tryPromise({
           try: () =>
             api.updateMember(workspace.id, member.id, {
@@ -451,28 +447,28 @@ export function MembersTab() {
           catch: (cause) =>
             cause instanceof Error
               ? cause.message
-              : "Failed to unlink GitHub identity",
-        });
-        setMemberActionId(null);
+              : 'Failed to unlink GitHub identity',
+        })
+        setMemberActionId(null)
         result.match({
           ok: () => {
-            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) });
-            toast.success("GitHub identity unlinked");
+            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+            toast.success('GitHub identity unlinked')
           },
           err: (message) => toast.error(message),
-        });
+        })
       },
-    });
-  };
+    })
+  }
 
-  if (!workspace) return null;
+  if (!workspace) return null
 
   return (
     <div className="space-y-12">
       <section className="space-y-5">
         <header>
           <h2 className="text-base font-semibold">
-            Members{" "}
+            Members{' '}
             {membersQuery.data ? (
               <span className="font-normal text-muted-foreground">
                 ({members.length})
@@ -489,8 +485,8 @@ export function MembersTab() {
             className="grid gap-2 sm:grid-cols-[1fr_120px_auto]"
             noValidate
             onSubmit={(event) => {
-              event.preventDefault();
-              void handleInviteMember();
+              event.preventDefault()
+              void handleInviteMember()
             }}
           >
             <Input
@@ -518,7 +514,7 @@ export function MembersTab() {
               disabled={inviteLoading || !inviteEmail.trim()}
             >
               <Plus className="size-3.5" />
-              {inviteLoading ? "Inviting..." : "Invite"}
+              {inviteLoading ? 'Inviting...' : 'Invite'}
             </Button>
           </form>
         )}
@@ -564,7 +560,7 @@ export function MembersTab() {
         <GithubIdentityLinkDialog
           open
           onOpenChange={(open) => {
-            if (!open) setGithubTarget(null);
+            if (!open) setGithubTarget(null)
           }}
           workspaceId={workspace.id}
           member={githubTarget}
@@ -600,19 +596,19 @@ export function MembersTab() {
       <ConfirmDialog
         open={!!confirmAction}
         onOpenChange={(open) => {
-          if (!open) setConfirmAction(null);
+          if (!open) setConfirmAction(null)
         }}
         title={confirmAction?.title}
         description={confirmAction?.description}
-        confirmLabel={confirmAction?.confirmLabel ?? "Confirm"}
+        confirmLabel={confirmAction?.confirmLabel ?? 'Confirm'}
         pendingLabel={confirmAction?.pendingLabel}
         tone={
-          confirmAction?.variant === "destructive" ? "destructive" : "default"
+          confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
         }
         onConfirm={() =>
           confirmAction ? confirmAction.onConfirm() : Promise.resolve()
         }
       />
     </div>
-  );
+  )
 }

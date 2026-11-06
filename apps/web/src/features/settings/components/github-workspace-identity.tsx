@@ -1,11 +1,11 @@
-import { useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Result } from "better-result";
-import { Check, Loader2 } from "lucide-react";
-import { toast } from "sonner";
-import type { MemberWithUser } from "@garden/core/types";
-import { Badge } from "@garden/ui/components/ui/badge";
-import { Button } from "@garden/ui/components/ui/button";
+import { useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Result } from 'better-result'
+import { Check, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import type { MemberWithUser } from '@garden/core/types'
+import { Badge } from '@garden/ui/components/ui/badge'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -13,15 +13,15 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@garden/ui/components/ui/dialog";
-import { Input } from "@garden/ui/components/ui/input";
-import { Label } from "@garden/ui/components/ui/label";
-import { useAuthStore } from "@garden/app-state/auth";
-import { useWorkspaceId } from "@garden/app-state/hooks";
-import { useWorkspaceStore } from "@garden/app-state/workspace";
-import { BrandGithubIcon } from "@/components/icons/brand-github-icon";
-import { api } from "@/lib/api";
-import { memberListOptions } from "@/lib/workspace/queries";
+} from '@garden/ui/components/ui/dialog'
+import { Input } from '@garden/ui/components/ui/input'
+import { Label } from '@garden/ui/components/ui/label'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceId } from '@garden/app-state/hooks'
+import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { BrandGithubIcon } from '@/components/icons/brand-github-icon'
+import { api } from '@/lib/api'
+import { memberListOptions } from '@/lib/workspace/queries'
 import {
   normalizeGithubLogin,
   resolveGithubLogin,
@@ -29,15 +29,15 @@ import {
   type GithubUserSuggestion,
   type ResolvedGithubIdentity,
   type ResolveGithubLoginError,
-} from "./resolve-github-login";
+} from './resolve-github-login'
 
 /** Pause after typing before hitting GitHub Search (10 req/min unauthenticated). */
-const GITHUB_USER_SEARCH_DEBOUNCE_MS = 350;
+const GITHUB_USER_SEARCH_DEBOUNCE_MS = 350
 
 export function githubIdentityStatusLabel(member: {
-  github_login: string | null;
+  github_login: string | null
 }) {
-  return member.github_login ? `@${member.github_login}` : "GitHub not linked";
+  return member.github_login ? `@${member.github_login}` : 'GitHub not linked'
 }
 
 /**
@@ -48,18 +48,18 @@ export function githubIdentityStatusLabel(member: {
  * Garden verifies ownership via GitHub OAuth (docs/reference/known-gaps.md).
  */
 export function GithubWorkspaceIdentitySection() {
-  const user = useAuthStore((state) => state.user);
-  const workspace = useWorkspaceStore((state) => state.workspace);
-  const wsId = useWorkspaceId();
+  const user = useAuthStore((state) => state.user)
+  const workspace = useWorkspaceStore((state) => state.workspace)
+  const wsId = useWorkspaceId()
   const { data: members = [], isPending } = useQuery({
     ...memberListOptions(wsId),
     enabled: Boolean(wsId),
-  });
+  })
 
-  if (!workspace || !user) return null;
+  if (!workspace || !user) return null
 
   const membership =
-    members.find((member) => member.user_id === user.id) ?? null;
+    members.find((member) => member.user_id === user.id) ?? null
 
   return (
     <section className="space-y-5">
@@ -86,21 +86,21 @@ export function GithubWorkspaceIdentitySection() {
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">GitHub</p>
               <Badge
-                variant={membership.github_login ? "secondary" : "outline"}
+                variant={membership.github_login ? 'secondary' : 'outline'}
               >
-                {membership.github_login ? "Linked" : "Not linked"}
+                {membership.github_login ? 'Linked' : 'Not linked'}
               </Badge>
             </div>
             <p className="truncate text-xs text-muted-foreground">
               {membership.github_login
                 ? `@${membership.github_login}`
-                : "Ask a workspace owner or admin to link your GitHub user."}
+                : 'Ask a workspace owner or admin to link your GitHub user.'}
             </p>
           </div>
         </div>
       )}
     </section>
-  );
+  )
 }
 
 /**
@@ -115,92 +115,92 @@ export function GithubIdentityLinkDialog({
   member,
   onSaved,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  workspaceId: string;
-  member: MemberWithUser;
-  onSaved: () => Promise<unknown> | unknown;
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  workspaceId: string
+  member: MemberWithUser
+  onSaved: () => Promise<unknown> | unknown
 }) {
-  const [login, setLogin] = useState(member.github_login ?? "");
+  const [login, setLogin] = useState(member.github_login ?? '')
   const [debouncedSearch, setDebouncedSearch] = useState(
-    normalizeGithubLogin(member.github_login ?? ""),
-  );
-  const [selected, setSelected] = useState<ResolvedGithubIdentity | null>(null);
-  const [busy, setBusy] = useState(false);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchTerm = normalizeGithubLogin(debouncedSearch);
-  const typedLogin = normalizeGithubLogin(login);
+    normalizeGithubLogin(member.github_login ?? ''),
+  )
+  const [selected, setSelected] = useState<ResolvedGithubIdentity | null>(null)
+  const [busy, setBusy] = useState(false)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const searchTerm = normalizeGithubLogin(debouncedSearch)
+  const typedLogin = normalizeGithubLogin(login)
 
   const clearSearchTimer = () => {
     if (searchTimerRef.current !== null) {
-      clearTimeout(searchTimerRef.current);
-      searchTimerRef.current = null;
+      clearTimeout(searchTimerRef.current)
+      searchTimerRef.current = null
     }
-  };
+  }
 
   const scheduleSearch = (value: string) => {
-    clearSearchTimer();
+    clearSearchTimer()
     searchTimerRef.current = setTimeout(() => {
-      setDebouncedSearch(normalizeGithubLogin(value));
-      searchTimerRef.current = null;
-    }, GITHUB_USER_SEARCH_DEBOUNCE_MS);
-  };
+      setDebouncedSearch(normalizeGithubLogin(value))
+      searchTimerRef.current = null
+    }, GITHUB_USER_SEARCH_DEBOUNCE_MS)
+  }
 
   const searchQuery = useQuery({
-    queryKey: ["github-user-search", searchTerm] as const,
+    queryKey: ['github-user-search', searchTerm] as const,
     enabled: open && searchTerm.length >= 2,
     staleTime: 30_000,
     queryFn: async () => {
-      const result = await searchGithubUsers(searchTerm);
+      const result = await searchGithubUsers(searchTerm)
       return result.match({
         ok: (suggestions) => suggestions,
         err: (error) => {
-          throw new Error(error.message);
+          throw new Error(error.message)
         },
-      });
+      })
     },
-  });
+  })
 
-  const suggestions = searchQuery.data ?? [];
+  const suggestions = searchQuery.data ?? []
   const selectedMatchesInput =
     selected !== null &&
-    selected.login.toLowerCase() === typedLogin.toLowerCase();
+    selected.login.toLowerCase() === typedLogin.toLowerCase()
   const searchPending =
     typedLogin.length >= 2 &&
-    typedLogin.toLowerCase() !== searchTerm.toLowerCase();
+    typedLogin.toLowerCase() !== searchTerm.toLowerCase()
 
   /** Callers mount this dialog only while open, so open=true remounts fresh state. */
   const handleOpenChange = (next: boolean) => {
-    clearSearchTimer();
-    if (!next) setDebouncedSearch("");
-    onOpenChange(next);
-  };
+    clearSearchTimer()
+    if (!next) setDebouncedSearch('')
+    onOpenChange(next)
+  }
 
   const handleSelectSuggestion = (suggestion: GithubUserSuggestion) => {
-    clearSearchTimer();
-    setLogin(suggestion.login);
-    setDebouncedSearch(suggestion.login);
+    clearSearchTimer()
+    setLogin(suggestion.login)
+    setDebouncedSearch(suggestion.login)
     setSelected({
       user_id: suggestion.user_id,
       login: suggestion.login,
-    });
-  };
+    })
+  }
 
   const handleLoginChange = (value: string) => {
-    setLogin(value);
-    scheduleSearch(value);
-    const normalized = normalizeGithubLogin(value);
+    setLogin(value)
+    scheduleSearch(value)
+    const normalized = normalizeGithubLogin(value)
     if (selected && selected.login.toLowerCase() !== normalized.toLowerCase()) {
-      setSelected(null);
+      setSelected(null)
     }
-  };
+  }
 
   const handleSave = async () => {
-    setBusy(true);
+    setBusy(true)
     const resolved: Result<ResolvedGithubIdentity, ResolveGithubLoginError> =
       selectedMatchesInput
         ? Result.ok(selected)
-        : await resolveGithubLogin(login);
+        : await resolveGithubLogin(login)
     const result = await resolved.match({
       ok: (identity) =>
         Result.tryPromise({
@@ -213,35 +213,35 @@ export function GithubIdentityLinkDialog({
             message:
               cause instanceof Error
                 ? cause.message
-                : "Failed to link GitHub identity",
+                : 'Failed to link GitHub identity',
           }),
         }),
       err: (error) => Promise.resolve(Result.err(error)),
-    });
-    setBusy(false);
+    })
+    setBusy(false)
 
     await result.match({
       ok: async () => {
-        await onSaved();
+        await onSaved()
         toast.success(
           member.github_login
-            ? "GitHub identity updated"
-            : "GitHub identity linked",
-        );
-        onOpenChange(false);
+            ? 'GitHub identity updated'
+            : 'GitHub identity linked',
+        )
+        onOpenChange(false)
       },
       err: async (error) => {
-        toast.error(error.message);
+        toast.error(error.message)
       },
-    });
-  };
+    })
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>
-            {member.github_login ? "Update GitHub identity" : "Link GitHub"}
+            {member.github_login ? 'Update GitHub identity' : 'Link GitHub'}
           </DialogTitle>
           <DialogDescription>
             Search for the GitHub user for {member.name || member.email}, then
@@ -260,7 +260,7 @@ export function GithubIdentityLinkDialog({
             autoComplete="off"
             disabled={busy}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && login.trim()) void handleSave();
+              if (event.key === 'Enter' && login.trim()) void handleSave()
             }}
           />
 
@@ -282,7 +282,7 @@ export function GithubIdentityLinkDialog({
             <p className="text-xs text-destructive">
               {searchQuery.error instanceof Error
                 ? searchQuery.error.message
-                : "Could not search GitHub users"}
+                : 'Could not search GitHub users'}
             </p>
           ) : suggestions.length === 0 ? (
             <p className="text-xs text-muted-foreground">
@@ -298,7 +298,7 @@ export function GithubIdentityLinkDialog({
               {suggestions.map((suggestion) => {
                 const isActive =
                   selectedMatchesInput &&
-                  selected.user_id === suggestion.user_id;
+                  selected.user_id === suggestion.user_id
                 return (
                   <li key={suggestion.user_id}>
                     <button
@@ -331,7 +331,7 @@ export function GithubIdentityLinkDialog({
                       ) : null}
                     </button>
                   </li>
-                );
+                )
               })}
             </ul>
           )}
@@ -352,10 +352,10 @@ export function GithubIdentityLinkDialog({
             onClick={() => void handleSave()}
           >
             {busy ? <Loader2 className="size-4 animate-spin" /> : null}
-            {busy ? "Saving..." : "Save"}
+            {busy ? 'Saving...' : 'Save'}
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
