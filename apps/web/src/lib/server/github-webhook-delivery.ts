@@ -45,8 +45,12 @@ export type GitHubWebhookDeliveryOutcome<T> =
  * Ordering: the binding row is locked `FOR UPDATE` first, so deliveries for one
  * linked issue run one at a time and the "newest applied marker" read cannot
  * race another delivery. A delivery is stale when an applied delivery in its
- * scope has a later marker, or when its scope already applied a `deleted`
- * action (a late `edited` must not bring a deleted comment back). Equal
+ * scope has a later marker, or when its comment scope already applied an
+ * `issue_comment.deleted` (a late `edited` must not bring a deleted comment
+ * back). The tombstone is limited to comment events: before, any `deleted`
+ * action counted, so one `issues.deleted` made the issue scope stale forever.
+ * Callers pass only actions the apply step supports, so an unsupported action
+ * never lands in the ledger as `applied` and never moves the marker. Equal
  * markers apply, because GitHub timestamps have one-second resolution and two
  * real edits can share a second. Stale deliveries are
  * still recorded so a redelivery of them is a duplicate.
@@ -82,7 +86,7 @@ export async function processGitHubWebhookDelivery<T>(args: {
                 (value: string | null) =>
                   value === null ? null : Number(value),
               ),
-              deleted: sql<boolean>`coalesce(bool_or(${schema.githubWebhookDelivery.action} = 'deleted'), false)`,
+              commentDeleted: sql<boolean>`coalesce(bool_or(${schema.githubWebhookDelivery.event} = 'issue_comment' and ${schema.githubWebhookDelivery.action} = 'deleted'), false)`,
             })
             .from(schema.githubWebhookDelivery)
             .where(
@@ -93,7 +97,7 @@ export async function processGitHubWebhookDelivery<T>(args: {
             )
           const stale =
             prior !== undefined &&
-            (prior.deleted ||
+            (prior.commentDeleted ||
               (prior.newestMarker !== null &&
                 args.order.marker < prior.newestMarker))
 
@@ -109,7 +113,10 @@ export async function processGitHubWebhookDelivery<T>(args: {
               status: stale ? 'stale' : 'applied',
             })
             .onConflictDoNothing({
-              target: schema.githubWebhookDelivery.deliveryId,
+              target: [
+                schema.githubWebhookDelivery.bindingId,
+                schema.githubWebhookDelivery.deliveryId,
+              ],
             })
             .returning({ id: schema.githubWebhookDelivery.id })
           if (inserted.length === 0) return { kind: 'duplicate' }

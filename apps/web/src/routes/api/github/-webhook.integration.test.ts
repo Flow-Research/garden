@@ -107,36 +107,43 @@ describe('POST /api/github/webhook (integration)', () => {
 
   let issueNumber = 0
 
-  async function seedLinkedIssue(status = 'in_progress') {
+  async function seedLinkedIssue(
+    status = 'in_progress',
+    githubNumber?: number,
+    inWorkspace = workspaceId,
+    assigneeId: string | null = agentId,
+  ) {
     issueNumber += 1
     const issueId = randomUUID()
     await testDb.db.insert(schema.issue).values({
       id: issueId,
-      workspaceId,
+      workspaceId: inWorkspace,
       number: issueNumber,
       title: 'Original title',
       description: 'Original body',
       status,
       createdBy: ownerId,
-      assigneeType: 'agent',
-      assigneeId: agentId,
+      assigneeType: assigneeId ? 'agent' : null,
+      assigneeId,
     })
+    const number = githubNumber ?? issueNumber
     await testDb.db.insert(schema.issueSourceBinding).values({
       id: randomUUID(),
-      workspaceId,
+      workspaceId: inWorkspace,
       issueId,
       connectorId: 'github',
       sourceKind: 'issue',
-      externalId: `Flow-Research/garden/issues/${issueNumber}`,
+      externalId: `Flow-Research/garden/issues/${number}`,
     })
-    return { issueId, githubNumber: issueNumber }
+    return { issueId, githubNumber: number }
   }
 
   function issuePayload(args: {
     githubNumber: number
     action: string
     title?: string
-    updatedAt: string
+    updatedAt?: string
+    sender?: { login: string; type: string }
   }) {
     return {
       action: args.action,
@@ -153,7 +160,7 @@ describe('POST /api/github/webhook (integration)', () => {
         state: args.action === 'closed' ? 'closed' : 'open',
         updated_at: args.updatedAt,
       },
-      sender: { type: 'User' },
+      sender: args.sender ?? { login: 'octocat', type: 'User' },
     }
   }
 
@@ -180,7 +187,7 @@ describe('POST /api/github/webhook (integration)', () => {
         updated_at: args.updatedAt,
         user: { id: 1, login: 'octocat', type: 'User' },
       },
-      sender: { type: 'User' },
+      sender: { login: 'octocat', type: 'User' },
     }
   }
 
@@ -231,9 +238,12 @@ describe('POST /api/github/webhook (integration)', () => {
       request,
     })
     await Promise.all(pending)
+    const json = (await response.json()) as Record<string, unknown>
+    const results = json.results as Record<string, unknown>[] | undefined
     return {
       status: response.status,
-      body: (await response.json()) as Record<string, unknown>,
+      json,
+      body: results?.length === 1 ? (results[0] as Record<string, unknown>) : json,
     }
   }
 
@@ -277,14 +287,10 @@ describe('POST /api/github/webhook (integration)', () => {
       }),
     })
 
-    expect(response).toEqual({
-      status: 200,
-      body: {
-        ok: true,
-        status: 'applied',
-        fields: ['status'],
-        issue_id: issueId,
-      },
+    expect(response.status).toBe(200)
+    expect(response.json).toEqual({
+      ok: true,
+      results: [{ status: 'applied', fields: ['status'], issue_id: issueId }],
     })
     expect((await readIssue(issueId))?.status).toBe('done')
     const [inbox] = await testDb.db
@@ -331,10 +337,8 @@ describe('POST /api/github/webhook (integration)', () => {
     harness.published = []
 
     const replay = await deliver({ payload, deliveryId: 'delivery-replay' })
-    expect(replay).toEqual({
-      status: 200,
-      body: { ok: true, status: 'duplicate' },
-    })
+    expect(replay.status).toBe(200)
+    expect(replay.body).toEqual({ status: 'duplicate' })
     expect((await readIssue(issueId))?.title).toBe('Renamed in Garden')
     expect(harness.published).toEqual([])
   })
@@ -362,7 +366,8 @@ describe('POST /api/github/webhook (integration)', () => {
         updatedAt: '2026-04-01T12:00:00Z',
       }),
     })
-    expect(older).toEqual({ status: 200, body: { ok: true, status: 'stale' } })
+    expect(older.status).toBe(200)
+    expect(older.body).toEqual({ status: 'stale' })
     expect(await readIssue(issueId)).toMatchObject({
       title: 'Newer title',
       status: 'in_progress',
@@ -377,7 +382,7 @@ describe('POST /api/github/webhook (integration)', () => {
         updatedAt: '2026-04-01T12:00:00Z',
       }),
     })
-    expect(redelivered.body).toEqual({ ok: true, status: 'duplicate' })
+    expect(redelivered.body).toEqual({ status: 'duplicate' })
   })
 
   it('lets a delivery whose apply failed be redelivered', async () => {
@@ -470,12 +475,158 @@ describe('POST /api/github/webhook (integration)', () => {
         updatedAt: '2026-04-01T12:00:00Z',
       }),
     })
-    expect(lateEdit.body).toEqual({ ok: true, status: 'stale' })
+    expect(lateEdit.body).toEqual({ status: 'stale' })
     const remaining = await testDb.db
       .select()
       .from(schema.issueComment)
       .where(eq(schema.issueComment.issueId, issueId))
     expect(remaining).toEqual([])
+  })
+
+  it('applies closes from other bots and skips only the Garden App bot', async () => {
+    const stale = await seedLinkedIssue()
+    const closedByStale = await deliver({
+      payload: issuePayload({
+        githubNumber: stale.githubNumber,
+        action: 'closed',
+        updatedAt: '2026-04-01T12:00:00Z',
+        sender: { login: 'github-actions[bot]', type: 'Bot' },
+      }),
+    })
+    expect(closedByStale.body).toMatchObject({
+      status: 'applied',
+      fields: ['status'],
+    })
+    expect((await readIssue(stale.issueId))?.status).toBe('done')
+
+    const echo = await seedLinkedIssue()
+    const closedByGarden = await deliver({
+      payload: issuePayload({
+        githubNumber: echo.githubNumber,
+        action: 'closed',
+        updatedAt: '2026-04-01T12:00:00Z',
+        sender: { login: 'garden-ai-dev[bot]', type: 'Bot' },
+      }),
+    })
+    expect(closedByGarden.body).toEqual({
+      status: 'skipped',
+      skipped_reason: 'own_app_sender',
+    })
+    expect((await readIssue(echo.issueId))?.status).toBe('in_progress')
+  })
+
+  it('rejects a delivery without updated_at instead of stamping it now', async () => {
+    const { issueId, githubNumber } = await seedLinkedIssue()
+    const missing = await deliver({
+      payload: issuePayload({ githubNumber, action: 'closed' }),
+    })
+    expect(missing.status).toBe(400)
+    expect((await readIssue(issueId))?.status).toBe('in_progress')
+
+    const later = await deliver({
+      payload: issuePayload({
+        githubNumber,
+        action: 'edited',
+        title: 'Edited after the bad delivery',
+        updatedAt: '2026-04-01T12:00:00Z',
+      }),
+    })
+    expect(later.body).toMatchObject({ status: 'applied', fields: ['title'] })
+  })
+
+  it('acknowledges a committed close when lifecycle effects throw', async () => {
+    const { issueId, githubNumber } = await seedLinkedIssue()
+    await testDb.db.insert(schema.issueRun).values({
+      id: randomUUID(),
+      workspaceId,
+      issueId,
+      agentId,
+      hostName: 'test',
+      status: 'running',
+    })
+    runService.cancelIssueRun.mockRejectedValue(new Error('run service down'))
+    const payload = issuePayload({
+      githubNumber,
+      action: 'closed',
+      updatedAt: '2026-04-01T12:00:00Z',
+    })
+
+    const response = await deliver({ payload, deliveryId: 'effects-throw' })
+    expect(response.status).toBe(200)
+    expect(response.body).toMatchObject({ status: 'applied' })
+    expect(runService.cancelIssueRun).toHaveBeenCalled()
+    expect((await readIssue(issueId))?.status).toBe('done')
+  })
+
+  it('keeps the issue scope live after unsupported actions like issues.deleted', async () => {
+    const { issueId, githubNumber } = await seedLinkedIssue()
+    for (const action of ['deleted', 'labeled']) {
+      const ignored = await deliver({
+        payload: issuePayload({
+          githubNumber,
+          action,
+          updatedAt: '2026-04-01T12:10:00Z',
+        }),
+      })
+      expect(ignored).toMatchObject({
+        status: 200,
+        json: { ok: true, status: 'unsupported_action' },
+      })
+    }
+    const ledger = await testDb.pool.query(
+      'select 1 from github_webhook_delivery d join issue_source_binding b on b.id = d.binding_id where b.issue_id = $1',
+      [issueId],
+    )
+    expect(ledger.rowCount).toBe(0)
+
+    const edited = await deliver({
+      payload: issuePayload({
+        githubNumber,
+        action: 'edited',
+        title: 'Still syncing',
+        updatedAt: '2026-04-01T12:00:00Z',
+      }),
+    })
+    expect(edited.body).toMatchObject({ status: 'applied', fields: ['title'] })
+    expect((await readIssue(issueId))?.title).toBe('Still syncing')
+  })
+
+  it('applies one delivery to every workspace linked to the installation', async () => {
+    const other = await seedWorkspace(testDb)
+    await testDb.db.insert(schema.githubAppInstallation).values({
+      workspaceId: other.workspaceId,
+      installationId: '99',
+      accountLogin: 'Flow-Research',
+    })
+    const first = await seedLinkedIssue()
+    const second = await seedLinkedIssue(
+      'in_progress',
+      first.githubNumber,
+      other.workspaceId,
+      null,
+    )
+    const deliveryId = randomUUID()
+    const payload = issuePayload({
+      githubNumber: first.githubNumber,
+      action: 'closed',
+      updatedAt: '2026-04-01T12:00:00Z',
+    })
+
+    const response = await deliver({ payload, deliveryId })
+    expect(response.json.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: 'applied', issue_id: first.issueId }),
+        expect.objectContaining({ status: 'applied', issue_id: second.issueId }),
+      ]),
+    )
+    expect((await readIssue(first.issueId))?.status).toBe('done')
+    expect((await readIssue(second.issueId))?.status).toBe('done')
+
+    const replay = await deliver({ payload, deliveryId })
+    expect(replay.json.results).toEqual([
+      { status: 'duplicate' },
+      { status: 'duplicate' },
+    ])
   })
 
   it('rejects unsigned and unidentified deliveries before touching data', async () => {

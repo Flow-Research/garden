@@ -1,5 +1,5 @@
 {
-  "id": "634bea3a-8be4-400d-ad47-c1d641b0bbf8",
+  "id": "a79b87cb-0102-4f88-b1e3-9094c020620d",
   "prevId": "83ad48b0-34aa-428a-baa1-2d77741bd550",
   "version": "7",
   "dialect": "postgresql",
@@ -7787,9 +7787,15 @@
         }
       },
       "indexes": {
-        "github_webhook_delivery_id_unique": {
-          "name": "github_webhook_delivery_id_unique",
+        "github_webhook_delivery_binding_delivery_unique": {
+          "name": "github_webhook_delivery_binding_delivery_unique",
           "columns": [
+            {
+              "expression": "binding_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
             {
               "expression": "delivery_id",
               "isExpression": false,

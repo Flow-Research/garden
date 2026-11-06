@@ -46,6 +46,7 @@ describe('parseGitHubWebhookIssueTarget', () => {
         body: 'hello',
         state: 'open',
         html_url: 'https://github.com/Flow-Research/garden/issues/42',
+        updated_at: '2026-04-01T12:00:00Z',
       },
     })
 
@@ -61,9 +62,21 @@ describe('parseGitHubWebhookIssueTarget', () => {
       title: 'Webhook sync',
       body: 'hello',
       state: 'open',
-      senderType: null,
+      senderLogin: null,
+      updatedAtMs: Date.parse('2026-04-01T12:00:00Z'),
     })
-    expect(result.value?.updatedAtMs).toEqual(expect.any(Number))
+  })
+
+  it('rejects issue events without a parseable updated_at', () => {
+    for (const updatedAt of [undefined, 'not a date']) {
+      const result = parseGitHubWebhookIssueTarget({
+        action: 'closed',
+        installation: { id: 1 },
+        repository: { name: 'garden', owner: { login: 'Flow-Research' } },
+        issue: { number: 1, updated_at: updatedAt },
+      })
+      expect(result.isErr() && result.error.code).toBe('invalid_payload')
+    }
   })
 
   it('rejects issue events missing installation or number', () => {
@@ -122,9 +135,10 @@ describe('parseGitHubWebhookCommentTarget', () => {
         html_url:
           'https://github.com/Flow-Research/garden/issues/42#issuecomment-987654321',
         created_at: '2026-04-01T12:00:00Z',
+        updated_at: '2026-04-01T12:00:00Z',
         user: { id: 42, login: 'octocat', type: 'User' },
       },
-      sender: { type: 'User' },
+      sender: { login: 'octocat', type: 'User' },
     })
 
     expect(result.isOk()).toBe(true)
@@ -142,7 +156,7 @@ describe('parseGitHubWebhookCommentTarget', () => {
         'https://github.com/Flow-Research/garden/issues/42#issuecomment-987654321',
       githubLogin: 'octocat',
       githubUserId: '42',
-      senderType: 'User',
+      senderLogin: 'octocat',
       createdAt: new Date('2026-04-01T12:00:00Z'),
       updatedAtMs: Date.parse('2026-04-01T12:00:00Z'),
     })

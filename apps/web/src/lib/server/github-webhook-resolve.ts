@@ -1,4 +1,4 @@
-import { and, eq, inArray, or } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne, or } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { schema, type Db } from '@/lib/server/db'
 
@@ -22,8 +22,8 @@ export type GitHubWebhookIssueTarget = GitHubWebhookIssueIdentity & {
   title: string | null
   body: string | null
   state: 'open' | 'closed' | null
-  /** GitHub `sender.type` — Bot deliveries are skipped on apply to avoid echoes. */
-  senderType: string | null
+  /** GitHub `sender.login`; Garden's own App bot is skipped to avoid echoes. */
+  senderLogin: string | null
   /** `issue.updated_at` ms for delivery order enforcement. */
   updatedAtMs: number
 }
@@ -39,9 +39,9 @@ export type GitHubWebhookCommentTarget = GitHubWebhookIssueIdentity & {
   commentHtmlUrl: string | null
   githubLogin: string | null
   githubUserId: string | null
-  senderType: string | null
+  senderLogin: string | null
   createdAt: Date | null
-  /** Prefer `comment.updated_at`, else `created_at`, else now — for order. */
+  /** `comment.updated_at` ms for delivery order enforcement. */
   updatedAtMs: number
 }
 
@@ -68,12 +68,30 @@ function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
-function asTimestampMs(value: unknown, fallback = Date.now()): number {
-  if (typeof value === 'string' && value.trim().length > 0) {
-    const parsed = Date.parse(value)
-    if (Number.isFinite(parsed)) return parsed
-  }
-  return fallback
+/**
+ * Reads GitHub's `updated_at` as the delivery order marker.
+ *
+ * Why no fallback: the earlier version used `Date.now()` when `updated_at` was
+ * missing or unparseable. That marker sorts after every real GitHub timestamp,
+ * so one malformed delivery made every later genuine delivery in its scope
+ * stale. GitHub always sends `updated_at` on issue and comment payloads, so
+ * its absence means the payload is malformed and the caller rejects it with
+ * 400. GitHub does not retry failed deliveries on its own; the 400 shows in the
+ * App's delivery log for an operator to inspect.
+ */
+function updatedAtMarker(
+  value: unknown,
+  label: string,
+): Result<number, GitHubWebhookResolveError> {
+  const parsed = typeof value === 'string' ? Date.parse(value) : Number.NaN
+  return Number.isFinite(parsed)
+    ? Result.ok(parsed)
+    : Result.err(
+        new GitHubWebhookResolveError({
+          code: 'invalid_payload',
+          message: `Webhook ${label}.updated_at is missing or not a timestamp`,
+        }),
+      )
 }
 
 /**
@@ -165,15 +183,15 @@ export function parseGitHubWebhookIssueTarget(
   const state = stateRaw === 'open' || stateRaw === 'closed' ? stateRaw : null
   const sender = asRecord(root.sender)
 
-  return Result.ok({
+  return updatedAtMarker(issue.updated_at, 'issue').map((updatedAtMs) => ({
     ...identityResult.value,
     action,
     title: asString(issue.title),
     body: typeof issue.body === 'string' ? issue.body : null,
     state,
-    senderType: asString(sender?.type),
-    updatedAtMs: asTimestampMs(issue.updated_at),
-  })
+    senderLogin: asString(sender?.login),
+    updatedAtMs,
+  }))
 }
 
 /**
@@ -224,12 +242,8 @@ export function parseGitHubWebhookCommentTarget(
   const createdAtRaw = asString(comment.created_at)
   const createdAtMs = createdAtRaw ? Date.parse(createdAtRaw) : Number.NaN
   const githubUserIdNum = asNumber(user?.id)
-  const updatedAtMs = asTimestampMs(
-    comment.updated_at,
-    Number.isFinite(createdAtMs) ? createdAtMs : Date.now(),
-  )
 
-  return Result.ok({
+  return updatedAtMarker(comment.updated_at, 'comment').map((updatedAtMs) => ({
     ...identityResult.value,
     action: asString(root.action) ?? '',
     commentId,
@@ -238,39 +252,28 @@ export function parseGitHubWebhookCommentTarget(
     githubLogin: asString(user?.login),
     githubUserId:
       githubUserIdNum !== null ? String(githubUserIdNum) : asString(user?.id),
-    senderType: asString(sender?.type) ?? asString(user?.type),
+    senderLogin: asString(sender?.login),
     createdAt: Number.isFinite(createdAtMs) ? new Date(createdAtMs) : null,
     updatedAtMs,
-  })
+  }))
 }
 
 /**
- * Maps a GitHub App installation id → workspace, then finds an issue source
- * binding for the mirrored GitHub issue. Missing install or binding is not an
- * error — those deliveries are ignored with 200 (#161 step 3).
+ * Finds every Garden issue linked to the mirrored GitHub issue, across all
+ * workspaces connected to the delivery's GitHub App installation.
+ *
+ * Why a list: GitHub allows one installation of an App per account, so two
+ * Garden workspaces that connect the same GitHub org store the same
+ * `installation_id` (the table is unique per workspace, not per installation).
+ * The earlier version took `.limit(1)` with no order and so routed each
+ * delivery to an arbitrary one of those workspaces. A unique `installation_id`
+ * would instead make the second workspace's connect flow fail. Missing
+ * installs or bindings return an empty list; the route acknowledges with 200.
  */
-export async function resolveGitHubWebhookBinding(args: {
+export async function resolveGitHubWebhookBindings(args: {
   db: Db
   target: GitHubWebhookIssueIdentity
-}): Promise<Result<GitHubWebhookBindingMatch | null, never>> {
-  const [installation] = await args.db
-    .select({
-      workspaceId: schema.githubAppInstallation.workspaceId,
-      status: schema.githubAppInstallation.status,
-    })
-    .from(schema.githubAppInstallation)
-    .where(
-      eq(
-        schema.githubAppInstallation.installationId,
-        args.target.installationId,
-      ),
-    )
-    .limit(1)
-
-  if (!installation || installation.status === 'disconnected') {
-    return Result.ok(null)
-  }
-
+}): Promise<GitHubWebhookBindingMatch[]> {
   const externalIds = githubIssueExternalIdCandidates({
     owner: args.target.owner,
     repo: args.target.repo,
@@ -285,30 +288,34 @@ export async function resolveGitHubWebhookBinding(args: {
       )
     : inArray(schema.issueSourceBinding.externalId, externalIds)
 
-  const [binding] = await args.db
+  const rows = await args.db
     .select({
-      id: schema.issueSourceBinding.id,
+      bindingId: schema.issueSourceBinding.id,
       issueId: schema.issueSourceBinding.issueId,
       workspaceId: schema.issueSourceBinding.workspaceId,
       externalId: schema.issueSourceBinding.externalId,
     })
     .from(schema.issueSourceBinding)
+    .innerJoin(
+      schema.githubAppInstallation,
+      eq(
+        schema.githubAppInstallation.workspaceId,
+        schema.issueSourceBinding.workspaceId,
+      ),
+    )
     .where(
       and(
-        eq(schema.issueSourceBinding.workspaceId, installation.workspaceId),
+        eq(
+          schema.githubAppInstallation.installationId,
+          args.target.installationId,
+        ),
+        ne(schema.githubAppInstallation.status, 'disconnected'),
         eq(schema.issueSourceBinding.connectorId, 'github'),
         eq(schema.issueSourceBinding.sourceKind, 'issue'),
         identityMatch,
       ),
     )
-    .limit(1)
+    .orderBy(asc(schema.issueSourceBinding.id))
 
-  if (!binding) return Result.ok(null)
-
-  return Result.ok({
-    workspaceId: binding.workspaceId,
-    issueId: binding.issueId,
-    bindingId: binding.id,
-    externalId: binding.externalId,
-  })
+  return rows
 }

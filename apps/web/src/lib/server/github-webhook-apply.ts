@@ -11,8 +11,7 @@ import type {
 export type GitHubWebhookApplyField = 'title' | 'description' | 'status'
 
 export type GitHubWebhookSkipReason =
-  | 'bot_sender'
-  | 'unsupported_action'
+  | 'own_app_sender'
   | 'noop'
   | 'unbound'
 
@@ -34,7 +33,7 @@ export type GitHubWebhookCommentApplyOutcome =
       issue: { teamId: string | null; assigneeId: string | null }
     }
 
-type IssuePatch = Partial<{
+export type IssuePatch = Partial<{
   title: string
   description: string | null
   status: 'todo' | 'done'
@@ -61,6 +60,27 @@ export function planGitHubWebhookIssueApply(
   }
 }
 
+/**
+ * Whether a delivery comes from Garden's own GitHub App bot, whose login is
+ * `<app slug>[bot]`.
+ *
+ * Why the login and not `sender.type === 'Bot'`: the earlier check dropped
+ * every bot, so issues closed by actions/stale, Dependabot, or an Actions
+ * workflow never reached Garden while the ledger still said `applied`. Only
+ * Garden's own writes echo back, so only Garden's bot is skipped.
+ */
+export function isOwnGitHubAppSender(
+  senderLogin: string | null,
+  appSlug: string,
+) {
+  return senderLogin === `${appSlug}[bot]`
+}
+
+/** GitHub `issue_comment` actions the comment apply step writes. */
+export function isSupportedGitHubCommentAction(action: string) {
+  return action === 'created' || action === 'edited' || action === 'deleted'
+}
+
 function touchBinding(tx: GitHubWebhookTx, bindingId: string) {
   return tx
     .update(schema.issueSourceBinding)
@@ -70,8 +90,9 @@ function touchBinding(tx: GitHubWebhookTx, bindingId: string) {
 
 /**
  * Writes an inbound GitHub issue change to the linked Garden issue inside the
- * delivery transaction. Bot senders are skipped so Garden's own GitHub writes
- * do not echo back. Lifecycle effects (inbox archive, run cancel, realtime)
+ * delivery transaction. Garden's own App bot is skipped so its GitHub writes
+ * do not echo back. The route filters unsupported actions before the ledger,
+ * so `plan` is non-null here. Lifecycle effects (inbox archive, run cancel, realtime)
  * run after commit in the route, through `applyIssueMutationSideEffects`, the
  * same helper `PUT /api/issues/$id` uses.
  */
@@ -79,12 +100,13 @@ export async function applyGitHubWebhookIssueUpdate(args: {
   tx: GitHubWebhookTx
   binding: GitHubWebhookBindingMatch
   target: GitHubWebhookIssueTarget
+  plan: IssuePatch
+  appSlug: string
 }): Promise<GitHubWebhookIssueApplyOutcome> {
-  if (args.target.senderType === 'Bot') {
-    return { kind: 'skipped', reason: 'bot_sender' }
+  if (isOwnGitHubAppSender(args.target.senderLogin, args.appSlug)) {
+    return { kind: 'skipped', reason: 'own_app_sender' }
   }
-  const plan = planGitHubWebhookIssueApply(args.target)
-  if (!plan) return { kind: 'skipped', reason: 'unsupported_action' }
+  const plan = args.plan
 
   const issueMatch = and(
     eq(schema.issue.id, args.binding.issueId),
@@ -139,20 +161,19 @@ export async function applyGitHubWebhookIssueUpdate(args: {
 /**
  * Creates, edits, or deletes a connector-sourced Garden comment from a GitHub
  * `issue_comment` webhook (#161), keyed on `(issue_id, external_comment_id)`.
- * Bot senders are skipped so Garden's own GitHub comments do not echo back.
+ * Garden's own App bot is skipped so its GitHub comments do not echo back.
+ * The route filters unsupported actions before the ledger.
  */
 export async function applyGitHubWebhookComment(args: {
   tx: GitHubWebhookTx
   binding: GitHubWebhookBindingMatch
   target: GitHubWebhookCommentTarget
+  appSlug: string
 }): Promise<GitHubWebhookCommentApplyOutcome> {
-  if (args.target.senderType === 'Bot') {
-    return { kind: 'skipped', reason: 'bot_sender' }
+  if (isOwnGitHubAppSender(args.target.senderLogin, args.appSlug)) {
+    return { kind: 'skipped', reason: 'own_app_sender' }
   }
   const action = args.target.action
-  if (action !== 'created' && action !== 'edited' && action !== 'deleted') {
-    return { kind: 'skipped', reason: 'unsupported_action' }
-  }
 
   const [issue] = await args.tx
     .select({

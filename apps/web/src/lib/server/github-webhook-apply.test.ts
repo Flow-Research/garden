@@ -16,7 +16,7 @@ function target(
     title: 'Title',
     body: 'Body',
     state: 'open',
-    senderType: 'User',
+    senderLogin: 'octocat',
     updatedAtMs: Date.parse('2026-04-01T12:00:00Z'),
     ...overrides,
   }

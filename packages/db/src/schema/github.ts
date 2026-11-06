@@ -57,8 +57,10 @@ export const githubWebhookDeliveryStatusValues = ['applied', 'stale'] as const
  * Why: HMAC proves a delivery came from GitHub, not that it is new or current.
  * GitHub redeliveries reuse the delivery id, and deliveries can arrive out of
  * order, so before this table a retried or late `issues.edited` could rewrite
- * newer Garden state. The unique `delivery_id` turns a redelivery into a
- * no-op, and `order_marker` (the GitHub `updated_at` of the issue or comment,
+ * newer Garden state. The unique `(binding_id, delivery_id)` turns a
+ * redelivery into a no-op per binding; one delivery fans out to every Garden
+ * workspace linked to the same GitHub App installation, so the id alone is not
+ * unique, and `order_marker` (the GitHub `updated_at` of the issue or comment,
  * in ms) per `order_scope` lets the webhook reject a delivery older than one
  * already applied. A separate ledger beats a marker column on
  * `issue_source_binding` because comments need their own order streams and
@@ -85,7 +87,10 @@ export const githubWebhookDelivery = pgTable(
       .default(sql`now()`),
   },
   (table) => [
-    uniqueIndex('github_webhook_delivery_id_unique').on(table.deliveryId),
+    uniqueIndex('github_webhook_delivery_binding_delivery_unique').on(
+      table.bindingId,
+      table.deliveryId,
+    ),
     index('github_webhook_delivery_order_scope_marker_idx').on(
       table.orderScope,
       table.orderMarker,
