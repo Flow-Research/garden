@@ -88,6 +88,8 @@ A read-only audit of the code found that the basics are a feature to build, not 
 
 ## 8. Team structure
 
+Flow Research is one Garden workspace. Separate workspaces would wall teams off from each other, and shared context across teams is the point of the product. Inside the workspace, a team is a group of people who work together every week. Products are not a separate concept in Garden. Engineering splits by product because each product has its own engineers, repositories, and meetings. Marketing, sales, and operations stay one team each because the same people serve every product. When marketing works on a Garden launch, the connection to the Garden product comes through Org Brain topics, not through a product structure.
+
 Engineering is a kind of work, not a single team. Flow Research runs several product teams that build software: Garden, Workstream, LMS, and Blockchain. Each becomes its own Garden team, and each owns its own GitHub repositories. Linking repositories to a team lets GitHub issue sync land every issue on the right board without manual routing.
 
 The product teams share an engineering agent and its skills, such as triaging an issue, reviewing a pull request, or writing a fix. Only the context changes from team to team. This follows the Grok Bot pattern of one role template reused by many teams.
