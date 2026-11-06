@@ -2,7 +2,7 @@ import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
 import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
@@ -48,6 +48,7 @@ import {
 } from './mcp-connectors'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
+import { checkGithubIssueAssignees } from './member-github-identity'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
 
@@ -784,6 +785,65 @@ export class RuntimeMcpController {
     }
   }
 
+  /**
+   * Enforces issue_write.assignees at the only boundary that knows the
+   * workspace. Before: any string reached GitHub, so an agent could assign a
+   * handle no member linked. Now each login must match a linked member of the
+   * runtime's workspace; returns the rejection message, or null to proceed.
+   */
+  private async rejectUnlinkedGithubAssignees(
+    input: unknown,
+  ): Promise<string | null> {
+    const requested =
+      typeof input === 'object' &&
+      input !== null &&
+      'assignees' in input &&
+      Array.isArray(input.assignees)
+        ? input.assignees.filter(
+            (login): login is string => typeof login === 'string',
+          )
+        : []
+    if (requested.length === 0) return null
+
+    const linked = await Result.gen(async function* (
+      this: RuntimeMcpController,
+    ) {
+      const identity = yield* Result.await(this.resolveRuntimeIdentity())
+      const rows = yield* Result.await(
+        Result.tryPromise({
+          try: () =>
+            this.getDb()
+              .select({ login: schema.member.githubLogin })
+              .from(schema.member)
+              .where(
+                and(
+                  eq(schema.member.organizationId, identity.workspaceId),
+                  isNotNull(schema.member.githubUserId),
+                  isNotNull(schema.member.githubLogin),
+                ),
+              ),
+          catch: () =>
+            new RuntimeMcpError({
+              code: 'database_failed',
+              message: 'Failed to load linked GitHub identities',
+            }),
+        }),
+      )
+      return Result.ok(rows)
+    }, this)
+
+    return linked.match({
+      ok: (rows) => {
+        const check = checkGithubIssueAssignees({
+          requested,
+          linkedLogins: rows.flatMap((row) => (row.login ? [row.login] : [])),
+        })
+        return check.status === 'allowed' ? null : check.message
+      },
+      err: (error) => error.message,
+    })
+  }
+
   private callGitHubHostedMcpTool(
     installationId: string,
     name: string,
@@ -922,6 +982,13 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
                 execute: async (input) => {
+                  if (nativeTool.name === 'issue_write') {
+                    const rejection =
+                      await this.rejectUnlinkedGithubAssignees(input)
+                    if (rejection !== null) {
+                      return { error: true, message: rejection }
+                    }
+                  }
                   const outcome = await Effect.runPromise(
                     Effect.match(
                       nativeTool.execute(input).pipe(

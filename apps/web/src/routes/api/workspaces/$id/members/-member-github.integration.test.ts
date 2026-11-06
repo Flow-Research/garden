@@ -639,6 +639,88 @@ describe('member GitHub identity (integration)', () => {
     expect(secondResponse.status).toBe(200)
   })
 
+  it("forbids an admin from editing an owner's GitHub identity; an owner may", async () => {
+    const fixture = await seedWorkspace(testDb)
+    const ownerRowId = await membershipId(
+      testDb,
+      fixture.workspaceId,
+      fixture.ownerId,
+    )
+    const patchOwnerRow = (actor: {
+      userId: string
+      role: 'owner' | 'admin'
+    }) => {
+      const request = new Request(
+        `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${ownerRowId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            github_user_id: '7007',
+            github_login: 'garden-owner',
+          }),
+        },
+      )
+      return handlerFor(
+        MemberRoute,
+        'PATCH',
+      )(
+        invocation(
+          makeContext({ testDb, ...actor, request }),
+          request,
+          { id: fixture.workspaceId, memberId: ownerRowId },
+          '/api/workspaces/$id/members/$memberId',
+        ),
+      )
+    }
+
+    const asAdmin = await patchOwnerRow({
+      userId: fixture.adminId,
+      role: 'admin',
+    })
+    expect(asAdmin.status).toBe(403)
+
+    const asOwner = await patchOwnerRow({
+      userId: fixture.ownerId,
+      role: 'owner',
+    })
+    expect(asOwner.status).toBe(200)
+    expect(await asOwner.json()).toMatchObject({
+      github_user_id: '7007',
+      github_login: 'garden-owner',
+    })
+  })
+
+  it('answers a non-manager with 403 before revealing whether a member exists', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const missingId = 'member-that-does-not-exist'
+    const request = new Request(
+      `https://garden.test/api/workspaces/${fixture.workspaceId}/members/${missingId}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ github_user_id: '1', github_login: 'x' }),
+      },
+    )
+    const response = await handlerFor(
+      MemberRoute,
+      'PATCH',
+    )(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.memberId,
+          role: 'member',
+          request,
+        }),
+        request,
+        { id: fixture.workspaceId, memberId: missingId },
+        '/api/workspaces/$id/members/$memberId',
+      ),
+    )
+    expect(response.status).toBe(403)
+  })
+
   it('rejects half-set github identity payloads at the API boundary', async () => {
     const fixture = await seedWorkspace(testDb)
     const memberRowId = await membershipId(

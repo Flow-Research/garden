@@ -104,8 +104,12 @@ function MemberRow({
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
   const canRemove =
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
-  /** Owner/admin only, own row included (matches API 403 for members). */
-  const canEditGithub = canManage
+  /**
+   * Owner/admin only, own row included; an owner's row needs an owner, the
+   * same rule as role edits (matches the API's 403s).
+   */
+  const canEditGithub =
+    canManage && (member.role !== 'owner' || canManageOwners)
   const showMenu = canEditRole || canRemove || canEditGithub
   const githubLabel = githubIdentityStatusLabel(member)
 
@@ -558,6 +562,7 @@ export function MembersTab() {
 
       {githubTarget ? (
         <GithubIdentityLinkDialog
+          key={githubTarget.id}
           open
           onOpenChange={(open) => {
             if (!open) setGithubTarget(null)

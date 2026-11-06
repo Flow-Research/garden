@@ -114,14 +114,8 @@ export async function githubIdentityByMemberId(args: {
   )
 }
 
-/**
- * Only workspace owners/admins may link, change, or unlink any member's GitHub
- * identity, their own row included. Before: members could self-link any id,
- * which let them claim someone else's GitHub account and capture its mirrored
- * issue assignments. Self-serve returns once Garden verifies ownership via
- * GitHub OAuth (docs/reference/known-gaps.md).
- */
-export async function canEditMemberGithubIdentity(args: {
+/** The caller's role in this workspace, or null when they are not a member. */
+export async function readActorWorkspaceRole(args: {
   db: Db
   workspaceId: string
   actorUserId: string
@@ -137,7 +131,22 @@ export async function canEditMemberGithubIdentity(args: {
     )
     .limit(1)
 
-  return isWorkspaceManager(actor?.role)
+  return actor?.role ?? null
+}
+
+/**
+ * Only workspace owners/admins may link, change, or unlink a member's GitHub
+ * identity, their own row included. Before: members could self-link any id,
+ * and admins could unlink an owner and claim the owner's GitHub id. Now an
+ * owner's row needs an owner, the same rule role edits use. Self-serve returns
+ * once Garden verifies ownership via GitHub OAuth (docs/reference/known-gaps.md).
+ */
+export function canEditMemberGithubIdentity(args: {
+  actorRole: string | null
+  targetRole: string
+}) {
+  if (!isWorkspaceManager(args.actorRole)) return false
+  return args.targetRole !== 'owner' || args.actorRole === 'owner'
 }
 
 /** Walks drizzle/pg wrapper causes for Postgres unique_violation. */
@@ -196,9 +205,9 @@ export async function updateMemberGithubIdentity(args: {
   githubUserId: string | null
   githubLogin: string | null
 }) {
-  return Result.tryPromise({
-    try: async () => {
-      const updated = await args.db
+  const written = await Result.tryPromise({
+    try: () =>
+      args.db
         .update(schema.member)
         .set({
           githubUserId: args.githubUserId,
@@ -210,17 +219,8 @@ export async function updateMemberGithubIdentity(args: {
             eq(schema.member.organizationId, args.workspaceId),
           ),
         )
-        .returning({ id: schema.member.id })
-
-      if (updated.length === 0) {
-        throw new WorkspaceMemberGithubError({
-          message: 'Member not found',
-          status: 404,
-        })
-      }
-    },
+        .returning({ id: schema.member.id }),
     catch: (cause) => {
-      if (cause instanceof WorkspaceMemberGithubError) return cause
       if (isUniqueViolation(cause)) {
         return new WorkspaceMemberGithubError({
           message:
@@ -239,6 +239,17 @@ export async function updateMemberGithubIdentity(args: {
       })
     },
   })
+
+  return written.andThen((updated) =>
+    updated.length === 0
+      ? Result.err(
+          new WorkspaceMemberGithubError({
+            message: 'Member not found',
+            status: 404,
+          }),
+        )
+      : Result.ok(undefined),
+  )
 }
 
 /**

@@ -97,7 +97,19 @@ describe('MembersTab GitHub identity controls', () => {
     github_login: null,
   } as MemberWithUser
 
-  function renderAs(viewerUserId: string) {
+  const ADMIN = {
+    ...MEMBER,
+    id: 'member-3',
+    user_id: 'user-3',
+    role: 'admin',
+    name: 'Linus',
+    email: 'linus@example.com',
+  } as MemberWithUser
+
+  function renderAs(
+    viewerUserId: string,
+    members: MemberWithUser[] = [OWNER, MEMBER],
+  ) {
     useAuthStore.setState({ user: { id: viewerUserId } as User })
     useWorkspaceStore.setState({
       workspace: { id: 'ws-1', name: 'Garden' } as Workspace,
@@ -105,7 +117,7 @@ describe('MembersTab GitHub identity controls', () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, staleTime: Infinity } },
     })
-    queryClient.setQueryData(workspaceKeys.members('ws-1'), [OWNER, MEMBER])
+    queryClient.setQueryData(workspaceKeys.members('ws-1'), members)
     render(
       <QueryClientProvider client={queryClient}>
         <WorkspaceIdProvider wsId="ws-1">
@@ -131,5 +143,13 @@ describe('MembersTab GitHub identity controls', () => {
     expect(
       await screen.findByRole('menuitem', { name: /link github/i }),
     ).toBeInTheDocument()
+  })
+
+  it("gives an admin no GitHub control on the owner's row", () => {
+    renderAs('user-3', [OWNER, ADMIN, MEMBER])
+    // Admin rows: own row and the member row; the owner row has no menu.
+    expect(
+      screen.getAllByRole('button', { name: 'Member actions' }),
+    ).toHaveLength(2)
   })
 })

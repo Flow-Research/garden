@@ -150,18 +150,19 @@ export function GithubIdentityLinkDialog({
     queryKey: ['github-user-search', searchTerm] as const,
     enabled: open && searchTerm.length >= 2,
     staleTime: 30_000,
-    queryFn: async () => {
-      const result = await searchGithubUsers(searchTerm)
-      return result.match({
-        ok: (suggestions) => suggestions,
-        err: (error) => {
-          throw new Error(error.message)
-        },
-      })
-    },
+    // Keep the Result as query data so a failed search is a value, not a throw.
+    queryFn: () => searchGithubUsers(searchTerm),
   })
 
-  const suggestions = searchQuery.data ?? []
+  type SearchOutcome = {
+    suggestions: GithubUserSuggestion[]
+    error: string | null
+  }
+  const searchOutcome: SearchOutcome = searchQuery.data?.match({
+    ok: (found): SearchOutcome => ({ suggestions: found, error: null }),
+    err: (error): SearchOutcome => ({ suggestions: [], error: error.message }),
+  }) ?? { suggestions: [], error: null }
+  const suggestions = searchOutcome.suggestions
   const selectedMatchesInput =
     selected !== null &&
     selected.login.toLowerCase() === typedLogin.toLowerCase()
@@ -278,12 +279,8 @@ export function GithubIdentityLinkDialog({
               <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
               Searching GitHub…
             </p>
-          ) : searchQuery.isError ? (
-            <p className="text-xs text-destructive">
-              {searchQuery.error instanceof Error
-                ? searchQuery.error.message
-                : 'Could not search GitHub users'}
-            </p>
+          ) : searchOutcome.error !== null ? (
+            <p className="text-xs text-destructive">{searchOutcome.error}</p>
           ) : suggestions.length === 0 ? (
             <p className="text-xs text-muted-foreground">
               No users matched. Check the spelling, or save to try an exact

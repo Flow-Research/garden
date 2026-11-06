@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { Result } from 'better-result'
 import type { MemberWithUser } from '@garden/core/types'
 import {
   GithubIdentityLinkDialog,
@@ -117,13 +118,9 @@ describe('GithubWorkspaceIdentitySection', () => {
       (options: { queryKey?: readonly unknown[] }) => {
         if (options.queryKey?.[0] === 'github-user-search') {
           return {
-            data: [
-              {
-                user_id: '583231',
-                login: 'octocat',
-                avatar_url: null,
-              },
-            ],
+            data: Result.ok([
+              { user_id: '583231', login: 'octocat', avatar_url: null },
+            ]),
             isPending: false,
             isFetching: false,
             isError: false,
@@ -167,7 +164,9 @@ describe('GithubIdentityLinkDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockUseQuery.mockReturnValue({
-      data: [{ user_id: '583231', login: 'octocat', avatar_url: null }],
+      data: Result.ok([
+        { user_id: '583231', login: 'octocat', avatar_url: null },
+      ]),
       isPending: false,
       isFetching: false,
       isError: false,

@@ -14,10 +14,12 @@ import {
 import {
   canEditMemberGithubIdentity,
   linkOrRefreshMemberGithubIdentity,
+  readActorWorkspaceRole,
   readWorkspaceMember,
   toMemberResponse,
   WorkspaceMemberGithubError,
 } from '@/lib/server/workspace-members'
+import { isWorkspaceManager } from '@/lib/server/team-access'
 
 class WorkspaceMemberRoleUpdateError extends TaggedError(
   'WorkspaceMemberRoleUpdateError',
@@ -57,6 +59,36 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
         ])
 
         const result = await Result.gen(async function* () {
+          // Permission before the member read: otherwise 404 vs 403 tells a
+          // non-manager which member ids exist in the workspace.
+          const actorRole = yield* Result.await(
+            Result.tryPromise({
+              try: () =>
+                readActorWorkspaceRole({
+                  db,
+                  workspaceId: params.id,
+                  actorUserId: session.user.id,
+                }),
+              catch: (cause) =>
+                new WorkspaceMemberRoleUpdateError({
+                  message: messageFromCause(
+                    cause,
+                    'Failed to check member permission',
+                  ),
+                  status: 500,
+                  cause,
+                }),
+            }),
+          )
+          if (!isWorkspaceManager(actorRole)) {
+            return Result.err(
+              new WorkspaceMemberGithubError({
+                message: 'Only a workspace owner or admin can update members',
+                status: 403,
+              }),
+            )
+          }
+
           const existing = yield* Result.await(
             Result.tryPromise({
               try: async () =>
@@ -89,30 +121,16 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
             body.github_user_id !== undefined &&
             body.github_login !== undefined
           ) {
-            const allowed = yield* Result.await(
-              Result.tryPromise({
-                try: async () =>
-                  await canEditMemberGithubIdentity({
-                    db,
-                    workspaceId: params.id,
-                    actorUserId: session.user.id,
-                  }),
-                catch: (cause) =>
-                  new WorkspaceMemberGithubError({
-                    message: messageFromCause(
-                      cause,
-                      'Failed to check GitHub identity permission',
-                    ),
-                    status: 500,
-                    cause,
-                  }),
-              }),
-            )
-            if (!allowed) {
+            if (
+              !canEditMemberGithubIdentity({
+                actorRole,
+                targetRole: existing.role,
+              })
+            ) {
               return Result.err(
                 new WorkspaceMemberGithubError({
                   message:
-                    'Only a workspace owner or admin can update GitHub identity',
+                    "Only a workspace owner can update an owner's GitHub identity",
                   status: 403,
                 }),
               )

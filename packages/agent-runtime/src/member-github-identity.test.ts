@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  checkGithubIssueAssignees,
   memberGithubIdentity,
-  resolveGithubIssueAssignees,
 } from './member-github-identity'
 
 describe('memberGithubIdentity', () => {
@@ -31,64 +31,32 @@ describe('memberGithubIdentity', () => {
   })
 })
 
-describe('resolveGithubIssueAssignees', () => {
-  it('returns logins for linked members', () => {
+describe('checkGithubIssueAssignees', () => {
+  it('allows logins linked to workspace members, ignoring case', () => {
     expect(
-      resolveGithubIssueAssignees([
-        {
-          label: 'Ada',
-          github_identity: {
-            status: 'linked',
-            user_id: '1',
-            login: 'ada',
-          },
-        },
-        {
-          label: 'Grace',
-          github_identity: {
-            status: 'linked',
-            user_id: '2',
-            login: 'grace',
-          },
-        },
-      ]),
-    ).toEqual({ ok: true, assignees: ['ada', 'grace'] })
+      checkGithubIssueAssignees({
+        requested: ['Ada', 'grace'],
+        linkedLogins: ['ada', 'Grace'],
+      }),
+    ).toEqual({ status: 'allowed' })
   })
 
-  it('fails with explicit not_linked instead of inventing handles', () => {
-    const result = resolveGithubIssueAssignees([
-      {
-        label: 'Ada',
-        github_identity: {
-          status: 'linked',
-          user_id: '1',
-          login: 'ada',
-        },
-      },
-      {
-        label: 'Unlinked User',
-        github_identity: { status: 'not_linked' },
-      },
-      {
-        label: 'Also Missing',
-        github_identity: { status: 'not_linked' },
-      },
-    ])
+  it('rejects logins no workspace member has linked', () => {
+    const result = checkGithubIssueAssignees({
+      requested: ['ada', 'stranger', 'also-unknown'],
+      linkedLogins: ['ada'],
+    })
     expect(result).toMatchObject({
-      ok: false,
-      status: 'not_linked',
-      not_linked: ['Unlinked User', 'Also Missing'],
+      status: 'unlinked',
+      logins: ['stranger', 'also-unknown'],
     })
-    if (result.ok) throw new Error('expected not_linked failure')
-    expect(result.message).toContain('Unlinked User')
-    expect(result.message).toContain('Also Missing')
-    expect(result.message).not.toMatch(/invent|guess|assume/i)
+    if (result.status !== 'unlinked') throw new Error('expected unlinked')
+    expect(result.message).toContain('stranger')
   })
 
-  it('returns empty assignees for an empty candidate list', () => {
-    expect(resolveGithubIssueAssignees([])).toEqual({
-      ok: true,
-      assignees: [],
-    })
+  it('rejects everything when nobody in the workspace is linked', () => {
+    expect(
+      checkGithubIssueAssignees({ requested: ['ada'], linkedLogins: [] }),
+    ).toMatchObject({ status: 'unlinked', logins: ['ada'] })
   })
 })
