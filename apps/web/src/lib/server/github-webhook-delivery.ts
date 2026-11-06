@@ -1,117 +1,137 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { schema, type Db } from '@/lib/server/db'
+
+export type GitHubWebhookTx = Parameters<Parameters<Db['transaction']>[0]>[0]
 
 export class GitHubWebhookDeliveryError extends TaggedError(
   'GitHubWebhookDeliveryError',
 )<{
-  code: 'missing_delivery_id' | 'db_error'
   message: string
-  cause?: unknown
+  cause: unknown
 }>() {}
 
-export type GitHubWebhookDeliveryClaim =
-  | { kind: 'proceed' }
-  | { kind: 'duplicate' }
-  | { kind: 'out_of_order' }
+/** Identity of one GitHub delivery, taken from its headers and payload. */
+export type GitHubWebhookDelivery = {
+  deliveryId: string
+  event: string
+  action: string
+}
 
 /**
- * Claims an inbound GitHub delivery before apply (#161 review).
+ * Where a delivery sits in time: GitHub's `updated_at` (ms) for the issue or
+ * comment, compared only against other deliveries in the same scope.
+ */
+export type GitHubWebhookOrder = {
+  scope: string
+  marker: number
+}
+
+export type GitHubWebhookDeliveryOutcome<T> =
+  | { kind: 'unbound' }
+  | { kind: 'duplicate' }
+  | { kind: 'stale' }
+  | { kind: 'processed'; result: T }
+
+/**
+ * Records a GitHub delivery in the ledger and applies it, all in one
+ * transaction.
  *
- * Why: HMAC proves authenticity but not uniqueness or order. GitHub retries
- * reuse `X-GitHub-Delivery`; out-of-order hooks can reapply stale title/status.
- * Before: every verified POST ran apply. After: unique delivery_id short-
- * circuits retries; order_scope max(marker) rejects older events. Docs:
+ * Why one transaction: the earlier version claimed the delivery id first and
+ * applied afterwards, so a failed apply left a claimed id behind and a
+ * redelivery of it was then dropped as a duplicate. Now a failed apply rolls
+ * the ledger row back with it, and a redelivery can succeed.
+ *
+ * Ordering: the binding row is locked `FOR UPDATE` first, so deliveries for one
+ * linked issue run one at a time and the "newest applied marker" read cannot
+ * race another delivery. A delivery is stale when an applied delivery in its
+ * scope has a later marker, or when its scope already applied a `deleted`
+ * action (a late `edited` must not bring a deleted comment back). Equal
+ * markers apply, because GitHub timestamps have one-second resolution and two
+ * real edits can share a second. Stale deliveries are
+ * still recorded so a redelivery of them is a duplicate.
+ *
+ * GitHub delivery headers:
  * https://docs.github.com/en/webhooks/webhook-events-and-payloads#delivery-headers
  */
-export async function claimGitHubWebhookDelivery(args: {
+export async function processGitHubWebhookDelivery<T>(args: {
   db: Db
-  deliveryId: string | null
-  event: string
-  action: string | null
-  installationId: string | null
-  orderScope: string
-  orderMarker: number
-  bindingId: string | null
-  workspaceId: string | null
-}): Promise<Result<GitHubWebhookDeliveryClaim, GitHubWebhookDeliveryError>> {
-  const deliveryId = args.deliveryId?.trim() || null
-  if (!deliveryId) {
-    return Result.err(
-      new GitHubWebhookDeliveryError({
-        code: 'missing_delivery_id',
-        message: 'Missing X-GitHub-Delivery header',
-      }),
-    )
-  }
+  bindingId: string
+  delivery: GitHubWebhookDelivery
+  order: GitHubWebhookOrder
+  apply: (tx: GitHubWebhookTx) => Promise<T>
+}): Promise<
+  Result<GitHubWebhookDeliveryOutcome<T>, GitHubWebhookDeliveryError>
+> {
+  return Result.tryPromise({
+    try: () =>
+      args.db.transaction(
+        async (tx): Promise<GitHubWebhookDeliveryOutcome<T>> => {
+          const [binding] = await tx
+            .select({ id: schema.issueSourceBinding.id })
+            .from(schema.issueSourceBinding)
+            .where(eq(schema.issueSourceBinding.id, args.bindingId))
+            .for('update')
+          if (!binding) return { kind: 'unbound' }
 
-  const claimResult = await Result.tryPromise({
-    try: async () => {
-      const inserted = await args.db
-        .insert(schema.githubWebhookDelivery)
-        .values({
-          deliveryId,
-          event: args.event,
-          action: args.action,
-          installationId: args.installationId,
-          orderScope: args.orderScope,
-          orderMarker: args.orderMarker,
-          status: 'applied',
-          bindingId: args.bindingId,
-          workspaceId: args.workspaceId,
-        })
-        .onConflictDoNothing({
-          target: [schema.githubWebhookDelivery.deliveryId],
-        })
-        .returning({ id: schema.githubWebhookDelivery.id })
+          const [prior] = await tx
+            .select({
+              newestMarker: sql<
+                number | null
+              >`max(${schema.githubWebhookDelivery.orderMarker})`.mapWith(
+                (value: string | null) =>
+                  value === null ? null : Number(value),
+              ),
+              deleted: sql<boolean>`coalesce(bool_or(${schema.githubWebhookDelivery.action} = 'deleted'), false)`,
+            })
+            .from(schema.githubWebhookDelivery)
+            .where(
+              and(
+                eq(schema.githubWebhookDelivery.orderScope, args.order.scope),
+                eq(schema.githubWebhookDelivery.status, 'applied'),
+              ),
+            )
+          const stale =
+            prior !== undefined &&
+            (prior.deleted ||
+              (prior.newestMarker !== null &&
+                args.order.marker < prior.newestMarker))
 
-      if (inserted.length === 0) {
-        return { kind: 'duplicate' as const }
-      }
+          const inserted = await tx
+            .insert(schema.githubWebhookDelivery)
+            .values({
+              deliveryId: args.delivery.deliveryId,
+              bindingId: args.bindingId,
+              event: args.delivery.event,
+              action: args.delivery.action,
+              orderScope: args.order.scope,
+              orderMarker: args.order.marker,
+              status: stale ? 'stale' : 'applied',
+            })
+            .onConflictDoNothing({
+              target: schema.githubWebhookDelivery.deliveryId,
+            })
+            .returning({ id: schema.githubWebhookDelivery.id })
+          if (inserted.length === 0) return { kind: 'duplicate' }
+          if (stale) return { kind: 'stale' }
 
-      const [latest] = await args.db
-        .select({
-          orderMarker: schema.githubWebhookDelivery.orderMarker,
-          deliveryId: schema.githubWebhookDelivery.deliveryId,
-        })
-        .from(schema.githubWebhookDelivery)
-        .where(
-          and(
-            eq(schema.githubWebhookDelivery.orderScope, args.orderScope),
-            eq(schema.githubWebhookDelivery.status, 'applied'),
-            sql`${schema.githubWebhookDelivery.deliveryId} <> ${deliveryId}`,
-          ),
-        )
-        .orderBy(desc(schema.githubWebhookDelivery.orderMarker))
-        .limit(1)
-
-      if (latest && args.orderMarker < latest.orderMarker) {
-        await args.db
-          .update(schema.githubWebhookDelivery)
-          .set({ status: 'out_of_order' })
-          .where(eq(schema.githubWebhookDelivery.deliveryId, deliveryId))
-        return { kind: 'out_of_order' as const }
-      }
-
-      return { kind: 'proceed' as const }
-    },
+          return { kind: 'processed', result: await args.apply(tx) }
+        },
+      ),
     catch: (cause) =>
       new GitHubWebhookDeliveryError({
-        code: 'db_error',
-        message: 'Failed to claim GitHub webhook delivery',
+        message: 'Failed to process GitHub webhook delivery',
         cause,
       }),
   })
-
-  return claimResult
 }
 
-/** Issue-level order stream for a binding. */
+/** Order scope for a linked issue's title, body, and state. */
 export function githubWebhookIssueOrderScope(bindingId: string) {
   return `binding:${bindingId}:issue`
 }
 
-/** Comment-level order stream (independent of issue title/status edits). */
+/** Order scope for one GitHub comment, independent of issue edits. */
 export function githubWebhookCommentOrderScope(
   bindingId: string,
   commentId: string,

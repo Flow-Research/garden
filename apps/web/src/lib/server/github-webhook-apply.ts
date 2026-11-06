@@ -1,124 +1,162 @@
 import { and, eq } from 'drizzle-orm'
-import { Result, TaggedError } from 'better-result'
-import { schema, type Db } from '@/lib/server/db'
+import { schema } from '@/lib/server/db'
+import type { GitHubWebhookTx } from './github-webhook-delivery'
+import type { IssueLifecycleSnapshot } from './issue-mutation-effects'
 import type {
   GitHubWebhookBindingMatch,
   GitHubWebhookCommentTarget,
   GitHubWebhookIssueTarget,
 } from './github-webhook-resolve'
 
-export class GitHubWebhookApplyError extends TaggedError(
-  'GitHubWebhookApplyError',
-)<{
-  code: 'issue_not_found' | 'unsupported_action' | 'db_error'
-  message: string
-  cause?: unknown
-}>() {}
-
 export type GitHubWebhookApplyField = 'title' | 'description' | 'status'
 
-export type GitHubWebhookApplyResult = {
-  applied: boolean
-  skippedReason: 'bot_sender' | 'unsupported_action' | 'noop' | null
-  fields: GitHubWebhookApplyField[]
-  /** Present when a linked issue row was loaded (including noop). */
-  previousStatus: string | null
-  previousAssigneeType: string | null
-  previousAssigneeId: string | null
-  statusChanged: boolean
-}
+export type GitHubWebhookSkipReason =
+  | 'bot_sender'
+  | 'unsupported_action'
+  | 'noop'
+  | 'unbound'
 
-export type GitHubWebhookCommentApplyResult = {
-  applied: boolean
-  skippedReason: 'bot_sender' | 'unsupported_action' | 'noop' | null
-  action: 'created' | 'updated' | 'deleted' | null
-  commentId: string | null
-}
+export type GitHubWebhookIssueApplyOutcome =
+  | { kind: 'skipped'; reason: GitHubWebhookSkipReason }
+  | {
+      kind: 'applied'
+      fields: GitHubWebhookApplyField[]
+      previous: IssueLifecycleSnapshot
+      issue: typeof schema.issue.$inferSelect
+    }
+
+export type GitHubWebhookCommentApplyOutcome =
+  | { kind: 'skipped'; reason: GitHubWebhookSkipReason }
+  | {
+      kind: 'applied'
+      action: 'created' | 'updated' | 'deleted'
+      commentId: string
+      issue: { teamId: string | null; assigneeId: string | null }
+    }
+
+type IssuePatch = Partial<{
+  title: string
+  description: string | null
+  status: 'todo' | 'done'
+}>
 
 /**
  * Maps GitHub issue webhook actions onto Garden issue columns (#161).
- * - edited → title + description
- * - closed → status done
- * - reopened → status todo
- * Bot senders are skipped to avoid Garden→GitHub→Garden echo loops.
+ * `edited` syncs title and body, `closed` sets done, `reopened` sets todo.
  */
-export function planGitHubWebhookIssueApply(target: GitHubWebhookIssueTarget): {
-  fields: Partial<{
-    title: string
-    description: string | null
-    status: 'todo' | 'done'
-  }>
-  planned: GitHubWebhookApplyField[]
-} | null {
-  if (target.action === 'edited') {
-    const fields: Partial<{
-      title: string
-      description: string | null
-      status: 'todo' | 'done'
-    }> = {}
-    const planned: GitHubWebhookApplyField[] = []
-    if (target.title !== null) {
-      fields.title = target.title
-      planned.push('title')
-    }
-    // GitHub may send body: null when cleared; still sync that.
-    fields.description = target.body
-    planned.push('description')
-    return planned.length > 0 ? { fields, planned } : null
+export function planGitHubWebhookIssueApply(
+  target: GitHubWebhookIssueTarget,
+): IssuePatch | null {
+  switch (target.action) {
+    case 'edited':
+      return target.title === null
+        ? { description: target.body }
+        : { title: target.title, description: target.body }
+    case 'closed':
+      return { status: 'done' }
+    case 'reopened':
+      return { status: 'todo' }
+    default:
+      return null
   }
+}
 
-  if (target.action === 'closed') {
-    return { fields: { status: 'done' }, planned: ['status'] }
-  }
-
-  if (target.action === 'reopened') {
-    return { fields: { status: 'todo' }, planned: ['status'] }
-  }
-
-  return null
+function touchBinding(tx: GitHubWebhookTx, bindingId: string) {
+  return tx
+    .update(schema.issueSourceBinding)
+    .set({ lastSyncedAt: new Date() })
+    .where(eq(schema.issueSourceBinding.id, bindingId))
 }
 
 /**
- * Applies a planned inbound GitHub issue change to the linked Garden issue and
- * bumps the binding's last_synced_at.
+ * Writes an inbound GitHub issue change to the linked Garden issue inside the
+ * delivery transaction. Bot senders are skipped so Garden's own GitHub writes
+ * do not echo back. Lifecycle effects (inbox archive, run cancel, realtime)
+ * run after commit in the route, through `applyIssueMutationSideEffects`, the
+ * same helper `PUT /api/issues/$id` uses.
  */
 export async function applyGitHubWebhookIssueUpdate(args: {
-  db: Db
+  tx: GitHubWebhookTx
   binding: GitHubWebhookBindingMatch
   target: GitHubWebhookIssueTarget
-}): Promise<Result<GitHubWebhookApplyResult, GitHubWebhookApplyError>> {
+}): Promise<GitHubWebhookIssueApplyOutcome> {
   if (args.target.senderType === 'Bot') {
-    return Result.ok({
-      applied: false,
-      skippedReason: 'bot_sender',
-      fields: [],
-      previousStatus: null,
-      previousAssigneeType: null,
-      previousAssigneeId: null,
-      statusChanged: false,
-    })
+    return { kind: 'skipped', reason: 'bot_sender' }
   }
-
   const plan = planGitHubWebhookIssueApply(args.target)
-  if (!plan) {
-    return Result.ok({
-      applied: false,
-      skippedReason: 'unsupported_action',
-      fields: [],
-      previousStatus: null,
-      previousAssigneeType: null,
-      previousAssigneeId: null,
-      statusChanged: false,
-    })
+  if (!plan) return { kind: 'skipped', reason: 'unsupported_action' }
+
+  const issueMatch = and(
+    eq(schema.issue.id, args.binding.issueId),
+    eq(schema.issue.workspaceId, args.binding.workspaceId),
+  )
+  const [existing] = await args.tx.select().from(schema.issue).where(issueMatch)
+  if (!existing) return { kind: 'skipped', reason: 'unbound' }
+
+  const patch: IssuePatch = {}
+  const fields: GitHubWebhookApplyField[] = []
+  if (plan.title !== undefined && plan.title !== existing.title) {
+    patch.title = plan.title
+    fields.push('title')
+  }
+  if (
+    plan.description !== undefined &&
+    plan.description !== (existing.description ?? null)
+  ) {
+    patch.description = plan.description
+    fields.push('description')
+  }
+  if (
+    plan.status !== undefined &&
+    plan.status !== (existing.status ?? 'todo')
+  ) {
+    patch.status = plan.status
+    fields.push('status')
   }
 
-  const [existing] = await args.db
+  await touchBinding(args.tx, args.binding.bindingId)
+  if (fields.length === 0) return { kind: 'skipped', reason: 'noop' }
+
+  const [issue] = await args.tx
+    .update(schema.issue)
+    .set({ ...patch, updatedAt: new Date() })
+    .where(issueMatch)
+    .returning()
+  if (!issue) return { kind: 'skipped', reason: 'unbound' }
+
+  return {
+    kind: 'applied',
+    fields,
+    previous: {
+      status: existing.status,
+      assigneeType: existing.assigneeType,
+      assigneeId: existing.assigneeId,
+    },
+    issue,
+  }
+}
+
+/**
+ * Creates, edits, or deletes a connector-sourced Garden comment from a GitHub
+ * `issue_comment` webhook (#161), keyed on `(issue_id, external_comment_id)`.
+ * Bot senders are skipped so Garden's own GitHub comments do not echo back.
+ */
+export async function applyGitHubWebhookComment(args: {
+  tx: GitHubWebhookTx
+  binding: GitHubWebhookBindingMatch
+  target: GitHubWebhookCommentTarget
+}): Promise<GitHubWebhookCommentApplyOutcome> {
+  if (args.target.senderType === 'Bot') {
+    return { kind: 'skipped', reason: 'bot_sender' }
+  }
+  const action = args.target.action
+  if (action !== 'created' && action !== 'edited' && action !== 'deleted') {
+    return { kind: 'skipped', reason: 'unsupported_action' }
+  }
+
+  const [issue] = await args.tx
     .select({
-      id: schema.issue.id,
-      title: schema.issue.title,
-      description: schema.issue.description,
-      status: schema.issue.status,
-      assigneeType: schema.issue.assigneeType,
+      teamId: schema.issue.teamId,
       assigneeId: schema.issue.assigneeId,
     })
     .from(schema.issue)
@@ -128,164 +166,10 @@ export async function applyGitHubWebhookIssueUpdate(args: {
         eq(schema.issue.workspaceId, args.binding.workspaceId),
       ),
     )
-    .limit(1)
+  if (!issue) return { kind: 'skipped', reason: 'unbound' }
 
-  if (!existing) {
-    return Result.err(
-      new GitHubWebhookApplyError({
-        code: 'issue_not_found',
-        message: 'Linked Garden issue was not found for this binding',
-      }),
-    )
-  }
-
-  const previous = {
-    previousStatus: existing.status,
-    previousAssigneeType: existing.assigneeType,
-    previousAssigneeId: existing.assigneeId,
-  }
-
-  const changedFields: GitHubWebhookApplyField[] = []
-  const patch: {
-    title?: string
-    description?: string | null
-    status?: string
-    updatedAt: Date
-  } = { updatedAt: new Date() }
-
-  if (plan.fields.title !== undefined && plan.fields.title !== existing.title) {
-    patch.title = plan.fields.title
-    changedFields.push('title')
-  }
-  if (
-    plan.fields.description !== undefined &&
-    plan.fields.description !== (existing.description ?? null)
-  ) {
-    patch.description = plan.fields.description
-    changedFields.push('description')
-  }
-  if (
-    plan.fields.status !== undefined &&
-    plan.fields.status !== (existing.status ?? 'todo')
-  ) {
-    patch.status = plan.fields.status
-    changedFields.push('status')
-  }
-
-  if (changedFields.length === 0) {
-    await args.db
-      .update(schema.issueSourceBinding)
-      .set({ lastSyncedAt: new Date() })
-      .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
-
-    return Result.ok({
-      applied: false,
-      skippedReason: 'noop',
-      fields: [],
-      ...previous,
-      statusChanged: false,
-    })
-  }
-
-  const writeResult = await Result.tryPromise({
-    try: async () => {
-      await args.db.transaction(async (tx) => {
-        await tx
-          .update(schema.issue)
-          .set(patch)
-          .where(
-            and(
-              eq(schema.issue.id, args.binding.issueId),
-              eq(schema.issue.workspaceId, args.binding.workspaceId),
-            ),
-          )
-        await tx
-          .update(schema.issueSourceBinding)
-          .set({ lastSyncedAt: new Date() })
-          .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
-      })
-    },
-    catch: (cause) =>
-      new GitHubWebhookApplyError({
-        code: 'db_error',
-        message: 'Failed to apply GitHub webhook issue update',
-        cause,
-      }),
-  })
-  if (writeResult.isErr()) return Result.err(writeResult.error)
-
-  return Result.ok({
-    applied: true,
-    skippedReason: null,
-    fields: changedFields,
-    ...previous,
-    statusChanged: changedFields.includes('status'),
-  })
-}
-
-function connectorCommentMetadata(target: GitHubWebhookCommentTarget) {
-  return {
-    connector_id: 'github',
-    github_login: target.githubLogin,
-    github_user_id: target.githubUserId,
-    html_url: target.commentHtmlUrl,
-  }
-}
-
-/**
- * Upserts or deletes a connector-sourced Garden comment from a GitHub
- * `issue_comment` webhook (#161). Dedupes on `(issue_id, external_comment_id)`.
- * Bot senders are skipped to avoid Garden→GitHub→Garden echo loops.
- */
-export async function applyGitHubWebhookComment(args: {
-  db: Db
-  binding: GitHubWebhookBindingMatch
-  target: GitHubWebhookCommentTarget
-}): Promise<Result<GitHubWebhookCommentApplyResult, GitHubWebhookApplyError>> {
-  if (args.target.senderType === 'Bot') {
-    return Result.ok({
-      applied: false,
-      skippedReason: 'bot_sender',
-      action: null,
-      commentId: null,
-    })
-  }
-
-  const action = args.target.action
-  if (action !== 'created' && action !== 'edited' && action !== 'deleted') {
-    return Result.ok({
-      applied: false,
-      skippedReason: 'unsupported_action',
-      action: null,
-      commentId: null,
-    })
-  }
-
-  const [existingIssue] = await args.db
-    .select({ id: schema.issue.id })
-    .from(schema.issue)
-    .where(
-      and(
-        eq(schema.issue.id, args.binding.issueId),
-        eq(schema.issue.workspaceId, args.binding.workspaceId),
-      ),
-    )
-    .limit(1)
-
-  if (!existingIssue) {
-    return Result.err(
-      new GitHubWebhookApplyError({
-        code: 'issue_not_found',
-        message: 'Linked Garden issue was not found for this binding',
-      }),
-    )
-  }
-
-  const [existingComment] = await args.db
-    .select({
-      id: schema.issueComment.id,
-      body: schema.issueComment.body,
-    })
+  const [existing] = await args.tx
+    .select({ id: schema.issueComment.id, body: schema.issueComment.body })
     .from(schema.issueComment)
     .where(
       and(
@@ -293,135 +177,45 @@ export async function applyGitHubWebhookComment(args: {
         eq(schema.issueComment.externalCommentId, args.target.commentId),
       ),
     )
-    .limit(1)
+
+  await touchBinding(args.tx, args.binding.bindingId)
 
   if (action === 'deleted') {
-    if (!existingComment) {
-      await args.db
-        .update(schema.issueSourceBinding)
-        .set({ lastSyncedAt: new Date() })
-        .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
-      return Result.ok({
-        applied: false,
-        skippedReason: 'noop',
-        action: null,
-        commentId: null,
-      })
-    }
-
-    const deleteResult = await Result.tryPromise({
-      try: async () => {
-        await args.db.transaction(async (tx) => {
-          await tx
-            .delete(schema.issueComment)
-            .where(eq(schema.issueComment.id, existingComment.id))
-          await tx
-            .update(schema.issueSourceBinding)
-            .set({ lastSyncedAt: new Date() })
-            .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
-        })
-      },
-      catch: (cause) =>
-        new GitHubWebhookApplyError({
-          code: 'db_error',
-          message: 'Failed to delete GitHub webhook comment',
-          cause,
-        }),
-    })
-    if (deleteResult.isErr()) return Result.err(deleteResult.error)
-
-    return Result.ok({
-      applied: true,
-      skippedReason: null,
-      action: 'deleted',
-      commentId: existingComment.id,
-    })
+    if (!existing) return { kind: 'skipped', reason: 'noop' }
+    await args.tx
+      .delete(schema.issueComment)
+      .where(eq(schema.issueComment.id, existing.id))
+    return { kind: 'applied', action: 'deleted', commentId: existing.id, issue }
   }
 
-  const metadata = connectorCommentMetadata(args.target)
+  const metadata = {
+    connector_id: 'github',
+    github_login: args.target.githubLogin,
+    github_user_id: args.target.githubUserId,
+    html_url: args.target.commentHtmlUrl,
+  }
 
-  if (existingComment) {
-    if (existingComment.body === args.target.body) {
-      await args.db
-        .update(schema.issueSourceBinding)
-        .set({ lastSyncedAt: new Date() })
-        .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
-      return Result.ok({
-        applied: false,
-        skippedReason: 'noop',
-        action: null,
-        commentId: existingComment.id,
-      })
+  if (existing) {
+    if (existing.body === args.target.body) {
+      return { kind: 'skipped', reason: 'noop' }
     }
-
-    const updateResult = await Result.tryPromise({
-      try: async () => {
-        await args.db.transaction(async (tx) => {
-          await tx
-            .update(schema.issueComment)
-            .set({
-              body: args.target.body,
-              metadata,
-            })
-            .where(eq(schema.issueComment.id, existingComment.id))
-          await tx
-            .update(schema.issueSourceBinding)
-            .set({ lastSyncedAt: new Date() })
-            .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
-        })
-      },
-      catch: (cause) =>
-        new GitHubWebhookApplyError({
-          code: 'db_error',
-          message: 'Failed to update GitHub webhook comment',
-          cause,
-        }),
-    })
-    if (updateResult.isErr()) return Result.err(updateResult.error)
-
-    return Result.ok({
-      applied: true,
-      skippedReason: null,
-      action: 'updated',
-      commentId: existingComment.id,
-    })
+    await args.tx
+      .update(schema.issueComment)
+      .set({ body: args.target.body, metadata })
+      .where(eq(schema.issueComment.id, existing.id))
+    return { kind: 'applied', action: 'updated', commentId: existing.id, issue }
   }
 
   const commentId = crypto.randomUUID()
-  const insertResult = await Result.tryPromise({
-    try: async () => {
-      await args.db.transaction(async (tx) => {
-        await tx.insert(schema.issueComment).values({
-          id: commentId,
-          issueId: args.binding.issueId,
-          authorType: 'connector',
-          authorId: null,
-          body: args.target.body,
-          externalCommentId: args.target.commentId,
-          metadata,
-          ...(args.target.createdAt
-            ? { createdAt: args.target.createdAt }
-            : {}),
-        })
-        await tx
-          .update(schema.issueSourceBinding)
-          .set({ lastSyncedAt: new Date() })
-          .where(eq(schema.issueSourceBinding.id, args.binding.bindingId))
-      })
-    },
-    catch: (cause) =>
-      new GitHubWebhookApplyError({
-        code: 'db_error',
-        message: 'Failed to insert GitHub webhook comment',
-        cause,
-      }),
+  await args.tx.insert(schema.issueComment).values({
+    id: commentId,
+    issueId: args.binding.issueId,
+    authorType: 'connector',
+    authorId: null,
+    body: args.target.body,
+    externalCommentId: args.target.commentId,
+    metadata,
+    ...(args.target.createdAt ? { createdAt: args.target.createdAt } : {}),
   })
-  if (insertResult.isErr()) return Result.err(insertResult.error)
-
-  return Result.ok({
-    applied: true,
-    skippedReason: null,
-    action: 'created',
-    commentId,
-  })
+  return { kind: 'applied', action: 'created', commentId, issue }
 }

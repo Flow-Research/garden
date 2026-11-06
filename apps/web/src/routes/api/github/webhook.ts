@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
@@ -7,7 +7,6 @@ import {
   serviceUnavailable,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { verifyGitHubWebhookSignature } from '@/lib/server/github-webhook'
 import {
@@ -15,9 +14,9 @@ import {
   applyGitHubWebhookIssueUpdate,
 } from '@/lib/server/github-webhook-apply'
 import {
-  claimGitHubWebhookDelivery,
   githubWebhookCommentOrderScope,
   githubWebhookIssueOrderScope,
+  processGitHubWebhookDelivery,
 } from '@/lib/server/github-webhook-delivery'
 import {
   parseGitHubWebhookCommentTarget,
@@ -32,9 +31,11 @@ import {
 /**
  * GitHub App webhook ingress (#161).
  *
- * Verify signature → claim delivery (dedupe/order) → parse issues.* or
- * issue_comment.* → resolve install/binding → apply → lifecycle + realtime.
- * Unmatched or skipped deliveries still return 200 so GitHub stops retrying.
+ * Verify signature, parse `issues.*` or `issue_comment.*`, resolve the
+ * installation and issue binding, then record and apply the delivery in one
+ * transaction (`processGitHubWebhookDelivery`). Lifecycle effects and realtime
+ * events run only after that transaction commits. Unbound, duplicate, stale,
+ * and skipped deliveries return 200 so GitHub does not mark them failed.
  */
 export const Route = createFileRoute('/api/github/webhook')({
   server: {
@@ -47,7 +48,6 @@ export const Route = createFileRoute('/api/github/webhook')({
           rawBody,
           signatureHeader: request.headers.get('x-hub-signature-256'),
         })
-
         if (verified.isErr()) {
           switch (verified.error.code) {
             case 'missing_secret':
@@ -59,206 +59,135 @@ export const Route = createFileRoute('/api/github/webhook')({
           }
         }
 
-        const deliveryId = request.headers.get('x-github-delivery')
-        const githubEvent = request.headers.get('x-github-event') ?? 'unknown'
+        const deliveryId = request.headers.get('x-github-delivery')?.trim()
+        if (!deliveryId) {
+          return badRequest('Missing X-GitHub-Delivery header')
+        }
+        const event = request.headers.get('x-github-event') ?? 'unknown'
 
-        const text = new TextDecoder().decode(rawBody)
-        let payload: unknown
-        try {
-          payload = JSON.parse(text) as unknown
-        } catch {
+        const payload = Result.try(
+          () => JSON.parse(new TextDecoder().decode(rawBody)) as unknown,
+        )
+        if (payload.isErr()) {
           return badRequest('Webhook body must be valid JSON')
         }
 
-        const commentTargetResult = parseGitHubWebhookCommentTarget(payload)
-        if (commentTargetResult.isErr()) {
-          return badRequest(commentTargetResult.error.message)
+        const commentTarget = parseGitHubWebhookCommentTarget(payload.value)
+        if (commentTarget.isErr()) {
+          return badRequest(commentTarget.error.message)
         }
-
-        if (commentTargetResult.value !== null) {
-          const target = commentTargetResult.value
+        if (commentTarget.value !== null) {
+          const target = commentTarget.value
           const db = await appContext.db()
-          const bindingResult = await resolveGitHubWebhookBinding({
-            db,
-            target,
-          })
-          const binding = bindingResult.match({
-            ok: (value) => value,
-            err: () => null,
-          })
-          if (!binding) {
-            return json({ ok: true, status: 'unbound' }, 200)
-          }
+          const binding = (
+            await resolveGitHubWebhookBinding({ db, target })
+          ).unwrap()
+          if (!binding) return json({ ok: true, status: 'unbound' }, 200)
 
-          const claim = await claimGitHubWebhookDelivery({
+          const processed = await processGitHubWebhookDelivery({
             db,
-            deliveryId,
-            event: githubEvent,
-            action: target.action,
-            installationId: target.installationId,
-            orderScope: githubWebhookCommentOrderScope(
-              binding.bindingId,
-              target.commentId,
-            ),
-            orderMarker: target.updatedAtMs,
             bindingId: binding.bindingId,
+            delivery: { deliveryId, event, action: target.action },
+            order: {
+              scope: githubWebhookCommentOrderScope(
+                binding.bindingId,
+                target.commentId,
+              ),
+              marker: target.updatedAtMs,
+            },
+            apply: (tx) => applyGitHubWebhookComment({ tx, binding, target }),
+          })
+          if (processed.isErr()) {
+            return serviceUnavailable(processed.error.message)
+          }
+          const outcome = processed.value
+          if (outcome.kind !== 'processed') {
+            return json({ ok: true, status: outcome.kind }, 200)
+          }
+          const applied = outcome.result
+          if (applied.kind === 'skipped') {
+            return json(
+              { ok: true, status: 'skipped', skipped_reason: applied.reason },
+              200,
+            )
+          }
+
+          publishCommentChangedEvent({
+            env: appEnv,
+            waitUntil: (promise) => appContext.waitUntil(promise),
             workspaceId: binding.workspaceId,
+            action: applied.action,
+            issueId: binding.issueId,
+            commentId: applied.commentId,
+            teamId: applied.issue.teamId,
+            assigneeId: applied.issue.assigneeId,
           })
-          if (claim.isErr()) {
-            if (claim.error.code === 'missing_delivery_id') {
-              return badRequest(claim.error.message)
-            }
-            return serviceUnavailable(claim.error.message)
-          }
-          if (claim.value.kind === 'duplicate') {
-            return json({ ok: true, status: 'duplicate' }, 200)
-          }
-          if (claim.value.kind === 'out_of_order') {
-            return json({ ok: true, status: 'out_of_order' }, 200)
-          }
-
-          const applyResult = await applyGitHubWebhookComment({
-            db,
-            binding,
-            target,
-          })
-          if (applyResult.isErr()) {
-            if (applyResult.error.code === 'issue_not_found') {
-              return json({ ok: true, status: 'unbound' }, 200)
-            }
-            return serviceUnavailable(applyResult.error.message)
-          }
-
-          if (
-            applyResult.value.applied &&
-            applyResult.value.action &&
-            applyResult.value.commentId
-          ) {
-            const [issue] = await db
-              .select({
-                teamId: schema.issue.teamId,
-                assigneeId: schema.issue.assigneeId,
-              })
-              .from(schema.issue)
-              .where(eq(schema.issue.id, binding.issueId))
-              .limit(1)
-            publishCommentChangedEvent({
-              env: appEnv,
-              waitUntil: (promise) => appContext.waitUntil(promise),
-              workspaceId: binding.workspaceId,
-              action: applyResult.value.action,
-              issueId: binding.issueId,
-              commentId: applyResult.value.commentId,
-              teamId: issue?.teamId ?? null,
-              assigneeId: issue?.assigneeId ?? null,
-            })
-          }
-
           return json(
             {
               ok: true,
-              status: applyResult.value.applied ? 'applied' : 'skipped',
-              skipped_reason: applyResult.value.skippedReason,
-              comment_action: applyResult.value.action,
-              workspace_id: binding.workspaceId,
+              status: 'applied',
+              comment_action: applied.action,
+              comment_id: applied.commentId,
               issue_id: binding.issueId,
-              binding_id: binding.bindingId,
             },
             200,
           )
         }
 
-        const targetResult = parseGitHubWebhookIssueTarget(payload)
-        if (targetResult.isErr()) {
-          return badRequest(targetResult.error.message)
+        const issueTarget = parseGitHubWebhookIssueTarget(payload.value)
+        if (issueTarget.isErr()) {
+          return badRequest(issueTarget.error.message)
         }
-        if (targetResult.value === null) {
+        if (issueTarget.value === null) {
           return json({ ok: true, status: 'ignored' }, 200)
         }
-
-        const target = targetResult.value
+        const target = issueTarget.value
         const db = await appContext.db()
-        const bindingResult = await resolveGitHubWebhookBinding({
-          db,
-          target,
-        })
-        const binding = bindingResult.match({
-          ok: (value) => value,
-          err: () => null,
-        })
-        if (!binding) {
-          return json({ ok: true, status: 'unbound' }, 200)
-        }
+        const binding = (
+          await resolveGitHubWebhookBinding({ db, target })
+        ).unwrap()
+        if (!binding) return json({ ok: true, status: 'unbound' }, 200)
 
-        const claim = await claimGitHubWebhookDelivery({
+        const processed = await processGitHubWebhookDelivery({
           db,
-          deliveryId,
-          event: githubEvent,
-          action: target.action,
-          installationId: target.installationId,
-          orderScope: githubWebhookIssueOrderScope(binding.bindingId),
-          orderMarker: target.updatedAtMs,
           bindingId: binding.bindingId,
-          workspaceId: binding.workspaceId,
+          delivery: { deliveryId, event, action: target.action },
+          order: {
+            scope: githubWebhookIssueOrderScope(binding.bindingId),
+            marker: target.updatedAtMs,
+          },
+          apply: (tx) => applyGitHubWebhookIssueUpdate({ tx, binding, target }),
         })
-        if (claim.isErr()) {
-          if (claim.error.code === 'missing_delivery_id') {
-            return badRequest(claim.error.message)
-          }
-          return serviceUnavailable(claim.error.message)
+        if (processed.isErr()) {
+          return serviceUnavailable(processed.error.message)
         }
-        if (claim.value.kind === 'duplicate') {
-          return json({ ok: true, status: 'duplicate' }, 200)
+        const outcome = processed.value
+        if (outcome.kind !== 'processed') {
+          return json({ ok: true, status: outcome.kind }, 200)
         }
-        if (claim.value.kind === 'out_of_order') {
-          return json({ ok: true, status: 'out_of_order' }, 200)
+        const applied = outcome.result
+        if (applied.kind === 'skipped') {
+          return json(
+            { ok: true, status: 'skipped', skipped_reason: applied.reason },
+            200,
+          )
         }
 
-        const applyResult = await applyGitHubWebhookIssueUpdate({
+        await applyIssueMutationSideEffects({
           db,
-          binding,
-          target,
+          env: appEnv,
+          waitUntil: (promise) => appContext.waitUntil(promise),
+          workspaceId: binding.workspaceId,
+          previous: applied.previous,
+          nextIssue: applied.issue,
+          actor: { type: 'system', id: 'github-webhook' },
         })
-        if (applyResult.isErr()) {
-          if (applyResult.error.code === 'issue_not_found') {
-            return json({ ok: true, status: 'unbound' }, 200)
-          }
-          return serviceUnavailable(applyResult.error.message)
-        }
-
-        if (applyResult.value.applied) {
-          const [nextIssue] = await db
-            .select()
-            .from(schema.issue)
-            .where(eq(schema.issue.id, binding.issueId))
-            .limit(1)
-          if (nextIssue) {
-            await applyIssueMutationSideEffects({
-              db,
-              env: appEnv,
-              waitUntil: (promise) => appContext.waitUntil(promise),
-              workspaceId: binding.workspaceId,
-              previous: {
-                status: applyResult.value.previousStatus,
-                assigneeType: applyResult.value.previousAssigneeType,
-                assigneeId: applyResult.value.previousAssigneeId,
-              },
-              nextIssue,
-              actor: { type: 'system', id: 'github-webhook' },
-              wakeOnAssignment: false,
-            })
-          }
-        }
-
         return json(
           {
             ok: true,
-            status: applyResult.value.applied ? 'applied' : 'skipped',
-            skipped_reason: applyResult.value.skippedReason,
-            fields: applyResult.value.fields,
-            workspace_id: binding.workspaceId,
+            status: 'applied',
+            fields: applied.fields,
             issue_id: binding.issueId,
-            binding_id: binding.bindingId,
           },
           200,
         )

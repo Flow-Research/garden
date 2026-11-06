@@ -25,21 +25,25 @@ function target(
 describe('planGitHubWebhookIssueApply', () => {
   it('maps edited to title and description', () => {
     expect(planGitHubWebhookIssueApply(target({ action: 'edited' }))).toEqual({
-      fields: { title: 'Title', description: 'Body' },
-      planned: ['title', 'description'],
+      title: 'Title',
+      description: 'Body',
     })
+  })
+
+  it('syncs a cleared body without touching a missing title', () => {
+    expect(
+      planGitHubWebhookIssueApply(
+        target({ action: 'edited', title: null, body: null }),
+      ),
+    ).toEqual({ description: null })
   })
 
   it('maps closed to done and reopened to todo', () => {
     expect(planGitHubWebhookIssueApply(target({ action: 'closed' }))).toEqual({
-      fields: { status: 'done' },
-      planned: ['status'],
+      status: 'done',
     })
     expect(planGitHubWebhookIssueApply(target({ action: 'reopened' }))).toEqual(
-      {
-        fields: { status: 'todo' },
-        planned: ['status'],
-      },
+      { status: 'todo' },
     )
   })
 

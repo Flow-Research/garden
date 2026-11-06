@@ -49,21 +49,21 @@ export const githubAppInstallation = pgTable(
   ],
 )
 
-export const githubWebhookDeliveryStatusValues = [
-  'applied',
-  'duplicate',
-  'out_of_order',
-  'ignored',
-] as const
+export const githubWebhookDeliveryStatusValues = ['applied', 'stale'] as const
 
 /**
- * GitHub App webhook delivery ledger (#161 review).
+ * GitHub App webhook delivery ledger, one row per accepted `X-GitHub-Delivery`.
  *
- * Why this exists: HMAC alone does not stop GitHub retries from replaying the
- * same `X-GitHub-Delivery`, or an older edit from overwriting a newer one.
- * Before this table, apply was best-effort compare-and-patch only. After:
- * unique `delivery_id` claims exact retries as duplicates, and
- * `(order_scope, order_marker)` max comparison rejects stale deliveries.
+ * Why: HMAC proves a delivery came from GitHub, not that it is new or current.
+ * GitHub redeliveries reuse the delivery id, and deliveries can arrive out of
+ * order, so before this table a retried or late `issues.edited` could rewrite
+ * newer Garden state. The unique `delivery_id` turns a redelivery into a
+ * no-op, and `order_marker` (the GitHub `updated_at` of the issue or comment,
+ * in ms) per `order_scope` lets the webhook reject a delivery older than one
+ * already applied. A separate ledger beats a marker column on
+ * `issue_source_binding` because comments need their own order streams and
+ * replay detection needs every delivery id, not only the latest.
+ * Rows cascade with their binding.
  */
 export const githubWebhookDelivery = pgTable(
   'github_webhook_delivery',
@@ -72,18 +72,14 @@ export const githubWebhookDelivery = pgTable(
       .primaryKey()
       .default(sql`gen_random_uuid()`),
     deliveryId: text('delivery_id').notNull(),
+    bindingId: uuid('binding_id')
+      .notNull()
+      .references(() => issueSourceBinding.id, { onDelete: 'cascade' }),
     event: text('event').notNull(),
-    action: text('action'),
-    installationId: text('installation_id'),
+    action: text('action').notNull(),
     orderScope: text('order_scope').notNull(),
     orderMarker: bigint('order_marker', { mode: 'number' }).notNull(),
-    status: text('status').notNull().default('applied'),
-    bindingId: uuid('binding_id').references(() => issueSourceBinding.id, {
-      onDelete: 'set null',
-    }),
-    workspaceId: uuid('workspace_id').references(() => organization.id, {
-      onDelete: 'cascade',
-    }),
+    status: text('status').notNull(),
     receivedAt: timestamp('received_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),

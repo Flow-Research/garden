@@ -348,7 +348,7 @@ export const Route = createFileRoute('/api/issues/$id')({
             }
           }
         }
-        await applyIssueMutationSideEffects({
+        const updatedIssue = await applyIssueMutationSideEffects({
           db,
           env: appEnv,
           waitUntil: (promise) => appContext.waitUntil(promise),
@@ -362,11 +362,6 @@ export const Route = createFileRoute('/api/issues/$id')({
           actor: { type: 'member', id: session.user.id },
           wakeOnAssignment: true,
         })
-        const issuePrefix = await getWorkspaceIssuePrefix(
-          db,
-          existingIssue.workspaceId,
-        )
-        const updatedIssue = toIssue(issue, { issuePrefix })
         return Response.json(updatedIssue)
       },
       DELETE: async ({ context, params }) => {

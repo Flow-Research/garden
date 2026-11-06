@@ -1,5 +1,5 @@
 {
-  "id": "ec1e627b-908b-4f59-abfa-6a061e1f178a",
+  "id": "634bea3a-8be4-400d-ad47-c1d641b0bbf8",
   "prevId": "83ad48b0-34aa-428a-baa1-2d77741bd550",
   "version": "7",
   "dialect": "postgresql",
@@ -7742,6 +7742,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "binding_id": {
+          "name": "binding_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
         "event": {
           "name": "event",
           "type": "text",
@@ -7752,13 +7758,7 @@
           "name": "action",
           "type": "text",
           "primaryKey": false,
-          "notNull": false
-        },
-        "installation_id": {
-          "name": "installation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "order_scope": {
           "name": "order_scope",
@@ -7776,20 +7776,7 @@
           "name": "status",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "default": "'applied'"
-        },
-        "binding_id": {
-          "name": "binding_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "received_at": {
           "name": "received_at",
@@ -7848,19 +7835,6 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "github_webhook_delivery_workspace_id_organization_id_fk": {
-          "name": "github_webhook_delivery_workspace_id_organization_id_fk",
-          "tableFrom": "github_webhook_delivery",
-          "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -7871,7 +7845,7 @@
       "checkConstraints": {
         "github_webhook_delivery_status_check": {
           "name": "github_webhook_delivery_status_check",
-          "value": "\"github_webhook_delivery\".\"status\" in ('applied', 'duplicate', 'out_of_order', 'ignored')"
+          "value": "\"github_webhook_delivery\".\"status\" in ('applied', 'stale')"
         }
       },
       "isRLSEnabled": false
