@@ -31,7 +31,8 @@ export interface UpdateIssueRequest {
   assignee_id?: string | null
   /** Omitted preserves the current Team; null removes the issue from its Team. */
   team_id?: string | null
-  position?: number
+  /** An order key from orderKeyBetween. */
+  position?: string
   due_date?: string | null
   parent_issue_id?: string | null
   project_id?: string | null

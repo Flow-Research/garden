@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -207,6 +208,8 @@ export function TeamDetail({
     setCreateIssueOpen(true)
   }
 
+  // Removing a member used to happen on the first click of the trash icon.
+  const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null)
   const handleRemoveMember = async (member: TeamMember) => {
     try {
       await removeMember.mutateAsync({
@@ -218,6 +221,7 @@ export function TeamDetail({
       toast.error(
         error instanceof Error ? error.message : 'Failed to remove member',
       )
+      throw error
     }
   }
 
@@ -384,7 +388,7 @@ export function TeamDetail({
                 <TeamMembersPanel
                   canManage={team.can_manage}
                   members={members}
-                  onRemove={handleRemoveMember}
+                  onRemove={setMemberToRemove}
                   search={memberSearch}
                   team={team}
                   visibleMembers={visibleMembers}
@@ -446,6 +450,22 @@ export function TeamDetail({
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={memberToRemove !== null}
+        onOpenChange={(open) => {
+          if (!open) setMemberToRemove(null)
+        }}
+        title={`Remove ${memberToRemove?.name ?? 'member'} from ${team.name}?`}
+        description="They will no longer be a member of this Team. You can add them back later."
+        confirmLabel="Remove"
+        pendingLabel="Removing…"
+        tone="destructive"
+        onConfirm={() =>
+          memberToRemove
+            ? handleRemoveMember(memberToRemove)
+            : Promise.resolve()
+        }
+      />
     </div>
   )
 }

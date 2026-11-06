@@ -7,6 +7,7 @@ import {
 } from '@garden/db/subscribers'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
+import { orderKeyBetween } from '@garden/core/issues/order-key'
 import {
   LIVE_RUN_STATUSES,
   WAKEUP_DEDUPING_RUN_STATUSES,
@@ -705,13 +706,15 @@ async function toIssueSummary(
   issue: typeof schema.issue.$inferSelect,
   options: { issuePrefix: string },
 ): Promise<IssueSummary> {
-  const assignee = await issueAssigneeSummary(db, issue)
-  const activeRun = await activeRunSummary(db, issue)
-  const [lastEvent, products, reason] = await Promise.all([
-    latestIssueEvent(db, issue, activeRun),
-    workProductsSummary(db, issue.id),
-    blockedReason(db, issue),
-  ])
+  const [assignee, [activeRun, lastEvent], products, reason] =
+    await Promise.all([
+      issueAssigneeSummary(db, issue),
+      activeRunSummary(db, issue).then(
+        async (run) => [run, await latestIssueEvent(db, issue, run)] as const,
+      ),
+      workProductsSummary(db, issue.id),
+      blockedReason(db, issue),
+    ])
 
   return {
     issue_id: issue.id,
@@ -749,15 +752,32 @@ export async function createIssue(
           { nextNumber: number },
         ]
 
+        // At the end of its column. New issues all defaulted to the same
+        // position, so their order was arbitrary and a card dropped between
+        // two of them did not move.
+        const status = parsed.data.status ?? 'todo'
+        const [{ lastPosition }] = (await tx
+          .select({
+            lastPosition: sql<string | null>`max(${schema.issue.position})`,
+          })
+          .from(schema.issue)
+          .where(
+            and(
+              eq(schema.issue.workspaceId, parsed.data.workspaceId),
+              eq(schema.issue.status, status),
+            ),
+          )) as [{ lastPosition: string | null }]
+
         const [insertedIssue] = await tx
           .insert(schema.issue)
           .values({
             id: crypto.randomUUID(),
             workspaceId: parsed.data.workspaceId,
             number: nextNumber,
+            position: orderKeyBetween(lastPosition, null),
             title: parsed.data.title,
             description: parsed.data.description ?? null,
-            status: parsed.data.status ?? 'todo',
+            status,
             priority: parsed.data.priority ?? 'medium',
             createdBy: parsed.data.createdBy,
             assigneeType: parsed.data.assigneeType ?? null,

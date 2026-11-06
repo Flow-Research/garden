@@ -107,7 +107,7 @@ export function TeamIssuesPanel({
   )
 
   const handleMoveIssue = useCallback(
-    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
+    (issueId: string, newStatus: IssueStatus, newPosition?: string) => {
       const viewState = teamIssueViewStore.getState()
       if (viewState.sortBy !== 'position') {
         viewState.setSortBy('position')

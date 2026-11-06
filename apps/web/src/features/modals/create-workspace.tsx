@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
-import { useNavigation } from '../navigation'
+import { useNavigationActions } from '../navigation'
 import { useImmersiveMode } from '../platform'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
@@ -32,7 +32,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   // left corner isn't stolen by the native controls' hit-test. No-op elsewhere.
   useImmersiveMode()
 
-  const router = useNavigation()
+  const router = useNavigationActions()
   const createWorkspace = useCreateWorkspace()
   const [slugTouched, setSlugTouched] = useState(false)
   const [slugServerError, setSlugServerError] = useState<string | null>(null)
@@ -95,7 +95,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           onClick={onClose}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="size-4" />
           Back
         </Button>
 

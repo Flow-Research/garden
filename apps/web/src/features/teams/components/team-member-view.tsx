@@ -223,7 +223,9 @@ export function TeamMemberView() {
   const wsId = useWorkspaceId()
   const navigate = useNavigate()
   const search = useSearch({ from: '/_authenticated/_app/teams/' })
-  const { data: teams } = useSuspenseQuery(teamListOptions(wsId))
+  const {
+    data: { teams },
+  } = useSuspenseQuery(teamListOptions(wsId))
 
   const selected =
     teams.find((team) => team.id === search.team) ?? teams[0] ?? null

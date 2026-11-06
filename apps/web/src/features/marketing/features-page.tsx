@@ -95,8 +95,9 @@ export function FeaturesPage() {
           </div>
 
           <p className="mt-16 border-t border-border/60 pt-6 text-xs text-muted-foreground">
-            Sources: docs/core/PRD.md, docs/garden-os/garden-os-overview.typ,
-            docs/core/DEFERRED.md, docs/known-gaps/
+            Sources: docs/concepts/product/product.md,
+            docs/garden-os/garden-os-overview.typ,
+            docs/concepts/product/roadmap.md, docs/reference/known-gaps.md
           </p>
         </div>
       </main>

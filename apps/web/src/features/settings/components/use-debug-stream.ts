@@ -226,7 +226,20 @@ async function consumeStream(
   let buffer = ''
 
   while (true) {
-    const { value, done } = await reader.read()
+    // A dropped connection rejects here. It used to escape as an unhandled
+    // rejection with no `fatal` set, so the drawer spun until the cache
+    // entry went stale minutes later.
+    const chunk = await reader.read().catch((cause: unknown) => {
+      if (!signal.aborted) {
+        onUpdate((s) => ({
+          ...s,
+          fatal: cause instanceof Error ? cause.message : String(cause),
+        }))
+      }
+      return null
+    })
+    if (!chunk) return
+    const { value, done } = chunk
     if (done) break
     buffer += decoder.decode(value, { stream: true })
 

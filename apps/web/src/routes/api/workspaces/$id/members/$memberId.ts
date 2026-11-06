@@ -51,8 +51,10 @@ export const Route = createFileRoute('/api/workspaces/$id/members/$memberId')({
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
-        const auth = await appContext.auth.getAuth()
-        const db = await appContext.db()
+        const [auth, db] = await Promise.all([
+          appContext.auth.getAuth(),
+          appContext.db(),
+        ])
 
         const result = await Result.gen(async function* () {
           const existing = yield* Result.await(

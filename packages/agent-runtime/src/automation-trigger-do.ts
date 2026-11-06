@@ -1,5 +1,5 @@
 import { Agent } from 'agents'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import {
   Result,
@@ -331,7 +331,7 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
 
     // Manual, webhook and API runs are not subject to the schedule's
     // concurrency policy (they normally bypass this DO entirely, see
-    // docs/core/workflows-engine.md), so they are not tracked as the
+    // docs/concepts/architecture/run-engine.md), so they are not tracked as the
     // in-flight run either. Previously this overwrote inFlightRunId, which
     // made the policy lose track of a still-running scheduled run.
     return await this.serializeFire(() =>
@@ -619,7 +619,15 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
             error: 'replaced_by_automation',
             updatedAt: now,
           })
-          .where(eq(schema.automationRun.id, runId))
+          .where(
+            and(
+              eq(schema.automationRun.id, runId),
+              inArray(
+                schema.automationRun.status,
+                LIVE_AUTOMATION_RUN_STATUSES,
+              ),
+            ),
+          )
       },
       catch: (cause) => dbError('mark replaced automation run', cause),
     })
@@ -910,7 +918,15 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
             error: args.message,
             updatedAt: now,
           })
-          .where(eq(schema.automationRun.id, args.runId))
+          .where(
+            and(
+              eq(schema.automationRun.id, args.runId),
+              inArray(
+                schema.automationRun.status,
+                LIVE_AUTOMATION_RUN_STATUSES,
+              ),
+            ),
+          )
       },
       catch: (cause) => dbError('mark automation run failed', cause),
     })
@@ -927,18 +943,26 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
     const now = new Date()
     const result = await Result.tryPromise({
       try: async () => {
-        await db
+        const [startedRun] = await db
           .update(schema.automationRun)
           .set({
             status: 'queued',
             completedAt: null,
             updatedAt: now,
           })
-          .where(eq(schema.automationRun.id, args.runId))
+          .where(
+            and(
+              eq(schema.automationRun.id, args.runId),
+              eq(schema.automationRun.status, 'queued'),
+            ),
+          )
+          .returning({ id: schema.automationRun.id })
+        if (!startedRun) return false
         await db
           .update(schema.automation)
           .set({ lastRunAt: now, updatedAt: now })
           .where(eq(schema.automation.id, args.automationId))
+        return true
       },
       catch: (cause) => dbError('mark automation run started', cause),
     })

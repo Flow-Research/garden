@@ -38,9 +38,12 @@ export function useDeleteAutomation() {
   const wsId = useWorkspaceId()
   return useMutation({
     mutationFn: (id: string) => api.deleteAutomation(id),
-    onSettled: (_data, _error, id) => {
+    // The detail entry is left to garbage collection. Removing it here ran on
+    // failure too (wiping the page of an automation that still exists), and
+    // on success it made the still-mounted page refetch the deleted
+    // automation before the caller navigated away.
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: automationKeys.list(wsId) })
-      qc.removeQueries({ queryKey: automationKeys.detail(wsId, id) })
     },
   })
 }

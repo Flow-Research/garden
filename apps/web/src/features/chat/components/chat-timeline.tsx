@@ -16,6 +16,7 @@ import { Check, Copy, RefreshCw, ThumbsDown, ThumbsUp, X } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { cn } from '@garden/ui/lib/utils'
+import { useCopyToClipboard } from '@garden/ui/hooks/use-copy-to-clipboard'
 import {
   Message,
   MessageContent,
@@ -43,7 +44,10 @@ import { isToolUIPart } from 'ai'
 import { isToolPartActive } from './chat-tool-state'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
 import type { RealtimeStatus } from '../chat-runtime-provider'
-import { stripGardenInternalDocumentContext } from './chat-message-parts'
+import {
+  isInternalChatMessage,
+  stripGardenInternalDocumentContext,
+} from './chat-message-parts'
 import { normalizeStatus } from './composer'
 
 // Local helpers (formerly in agent-interaction-screen.tsx)
@@ -100,13 +104,8 @@ function MessageActionButton({
 }
 
 export function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = () => {
-    void navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
+  const { copied, copy } = useCopyToClipboard()
+  const handleCopy = () => void copy(text)
 
   return (
     <MessageActionButton
@@ -312,11 +311,13 @@ const ChatTimelineComponent = ({
     normalizedStatus === 'submitted' ||
     (isStreaming && (!latestHasVisibleActivity || !latestHasMovingActivity))
   const rows = useMemo<ChatTimelineRow[]>(() => {
-    const nextRows: ChatTimelineRow[] = messages.map((message) => ({
-      id: `message:${message.id}`,
-      kind: 'message',
-      message,
-    }))
+    const nextRows: ChatTimelineRow[] = messages
+      .filter((message) => !isInternalChatMessage(message))
+      .map((message) => ({
+        id: `message:${message.id}`,
+        kind: 'message',
+        message,
+      }))
 
     if (showPendingActivity) {
       // During gaps where the model has emitted a tool result and is now

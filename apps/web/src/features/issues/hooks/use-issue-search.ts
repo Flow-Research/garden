@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { api } from '@/lib/api'
+import { issueKeys } from '@/lib/issues/queries'
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value'
 import type { SearchIssueResult } from '@garden/core/types'
 
 type UseIssueSearchOptions = {
@@ -9,87 +13,62 @@ type UseIssueSearchOptions = {
   limit?: number
 }
 
+const NO_RESULTS: SearchIssueResult[] = []
+
+/**
+ * Quick issue search for pickers and the command palette, through TanStack
+ * Query on a debounced query. It used to fetch by hand with its own timers
+ * and abort controllers and no cache, so repeating a search refetched it,
+ * and a default `excludeIds = []` made its callback new on every render.
+ */
 export function useIssueSearch(options: UseIssueSearchOptions = {}) {
   const {
     debounceMs = 300,
-    excludeIds = [],
+    excludeIds,
     includeClosed = true,
     limit = 20,
   } = options
-
+  const wsId = useWorkspaceId()
   const [query, setQuery] = useState('')
-  const [results, setResults] = useState<SearchIssueResult[]>([])
-  const [isLoading, setIsLoading] = useState(false)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const trimmed = query.trim()
+  const debounced = useDebouncedValue(trimmed, debounceMs)
 
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      abortRef.current?.abort()
-    }
-  }, [])
+  const searchQuery = useQuery({
+    queryKey: [
+      ...issueKeys.searches(wsId),
+      'quick',
+      { q: debounced, limit, includeClosed },
+    ],
+    queryFn: ({ signal }) =>
+      api.searchIssues({
+        q: debounced,
+        limit,
+        include_closed: includeClosed,
+        signal,
+      }),
+    enabled: debounced.length > 0,
+    staleTime: 30_000,
+    // Keep the last results on screen while the next query loads.
+    placeholderData: keepPreviousData,
+  })
 
-  const runSearch = useCallback(
-    (nextQuery: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current)
-      abortRef.current?.abort()
+  const excludeKey = excludeIds?.join('\n') ?? ''
+  const results = useMemo(() => {
+    if (!trimmed || !searchQuery.data) return NO_RESULTS
+    const excluded = new Set(excludeKey ? excludeKey.split('\n') : [])
+    return searchQuery.data.issues.filter((issue) => !excluded.has(issue.id))
+  }, [trimmed, searchQuery.data, excludeKey])
 
-      if (!nextQuery.trim()) {
-        setResults([])
-        setIsLoading(false)
-        return
-      }
+  const isLoading =
+    trimmed.length > 0 && (trimmed !== debounced || searchQuery.isFetching)
 
-      setIsLoading(true)
-      debounceRef.current = setTimeout(() => {
-        const controller = new AbortController()
-        abortRef.current = controller
-
-        void api
-          .searchIssues({
-            q: nextQuery.trim(),
-            limit,
-            include_closed: includeClosed,
-            signal: controller.signal,
-          })
-          .then((response) => {
-            if (controller.signal.aborted) return
-            setResults(
-              response.issues.filter((issue) => !excludeIds.includes(issue.id)),
-            )
-            setIsLoading(false)
-          })
-          .catch(() => {
-            if (controller.signal.aborted) return
-            setIsLoading(false)
-          })
-      }, debounceMs)
-    },
-    [debounceMs, excludeIds, includeClosed, limit],
-  )
-
-  const updateQuery = useCallback(
-    (nextQuery: string) => {
-      setQuery(nextQuery)
-      runSearch(nextQuery)
-    },
-    [runSearch],
-  )
-
-  const reset = useCallback(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current)
-    abortRef.current?.abort()
-    setQuery('')
-    setResults([])
-    setIsLoading(false)
-  }, [])
+  const reset = useCallback(() => setQuery(''), [])
 
   return {
     query,
     results,
     isLoading,
-    setQuery: updateQuery,
+    setQuery,
     reset,
   }
 }

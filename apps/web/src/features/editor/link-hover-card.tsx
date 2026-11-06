@@ -1,10 +1,10 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { computePosition, flip, offset, shift } from '@floating-ui/dom'
 import { Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@garden/ui/components/ui/button'
-import { useNavigation } from '../navigation'
+import { useNavigationActions } from '../navigation'
 import { isMentionHref, openLink } from './utils/link-handler'
 
 const OPEN_DELAY_MS = 300
@@ -43,8 +43,19 @@ function eligibleAnchor(target: EventTarget | null): HTMLAnchorElement | null {
  * Attaches delegated hover listeners through a React 19 callback-ref cleanup.
  * This keeps DOM subscription ownership at the rendered container boundary.
  */
-function useLinkHover(disabled = false) {
+function useLinkHover(
+  /**
+   * Read when the pointer reaches a link, so it reflects that moment. A
+   * value read during render went stale: the editor does not re-render on
+   * every selection change, so a card could open over the bubble menu.
+   */
+  isDisabled: () => boolean = () => false,
+) {
   const [preview, setPreview] = useState<LinkPreviewState | null>(null)
+  const isDisabledRef = useRef(isDisabled)
+  useEffect(() => {
+    isDisabledRef.current = isDisabled
+  })
   const openTimer = useRef(0)
   const closeTimer = useRef(0)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -62,48 +73,45 @@ function useLinkHover(disabled = false) {
     )
   }
 
-  const containerRef = useCallback(
-    (container: HTMLElement | null) => {
-      if (!container || disabled) return
+  const containerRef = useCallback((container: HTMLElement | null) => {
+    if (!container) return
 
-      const handleOver = (event: MouseEvent) => {
-        const anchor = eligibleAnchor(event.target)
-        if (!anchor) return
-        window.clearTimeout(closeTimer.current)
-        window.clearTimeout(openTimer.current)
-        openTimer.current = window.setTimeout(() => {
-          setPreview({ anchor, href: anchor.getAttribute('href') ?? '' })
-        }, OPEN_DELAY_MS)
-      }
+    const handleOver = (event: MouseEvent) => {
+      const anchor = eligibleAnchor(event.target)
+      if (!anchor || isDisabledRef.current()) return
+      window.clearTimeout(closeTimer.current)
+      window.clearTimeout(openTimer.current)
+      openTimer.current = window.setTimeout(() => {
+        setPreview({ anchor, href: anchor.getAttribute('href') ?? '' })
+      }, OPEN_DELAY_MS)
+    }
 
-      const handleOut = (event: MouseEvent) => {
-        if (
-          event.relatedTarget instanceof Node &&
-          cardRef.current?.contains(event.relatedTarget)
-        ) {
-          return
-        }
-        const anchor = eligibleAnchor(event.target)
-        if (
-          anchor &&
-          event.relatedTarget instanceof Node &&
-          anchor.contains(event.relatedTarget)
-        ) {
-          return
-        }
-        scheduleClose()
+    const handleOut = (event: MouseEvent) => {
+      if (
+        event.relatedTarget instanceof Node &&
+        cardRef.current?.contains(event.relatedTarget)
+      ) {
+        return
       }
+      const anchor = eligibleAnchor(event.target)
+      if (
+        anchor &&
+        event.relatedTarget instanceof Node &&
+        anchor.contains(event.relatedTarget)
+      ) {
+        return
+      }
+      scheduleClose()
+    }
 
-      container.addEventListener('mouseover', handleOver)
-      container.addEventListener('mouseout', handleOut)
-      return () => {
-        container.removeEventListener('mouseover', handleOver)
-        container.removeEventListener('mouseout', handleOut)
-        cancelTimers()
-      }
-    },
-    [disabled],
-  )
+    container.addEventListener('mouseover', handleOver)
+    container.addEventListener('mouseout', handleOut)
+    return () => {
+      container.removeEventListener('mouseover', handleOver)
+      container.removeEventListener('mouseout', handleOut)
+      cancelTimers()
+    }
+  }, [])
 
   return {
     containerRef,
@@ -121,7 +129,7 @@ function LinkHoverCard({
   onCardEnter,
   onCardLeave,
 }: ReturnType<typeof useLinkHover>) {
-  const { push } = useNavigation()
+  const { push } = useNavigationActions()
   const positionCard = useCallback(
     (node: HTMLDivElement | null) => {
       cardRef.current = node

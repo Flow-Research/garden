@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { timeAgo } from '@garden/core/format'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -9,12 +9,13 @@ import { Button } from '@garden/ui/components/ui/button'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import { Spinner } from '@garden/ui/components/ui/spinner'
+import { cn } from '@garden/ui/lib/utils'
 import { toast } from 'sonner'
 import { useAuthStore } from '@garden/app-state/auth'
 import { api } from '@/lib/api'
 import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
-import { useNavigation } from '@/features/navigation'
+import { useNavigationActions } from '@/features/navigation'
 import { authClient } from '@/lib/auth/client'
 import { GithubWorkspaceIdentitySection } from './github-workspace-identity'
 import { GoogleAccountConnection } from './google-account-connection'
@@ -38,12 +39,16 @@ function describeUserAgent(userAgent: string | null | undefined) {
 
 export function AccountTab() {
   const queryClient = useQueryClient()
-  const { replace } = useNavigation()
+  const { replace } = useNavigationActions()
   const user = useAuthStore((s) => s.user)
   const setUser = useAuthStore((s) => s.setUser)
   const authLogout = useAuthStore((s) => s.logout)
 
-  const [profileName, setProfileName] = useState(user?.name ?? '')
+  // Unsaved edits only. Copying `user.name` into state with an effect reset
+  // the field whenever the user object changed, e.g. on an avatar upload,
+  // wiping a name being typed.
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  const profileName = nameDraft ?? user?.name ?? ''
   const [profileSaving, setProfileSaving] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -76,10 +81,6 @@ export function AccountTab() {
       return result.data ?? []
     },
   })
-
-  useEffect(() => {
-    setProfileName(user?.name ?? '')
-  }, [user])
 
   const initials = (user?.name ?? user?.email ?? '')
     .split(' ')
@@ -124,6 +125,7 @@ export function AccountTab() {
     try {
       const updated = await api.updateMe({ name: profileName.trim() })
       setUser(updated)
+      setNameDraft(null)
       toast.success('Account updated')
     } catch (error) {
       toast.error(
@@ -246,6 +248,8 @@ export function AccountTab() {
               className="group relative flex size-20 items-center justify-center overflow-hidden rounded-full bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               onClick={() => fileInputRef.current?.click()}
               disabled={uploading}
+              aria-label={uploading ? 'Uploading avatar' : 'Change avatar'}
+              aria-busy={uploading || undefined}
             >
               {user?.avatar_url ? (
                 <img
@@ -258,7 +262,14 @@ export function AccountTab() {
                   {initials}
                 </span>
               )}
-              <div className="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity group-hover:opacity-100">
+              {/* Shown while uploading and on keyboard focus, not on hover
+                  only, so the upload in progress is visible. */}
+              <div
+                className={cn(
+                  'absolute inset-0 flex items-center justify-center bg-black/45 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100',
+                  uploading ? 'opacity-100' : 'opacity-0',
+                )}
+              >
                 {uploading ? (
                   <Spinner className="size-5 text-white" aria-hidden="true" />
                 ) : (
@@ -281,7 +292,7 @@ export function AccountTab() {
                 <Label>Name</Label>
                 <Input
                   value={profileName}
-                  onChange={(event) => setProfileName(event.target.value)}
+                  onChange={(event) => setNameDraft(event.target.value)}
                   placeholder="Your name"
                 />
               </div>
@@ -307,7 +318,7 @@ export function AccountTab() {
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={() => setProfileName(user?.name ?? '')}
+                onClick={() => setNameDraft(null)}
                 disabled={profileSaving || profileName === (user?.name ?? '')}
               >
                 Reset

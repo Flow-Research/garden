@@ -15,6 +15,20 @@ export {
   type RunWorkflowBinding,
   type RunWorkflowParams,
 } from './run-workflow'
+export type {
+  DecideAnalysisProgress,
+  DecideAnalysisSnapshot,
+  DecideAnalysisStartOutcome,
+  DecideAnalysisStatus,
+  DecideAnalysisWorkflowBinding,
+  DecideAnalysisWorkflowParams,
+} from './decide-analysis-types'
+export { DECIDE_ANALYSIS_STATUSES } from './decide-analysis-types'
+export {
+  decideGeneratedFiles,
+  decideSessionIdFromResult,
+  type DecideGeneratedFile,
+} from './decide-analysis-result'
 export { createAgentModel } from './model'
 export {
   buildContentDisposition,

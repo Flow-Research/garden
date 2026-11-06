@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { RunWorkflow } from './run-workflow'
 import { MAX_TURN_EVENT_CHECKS } from './run-workflow-turn-wait'
+import {
+  DECIDE_ANALYSIS_OWNER_WAIT_MS,
+  DECIDE_ANALYSIS_TIME_LIMIT_MS,
+} from './decide-analysis-types'
 
 vi.mock('agents/workflows', () => ({
   AgentWorkflow: class {},
@@ -161,5 +165,128 @@ describe('RunWorkflow turn completion', () => {
       workflow.waitForSubmittedTurnCompletion(waitInput(step)),
     ).rejects.toThrow('agent unavailable')
     expect(agent.failRunTurn).not.toHaveBeenCalled()
+  })
+})
+
+type AutomationAgent = {
+  executeAutomationRunTurn: ReturnType<typeof vi.fn>
+  completeAutomationRunTurn: ReturnType<typeof vi.fn>
+}
+
+/**
+ * An automation run whose first turn starts a Decide analysis and whose
+ * second turn finishes the run. `waitForEvent` resolves unless the event type
+ * is in `missedEvents`, which models a wait that times out.
+ */
+function automationSetup(input: {
+  decideSettled: boolean
+  missedEvents?: readonly string[]
+}) {
+  const workflow = Object.create(RunWorkflow.prototype) as {
+    agent: AutomationAgent
+    run: (
+      event: { payload: { kind: 'automation'; runId: string } },
+      step: unknown,
+    ) => Promise<{ runId: string; status: string }>
+  }
+  const agent: AutomationAgent = {
+    executeAutomationRunTurn: vi.fn(async ({ turn }: { turn: number }) => ({
+      kind: 'submitted',
+      submissionId: `submission-${turn}`,
+      submissionStatus: 'completed',
+    })),
+    completeAutomationRunTurn: vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'running',
+        waitingOn: {
+          kind: 'decide_analysis',
+          decideRunId: 'decide-1',
+          settled: input.decideSettled,
+        },
+      })
+      .mockResolvedValueOnce({ status: 'completed' }),
+  }
+  workflow.agent = agent
+  const step = {
+    do: vi.fn(
+      async (
+        _name: string,
+        _config: unknown,
+        callback: () => Promise<unknown>,
+      ) => await callback(),
+    ),
+    waitForEvent: vi.fn(async (name: string, options: { type: string }) => {
+      if (input.missedEvents?.includes(options.type)) {
+        throw new Error('timed out')
+      }
+      return { payload: {}, type: name }
+    }),
+    reportComplete: vi.fn(async () => undefined),
+  }
+  return { workflow, agent, step }
+}
+
+const automationEvent = {
+  payload: { kind: 'automation' as const, runId: 'automation-run-1' },
+}
+
+describe('RunWorkflow Decide pause', () => {
+  it('waits for the Decide event, then resumes the agent with that run', async () => {
+    const { workflow, agent, step } = automationSetup({ decideSettled: false })
+
+    const result = await workflow.run(automationEvent, step)
+
+    expect(result).toEqual({ runId: 'automation-run-1', status: 'completed' })
+    expect(step.waitForEvent).toHaveBeenCalledWith('turn-0-decide-analysis', {
+      type: 'decide-analysis-finished:decide-1',
+      timeout: DECIDE_ANALYSIS_OWNER_WAIT_MS,
+    })
+    expect(agent.executeAutomationRunTurn).toHaveBeenNthCalledWith(2, {
+      runId: 'automation-run-1',
+      mode: 'resume',
+      turn: 1,
+      decideRunId: 'decide-1',
+    })
+  })
+
+  it('bounds the wait just past the Decide provider limit', () => {
+    expect(DECIDE_ANALYSIS_OWNER_WAIT_MS).toBeGreaterThan(
+      DECIDE_ANALYSIS_TIME_LIMIT_MS + 60_000,
+    )
+    expect(DECIDE_ANALYSIS_OWNER_WAIT_MS).toBeLessThanOrEqual(
+      DECIDE_ANALYSIS_TIME_LIMIT_MS + 15 * 60_000,
+    )
+  })
+
+  it('skips the wait when Decide already finished', async () => {
+    const { workflow, agent, step } = automationSetup({ decideSettled: true })
+
+    await workflow.run(automationEvent, step)
+
+    expect(step.waitForEvent).not.toHaveBeenCalledWith(
+      'turn-0-decide-analysis',
+      expect.anything(),
+    )
+    expect(agent.executeAutomationRunTurn).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ mode: 'resume', decideRunId: 'decide-1' }),
+    )
+  })
+
+  it('still resumes the agent when the Decide event never arrives', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { workflow, agent, step } = automationSetup({
+      decideSettled: false,
+      missedEvents: ['decide-analysis-finished:decide-1'],
+    })
+
+    const result = await workflow.run(automationEvent, step)
+
+    expect(result.status).toBe('completed')
+    expect(agent.executeAutomationRunTurn).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ mode: 'resume', decideRunId: 'decide-1' }),
+    )
   })
 })

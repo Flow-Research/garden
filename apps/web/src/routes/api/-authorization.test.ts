@@ -32,6 +32,8 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
   'auth/$.ts': 'Better Auth handler; it authorizes its own endpoints',
   'internal/capability-sync.ts':
     'internal endpoint authenticated by the shared secret, not a user',
+  'internal/executor/catalog.ts':
+    'internal endpoint authenticated by the shared secret, not a user',
   'me.ts': 'the caller updates only their own profile',
   'workspaces.ts': 'any signed-in user may create a workspace',
   'workspaces/$id.ts': 'Better Auth organization API enforces the role',
@@ -58,6 +60,8 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
     'chat threads are private to their owner',
   'debug-stream.ts': "refreshes debug data for the caller's own session",
   'executor/preview.ts': 'read-only preview of a catalog integration',
+  'executor/decide/diagnose.ts':
+    "read-only health check for the caller's Decide connection",
   'brain/files.ts': 'members may add files to the workspace brain',
   'brain/files/$id.ts': 'members may manage workspace brain files',
   'brain/folders.ts': 'members may create brain folders',

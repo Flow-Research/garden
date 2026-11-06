@@ -16,6 +16,8 @@ type BrainFileUploadDialogProps = {
   onConfirm: () => void
   progress: number
   uploading: boolean
+  /** Why the last upload failed; the dialog stays open so it can be retried. */
+  error?: string | null
 }
 
 /**
@@ -29,6 +31,7 @@ export function BrainFileUploadDialog({
   onConfirm,
   progress,
   uploading,
+  error = null,
 }: BrainFileUploadDialogProps) {
   if (file === null) return null
 
@@ -101,6 +104,12 @@ export function BrainFileUploadDialog({
           </div>
         </div>
 
+        {error && !uploading ? (
+          <p role="alert" className="text-sm text-text-danger-secondary">
+            {error}
+          </p>
+        ) : null}
+
         {!uploading ? (
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" onClick={onClose}>
@@ -108,7 +117,7 @@ export function BrainFileUploadDialog({
             </Button>
 
             <Button type="button" onClick={onConfirm}>
-              Add to knowledge base
+              {error ? 'Try again' : 'Add to knowledge base'}
             </Button>
           </div>
         ) : null}
