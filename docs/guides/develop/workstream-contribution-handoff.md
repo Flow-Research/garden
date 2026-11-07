@@ -129,6 +129,23 @@ additional caller-generated creation key. Preserve the returned Submission and
 evaluation request UUIDs. For revisions, inspect current task context and follow
 the CLI's explicit predecessor/preparation requirements before uploading again.
 
+## Respond to a failed or uncertain attempt
+
+Read the preparation or Submission identified by the response before changing
+anything. A lost response does not tell you whether Workstream committed it.
+
+| Observed result | What it means | What to do next |
+| --- | --- | --- |
+| PRE reports malformed `proof.json` | The project checker could not accept the proof structure; this preparation cannot create a Submission. | Fix the reported fields, rebuild the ZIP and use a new preparation UUID for the changed bytes. Retain the failed preparation for reference. |
+| POST reports a different head, task trailer or unsatisfied CI | A Submission already exists, but its proof does not match the independently retrieved facts required by its locked policy. | Inspect the retained findings and task context. Ask the Project Manager about the permitted recovery or revision path; a new preparation UUID does not reset submitted work. |
+| Verification is pending, or a response was lost | The outcome is not yet established by the client. | Read the retained preparation and repeat only the same UUID, bytes and packet when retrying that operation. Do not replace an uncertain attempt with a new key. |
+| Infrastructure is unavailable | The service could not establish a quality result. This is not evidence of poor work or acceptance. | Retain the response and identifiers, inspect current status and ask the operator about recovery. Do not rewrite proof to hide the infrastructure error. |
+
+Changing the PR head requires fresh current-head CI and proof. It does not grant
+permission to replace an existing Submission. Garden v3's zero required GitHub
+approvals and Workstream's `human_review_required=false` are separate settings;
+neither requires auto-merge or turns an unchecked PR into accepted work.
+
 ## Inspect POST and the governed outcome
 
 POST evaluates the immutable Submission using independently retrieved GitHub
