@@ -179,14 +179,61 @@ export async function getInstallationRepository(
 }
 
 /**
- * One page of a repository's open issues, oldest first so a resumed import
- * keeps numbering in GitHub order. The list includes pull requests; callers
- * drop them while parsing.
+ * Where an open-issue listing resumes: issues updated at or after `since`,
+ * at `page` within that window. The import Workflow carries it from one step
+ * to the next, so it must stay plain JSON.
+ */
+export type GitHubIssueListCursor = { since: string | null; page: number }
+
+export const FIRST_ISSUE_LIST_CURSOR: GitHubIssueListCursor = {
+  since: null,
+  page: 1,
+}
+
+const listedItemSchema = z.object({ updated_at: z.string() })
+
+/**
+ * The cursor after a full page whose last item was updated at
+ * `lastUpdatedAt`.
+ *
+ * Why a time window instead of `page + 1`: the earlier import paged
+ * `state=open` by offset. An issue closed on page 1 while page 2 was pending
+ * shifted every later issue down one slot, so the first issue of page 2 was
+ * never fetched. Ordered by `updated_at`, an issue that closes or changes
+ * leaves the window ahead of the cursor or moves behind it, and the rest do
+ * not move. The window starts one second before the last item because GitHub
+ * timestamps have one-second resolution and the docs do not say whether
+ * `since` is inclusive; issues sharing that second are fetched twice, which
+ * the insert-only upsert absorbs. When a whole page shares one second the
+ * window cannot advance, so the page number does.
+ * https://docs.github.com/en/rest/issues/issues#list-repository-issues
+ */
+export function nextIssueListCursor(
+  cursor: GitHubIssueListCursor,
+  lastUpdatedAt: string,
+): GitHubIssueListCursor {
+  const since = new Date(Date.parse(lastUpdatedAt) - 1000)
+    .toISOString()
+    .replace(/\.\d{3}Z$/, 'Z')
+  return cursor.since === null || Date.parse(since) > Date.parse(cursor.since)
+    ? { since, page: 1 }
+    : { since: cursor.since, page: cursor.page + 1 }
+}
+
+/**
+ * One page of a repository's open issues, least recently updated first, and
+ * the cursor for the next page, or null after the last page. The list
+ * includes pull requests; callers drop them while parsing.
  */
 export async function listOpenRepositoryIssuesPage(
   request: GitHubRequester,
-  args: { fullName: string; page: number },
-): Promise<Result<{ items: unknown[]; hasNextPage: boolean }, GitHubApiError>> {
+  args: { fullName: string; cursor: GitHubIssueListCursor },
+): Promise<
+  Result<
+    { items: unknown[]; next: GitHubIssueListCursor | null },
+    GitHubApiError
+  >
+> {
   const [owner, repo] = args.fullName.split('/')
   return Result.gen(async function* () {
     const body = yield* Result.await(
@@ -195,10 +242,11 @@ export async function listOpenRepositoryIssuesPage(
         path: `/repos/${encodeURIComponent(owner ?? '')}/${encodeURIComponent(repo ?? '')}/issues`,
         query: {
           state: 'open',
-          sort: 'created',
+          sort: 'updated',
           direction: 'asc',
           per_page: PAGE_SIZE,
-          page: args.page,
+          page: args.cursor.page,
+          ...(args.cursor.since ? { since: args.cursor.since } : {}),
         },
       }),
     )
@@ -206,6 +254,14 @@ export async function listOpenRepositoryIssuesPage(
       z.array(z.unknown()).safeParse(body),
       'issue list',
     )
-    return Result.ok({ items, hasNextPage: items.length === PAGE_SIZE })
+    if (items.length < PAGE_SIZE) return Result.ok({ items, next: null })
+    const last = yield* parseResponse(
+      listedItemSchema.safeParse(items.at(-1)),
+      'issue list item',
+    )
+    return Result.ok({
+      items,
+      next: nextIssueListCursor(args.cursor, last.updated_at),
+    })
   })
 }

@@ -12,6 +12,7 @@ import {
 import {
   listOpenRepositoryIssuesPage,
   type GitHubApiError,
+  type GitHubIssueListCursor,
   type GitHubRequester,
 } from '@/lib/server/github-repositories'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
@@ -119,22 +120,26 @@ export async function publishTeamRepositoryChanged(
  * Imports one page of a linked repository's open issues. Pull requests are
  * skipped, and an issue that already has a binding is left alone, so running
  * a page twice creates nothing the second time. Returns the issues this call
- * created so the caller can publish them after commit.
+ * created, so the caller can publish them after commit, and the cursor for
+ * the next page, or null after the last one.
  */
 export async function importGitHubIssuePage(args: {
   db: Db
   request: GitHubRequester
   link: TeamRepositoryLink
-  page: number
+  cursor: GitHubIssueListCursor
 }): Promise<
   Result<
-    { created: (typeof schema.issue.$inferSelect)[]; hasNextPage: boolean },
+    {
+      created: (typeof schema.issue.$inferSelect)[]
+      next: GitHubIssueListCursor | null
+    },
     GitHubApiError
   >
 > {
   const page = await listOpenRepositoryIssuesPage(args.request, {
     fullName: args.link.fullName,
-    page: args.page,
+    cursor: args.cursor,
   })
   if (page.isErr()) return Result.err(page.error)
   const created: (typeof schema.issue.$inferSelect)[] = []
@@ -148,7 +153,7 @@ export async function importGitHubIssuePage(args: {
     })
     if (outcome.kind === 'created') created.push(outcome.issue)
   }
-  return Result.ok({ created, hasNextPage: page.value.hasNextPage })
+  return Result.ok({ created, next: page.value.next })
 }
 
 /**

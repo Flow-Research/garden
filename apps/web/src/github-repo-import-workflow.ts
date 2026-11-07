@@ -8,8 +8,10 @@ import { createRuntimeDbClient, type Db } from '@garden/db/runtime'
 import { createGardenLogger } from '@garden/observability/logger'
 import type { AppEnv } from '@/lib/server/env'
 import {
+  FIRST_ISSUE_LIST_CURSOR,
   createGitHubRequester,
   loadWorkspaceGitHubInstallation,
+  type GitHubIssueListCursor,
 } from '@/lib/server/github-repositories'
 import {
   importGitHubIssuePage,
@@ -45,8 +47,9 @@ async function withDb<T>(env: AppEnv, run: (db: Db) => Promise<T>) {
  * Imports a linked repository's open issues onto its Team board.
  *
  * The instance id is the `team_repository.id`, so a second start for one link
- * is a no-op, and Retry restarts the same instance. Each page is one step, so
- * Workflows retry a failed page on their default policy without repeating
+ * is a no-op, and Retry restarts the same instance. Each page is one step
+ * whose result carries the cursor for the next page (`nextIssueListCursor`),
+ * so Workflows retry a failed page on their default policy without repeating
  * finished pages, and a repeated page creates nothing because the upsert is
  * insert-only. Every step reloads the link and stops when it was unlinked.
  * A failure after retries moves the link to `failed` so Team settings can
@@ -99,11 +102,13 @@ export class GitHubRepoImportWorkflow extends WorkflowEntrypoint<
     if (!begun.linked) return { teamRepositoryId, status: 'unlinked' as const }
 
     let created = 0
-    for (let page = 1; ; page += 1) {
+    let cursor: GitHubIssueListCursor | null = FIRST_ISSUE_LIST_CURSOR
+    for (let page = 1; cursor !== null; page += 1) {
+      const pageCursor: GitHubIssueListCursor = cursor
       const result = await step.do(`page-${page}`, () =>
         withDb(this.env, async (db) => {
           const link = await loadTeamRepository(db, teamRepositoryId)
-          if (!link) return { unlinked: true, created: 0, hasNextPage: false }
+          if (!link) return { unlinked: true, created: 0, next: null }
           const installation = await loadWorkspaceGitHubInstallation(
             db,
             link.workspaceId,
@@ -115,7 +120,7 @@ export class GitHubRepoImportWorkflow extends WorkflowEntrypoint<
             db,
             request: createGitHubRequester(this.env, installation),
             link,
-            page,
+            cursor: pageCursor,
           })
           if (imported.isErr()) throw imported.error
           const published: Promise<unknown>[] = []
@@ -130,7 +135,7 @@ export class GitHubRepoImportWorkflow extends WorkflowEntrypoint<
           return {
             unlinked: false,
             created: imported.value.created.length,
-            hasNextPage: imported.value.hasNextPage,
+            next: imported.value.next,
           }
         }),
       )
@@ -138,7 +143,7 @@ export class GitHubRepoImportWorkflow extends WorkflowEntrypoint<
         return { teamRepositoryId, status: 'unlinked' as const }
       }
       created += result.created
-      if (!result.hasNextPage) break
+      cursor = result.next
     }
 
     await step.do('finish', () =>
