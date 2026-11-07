@@ -240,6 +240,13 @@ export async function unlinkTeamRepository(args: {
 /**
  * Runs a failed import again. Only a `failed` link can retry, so a click on a
  * stale Retry button cannot restart an import that is still running.
+ *
+ * Restart covers an instance that ran and failed. Create covers a link whose
+ * Workflow never started. Why `already_started` counts as a failure here: the
+ * earlier version fell back to create on any restart error, so a transient
+ * restart failure met the existing instance, read "already exists" as
+ * success, and left the link `pending` with nothing running and no Retry
+ * button. Now the link goes back to `failed` and the caller gets the error.
  */
 export async function retryTeamRepositoryImport(args: {
   db: Db
@@ -285,20 +292,23 @@ export async function retryTeamRepositoryImport(args: {
 
   const workflow = args.env.GITHUB_REPO_IMPORT_WORKFLOW
   const restarted = await restartTeamRepositoryImport(workflow, pending.id)
-  const started = restarted.isOk()
-    ? Result.ok('started' as const)
-    : await startTeamRepositoryImport(workflow, pending.id)
-  if (started.isErr()) {
-    logger.error('team_repository.import_retry_failed', {
-      ...errorFields(started.error.cause),
-      teamRepositoryId: pending.id,
-    })
-    const failed = await setTeamRepositoryImportState(
-      args.db,
-      pending.id,
-      'failed',
-    )
-    return Result.ok(toTeamRepository(failed ?? pending))
+  if (restarted.isOk()) return Result.ok(toTeamRepository(pending))
+  const created = await startTeamRepositoryImport(workflow, pending.id)
+  if (created.isOk() && created.value === 'started') {
+    return Result.ok(toTeamRepository(pending))
   }
-  return Result.ok(toTeamRepository(pending))
+  logger.error('team_repository.import_retry_failed', {
+    ...errorFields(
+      created.isErr() ? created.error.cause : restarted.error.cause,
+    ),
+    teamRepositoryId: pending.id,
+  })
+  await setTeamRepositoryImportState(args.db, pending.id, 'failed')
+  return Result.err(
+    teamRepositoryError(
+      503,
+      'TEAM_REPOSITORY_IMPORT_START_FAILED',
+      'Could not restart the repository import. Try again.',
+    ),
+  )
 }

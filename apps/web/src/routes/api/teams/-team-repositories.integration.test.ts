@@ -442,4 +442,29 @@ describe('Team repository links and import (integration)', () => {
     expect(numbers).not.toContain(null)
     expect(new Set(numbers).size).toBe(8)
   })
+
+  it('keeps a link failed and reports the error when Retry cannot restart its import', async () => {
+    const link = await seedLink('failed')
+    await workflow.create({ id: link.id })
+    workflow.get.mockResolvedValueOnce({
+      restart: vi.fn(async () => {
+        throw new Error('workflows service unavailable')
+      }),
+    })
+    const request = new Request(
+      `https://garden.test/api/teams/${teamId}/repositories/${link.id}/retry`,
+      { method: 'POST' },
+    )
+    const retried = await invokeRouteHandler(RetryRoute, 'POST', {
+      context: contextFor(fixture.adminId, 'admin', request),
+      request,
+      params: { teamId, repositoryId: link.id },
+    })
+    expect(retried.status).toBe(503)
+    const [row] = await testDb.db
+      .select()
+      .from(schema.teamRepository)
+      .where(eq(schema.teamRepository.id, link.id))
+    expect(row!.importState).toBe('failed')
+  })
 })
