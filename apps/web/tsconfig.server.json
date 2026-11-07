@@ -9,6 +9,7 @@
     "src/lib/posthog-server.ts",
     "src/lib/inbox/threads.ts",
     "src/decide-analysis-workflow.ts",
+    "src/github-repo-import-workflow.ts",
     "src/features/dashboard/dashboard.queries.ts",
     "src/features/dashboard/dashboard.server.ts",
     "worker-configuration.d.ts"

@@ -22,7 +22,7 @@ A Garden issue can be linked to a GitHub issue through an `issue_source_binding`
 
 - A redelivered id hits the unique `(binding_id, delivery_id)` index and returns `duplicate` without writing anything.
 - Each row stores an order marker, which is GitHub's `updated_at` for the issue or comment in milliseconds. A payload without a parseable `updated_at` is rejected with HTTP 400. An earlier draft stamped it with the current time, which sorted after every real GitHub timestamp and made later genuine deliveries stale. GitHub does not retry failed deliveries on its own, so the 400 stays visible in the App's delivery log. The marker is stored per order scope: one scope for the issue's title, body, and state, and one scope for each comment. A delivery is `stale` when an applied delivery in its scope has a later marker. It is also stale when its comment scope has already applied `issue_comment.deleted`, so a late edit cannot bring back a deleted comment. The tombstone applies only to comment scopes.
-- Actions Garden does not apply, such as `issues.labeled` or `issues.deleted`, return `unsupported_action` before the ledger. They never record an `applied` row and never move the order marker.
+- Actions Garden does not apply, such as `issues.deleted` or `issues.milestoned`, return `unsupported_action` before the ledger. They never record an `applied` row and never move the order marker.
 - Stale deliveries are recorded too, so a redelivery of a stale delivery is a duplicate.
 - The binding row is locked `FOR UPDATE` before the ledger check, so two deliveries for one linked issue cannot race.
 - If the apply step fails, the transaction rolls back the ledger row with it, so GitHub's redelivery can succeed.
@@ -30,7 +30,7 @@ A Garden issue can be linked to a GitHub issue through an `issue_source_binding`
 
 A marker column on `issue_source_binding` was rejected. Comments need their own order streams, and replay detection needs every delivery id, not only the latest one.
 
-**Only Garden's own App bot is skipped.** A delivery whose `sender.login` is `<GITHUB_APP_SLUG>[bot]` is recorded but not applied, so Garden's own GitHub writes do not echo back. Other bots apply normally. An earlier draft skipped every `sender.type = Bot`, so issues closed by actions/stale, Dependabot, or an Actions workflow never reached Garden.
+**Only Garden's own App bot is skipped.** A delivery whose `sender.login` is `<GITHUB_APP_SLUG>[bot]` is recorded but not applied, so Garden's own GitHub writes do not echo back. The linked-repository create step in [GitHub issue sync](./github-issue-sync.md) does not skip it, because a create has nothing to echo. Other bots apply normally. An earlier draft skipped every `sender.type = Bot`, so issues closed by actions/stale, Dependabot, or an Actions workflow never reached Garden.
 
 **One installation can serve several workspaces.** GitHub allows one installation of an App per account, so two Garden workspaces that connect the same GitHub org store the same `installation_id`. The webhook applies each delivery to every linked issue across those workspaces, one transaction per link. A unique `installation_id` was rejected because it would make the second workspace's connect flow fail.
 
@@ -39,15 +39,15 @@ A marker column on `issue_source_binding` was rejected. Comments need their own 
 In scope:
 
 - Verifying `X-Hub-Signature-256` against the raw body with `GITHUB_WEBHOOK_SECRET`.
-- `issues.edited`, which syncs title and body. `issues.closed` sets the status to `done`, and `issues.reopened` sets it to `todo`.
+- `issues.edited`, which syncs title and body. `issues.closed` sets the status to `done`, or `cancelled` when GitHub closed it as not planned or as a duplicate. `issues.reopened` sets it to `todo`.
+- `issues.assigned`, `unassigned`, `labeled`, and `unlabeled`, which sync the assignee and labels. [GitHub issue sync](./github-issue-sync.md) defines the mapping.
 - `issue_comment.created`, `edited`, and `deleted`, stored as connector comments with `author_type = 'connector'` and no Garden author id.
 - Replay and ordering protection through `github_webhook_delivery`.
 
 Out of scope:
 
-- Creating Garden issues from GitHub issues. Only issues that are already linked sync.
+- Creating Garden issues from GitHub issues. [GitHub issue sync](./github-issue-sync.md) creates them for repositories linked to a Team, through `issues.opened` and the same route.
 - The UI that links a Garden issue to a GitHub issue.
-- Mapping GitHub users to Garden members.
 - Sending Garden changes back to GitHub.
 - Waking agents on inbound GitHub comments.
 
@@ -81,5 +81,4 @@ The route needs no Garden session. The GitHub signature is the only credential, 
 
 - The order marker compares GitHub timestamps only. A GitHub edit that is delivered after a newer Garden edit still overwrites the Garden edit.
 - GitHub timestamps have one-second resolution. Two edits in the same second that arrive out of order are both applied, in arrival order.
-- A GitHub close with `state_reason = not_planned` sets the status to `done`, not `cancelled`.
 - Nothing prunes `github_webhook_delivery`. Rows grow with delivery volume until their binding is deleted.

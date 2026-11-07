@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, or } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { schema, type Db } from '@/lib/server/db'
 
@@ -11,6 +11,8 @@ export class GitHubWebhookResolveError extends TaggedError(
 
 export type GitHubWebhookIssueIdentity = {
   installationId: string
+  /** `repository.id`, which survives renames and owner transfers. */
+  githubRepoId: number | null
   owner: string
   repo: string
   issueNumber: number
@@ -22,6 +24,12 @@ export type GitHubWebhookIssueTarget = GitHubWebhookIssueIdentity & {
   title: string | null
   body: string | null
   state: 'open' | 'closed' | null
+  /** `issue.state_reason`: `completed`, `not_planned`, `duplicate`, or null. */
+  stateReason: string | null
+  /** Current `issue.labels` names, after a labeled or unlabeled change. */
+  labels: string[]
+  /** Current `issue.assignees`, after an assigned or unassigned change. */
+  assignees: { id: string; login: string }[]
   /** GitHub `sender.login`; Garden's own App bot is skipped to avoid echoes. */
   senderLogin: string | null
   /** `issue.updated_at` ms for delivery order enforcement. */
@@ -68,6 +76,24 @@ function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+function labelNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((label) => {
+    const name = typeof label === 'string' ? label : asRecord(label)?.name
+    return typeof name === 'string' && name.length > 0 ? [name] : []
+  })
+}
+
+function githubUsers(value: unknown): { id: string; login: string }[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    const user = asRecord(entry)
+    const id = asNumber(user?.id)
+    const login = asString(user?.login)
+    return id !== null && login ? [{ id: String(id), login }] : []
+  })
+}
+
 /**
  * Reads GitHub's `updated_at` as the delivery order marker.
  *
@@ -110,6 +136,54 @@ export function githubIssueExternalIdCandidates(args: {
   return [...new Set([canonical, shorthand, ...(htmlUrl ? [htmlUrl] : [])])]
 }
 
+/**
+ * The rename-proof key a synced binding stores in its metadata: the
+ * repository's numeric id and the issue number.
+ */
+export function githubIssueBindingKey(
+  githubRepoId: number,
+  issueNumber: number,
+) {
+  return { github_repo_id: githubRepoId, github_issue_number: issueNumber }
+}
+
+/**
+ * Matches the `issue_source_binding` rows for one GitHub issue: any external
+ * id form #236 accepts, the issue URL, or the repository id and issue number
+ * a synced binding stores in its metadata.
+ *
+ * Why the metadata key: external ids name the repository, so after a rename
+ * the old binding matched nothing and the next event created a second Garden
+ * issue for the same GitHub issue. The repository id does not change on a
+ * rename or an owner transfer.
+ */
+export function githubIssueBindingMatch(
+  identity: Pick<
+    GitHubWebhookIssueIdentity,
+    'githubRepoId' | 'owner' | 'repo' | 'issueNumber' | 'htmlUrl'
+  >,
+): SQL {
+  const conditions: SQL[] = [
+    inArray(
+      schema.issueSourceBinding.externalId,
+      githubIssueExternalIdCandidates(identity),
+    ),
+  ]
+  if (identity.htmlUrl) {
+    conditions.push(eq(schema.issueSourceBinding.externalUrl, identity.htmlUrl))
+  }
+  if (identity.githubRepoId !== null) {
+    const key = githubIssueBindingKey(
+      identity.githubRepoId,
+      identity.issueNumber,
+    )
+    conditions.push(
+      sql`${schema.issueSourceBinding.metadata} @> ${JSON.stringify(key)}::jsonb`,
+    )
+  }
+  return sql`(${sql.join(conditions, sql` or `)})`
+}
+
 function parseIssueIdentity(
   root: Record<string, unknown>,
 ): Result<GitHubWebhookIssueIdentity, GitHubWebhookResolveError> | null {
@@ -142,6 +216,7 @@ function parseIssueIdentity(
 
   return Result.ok({
     installationId: String(installationId),
+    githubRepoId: asNumber(repository?.id),
     owner,
     repo,
     issueNumber,
@@ -189,6 +264,9 @@ export function parseGitHubWebhookIssueTarget(
     title: asString(issue.title),
     body: typeof issue.body === 'string' ? issue.body : null,
     state,
+    stateReason: asString(issue.state_reason),
+    labels: labelNames(issue.labels),
+    assignees: githubUsers(issue.assignees),
     senderLogin: asString(sender?.login),
     updatedAtMs,
   }))
@@ -274,20 +352,6 @@ export async function resolveGitHubWebhookBindings(args: {
   db: Db
   target: GitHubWebhookIssueIdentity
 }): Promise<GitHubWebhookBindingMatch[]> {
-  const externalIds = githubIssueExternalIdCandidates({
-    owner: args.target.owner,
-    repo: args.target.repo,
-    issueNumber: args.target.issueNumber,
-    htmlUrl: args.target.htmlUrl,
-  })
-
-  const identityMatch = args.target.htmlUrl
-    ? or(
-        inArray(schema.issueSourceBinding.externalId, externalIds),
-        eq(schema.issueSourceBinding.externalUrl, args.target.htmlUrl),
-      )
-    : inArray(schema.issueSourceBinding.externalId, externalIds)
-
   const rows = await args.db
     .select({
       bindingId: schema.issueSourceBinding.id,
@@ -312,7 +376,7 @@ export async function resolveGitHubWebhookBindings(args: {
         ne(schema.githubAppInstallation.status, 'disconnected'),
         eq(schema.issueSourceBinding.connectorId, 'github'),
         eq(schema.issueSourceBinding.sourceKind, 'issue'),
-        identityMatch,
+        githubIssueBindingMatch(args.target),
       ),
     )
     .orderBy(asc(schema.issueSourceBinding.id))

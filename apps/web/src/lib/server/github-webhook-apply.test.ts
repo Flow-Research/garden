@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { planGitHubWebhookIssueApply } from './github-webhook-apply'
+import {
+  nextGitHubAssignee,
+  planGitHubWebhookIssueApply,
+} from './github-webhook-apply'
 import { connectorCommentActorLabel } from '@garden/server/issues/server'
 import type { GitHubWebhookIssueTarget } from './github-webhook-resolve'
 
@@ -8,6 +11,7 @@ function target(
 ): GitHubWebhookIssueTarget {
   return {
     installationId: '1',
+    githubRepoId: 7,
     owner: 'Flow-Research',
     repo: 'garden',
     issueNumber: 42,
@@ -16,6 +20,9 @@ function target(
     title: 'Title',
     body: 'Body',
     state: 'open',
+    stateReason: null,
+    labels: [],
+    assignees: [],
     senderLogin: 'octocat',
     updatedAtMs: Date.parse('2026-04-01T12:00:00Z'),
     ...overrides,
@@ -38,19 +45,55 @@ describe('planGitHubWebhookIssueApply', () => {
     ).toEqual({ description: null })
   })
 
-  it('maps closed to done and reopened to todo', () => {
+  it('maps closed to done or cancelled by reason, and reopened to todo', () => {
     expect(planGitHubWebhookIssueApply(target({ action: 'closed' }))).toEqual({
       status: 'done',
     })
+    expect(
+      planGitHubWebhookIssueApply(
+        target({ action: 'closed', stateReason: 'not_planned' }),
+      ),
+    ).toEqual({ status: 'cancelled' })
     expect(planGitHubWebhookIssueApply(target({ action: 'reopened' }))).toEqual(
       { status: 'todo' },
     )
   })
 
+  it('syncs current labels and assignees, and patches nothing on opened', () => {
+    const assignees = [{ id: '7', login: 'octocat' }]
+    expect(
+      planGitHubWebhookIssueApply(target({ action: 'unassigned', assignees })),
+    ).toEqual({ assignees })
+    expect(
+      planGitHubWebhookIssueApply(
+        target({ action: 'labeled', labels: ['bug'] }),
+      ),
+    ).toEqual({ labels: ['bug'] })
+    expect(planGitHubWebhookIssueApply(target({ action: 'opened' }))).toEqual(
+      {},
+    )
+  })
+
   it('returns null for unsupported actions', () => {
     expect(
-      planGitHubWebhookIssueApply(target({ action: 'assigned' })),
+      planGitHubWebhookIssueApply(target({ action: 'deleted' })),
     ).toBeNull()
+  })
+})
+
+describe('nextGitHubAssignee', () => {
+  it('assigns the matched member, clears a human, and keeps an agent', () => {
+    const human = { assigneeType: 'user', assigneeId: 'u1' }
+    const agent = { assigneeType: 'agent', assigneeId: 'a1' }
+    expect(nextGitHubAssignee({ current: agent, matchedUserId: 'u2' })).toEqual(
+      { assigneeType: 'user', assigneeId: 'u2' },
+    )
+    expect(nextGitHubAssignee({ current: human, matchedUserId: null })).toEqual(
+      { assigneeType: null, assigneeId: null },
+    )
+    expect(nextGitHubAssignee({ current: agent, matchedUserId: null })).toEqual(
+      agent,
+    )
   })
 })
 

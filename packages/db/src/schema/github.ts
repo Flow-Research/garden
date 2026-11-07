@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm'
 import {
   bigint,
   check,
+  foreignKey,
   index,
   pgTable,
   text,
@@ -12,6 +13,7 @@ import {
 import { organization } from './workspaces.js'
 import { user } from './users.js'
 import { issueSourceBinding } from './issues.js'
+import { team } from './teams.js'
 import { sqlValueList } from './sql-values.js'
 
 export const githubAppInstallation = pgTable(
@@ -98,6 +100,66 @@ export const githubWebhookDelivery = pgTable(
     check(
       'github_webhook_delivery_status_check',
       sql`${table.status} in (${sqlValueList(githubWebhookDeliveryStatusValues)})`,
+    ),
+  ],
+)
+
+export const teamRepositoryImportStateValues = [
+  'pending',
+  'importing',
+  'ready',
+  'failed',
+] as const
+
+/**
+ * A GitHub repository linked to a Team, whose issues land on that Team's
+ * board.
+ *
+ * Why: the webhook only updated Garden issues that someone had already linked
+ * by hand, so product Team boards stayed empty. A link here makes the import
+ * Workflow and `issues.*` webhooks create Garden issues for the repository.
+ * `github_repo_id` is the key because full names change on rename, and it is
+ * unique per workspace so every GitHub issue has exactly one board.
+ * `linked_by` records who linked the repository. It is nullable with
+ * `on delete set null` because deleting that user must not unlink the
+ * repository; issue sync falls back to the Team owner when it is null. Rows
+ * cascade with their Team.
+ */
+export const teamRepository = pgTable(
+  'team_repository',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').notNull(),
+    githubRepoId: bigint('github_repo_id', { mode: 'number' }).notNull(),
+    fullName: text('full_name').notNull(),
+    linkedBy: uuid('linked_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
+    importState: text('import_state').notNull().default('pending'),
+    importedAt: timestamp('imported_at', { withTimezone: true, mode: 'date' }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .default(sql`now()`),
+  },
+  (table) => [
+    foreignKey({
+      name: 'team_repository_team_workspace_fk',
+      columns: [table.teamId, table.workspaceId],
+      foreignColumns: [team.id, team.workspaceId],
+    }).onDelete('cascade'),
+    uniqueIndex('team_repository_workspace_repo_unique').on(
+      table.workspaceId,
+      table.githubRepoId,
+    ),
+    index('team_repository_team_idx').on(table.teamId),
+    check(
+      'team_repository_import_state_check',
+      sql`${table.importState} in (${sqlValueList(teamRepositoryImportStateValues)})`,
     ),
   ],
 )
