@@ -18,6 +18,10 @@ import { invokeRouteHandler } from '@/test/route-handler'
 import type { AppRequestContext } from '@/lib/server/context'
 import { GitHubApiError } from '@/lib/server/github-repositories'
 import { startTeamRepositoryImport } from '@/lib/server/github-repo-import'
+import {
+  parseGitHubIssueSnapshot,
+  upsertGitHubIssue,
+} from '@/lib/server/github-issue-sync'
 import { Route as RepositoriesRoute } from './$teamId/repositories'
 import { Route as AvailableRoute } from './$teamId/repositories/available'
 import { Route as RetryRoute } from './$teamId/repositories/$repositoryId/retry'
@@ -407,5 +411,35 @@ describe('Team repository links and import (integration)', () => {
       params: { teamId, repositoryId: link.id },
     })
     expect(again.status).toBe(409)
+  })
+
+  it('gives concurrent issue creates in one workspace distinct numbers', async () => {
+    const fullName = 'Flow-Research/concurrent-repo'
+    const link = {
+      id: randomUUID(),
+      workspaceId: fixture.workspaceId,
+      teamId,
+      linkedBy: fixture.ownerId,
+      fullName,
+    }
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, (_, index) =>
+        upsertGitHubIssue({
+          db: testDb.db,
+          link,
+          snapshot: parseGitHubIssueSnapshot(
+            githubIssue(500 + index, {
+              html_url: `https://github.com/${fullName}/issues/${500 + index}`,
+            }),
+            fullName,
+          )!,
+        }),
+      ),
+    )
+    const numbers = outcomes.map((outcome) =>
+      outcome.kind === 'created' ? outcome.issue.number : null,
+    )
+    expect(numbers).not.toContain(null)
+    expect(new Set(numbers).size).toBe(8)
   })
 })
