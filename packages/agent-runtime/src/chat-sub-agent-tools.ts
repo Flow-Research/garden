@@ -1633,11 +1633,12 @@ async function listWorkspaceInventoryFromChat(
                   ),
                 )
               : tools
+            const bindingStatus = binding?.status ?? null
             const connectorMatches = matchesQuery(
               connector.id,
               connector.label,
               connector.description,
-              binding ? 'connected' : null,
+              bindingStatus,
             )
             if (!connectorMatches && filteredTools.length === 0) return []
 
@@ -1647,7 +1648,7 @@ async function listWorkspaceInventoryFromChat(
                 label: connector.label,
                 description: connector.description,
                 connected: Boolean(binding),
-                status: binding ? 'connected' : null,
+                status: bindingStatus,
                 account_login: binding?.accountLogin ?? null,
                 auth_kind: binding?.authKind ?? null,
                 ...(binding?.repositorySelection
