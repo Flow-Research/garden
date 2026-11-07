@@ -40,18 +40,54 @@ const holder = vi.hoisted(() => ({
   db: null as unknown,
   /** GitHub responses keyed by request path, then by `page` query. */
   github: new Map<string, unknown>(),
+  /** Every issue in the imported repository, as GitHub's issue list sees it. */
+  issues: [] as Record<string, unknown>[],
+  /** Runs after each issue list response, to change GitHub mid-import. */
+  afterList: (() => {}) as (listCalls: number) => void,
+  listCalls: 0,
   failGitHub: false,
 }))
 
 /**
- * GitHub is served from `holder.github`; a missing path answers 404, as
- * GitHub does for a repository the installation cannot access.
+ * GitHub's open-issue list over `holder.issues`, honoring the `state`,
+ * `since`, `sort`, `page`, and `per_page` query the way GitHub does, so an
+ * import sees issues shift when one closes between pages.
+ */
+function listIssues(query: Record<string, unknown>) {
+  const since = typeof query.since === 'string' ? Date.parse(query.since) : 0
+  const updated = (issue: Record<string, unknown>) =>
+    Date.parse(issue.updated_at as string)
+  const key =
+    query.sort === 'updated'
+      ? (issue: Record<string, unknown>) => updated(issue)
+      : (issue: Record<string, unknown>) => issue.number as number
+  const perPage = Number(query.per_page)
+  const page = Number(query.page)
+  const listed = holder.issues
+    .filter((issue) => issue.state === query.state && updated(issue) >= since)
+    .sort(
+      (a, b) => key(a) - key(b) || (a.number as number) - (b.number as number),
+    )
+    .slice((page - 1) * perPage, page * perPage)
+    .map((issue) => structuredClone(issue))
+  holder.listCalls += 1
+  holder.afterList(holder.listCalls)
+  return listed
+}
+
+/**
+ * GitHub is served from `holder.github`, and issue lists from `holder.issues`;
+ * a missing path answers 404, as GitHub does for a repository the
+ * installation cannot access.
  */
 async function fakeGitHub(input: GitHubRequest) {
   if (holder.failGitHub) {
     return Result.err(
       new GitHubApiError({ message: 'GitHub is down', status: 502 }),
     )
+  }
+  if (input.path.endsWith('/issues')) {
+    return Result.ok(listIssues(input.query ?? {}))
   }
   const page = input.query?.page
   const key = page === undefined ? input.path : `${input.path}?page=${page}`
@@ -91,6 +127,7 @@ function githubIssue(number: number, extra: Record<string, unknown> = {}) {
     labels: [{ name: 'bug' }],
     assignees: [],
     user: { id: 1, login: 'someone' },
+    updated_at: new Date(Date.UTC(2026, 4, 1) + number * 60_000).toISOString(),
     ...extra,
   }
 }
@@ -147,6 +184,9 @@ describe('Team repository links and import (integration)', () => {
   beforeEach(async () => {
     workflow = makeWorkflowBinding()
     holder.github = new Map()
+    holder.issues = []
+    holder.afterList = () => {}
+    holder.listCalls = 0
     holder.failGitHub = false
     await testDb.db.delete(schema.teamRepository)
   })
@@ -324,7 +364,7 @@ describe('Team repository links and import (integration)', () => {
 
   it('imports open issues page by page, skips pull requests, and imports nothing twice', async () => {
     const link = await seedLink()
-    const page1 = Array.from({ length: 100 }, (_, index) =>
+    holder.issues = Array.from({ length: 102 }, (_, index) =>
       index === 0
         ? githubIssue(1, {
             assignees: [
@@ -339,12 +379,6 @@ describe('Team repository links and import (integration)', () => {
               assignees: [{ id: 900, login: 'stranger' }],
             }),
     )
-    const issuesPath = `/repos/Flow-Research/import-repo/issues`
-    holder.github.set(`${issuesPath}?page=1`, page1)
-    holder.github.set(`${issuesPath}?page=2`, [
-      githubIssue(101),
-      githubIssue(102),
-    ])
 
     const first = await runImport(link.id)
     expect(first.status).toBe('ready')
@@ -379,6 +413,25 @@ describe('Team repository links and import (integration)', () => {
     const second = await runImport(link.id)
     expect(second).toMatchObject({ status: 'ready', created: 0 })
     expect(await importedIssues()).toHaveLength(101)
+  })
+
+  it('imports every open issue when one closes between pages', async () => {
+    const link = await seedLink()
+    holder.issues = Array.from({ length: 150 }, (_, index) =>
+      githubIssue(index + 1),
+    )
+    holder.afterList = (listCalls) => {
+      if (listCalls !== 1) return
+      const closed = holder.issues.find((issue) => issue.number === 5)!
+      closed.state = 'closed'
+      closed.updated_at = '2026-06-01T00:00:00Z'
+    }
+
+    expect((await runImport(link.id)).status).toBe('ready')
+    const numbers = (await importedIssues())
+      .map((row) => Number(row.externalId.split('#')[1]))
+      .sort((a, b) => a - b)
+    expect(numbers).toEqual(Array.from({ length: 150 }, (_, i) => i + 1))
   })
 
   it('marks the link failed when GitHub keeps failing, and Retry restarts it', async () => {
