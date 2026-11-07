@@ -119,7 +119,6 @@ async function flushWaitUntil() {
 const SAFE_TEAM_EVENT_FIELDS = new Set([
   'workspace_id',
   'team_id',
-  'owner_user_id',
   'membership_id',
   'member_type',
   'user_id',
@@ -696,7 +695,7 @@ describe('teams API (integration)', () => {
     expect(memberBody.unique_member_count).toBe(3)
   })
 
-  it('scopes issue counts to the caller visibility', async () => {
+  it('counts the whole Team board for members and managers alike', async () => {
     const fixture = await seedWorkspace(testDb)
     const teamId = await seedTeamRow(testDb, {
       workspaceId: fixture.workspaceId,
@@ -741,7 +740,7 @@ describe('teams API (integration)', () => {
     const memberBody = (await memberResponse.json()) as {
       teams: Array<{ issue_count: number }>
     }
-    expect(memberBody.teams[0]?.issue_count).toBe(1)
+    expect(memberBody.teams[0]?.issue_count).toBe(2)
 
     const ownerRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },

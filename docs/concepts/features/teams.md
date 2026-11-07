@@ -3,7 +3,7 @@ title: Teams group people and agents, and scope who sees which issues
 description: How Teams work in a workspace, who can manage them, how admins reach them from Settings, and why Team realtime events carry identifiers only.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-07
 ---
 
 A Team is a group inside a workspace, such as Engineering or Finance. It holds people and agents, has one human owner, and can own issues. Teams decide who sees which Team issues, so they are both an organizing tool and an access rule.
@@ -16,11 +16,30 @@ Three roles meet on a Team. The server enforces each rule; the UI only hides con
 | --- | --- | --- |
 | Workspace owner or admin | Every Team and every Team issue | Create, edit, and delete any Team, manage members, and transfer ownership |
 | Team owner | Their Team and all of its issues | Edit their Team and manage its members. They cannot transfer ownership or delete the Team. |
-| Team member | Only the Teams they belong to, and only the Team issues assigned to them | Nothing on the Team itself |
+| Team member | The Teams they belong to, and every issue on those Teams' boards | Nothing on the Team itself. On a Team issue they can change status, position, and fields, comment, and assign the issue to themselves. |
 
 A Team has exactly one human owner. An agent can be a member but never the owner. A Team with issues cannot be deleted; the API returns `TEAM_HAS_ISSUES`.
 
 The `can_manage` and `can_transfer_owner` fields in a Team response are rendering hints. `requireTeamAccess`, `requireTeamManage`, and `requireTeamOwnerTransfer` in `apps/web/src/lib/server/team-access.ts` make the actual decision on every request.
+
+## Team members work the whole Team board
+
+Every member of a Team sees every issue on that Team's board, whoever the issue is assigned to. A workspace member outside the Team sees none of its issues. Workspace owners and admins see every Team issue. Workspace issues, which have no Team, stay visible to every workspace member.
+
+Engineering teams import their GitHub issues onto a Team board, and most of those issues are assigned to someone else or to nobody yet. Before this rule, a normal member saw only the Team issues assigned to them, so an imported board looked almost empty to the engineers who were meant to work it.
+
+The rule lives in one module, `packages/db/src/team-issue-visibility.ts`. `canViewTeamIssue` decides a single issue or realtime event. `teamIssueVisibilityCondition` is the SQL form for collection queries. These callers use it:
+
+| Surface | Caller |
+| --- | --- |
+| Issue detail, update, comments, and subresources | `requireIssueAccess` in `apps/web/src/lib/server/issue-access.ts` |
+| Issue list, search, and child progress | `apps/web/src/routes/api/issues.ts`, `issues/search.ts`, `issues/child-progress.ts` |
+| Realtime issue and comment events | `canReceiveRealtimeEvent` in `packages/agent-runtime/src/realtime-audience.ts` |
+| The chat agent's `list_issues` tool | `listIssues` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace |
+
+The Team owner needs no separate term. Creating a Team adds its owner as a member, an ownership transfer requires an existing member, and the owner cannot be removed. Team issue counts in `GET /api/teams` and `GET /api/teams/:teamId` count the whole board, because only managers and members can open a Team.
+
+Write access follows read access, with limits on assignment and Team moves. A member can update any issue on their Team's board and comment on it, so they can move cards across the board and pick up work. A member can assign a Team issue only to themselves, and creates Team issues assigned to themselves. Assigning a Team issue to someone else and moving an issue between Teams stay with the Team owner and workspace owners and admins. Deleting an issue needs the workspace `issue:update` permission, which normal members do not have. The `PUT` and `DELETE` handlers in `apps/web/src/routes/api/issues/$id.ts` enforce these limits.
 
 ## Teams live at `/teams`
 
@@ -68,7 +87,7 @@ Request bodies use the Zod schemas in `apps/web/src/lib/server/validation/teams.
 
 After a successful write, the route publishes a workspace event: `team:created`, `team:updated`, `team:deleted`, `team_member:added`, or `team_member:removed`. A refused write publishes nothing.
 
-The payloads carry identifiers only: workspace, Team, membership, member type, and the user or agent ID, plus `owner_user_id` on created and updated events. Every Team member's socket receives these events, so a Team DTO would leak the publisher's `can_manage` flag and the counts they can see. `team:deleted` no longer carries the Team name for the same reason. Clients invalidate the `teams` cache and refetch. The realtime hub reads `owner_user_id` to keep each socket's list of owned Teams current after a transfer. See [Realtime](../architecture/realtime.md).
+The payloads carry identifiers only: workspace, Team, membership, member type, and the user or agent ID. Every Team member's socket receives these events, so a Team DTO would leak the publisher's `can_manage` flag and the counts they can see. `team:deleted` no longer carries the Team name for the same reason. Clients invalidate the `teams` cache and refetch. The realtime hub keeps each socket's list of Teams current from `team_member:added`, `team_member:removed`, and `team:deleted`. See [Realtime](../architecture/realtime.md).
 
 ## Members link a GitHub identity
 
