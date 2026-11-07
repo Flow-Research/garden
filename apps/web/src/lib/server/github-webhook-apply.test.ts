@@ -11,6 +11,7 @@ function target(
 ): GitHubWebhookIssueTarget {
   return {
     installationId: '1',
+    githubRepoId: 7,
     owner: 'Flow-Research',
     repo: 'garden',
     issueNumber: 42,

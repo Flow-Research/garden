@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, ne, or } from 'drizzle-orm'
+import { and, asc, eq, inArray, ne, sql, type SQL } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { schema, type Db } from '@/lib/server/db'
 
@@ -11,6 +11,8 @@ export class GitHubWebhookResolveError extends TaggedError(
 
 export type GitHubWebhookIssueIdentity = {
   installationId: string
+  /** `repository.id`, which survives renames and owner transfers. */
+  githubRepoId: number | null
   owner: string
   repo: string
   issueNumber: number
@@ -134,6 +136,54 @@ export function githubIssueExternalIdCandidates(args: {
   return [...new Set([canonical, shorthand, ...(htmlUrl ? [htmlUrl] : [])])]
 }
 
+/**
+ * The rename-proof key a synced binding stores in its metadata: the
+ * repository's numeric id and the issue number.
+ */
+export function githubIssueBindingKey(
+  githubRepoId: number,
+  issueNumber: number,
+) {
+  return { github_repo_id: githubRepoId, github_issue_number: issueNumber }
+}
+
+/**
+ * Matches the `issue_source_binding` rows for one GitHub issue: any external
+ * id form #236 accepts, the issue URL, or the repository id and issue number
+ * a synced binding stores in its metadata.
+ *
+ * Why the metadata key: external ids name the repository, so after a rename
+ * the old binding matched nothing and the next event created a second Garden
+ * issue for the same GitHub issue. The repository id does not change on a
+ * rename or an owner transfer.
+ */
+export function githubIssueBindingMatch(
+  identity: Pick<
+    GitHubWebhookIssueIdentity,
+    'githubRepoId' | 'owner' | 'repo' | 'issueNumber' | 'htmlUrl'
+  >,
+): SQL {
+  const conditions: SQL[] = [
+    inArray(
+      schema.issueSourceBinding.externalId,
+      githubIssueExternalIdCandidates(identity),
+    ),
+  ]
+  if (identity.htmlUrl) {
+    conditions.push(eq(schema.issueSourceBinding.externalUrl, identity.htmlUrl))
+  }
+  if (identity.githubRepoId !== null) {
+    const key = githubIssueBindingKey(
+      identity.githubRepoId,
+      identity.issueNumber,
+    )
+    conditions.push(
+      sql`${schema.issueSourceBinding.metadata} @> ${JSON.stringify(key)}::jsonb`,
+    )
+  }
+  return sql`(${sql.join(conditions, sql` or `)})`
+}
+
 function parseIssueIdentity(
   root: Record<string, unknown>,
 ): Result<GitHubWebhookIssueIdentity, GitHubWebhookResolveError> | null {
@@ -166,6 +216,7 @@ function parseIssueIdentity(
 
   return Result.ok({
     installationId: String(installationId),
+    githubRepoId: asNumber(repository?.id),
     owner,
     repo,
     issueNumber,
@@ -301,20 +352,6 @@ export async function resolveGitHubWebhookBindings(args: {
   db: Db
   target: GitHubWebhookIssueIdentity
 }): Promise<GitHubWebhookBindingMatch[]> {
-  const externalIds = githubIssueExternalIdCandidates({
-    owner: args.target.owner,
-    repo: args.target.repo,
-    issueNumber: args.target.issueNumber,
-    htmlUrl: args.target.htmlUrl,
-  })
-
-  const identityMatch = args.target.htmlUrl
-    ? or(
-        inArray(schema.issueSourceBinding.externalId, externalIds),
-        eq(schema.issueSourceBinding.externalUrl, args.target.htmlUrl),
-      )
-    : inArray(schema.issueSourceBinding.externalId, externalIds)
-
   const rows = await args.db
     .select({
       bindingId: schema.issueSourceBinding.id,
@@ -339,7 +376,7 @@ export async function resolveGitHubWebhookBindings(args: {
         ne(schema.githubAppInstallation.status, 'disconnected'),
         eq(schema.issueSourceBinding.connectorId, 'github'),
         eq(schema.issueSourceBinding.sourceKind, 'issue'),
-        identityMatch,
+        githubIssueBindingMatch(args.target),
       ),
     )
     .orderBy(asc(schema.issueSourceBinding.id))

@@ -138,13 +138,16 @@ export async function importGitHubIssuePage(args: {
   >
 > {
   const page = await listOpenRepositoryIssuesPage(args.request, {
-    fullName: args.link.fullName,
+    githubRepoId: args.link.githubRepoId,
     cursor: args.cursor,
   })
   if (page.isErr()) return Result.err(page.error)
   const created: (typeof schema.issue.$inferSelect)[] = []
   for (const item of page.value.items) {
-    const snapshot = parseGitHubIssueSnapshot(item, args.link.fullName)
+    const snapshot = parseGitHubIssueSnapshot(item, {
+      id: args.link.githubRepoId,
+      fullName: args.link.fullName,
+    })
     if (!snapshot || snapshot.state !== 'open') continue
     const outcome = await upsertGitHubIssue({
       db: args.db,

@@ -13,7 +13,9 @@ import { appEnv } from '@/lib/server/env'
 import { resolveGitHubAppSlug } from '@/lib/server/github-app'
 import { verifyGitHubWebhookSignature } from '@/lib/server/github-webhook'
 import {
+  applyGitHubRepositoryMove,
   ensureLinkedGitHubIssue,
+  githubRepositoryMove,
   githubWebhookIssueCandidate,
 } from '@/lib/server/github-issue-sync'
 import { publishCreatedIssues } from '@/lib/server/github-repo-import'
@@ -239,9 +241,11 @@ async function deliverToBindings(
 /**
  * GitHub App webhook ingress (#161).
  *
- * Verify signature, parse `issues.*` or `issue_comment.*`, drop actions Garden
- * does not apply, create the Garden issue when the repository is linked to a
- * Team, resolve every linked issue for the installation, then record
+ * Verify signature. A `repository.renamed` or `repository.transferred`
+ * delivery rewrites links and bindings to the new name
+ * (`applyGitHubRepositoryMove`) and stops there. Otherwise parse `issues.*` or
+ * `issue_comment.*`, drop actions Garden does not apply, create the Garden
+ * issue when the repository is linked to a Team, resolve every linked issue for the installation, then record
  * and apply the delivery per link in one transaction each
  * (`processGitHubWebhookDelivery`). Lifecycle effects and realtime events run
  * only after that transaction commits. Unbound, unsupported, duplicate, stale,
@@ -287,6 +291,22 @@ export const Route = createFileRoute('/api/github/webhook')({
           waitUntil: (promise: Promise<unknown>) =>
             appContext.waitUntil(promise),
           appSlug: resolveGitHubAppSlug(appEnv),
+        }
+
+        if (event === 'repository') {
+          const move = githubRepositoryMove(payload.value)
+          if (!move) return json({ ok: true, status: 'ignored' }, 200)
+          const moved = await Result.tryPromise(() =>
+            applyGitHubRepositoryMove({ db: ctx.db, move }),
+          )
+          if (moved.isErr()) {
+            logger.error('github_webhook.repository_move_failed', {
+              ...errorFields(moved.error.cause),
+              deliveryId,
+            })
+            return serviceUnavailable('Failed to apply the repository move')
+          }
+          return json({ ok: true, status: 'applied', ...moved.value }, 200)
         }
 
         const commentTarget = parseGitHubWebhookCommentTarget(payload.value)

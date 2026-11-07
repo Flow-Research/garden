@@ -401,7 +401,11 @@ describe('Team repository links and import (integration)', () => {
       assigneeId: null,
       createdBy: fixture.ownerId,
     })
-    expect(three.metadata).toEqual({ github_assignees: ['stranger'] })
+    expect(three.metadata).toMatchObject({
+      github_repo_id: REPO_ID,
+      github_issue_number: 3,
+      github_assignees: ['stranger'],
+    })
 
     const [ready] = await testDb.db
       .select()
@@ -473,6 +477,7 @@ describe('Team repository links and import (integration)', () => {
       workspaceId: fixture.workspaceId,
       teamId,
       linkedBy: fixture.ownerId,
+      githubRepoId: 7099,
       fullName,
     }
     const outcomes = await Promise.all(
@@ -484,7 +489,7 @@ describe('Team repository links and import (integration)', () => {
             githubIssue(500 + index, {
               html_url: `https://github.com/${fullName}/issues/${500 + index}`,
             }),
-            fullName,
+            { id: 7099, fullName },
           )!,
         }),
       ),
