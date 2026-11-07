@@ -12,6 +12,7 @@ import {
   WorkspaceRealtimeDO,
 } from '@garden/agent-runtime'
 import { DecideAnalysisWorkflow } from './decide-analysis-workflow'
+import { GitHubRepoImportWorkflow } from './github-repo-import-workflow'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
 import { createSessionAuth } from '@/lib/auth'
@@ -55,6 +56,7 @@ export { RunWorkflow }
 export { Sandbox }
 export { WorkspaceRealtimeDO }
 export { DecideAnalysisWorkflow }
+export { GitHubRepoImportWorkflow }
 export { ExecutorMcpExecutionOwnerDirectory, ExecutorMcpSession }
 
 type ServerEnv = AppEnv

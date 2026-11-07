@@ -22,6 +22,12 @@ export type GitHubWebhookIssueTarget = GitHubWebhookIssueIdentity & {
   title: string | null
   body: string | null
   state: 'open' | 'closed' | null
+  /** `issue.state_reason`: `completed`, `not_planned`, `duplicate`, or null. */
+  stateReason: string | null
+  /** Current `issue.labels` names, after a labeled or unlabeled change. */
+  labels: string[]
+  /** Current `issue.assignees`, after an assigned or unassigned change. */
+  assignees: { id: string; login: string }[]
   /** GitHub `sender.login`; Garden's own App bot is skipped to avoid echoes. */
   senderLogin: string | null
   /** `issue.updated_at` ms for delivery order enforcement. */
@@ -66,6 +72,24 @@ function asString(value: unknown): string | null {
 
 function asNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function labelNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((label) => {
+    const name = typeof label === 'string' ? label : asRecord(label)?.name
+    return typeof name === 'string' && name.length > 0 ? [name] : []
+  })
+}
+
+function githubUsers(value: unknown): { id: string; login: string }[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((entry) => {
+    const user = asRecord(entry)
+    const id = asNumber(user?.id)
+    const login = asString(user?.login)
+    return id !== null && login ? [{ id: String(id), login }] : []
+  })
 }
 
 /**
@@ -189,6 +213,9 @@ export function parseGitHubWebhookIssueTarget(
     title: asString(issue.title),
     body: typeof issue.body === 'string' ? issue.body : null,
     state,
+    stateReason: asString(issue.state_reason),
+    labels: labelNames(issue.labels),
+    assignees: githubUsers(issue.assignees),
     senderLogin: asString(sender?.login),
     updatedAtMs,
   }))
