@@ -148,6 +148,22 @@ describe.skipIf(!DB_REACHABLE)('hosted github issue_write assignees', () => {
     expect(callTool).not.toHaveBeenCalled()
   })
 
+  it('refuses an empty assignee list on update so it cannot clear assignees', async () => {
+    const { run, callTool } = hostedIssueWrite(workspaceId)
+    const result = await run({
+      method: 'update',
+      owner: 'o',
+      repo: 'r',
+      issue_number: 7,
+      assignees: [],
+    })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('github.issue_write'),
+    })
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
   it('passes a linked login on create through to GitHub', async () => {
     const { run, callTool } = hostedIssueWrite(workspaceId)
     const input = {

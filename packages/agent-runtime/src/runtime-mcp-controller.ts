@@ -409,6 +409,16 @@ function requestedGithubAssignees(input: unknown): string[] {
 }
 
 /**
+ * Whether the call carries an `assignees` key at all. The hosted server treats
+ * a present key as provided even when the list is empty, so `assignees: []`
+ * on update clears every assignee.
+ * Ref: github/github-mcp-server pkg/github/issues.go (AssigneesProvided)
+ */
+function hasAssigneesKey(input: unknown): boolean {
+  return typeof input === 'object' && input !== null && 'assignees' in input
+}
+
+/**
  * The hosted GitHub MCP `issue_write` selects create vs update with `method`;
  * an `issue_number` also targets an existing issue, so either marks update.
  */
@@ -845,11 +855,15 @@ export class RuntimeMcpController {
     input: unknown,
   ): Promise<string | null> {
     if (toolName !== 'issue_write') return null
-    const requested = requestedGithubAssignees(input)
-    if (requested.length === 0) return null
-    if (surface === 'hosted' && isGithubIssueUpdate(input)) {
+    if (
+      surface === 'hosted' &&
+      isGithubIssueUpdate(input) &&
+      hasAssigneesKey(input)
+    ) {
       return 'github-mcp.issue_write cannot set assignees on update: it replaces existing assignees. Use github.issue_write, which adds assignees without removing current ones.'
     }
+    const requested = requestedGithubAssignees(input)
+    if (requested.length === 0) return null
     return this.rejectUnlinkedGithubAssignees(requested)
   }
 
