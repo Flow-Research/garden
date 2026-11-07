@@ -133,6 +133,31 @@ export async function processGitHubWebhookDelivery<T>(args: {
   })
 }
 
+/**
+ * Records the GitHub `updated_at` a sync created a linked issue from, as an
+ * applied delivery in the binding's issue scope.
+ *
+ * Why: the import wrote no marker, so a webhook older than the snapshot the
+ * import wrote still applied and rolled the issue back, for example an
+ * `edited` delivered late after the import read the newer title. With this
+ * row, `processGitHubWebhookDelivery` treats any delivery older than the
+ * snapshot as stale, the same way it orders two webhooks.
+ */
+export async function recordGitHubIssueSnapshotMarker(
+  tx: GitHubWebhookTx,
+  args: { bindingId: string; marker: number },
+) {
+  await tx.insert(schema.githubWebhookDelivery).values({
+    deliveryId: `garden-sync:${args.bindingId}`,
+    bindingId: args.bindingId,
+    event: 'garden_sync',
+    action: 'created',
+    orderScope: githubWebhookIssueOrderScope(args.bindingId),
+    orderMarker: args.marker,
+    status: 'applied',
+  })
+}
+
 /** Order scope for a linked issue's title, body, and state. */
 export function githubWebhookIssueOrderScope(bindingId: string) {
   return `binding:${bindingId}:issue`

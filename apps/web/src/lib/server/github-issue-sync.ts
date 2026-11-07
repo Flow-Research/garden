@@ -4,6 +4,8 @@ import type { IssueStatus } from '@garden/core/types/issue'
 import { allocateIssueSlot } from '@garden/server/issues/server'
 import { attachSourceBindingInTransaction } from '@garden/server/issues/source-binding'
 import { requireReturnedRow, schema, type Db } from '@/lib/server/db'
+import type { TeamRepository } from '@garden/core/types'
+import { recordGitHubIssueSnapshotMarker } from '@/lib/server/github-webhook-delivery'
 import { githubIssueExternalIdCandidates } from '@/lib/server/github-webhook-resolve'
 
 type Executor = Pick<Db, 'select'>
@@ -28,6 +30,8 @@ export type GitHubIssueSnapshot = {
   labels: string[]
   assignees: GitHubUserRef[]
   author: GitHubUserRef | null
+  /** `updated_at` in ms: the ledger order marker for this snapshot. */
+  updatedAtMs: number
 }
 
 /** The Team a linked repository feeds, as the import and webhook need it. */
@@ -55,6 +59,7 @@ const githubIssueSchema = z.object({
     .nullish(),
   assignees: z.array(githubUserSchema).nullish(),
   user: githubUserSchema.nullish(),
+  updated_at: z.string().refine((value) => Number.isFinite(Date.parse(value))),
   pull_request: z.unknown().optional(),
 })
 
@@ -86,6 +91,7 @@ export function parseGitHubIssueSnapshot(
     ),
     assignees: data.assignees ?? [],
     author: data.user ?? null,
+    updatedAtMs: Date.parse(data.updated_at),
   }
 }
 
@@ -171,7 +177,10 @@ export type GitHubIssueUpsertOutcome =
  * page overwrite a newer webhook change. A transaction-scoped advisory lock on
  * the binding key serializes two writers for the same GitHub issue, and the
  * existing check matches every external id form #236 accepts, so an issue
- * someone linked by hand is not imported twice.
+ * someone linked by hand is not imported twice. A created issue records the
+ * snapshot's `updated_at` in the delivery ledger
+ * (`recordGitHubIssueSnapshotMarker`), so a webhook older than what was
+ * written here is stale.
  */
 export async function upsertGitHubIssue(args: {
   db: Db
@@ -232,7 +241,7 @@ export async function upsertGitHubIssue(args: {
       createdBy:
         (snapshot.author && members.get(snapshot.author.id)) ?? link.linkedBy,
     })
-    await attachSourceBindingInTransaction(tx, {
+    const binding = await attachSourceBindingInTransaction(tx, {
       workspaceId: link.workspaceId,
       issueId,
       connectorId: 'github',
@@ -241,12 +250,21 @@ export async function upsertGitHubIssue(args: {
       externalUrl: snapshot.htmlUrl,
       metadata: githubAssigneeMetadata(snapshot.assignees),
     })
+    await recordGitHubIssueSnapshotMarker(tx, {
+      bindingId: binding.binding_id,
+      marker: snapshot.updatedAtMs,
+    })
     const issue = requireReturnedRow(
       await tx.select().from(schema.issue).where(eq(schema.issue.id, issueId)),
       'imported issue',
     )
     return { kind: 'created', issue }
   })
+}
+
+/** A linked repository as the webhook create step reads it. */
+export type ResolvedTeamRepositoryLink = TeamRepositoryLink & {
+  importState: TeamRepository['import_state']
 }
 
 /**
@@ -258,14 +276,15 @@ export async function resolveTeamRepositoryLinks(args: {
   db: Db
   installationId: string
   githubRepoId: number
-}): Promise<TeamRepositoryLink[]> {
-  return args.db
+}): Promise<ResolvedTeamRepositoryLink[]> {
+  const rows = await args.db
     .select({
       id: schema.teamRepository.id,
       workspaceId: schema.teamRepository.workspaceId,
       teamId: schema.teamRepository.teamId,
       linkedBy: schema.teamRepository.linkedBy,
       fullName: schema.teamRepository.fullName,
+      importState: schema.teamRepository.importState,
     })
     .from(schema.teamRepository)
     .innerJoin(
@@ -283,6 +302,10 @@ export async function resolveTeamRepositoryLinks(args: {
       ),
     )
     .orderBy(schema.teamRepository.id)
+  return rows.map((row) => ({
+    ...row,
+    importState: row.importState as TeamRepository['import_state'],
+  }))
 }
 
 /** The GitHub issue a webhook delivery may need to create, and its repository. */
@@ -339,11 +362,19 @@ export function githubWebhookIssueCandidate(
 }
 
 /**
- * Creates the Garden issue for an open GitHub issue on every linked
- * repository across the delivery's installation, and refreshes a link's
- * `full_name` after a rename. Closed issues are not created, matching the
- * import, which brings in open issues only. Returns the issues it created so
- * the route can publish them after commit.
+ * Creates the Garden issue for a GitHub issue on every linked repository
+ * across the delivery's installation, and refreshes a link's `full_name`
+ * after a rename. Returns the issues it created so the route can publish them
+ * after commit.
+ *
+ * Which issues are created: an open one always. A closed one only while the
+ * link's import has not finished. The earlier version never created a closed
+ * issue, so a close that arrived before the import reached that issue was
+ * dropped as unbound, and the import then wrote the issue open from its older
+ * page. Created from the delivery instead, the issue carries the close and its
+ * ledger marker, and the import finds it and leaves it alone. After the import
+ * finishes, a closed issue that is not on the board stays off it, matching an
+ * import that brings in open issues only.
  */
 export async function ensureLinkedGitHubIssue(args: {
   db: Db
@@ -368,7 +399,12 @@ export async function ensureLinkedGitHubIssue(args: {
         .set({ fullName: args.candidate.fullName })
         .where(eq(schema.teamRepository.id, link.id))
     }
-    if (args.candidate.snapshot.state !== 'open') continue
+    if (
+      args.candidate.snapshot.state !== 'open' &&
+      link.importState === 'ready'
+    ) {
+      continue
+    }
     const outcome = await upsertGitHubIssue({
       db: args.db,
       link: { ...link, fullName: args.candidate.fullName },

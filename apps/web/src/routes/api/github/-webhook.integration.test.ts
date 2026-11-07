@@ -14,6 +14,10 @@ import * as schema from '@garden/db/schema'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import { invokeRouteHandler } from '@/test/route-handler'
 import type { AppRequestContext } from '@/lib/server/context'
+import {
+  parseGitHubIssueSnapshot,
+  upsertGitHubIssue,
+} from '@/lib/server/github-issue-sync'
 import { Route } from './webhook'
 import { TEST_DB_HOOK_TIMEOUT_MS, seedWorkspace } from '../teams/-fixtures'
 
@@ -821,6 +825,88 @@ describe('POST /api/github/webhook (integration)', () => {
         skipped_reason: 'own_app_sender',
       })
       expect((await readIssue(issueId))?.labels).toEqual(['bug'])
+    })
+
+    it('creates a closed issue whose close arrives before the import reaches it, and the import keeps it closed', async () => {
+      const repoId = 4343
+      const fullName = 'Flow-Research/importing-repo'
+      const [link] = await testDb.db
+        .insert(schema.teamRepository)
+        .values({
+          workspaceId,
+          teamId,
+          githubRepoId: repoId,
+          fullName,
+          linkedBy: ownerId,
+          importState: 'importing',
+        })
+        .returning()
+      const closed = linkedPayload({
+        action: 'closed',
+        number: 7,
+        repoId,
+        fullName,
+        state: 'closed',
+        stateReason: 'completed',
+        updatedAt: '2026-05-02T10:00:00Z',
+      })
+      expect((await deliver({ payload: closed })).status).toBe(200)
+      const [created] = await linkedIssues(7, fullName)
+      expect(created?.issue.status).toBe('done')
+
+      const importedPage = parseGitHubIssueSnapshot(
+        {
+          ...closed.issue,
+          state: 'open',
+          state_reason: null,
+          updated_at: '2026-05-02T09:00:00Z',
+        },
+        fullName,
+      )!
+      const outcome = await upsertGitHubIssue({
+        db: testDb.db,
+        link: { ...link!, fullName },
+        snapshot: importedPage,
+      })
+      expect(outcome.kind).toBe('existing')
+      const rows = await linkedIssues(7, fullName)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.issue.status).toBe('done')
+    })
+
+    it('treats a webhook older than the snapshot an import wrote as stale', async () => {
+      linkedNumber += 1
+      const number = linkedNumber
+      const imported = linkedPayload({
+        action: 'opened',
+        number,
+        title: 'Imported title',
+        updatedAt: '2026-05-03T10:00:00Z',
+      })
+      const outcome = await upsertGitHubIssue({
+        db: testDb.db,
+        link: {
+          id: randomUUID(),
+          workspaceId,
+          teamId,
+          linkedBy: ownerId,
+          fullName: LINKED_REPO,
+        },
+        snapshot: parseGitHubIssueSnapshot(imported.issue, LINKED_REPO)!,
+      })
+      expect(outcome.kind).toBe('created')
+
+      const late = await deliver({
+        payload: linkedPayload({
+          action: 'edited',
+          number,
+          title: 'Older title',
+          updatedAt: '2026-05-03T09:00:00Z',
+        }),
+      })
+      expect(late.body).toMatchObject({ status: 'stale' })
+      const [row] = await linkedIssues(number)
+      expect(row!.issue.title).toBe('Imported title')
     })
 
     it('ignores an opened issue on a repository no Team links', async () => {
