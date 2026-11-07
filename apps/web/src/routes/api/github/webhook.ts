@@ -18,7 +18,6 @@ import {
 } from '@/lib/server/github-issue-sync'
 import { publishCreatedIssues } from '@/lib/server/github-repo-import'
 import {
-  GITHUB_ISSUE_CREATING_ACTIONS,
   applyGitHubWebhookComment,
   applyGitHubWebhookIssueUpdate,
   isSupportedGitHubCommentAction,
@@ -191,7 +190,6 @@ async function ensureLinkedIssue(
   target: GitHubWebhookIssueTarget,
   payload: unknown,
 ): Promise<Result<void, GitHubWebhookDeliveryError>> {
-  if (!GITHUB_ISSUE_CREATING_ACTIONS.has(target.action)) return Result.ok()
   const candidate = githubWebhookIssueCandidate(payload, target.action)
   if (!candidate) return Result.ok()
   const ensured = await Result.tryPromise({

@@ -52,20 +52,6 @@ export type IssuePatch = Partial<{
 }>
 
 /**
- * GitHub `issues` actions that can create the Garden issue for a linked
- * repository before the delivery applies. `edited`, `closed`, and `reopened`
- * only update issues that already exist.
- */
-export const GITHUB_ISSUE_CREATING_ACTIONS: ReadonlySet<string> = new Set([
-  'opened',
-  'transferred',
-  'assigned',
-  'unassigned',
-  'labeled',
-  'unlabeled',
-])
-
-/**
  * Maps GitHub issue webhook actions onto Garden issue columns.
  *
  * `edited` syncs title and body. `closed` sets `done`, or `cancelled` when
