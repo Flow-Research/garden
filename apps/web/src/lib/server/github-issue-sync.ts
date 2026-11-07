@@ -273,7 +273,8 @@ export async function upsertGitHubIssue(args: {
       assigneeType: assigneeId ? 'user' : null,
       assigneeId,
       createdBy:
-        (snapshot.author && members.get(snapshot.author.id)) ?? link.fallbackCreatorId,
+        (snapshot.author && members.get(snapshot.author.id)) ??
+        link.fallbackCreatorId,
     })
     const binding = await attachSourceBindingInTransaction(tx, {
       workspaceId: link.workspaceId,

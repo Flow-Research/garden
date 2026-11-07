@@ -244,9 +244,7 @@ export async function unlinkTeamRepository(args: {
       ),
     )
     .returning({ id: schema.teamRepository.id })
-  return deleted.length > 0
-    ? Result.ok()
-    : Result.err(teamRepositoryNotFound())
+  return deleted.length > 0 ? Result.ok() : Result.err(teamRepositoryNotFound())
 }
 
 /**

@@ -557,7 +557,9 @@ describe('Team repository links and import (integration)', () => {
       .update(schema.teamRepository)
       .set({ linkedBy: linker })
       .where(eq(schema.teamRepository.id, link.id))
-    await testDb.db.delete(schema.member).where(eq(schema.member.userId, linker))
+    await testDb.db
+      .delete(schema.member)
+      .where(eq(schema.member.userId, linker))
     await testDb.db.delete(schema.user).where(eq(schema.user.id, linker))
 
     const [kept] = await testDb.db
