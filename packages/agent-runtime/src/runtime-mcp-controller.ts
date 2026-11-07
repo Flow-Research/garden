@@ -397,6 +397,29 @@ type ActiveNativeConnectorAccount = {
   status: 'connected' | 'degraded'
 }
 
+function requestedGithubAssignees(input: unknown): string[] {
+  return typeof input === 'object' &&
+    input !== null &&
+    'assignees' in input &&
+    Array.isArray(input.assignees)
+    ? input.assignees.filter(
+        (login): login is string => typeof login === 'string',
+      )
+    : []
+}
+
+/**
+ * The hosted GitHub MCP `issue_write` selects create vs update with `method`;
+ * an `issue_number` also targets an existing issue, so either marks update.
+ */
+function isGithubIssueUpdate(input: unknown): boolean {
+  if (typeof input !== 'object' || input === null) return false
+  return (
+    ('method' in input && input.method === 'update') ||
+    ('issue_number' in input && input.issue_number !== undefined)
+  )
+}
+
 export class RuntimeMcpController {
   private activeNativeConnectorAccounts = new Map<
     string,
@@ -796,25 +819,48 @@ export class RuntimeMcpController {
   }
 
   /**
-   * Enforces issue_write.assignees at the only boundary that knows the
-   * workspace. Before: any string reached GitHub, so an agent could assign a
-   * handle no member linked. Now each login must match a linked member of the
-   * runtime's workspace; returns the rejection message, or null to proceed.
+   * The one assignee gate for GitHub `issue_write`, called by both tool
+   * surfaces that can write an issue: the native `github` tool and the hosted
+   * GitHub MCP tool (`github-mcp`), which is exposed alongside it when the
+   * hosted server lists the same name. Before: only the native surface was
+   * gated, so the hosted tool could assign any login and its update replaced
+   * the issue's assignees wholesale.
+   *
+   * Hosted update with `assignees` is rejected outright. The hosted server's
+   * update sends `assignees` as the full replacement list, and making it
+   * additive would mean reading current assignees and merging them into the
+   * payload: a read-then-write race against other editors, plus a second
+   * GitHub client on this path. The native tool already adds through
+   * POST /issues/{n}/assignees, which only appends, so the agent is steered
+   * there. Hosted create has no prior assignees to lose, so it gets the same
+   * linked-login check as native.
+   * Ref: https://docs.github.com/en/rest/issues/assignees#add-assignees-to-an-issue
+   * Ref: https://github.com/github/github-mcp-server (issue_write method=update)
+   *
+   * Returns the rejection message, or null to proceed.
    */
-  private async rejectUnlinkedGithubAssignees(
+  private async rejectGithubIssueWrite(
+    surface: 'native' | 'hosted',
+    toolName: string,
     input: unknown,
   ): Promise<string | null> {
-    const requested =
-      typeof input === 'object' &&
-      input !== null &&
-      'assignees' in input &&
-      Array.isArray(input.assignees)
-        ? input.assignees.filter(
-            (login): login is string => typeof login === 'string',
-          )
-        : []
+    if (toolName !== 'issue_write') return null
+    const requested = requestedGithubAssignees(input)
     if (requested.length === 0) return null
+    if (surface === 'hosted' && isGithubIssueUpdate(input)) {
+      return 'github-mcp.issue_write cannot set assignees on update: it replaces existing assignees. Use github.issue_write, which adds assignees without removing current ones.'
+    }
+    return this.rejectUnlinkedGithubAssignees(requested)
+  }
 
+  /**
+   * Checks each requested login against linked members of the runtime's
+   * workspace. Before: any string reached GitHub, so an agent could assign a
+   * handle no member linked.
+   */
+  private async rejectUnlinkedGithubAssignees(
+    requested: readonly string[],
+  ): Promise<string | null> {
     const linked = await Result.gen(async function* (
       this: RuntimeMcpController,
     ) {
@@ -991,12 +1037,13 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
                 execute: async (input) => {
-                  if (nativeTool.name === 'issue_write') {
-                    const rejection =
-                      await this.rejectUnlinkedGithubAssignees(input)
-                    if (rejection !== null) {
-                      return { error: true, message: rejection }
-                    }
+                  const rejection = await this.rejectGithubIssueWrite(
+                    'native',
+                    nativeTool.name,
+                    input,
+                  )
+                  if (rejection !== null) {
+                    return { error: true, message: rejection }
                   }
                   const outcome = await Effect.runPromise(
                     Effect.match(
@@ -1078,6 +1125,14 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
                 execute: async (input) => {
+                  const rejection = await this.rejectGithubIssueWrite(
+                    'hosted',
+                    hostedTool.name,
+                    input,
+                  )
+                  if (rejection !== null) {
+                    return { error: true, message: rejection }
+                  }
                   const outcome = await this.callGitHubHostedMcpTool(
                     githubAccount,
                     hostedTool.name,
