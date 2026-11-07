@@ -120,8 +120,10 @@ export const teamRepositoryImportStateValues = [
  * Workflow and `issues.*` webhooks create Garden issues for the repository.
  * `github_repo_id` is the key because full names change on rename, and it is
  * unique per workspace so every GitHub issue has exactly one board.
- * `linked_by` is the fallback `created_by` for issues whose GitHub author has
- * no Garden member. Rows cascade with their Team.
+ * `linked_by` records who linked the repository. It is nullable with
+ * `on delete set null` because deleting that user must not unlink the
+ * repository; issue sync falls back to the Team owner when it is null. Rows
+ * cascade with their Team.
  */
 export const teamRepository = pgTable(
   'team_repository',
@@ -135,9 +137,9 @@ export const teamRepository = pgTable(
     teamId: uuid('team_id').notNull(),
     githubRepoId: bigint('github_repo_id', { mode: 'number' }).notNull(),
     fullName: text('full_name').notNull(),
-    linkedBy: uuid('linked_by')
-      .notNull()
-      .references(() => user.id),
+    linkedBy: uuid('linked_by').references(() => user.id, {
+      onDelete: 'set null',
+    }),
     importState: text('import_state').notNull().default('pending'),
     importedAt: timestamp('imported_at', { withTimezone: true, mode: 'date' }),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })

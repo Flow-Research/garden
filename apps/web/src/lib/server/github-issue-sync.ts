@@ -40,12 +40,23 @@ export type GitHubIssueSnapshot = {
   updatedAtMs: number
 }
 
+/**
+ * SQL for `TeamRepositoryLink.fallbackCreatorId`. Queries using it must join
+ * `team` on `team_repository.team_id`.
+ */
+export const teamRepositoryFallbackCreatorId = sql<string>`coalesce(${schema.teamRepository.linkedBy}, ${schema.team.ownerUserId})`
+
 /** The Team a linked repository feeds, as the import and webhook need it. */
 export type TeamRepositoryLink = {
   id: string
   workspaceId: string
   teamId: string
-  linkedBy: string
+  /**
+   * `created_by` for issues whose GitHub author has no Garden member: the
+   * user who linked the repository, or the Team owner once that user is
+   * deleted (`linked_by` is set null on user delete).
+   */
+  fallbackCreatorId: string
   githubRepoId: number
   fullName: string
 }
@@ -262,7 +273,7 @@ export async function upsertGitHubIssue(args: {
       assigneeType: assigneeId ? 'user' : null,
       assigneeId,
       createdBy:
-        (snapshot.author && members.get(snapshot.author.id)) ?? link.linkedBy,
+        (snapshot.author && members.get(snapshot.author.id)) ?? link.fallbackCreatorId,
     })
     const binding = await attachSourceBindingInTransaction(tx, {
       workspaceId: link.workspaceId,
@@ -305,12 +316,13 @@ export async function resolveTeamRepositoryLinks(args: {
       id: schema.teamRepository.id,
       workspaceId: schema.teamRepository.workspaceId,
       teamId: schema.teamRepository.teamId,
-      linkedBy: schema.teamRepository.linkedBy,
+      fallbackCreatorId: teamRepositoryFallbackCreatorId,
       githubRepoId: schema.teamRepository.githubRepoId,
       fullName: schema.teamRepository.fullName,
       importState: schema.teamRepository.importState,
     })
     .from(schema.teamRepository)
+    .innerJoin(schema.team, eq(schema.team.id, schema.teamRepository.teamId))
     .innerJoin(
       schema.githubAppInstallation,
       eq(

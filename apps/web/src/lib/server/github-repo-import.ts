@@ -6,6 +6,7 @@ import { schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 import {
   parseGitHubIssueSnapshot,
+  teamRepositoryFallbackCreatorId,
   upsertGitHubIssue,
   type TeamRepositoryLink,
 } from '@/lib/server/github-issue-sync'
@@ -48,14 +49,26 @@ export function toTeamRepository(row: TeamRepositoryRow): TeamRepository {
   }
 }
 
-/** The link row for an import, or null after the repository was unlinked. */
+/**
+ * The link an import page works from, or null after the repository was
+ * unlinked. Joins `team` so a link whose linking user was deleted still has a
+ * fallback issue creator (the Team owner).
+ */
 export async function loadTeamRepository(
   db: Db,
   teamRepositoryId: string,
-): Promise<TeamRepositoryRow | null> {
+): Promise<TeamRepositoryLink | null> {
   const [row] = await db
-    .select()
+    .select({
+      id: schema.teamRepository.id,
+      workspaceId: schema.teamRepository.workspaceId,
+      teamId: schema.teamRepository.teamId,
+      fallbackCreatorId: teamRepositoryFallbackCreatorId,
+      githubRepoId: schema.teamRepository.githubRepoId,
+      fullName: schema.teamRepository.fullName,
+    })
     .from(schema.teamRepository)
+    .innerJoin(schema.team, eq(schema.team.id, schema.teamRepository.teamId))
     .where(eq(schema.teamRepository.id, teamRepositoryId))
   return row ?? null
 }

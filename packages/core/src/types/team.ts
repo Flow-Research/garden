@@ -138,7 +138,8 @@ export interface TeamRepository {
   full_name: string
   import_state: TeamRepositoryImportState
   imported_at: string | null
-  linked_by: string
+  /** Null after the linking user was deleted. */
+  linked_by: string | null
   created_at: string
 }
 

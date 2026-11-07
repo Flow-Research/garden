@@ -865,7 +865,7 @@ describe('POST /api/github/webhook (integration)', () => {
       )!
       const outcome = await upsertGitHubIssue({
         db: testDb.db,
-        link: { ...link!, fullName },
+        link: { ...link!, fallbackCreatorId: ownerId, fullName },
         snapshot: importedPage,
       })
       expect(outcome.kind).toBe('existing')
@@ -889,7 +889,7 @@ describe('POST /api/github/webhook (integration)', () => {
           id: randomUUID(),
           workspaceId,
           teamId,
-          linkedBy: ownerId,
+          fallbackCreatorId: ownerId,
           githubRepoId: LINKED_REPO_ID,
           fullName: LINKED_REPO,
         },

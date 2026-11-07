@@ -1,5 +1,5 @@
 {
-  "id": "860d5506-86c2-493b-996e-e15cab0f2d6c",
+  "id": "505dc09f-1b08-4f32-b9ae-d62597a965d5",
   "prevId": "02ab63f4-104c-4fcc-87ca-504116aa49cd",
   "version": "7",
   "dialect": "postgresql",
@@ -7933,7 +7933,7 @@
           "name": "linked_by",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "import_state": {
           "name": "import_state",
@@ -8018,7 +8018,7 @@
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
         "team_repository_team_workspace_fk": {
