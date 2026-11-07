@@ -48,7 +48,7 @@ Teams has one home in the app:
 | Route | What it shows |
 | --- | --- |
 | `/teams` | Owners and admins see summary cards and a grid of Team cards with create, edit, delete, and ownership actions. Members see a Team selector and their Team's issues. |
-| `/teams/$teamId` | Team detail with **Members** and **Issues** tabs. The tab is URL state (`?tab=members` or `?tab=issues`), and an unknown value falls back to Members. |
+| `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md). |
 | `/teams/issues` | Issues across every Team, for owners and admins |
 
 The sidebar links to `/teams`. Settings links to it too.
@@ -80,6 +80,11 @@ Team query keys are scoped by workspace: `['teams', workspaceId, 'list']`, `['te
 | `POST` | `/api/teams/:teamId/members` | Add one user or agent from the same workspace |
 | `DELETE` | `/api/teams/:teamId/members/:membershipId` | Remove a member. The owner cannot be removed. |
 | `PUT` | `/api/teams/:teamId/owner` | Transfer ownership to a human member. Owners and admins only. |
+| `GET` | `/api/teams/:teamId/repositories` | GitHub repositories linked to the Team, with import state |
+| `GET` | `/api/teams/:teamId/repositories/available` | Repositories the workspace's GitHub App can access, marked with the Team each is linked to. Team managers only. |
+| `POST` | `/api/teams/:teamId/repositories` | Link a repository by `github_repo_id` and start its import. Team managers only. |
+| `DELETE` | `/api/teams/:teamId/repositories/:repositoryId` | Unlink a repository. Imported issues stay. Team managers only. |
+| `POST` | `/api/teams/:teamId/repositories/:repositoryId/retry` | Run a failed import again. Team managers only. |
 
 Request bodies use the Zod schemas in `apps/web/src/lib/server/validation/teams.ts`. Errors use the `{ error, code }` envelope. The tables are `team` and `team_member` in `packages/db/src/schema/teams.ts`, and `issue.team_id` links an issue to its Team.
 

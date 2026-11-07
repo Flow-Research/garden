@@ -29,8 +29,9 @@ Durable Object migrations run from tag `v1` to `v11` in `apps/web/wrangler.jsonc
 | -------------------------- | ------------------------ | ---------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------- |
 | `RUN_WORKFLOW`             | `RunWorkflow`            | `garden-run-workflow-local`              | Durable execution for issue and automation runs. | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
 | `DECIDE_ANALYSIS_WORKFLOW` | `DecideAnalysisWorkflow` | `garden-decide-analysis-workflow-local`  | Durable Decide analysis runs.                   | `apps/web/src/lib/server/decide-analysis/service.ts`                             |
+| `GITHUB_REPO_IMPORT_WORKFLOW` | `GitHubRepoImportWorkflow` | `garden-github-repo-import-workflow-local` | Imports a linked repository's open GitHub issues onto a Team board. | `apps/web/src/lib/server/team-repositories.ts` |
 
-Deployed Workflow names come from `workflowName` and `decideAnalysisWorkflowName` in `deploy-targets.mjs`.
+Deployed Workflow names come from `workflowName`, `decideAnalysisWorkflowName`, and `githubRepoImportWorkflowName` in `deploy-targets.mjs`.
 
 ## Storage
 
