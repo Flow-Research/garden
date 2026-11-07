@@ -13,8 +13,15 @@ import { appEnv } from '@/lib/server/env'
 import { resolveGitHubAppSlug } from '@/lib/server/github-app'
 import { verifyGitHubWebhookSignature } from '@/lib/server/github-webhook'
 import {
+  ensureLinkedGitHubIssue,
+  githubWebhookIssueCandidate,
+} from '@/lib/server/github-issue-sync'
+import { publishCreatedIssues } from '@/lib/server/github-repo-import'
+import {
+  GITHUB_ISSUE_CREATING_ACTIONS,
   applyGitHubWebhookComment,
   applyGitHubWebhookIssueUpdate,
+  isOwnGitHubAppSender,
   isSupportedGitHubCommentAction,
   planGitHubWebhookIssueApply,
   type IssuePatch,
@@ -24,7 +31,7 @@ import {
   githubWebhookIssueOrderScope,
   processGitHubWebhookDelivery,
   type GitHubWebhookDelivery,
-  type GitHubWebhookDeliveryError,
+  GitHubWebhookDeliveryError,
 } from '@/lib/server/github-webhook-delivery'
 import {
   parseGitHubWebhookCommentTarget,
@@ -170,6 +177,47 @@ async function deliverIssue(
 }
 
 /**
+ * Creates the Garden issue for a delivery on a linked repository before the
+ * per-binding apply runs, so the apply and the ledger see the new binding.
+ * Garden's own App bot is skipped, as in the apply step. Created issues are
+ * published only after their transaction commits.
+ */
+async function ensureLinkedIssue(
+  ctx: Omit<DeliveryContext, 'delivery'>,
+  target: GitHubWebhookIssueTarget,
+  payload: unknown,
+): Promise<Result<void, GitHubWebhookDeliveryError>> {
+  if (!GITHUB_ISSUE_CREATING_ACTIONS.has(target.action)) return Result.ok()
+  if (isOwnGitHubAppSender(target.senderLogin, ctx.appSlug)) return Result.ok()
+  const candidate = githubWebhookIssueCandidate(payload, target.action)
+  if (!candidate) return Result.ok()
+  const ensured = await Result.tryPromise({
+    try: () =>
+      ensureLinkedGitHubIssue({
+        db: ctx.db,
+        installationId: target.installationId,
+        candidate,
+      }),
+    catch: (cause) =>
+      new GitHubWebhookDeliveryError({
+        message: 'Failed to create the Garden issue for a linked repository',
+        cause,
+      }),
+  })
+  if (ensured.isErr()) return Result.err(ensured.error)
+  for (const { workspaceId, issue } of ensured.value.created) {
+    await publishCreatedIssues({
+      db: ctx.db,
+      env: appEnv,
+      waitUntil: ctx.waitUntil,
+      workspaceId,
+      issues: [issue],
+    })
+  }
+  return Result.ok()
+}
+
+/**
  * Runs one delivery against each linked issue in turn. Any ledger failure
  * answers 503 so a redelivery retries; links that already committed see the
  * redelivery as `duplicate`.
@@ -192,7 +240,8 @@ async function deliverToBindings(
  * GitHub App webhook ingress (#161).
  *
  * Verify signature, parse `issues.*` or `issue_comment.*`, drop actions Garden
- * does not apply, resolve every linked issue for the installation, then record
+ * does not apply, create the Garden issue when the repository is linked to a
+ * Team, resolve every linked issue for the installation, then record
  * and apply the delivery per link in one transaction each
  * (`processGitHubWebhookDelivery`). Lifecycle effects and realtime events run
  * only after that transaction commits. Unbound, unsupported, duplicate, stale,
@@ -266,6 +315,8 @@ export const Route = createFileRoute('/api/github/webhook')({
         const target = issueTarget.value
         const plan = planGitHubWebhookIssueApply(target)
         if (!plan) return json({ ok: true, status: 'unsupported_action' }, 200)
+        const ensured = await ensureLinkedIssue(ctx, target, payload.value)
+        if (ensured.isErr()) return serviceUnavailable(ensured.error.message)
         const delivery = { deliveryId, event, action: target.action }
         return deliverToBindings(
           await resolveGitHubWebhookBindings({ db: ctx.db, target }),

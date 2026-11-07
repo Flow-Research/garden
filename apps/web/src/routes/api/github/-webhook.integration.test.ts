@@ -561,7 +561,7 @@ describe('POST /api/github/webhook (integration)', () => {
 
   it('keeps the issue scope live after unsupported actions like issues.deleted', async () => {
     const { issueId, githubNumber } = await seedLinkedIssue()
-    for (const action of ['deleted', 'labeled']) {
+    for (const action of ['deleted', 'milestoned']) {
       const ignored = await deliver({
         payload: issuePayload({
           githubNumber,
@@ -647,5 +647,260 @@ describe('POST /api/github/webhook (integration)', () => {
     const missingDelivery = await deliver({ payload, deliveryId: null })
     expect(missingDelivery.status).toBe(400)
     expect(harness.published).toEqual([])
+  })
+
+  describe('linked repositories', () => {
+    const LINKED_REPO_ID = 4242
+    const LINKED_REPO = 'Flow-Research/sync-repo'
+    let teamId: string
+    let memberId: string
+
+    beforeAll(async () => {
+      const fixture = await testDb.db
+        .select({ userId: schema.member.userId })
+        .from(schema.member)
+        .where(eq(schema.member.organizationId, workspaceId))
+      memberId = fixture.find((row) => row.userId !== ownerId)!.userId
+      await testDb.db
+        .update(schema.member)
+        .set({ githubUserId: '501', githubLogin: 'member-gh' })
+        .where(eq(schema.member.userId, memberId))
+      teamId = randomUUID()
+      await testDb.db.insert(schema.team).values({
+        id: teamId,
+        workspaceId,
+        name: 'Sync team',
+        ownerUserId: ownerId,
+        createdBy: ownerId,
+      })
+      await testDb.db.insert(schema.teamRepository).values({
+        workspaceId,
+        teamId,
+        githubRepoId: LINKED_REPO_ID,
+        fullName: LINKED_REPO,
+        linkedBy: ownerId,
+        importState: 'ready',
+      })
+    })
+
+    let linkedNumber = 1000
+
+    function linkedPayload(args: {
+      action: string
+      number: number
+      updatedAt: string
+      repoId?: number
+      fullName?: string
+      state?: 'open' | 'closed'
+      stateReason?: string | null
+      assignees?: { id: number; login: string }[]
+      labels?: string[]
+      title?: string
+    }) {
+      const fullName = args.fullName ?? LINKED_REPO
+      const [owner, name] = fullName.split('/')
+      return {
+        action: args.action,
+        installation: { id: 99 },
+        repository: {
+          id: args.repoId ?? LINKED_REPO_ID,
+          name,
+          full_name: fullName,
+          owner: { login: owner },
+        },
+        issue: {
+          number: args.number,
+          title: args.title ?? `Synced ${args.number}`,
+          body: 'From GitHub',
+          state: args.state ?? 'open',
+          state_reason: args.stateReason ?? null,
+          html_url: `https://github.com/${fullName}/issues/${args.number}`,
+          labels: (args.labels ?? []).map((label) => ({ name: label })),
+          assignees: args.assignees ?? [],
+          user: { id: 777, login: 'outsider' },
+          updated_at: args.updatedAt,
+        },
+        sender: { login: 'octocat', type: 'User' },
+      }
+    }
+
+    async function linkedIssues(number: number, fullName = LINKED_REPO) {
+      return testDb.db
+        .select({
+          issue: schema.issue,
+          metadata: schema.issueSourceBinding.metadata,
+        })
+        .from(schema.issueSourceBinding)
+        .innerJoin(
+          schema.issue,
+          eq(schema.issue.id, schema.issueSourceBinding.issueId),
+        )
+        .where(
+          eq(schema.issueSourceBinding.externalId, `${fullName}#${number}`),
+        )
+    }
+
+    async function openLinkedIssue(
+      overrides: Partial<Parameters<typeof linkedPayload>[0]> = {},
+    ) {
+      linkedNumber += 1
+      const number = linkedNumber
+      const response = await deliver({
+        payload: linkedPayload({
+          action: 'opened',
+          number,
+          updatedAt: '2026-05-01T10:00:00Z',
+          ...overrides,
+        }),
+      })
+      expect(response.status).toBe(200)
+      const [row] = await linkedIssues(number)
+      return { number, issueId: row!.issue.id }
+    }
+
+    it('creates the Garden issue on the Team board when a linked repository opens one, once', async () => {
+      linkedNumber += 1
+      const number = linkedNumber
+      const payload = linkedPayload({
+        action: 'opened',
+        number,
+        updatedAt: '2026-05-01T10:00:00Z',
+        assignees: [
+          { id: 900, login: 'stranger' },
+          { id: 501, login: 'member-gh' },
+        ],
+        labels: ['bug'],
+      })
+      const deliveryId = randomUUID()
+      const first = await deliver({ payload, deliveryId })
+      expect(first.status).toBe(200)
+
+      const rows = await linkedIssues(number)
+      expect(rows).toHaveLength(1)
+      expect(rows[0]!.issue).toMatchObject({
+        teamId,
+        status: 'todo',
+        title: `Synced ${number}`,
+        labels: ['bug'],
+        assigneeType: 'user',
+        assigneeId: memberId,
+        createdBy: ownerId,
+      })
+      expect(harness.published).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'issue:created' }),
+        ]),
+      )
+
+      await deliver({ payload, deliveryId })
+      await deliver({ payload })
+      expect(await linkedIssues(number)).toHaveLength(1)
+    })
+
+    it('ignores an opened issue on a repository no Team links', async () => {
+      const response = await deliver({
+        payload: linkedPayload({
+          action: 'opened',
+          number: 1,
+          repoId: 5151,
+          fullName: 'Flow-Research/unlinked',
+          updatedAt: '2026-05-01T10:00:00Z',
+        }),
+      })
+      expect(response.status).toBe(200)
+      expect(response.json.status).toBe('unbound')
+      expect(await linkedIssues(1, 'Flow-Research/unlinked')).toHaveLength(0)
+    })
+
+    it('follows GitHub for human assignees, keeps agent assignees, and records unmatched logins', async () => {
+      const { number, issueId } = await openLinkedIssue({
+        assignees: [{ id: 501, login: 'member-gh' }],
+      })
+      expect((await readIssue(issueId))?.assigneeId).toBe(memberId)
+
+      await deliver({
+        payload: linkedPayload({
+          action: 'assigned',
+          number,
+          updatedAt: '2026-05-01T11:00:00Z',
+          assignees: [{ id: 900, login: 'stranger' }],
+        }),
+      })
+      const [unmatched] = await linkedIssues(number)
+      expect(unmatched!.issue).toMatchObject({
+        assigneeType: null,
+        assigneeId: null,
+      })
+      expect(unmatched!.metadata).toEqual({ github_assignees: ['stranger'] })
+
+      await testDb.db
+        .update(schema.issue)
+        .set({ assigneeType: 'agent', assigneeId: agentId })
+        .where(eq(schema.issue.id, issueId))
+      await deliver({
+        payload: linkedPayload({
+          action: 'unassigned',
+          number,
+          updatedAt: '2026-05-01T12:00:00Z',
+          assignees: [],
+        }),
+      })
+      expect(await readIssue(issueId)).toMatchObject({
+        assigneeType: 'agent',
+        assigneeId: agentId,
+      })
+    })
+
+    it('maps GitHub close reasons and leaves Garden progress alone while open', async () => {
+      const { number, issueId } = await openLinkedIssue()
+      await testDb.db
+        .update(schema.issue)
+        .set({ status: 'in_progress' })
+        .where(eq(schema.issue.id, issueId))
+
+      await deliver({
+        payload: linkedPayload({
+          action: 'labeled',
+          number,
+          updatedAt: '2026-05-01T11:00:00Z',
+          labels: ['bug', 'p1'],
+        }),
+      })
+      expect(await readIssue(issueId)).toMatchObject({
+        status: 'in_progress',
+        labels: ['bug', 'p1'],
+      })
+
+      await deliver({
+        payload: linkedPayload({
+          action: 'closed',
+          number,
+          state: 'closed',
+          stateReason: 'not_planned',
+          updatedAt: '2026-05-01T12:00:00Z',
+        }),
+      })
+      expect((await readIssue(issueId))?.status).toBe('cancelled')
+
+      await deliver({
+        payload: linkedPayload({
+          action: 'reopened',
+          number,
+          updatedAt: '2026-05-01T13:00:00Z',
+        }),
+      })
+      expect((await readIssue(issueId))?.status).toBe('todo')
+
+      await deliver({
+        payload: linkedPayload({
+          action: 'closed',
+          number,
+          state: 'closed',
+          stateReason: 'completed',
+          updatedAt: '2026-05-01T14:00:00Z',
+        }),
+      })
+      expect((await readIssue(issueId))?.status).toBe('done')
+    })
   })
 })
