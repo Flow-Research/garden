@@ -81,7 +81,6 @@ export const Route = createFileRoute('/api/comments/$id')({
               issue_id: access.issue.id,
               comment_id: updatedComment.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )
@@ -120,7 +119,6 @@ export const Route = createFileRoute('/api/comments/$id')({
               issue_id: access.issue.id,
               comment_id: existingComment.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )

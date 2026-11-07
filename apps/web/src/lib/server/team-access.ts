@@ -4,6 +4,7 @@ import { getDb, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { createGardenLogger } from '@garden/observability/logger'
 import { requireSession, unauthorized } from './control-plane'
+import { isWorkspaceManagerRole } from '@garden/db/team-issue-visibility'
 
 type RequestBoundary = Request | AppRequestContext
 
@@ -55,9 +56,7 @@ async function dbFor(input: RequestBoundary): Promise<Db> {
 }
 
 /** Owner/admin roles manage every Team in the workspace. */
-export function isWorkspaceManager(role: string | null | undefined) {
-  return role === 'owner' || role === 'admin'
-}
+export const isWorkspaceManager = isWorkspaceManagerRole
 
 type WorkspaceMembership = {
   organizationId: string

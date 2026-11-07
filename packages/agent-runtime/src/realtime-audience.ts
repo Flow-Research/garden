@@ -1,22 +1,21 @@
 import type { RealtimePublishableEvent } from '@garden/core/types'
+import {
+  canViewTeamIssue,
+  isWorkspaceManagerRole,
+} from '@garden/db/team-issue-visibility'
 
 /** Trusted connection profile captured when the WebSocket is established. */
 export interface RealtimeConnectionProfile {
   userId: string
   role: string
   teamIds: readonly string[]
-  ownedTeamIds: readonly string[]
-}
-
-const MANAGER_ROLES = new Set(['owner', 'admin'])
-
-export function isWorkspaceManagerRole(role: string): boolean {
-  return MANAGER_ROLES.has(role)
 }
 
 /**
  * Audience gate applied per connection before a frame is sent (spec §8).
- * Team-scoped issue events reach a normal member only when assigned to them.
+ * Team-scoped issue and comment events follow `canViewTeamIssue`, the same
+ * rule the issue API enforces, so every member of the Team hears about every
+ * change on its board and a refetch never lands on a 403.
  */
 export function canReceiveRealtimeEvent(
   profile: RealtimeConnectionProfile,
@@ -32,28 +31,25 @@ export function canReceiveRealtimeEvent(
     case 'team_member:removed':
       return profile.teamIds.includes(event.payload.team_id)
     case 'issue:created':
-    case 'issue:updated': {
-      const teamId = event.payload.issue.team_id
-      if (!teamId) return true
-      return (
-        profile.ownedTeamIds.includes(teamId) ||
-        (profile.teamIds.includes(teamId) &&
-          event.payload.issue.assignee_id === profile.userId)
-      )
-    }
+    case 'issue:updated':
+      return canViewTeamIssueEvent(profile, event.payload.issue.team_id)
     case 'issue:deleted':
     case 'comment:created':
     case 'comment:updated':
-    case 'comment:deleted': {
-      const teamId = event.payload.team_id ?? null
-      if (!teamId) return true
-      return (
-        profile.ownedTeamIds.includes(teamId) ||
-        (profile.teamIds.includes(teamId) &&
-          (event.payload.assignee_id ?? null) === profile.userId)
-      )
-    }
+    case 'comment:deleted':
+      return canViewTeamIssueEvent(profile, event.payload.team_id ?? null)
   }
+}
+
+function canViewTeamIssueEvent(
+  profile: RealtimeConnectionProfile,
+  teamId: string | null,
+): boolean {
+  if (!teamId) return true
+  return canViewTeamIssue({
+    manager: isWorkspaceManagerRole(profile.role),
+    teamMember: profile.teamIds.includes(teamId),
+  })
 }
 
 /** Keeps long-lived sockets' audience data fresh from Team events alone. */
@@ -74,36 +70,12 @@ export function applyRealtimeProfileUpdate(
       return {
         ...profile,
         teamIds: profile.teamIds.filter((id) => id !== event.payload.team_id),
-        ownedTeamIds: profile.ownedTeamIds.filter(
-          (id) => id !== event.payload.team_id,
-        ),
-      }
-    }
-    case 'team:updated': {
-      const ownerId = event.payload.owner_user_id
-      if (ownerId === profile.userId) {
-        return {
-          ...profile,
-          teamIds: [...new Set([...profile.teamIds, event.payload.team_id])],
-          ownedTeamIds: [
-            ...new Set([...profile.ownedTeamIds, event.payload.team_id]),
-          ],
-        }
-      }
-      return {
-        ...profile,
-        ownedTeamIds: profile.ownedTeamIds.filter(
-          (id) => id !== event.payload.team_id,
-        ),
       }
     }
     case 'team:deleted':
       return {
         ...profile,
         teamIds: profile.teamIds.filter((id) => id !== event.payload.team_id),
-        ownedTeamIds: profile.ownedTeamIds.filter(
-          (id) => id !== event.payload.team_id,
-        ),
       }
     default:
       return profile
