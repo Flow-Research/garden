@@ -98,6 +98,8 @@ describe('createMentionSuggestion types filter', () => {
     workspace_id: wsId,
     user_id: 'user-1',
     role: 'member',
+    github_user_id: null,
+    github_login: null,
     created_at: '2026-01-01T00:00:00.000Z',
     name: 'Ada Lovelace',
     email: 'ada@example.com',
