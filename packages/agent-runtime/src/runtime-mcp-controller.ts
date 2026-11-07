@@ -391,8 +391,16 @@ export function isMcpFailedConnectionStateMessage(message: string | undefined) {
   return Boolean(message?.toLowerCase().includes('failed state'))
 }
 
+type ActiveNativeConnectorAccount = {
+  accountId: string | null
+  status: 'connected' | 'degraded'
+}
+
 export class RuntimeMcpController {
-  private activeNativeConnectorAccounts = new Map<string, string | null>()
+  private activeNativeConnectorAccounts = new Map<
+    string,
+    ActiveNativeConnectorAccount
+  >()
   private activeGitHubHostedMcpTools: readonly GitHubHostedMcpTool[] = []
   private githubHostedCapabilitiesSynced = false
 
@@ -713,18 +721,20 @@ export class RuntimeMcpController {
     }
   }
 
-  private githubAppConfig(installationId: string) {
+  private githubAppConfig(account: ActiveNativeConnectorAccount) {
     return {
       appId: this.host.env.GITHUB_APP_ID,
       clientId: this.host.env.GITHUB_CLIENT_ID,
       privateKey: this.host.env.GITHUB_APP_PRIVATE_KEY,
-      installationId,
+      installationId: account.accountId ?? '',
+      installationStatus: account.status,
     }
   }
 
   private async refreshGitHubHostedMcpTools() {
-    const installationId = this.activeNativeConnectorAccounts.get('github')
-    if (!installationId) {
+    const githubAccount = this.activeNativeConnectorAccounts.get('github')
+    const installationId = githubAccount?.accountId
+    if (!githubAccount || !installationId) {
       this.activeGitHubHostedMcpTools = []
       this.githubHostedCapabilitiesSynced = false
       return
@@ -741,7 +751,7 @@ export class RuntimeMcpController {
               }).pipe(
                 Effect.provide(
                   makeGitHubHostedMcpBaseLayer(
-                    this.githubAppConfig(installationId),
+                    this.githubAppConfig(githubAccount),
                   ),
                 ),
               ),
@@ -785,10 +795,11 @@ export class RuntimeMcpController {
   }
 
   private callGitHubHostedMcpTool(
-    installationId: string,
+    account: ActiveNativeConnectorAccount,
     name: string,
     input: unknown,
   ) {
+    const installationId = account.accountId ?? ''
     return Result.tryPromise({
       try: async () =>
         this.host.githubHostedMcp
@@ -803,9 +814,7 @@ export class RuntimeMcpController {
                 return yield* client.callTool(name, input)
               }).pipe(
                 Effect.provide(
-                  makeGitHubHostedMcpBaseLayer(
-                    this.githubAppConfig(installationId),
-                  ),
+                  makeGitHubHostedMcpBaseLayer(this.githubAppConfig(account)),
                 ),
               ),
             ),
@@ -826,7 +835,8 @@ export class RuntimeMcpController {
       riskClass: string
     }) => boolean
   }) {
-    const discordGuildId = this.activeNativeConnectorAccounts.get('discord')
+    const discordAccount = this.activeNativeConnectorAccounts.get('discord')
+    const discordGuildId = discordAccount?.accountId
     const discordTools = discordGuildId
       ? Object.fromEntries(
           discordNativeTools.map((nativeTool) => {
@@ -906,9 +916,8 @@ export class RuntimeMcpController {
         )
       : {}
 
-    const githubInstallationId =
-      this.activeNativeConnectorAccounts.get('github')
-    const githubTools = githubInstallationId
+    const githubAccount = this.activeNativeConnectorAccounts.get('github')
+    const githubTools = githubAccount?.accountId
       ? Object.fromEntries(
           githubNativeTools.map((nativeTool) => {
             const toolKey = buildMcpAiToolKey('github', nativeTool.name)
@@ -924,16 +933,15 @@ export class RuntimeMcpController {
                 execute: async (input) => {
                   const outcome = await Effect.runPromise(
                     Effect.match(
-                      nativeTool.execute(input).pipe(
-                        Effect.provide(
-                          makeGitHubBaseLayer({
-                            appId: this.host.env.GITHUB_APP_ID,
-                            clientId: this.host.env.GITHUB_CLIENT_ID,
-                            privateKey: this.host.env.GITHUB_APP_PRIVATE_KEY,
-                            installationId: githubInstallationId,
-                          }),
+                      nativeTool
+                        .execute(input)
+                        .pipe(
+                          Effect.provide(
+                            makeGitHubBaseLayer(
+                              this.githubAppConfig(githubAccount),
+                            ),
+                          ),
                         ),
-                      ),
                       {
                         onFailure: (error) => ({
                           kind: 'failure' as const,
@@ -989,7 +997,7 @@ export class RuntimeMcpController {
         )
       : {}
 
-    const githubHostedMcpTools = githubInstallationId
+    const githubHostedMcpTools = githubAccount?.accountId
       ? Object.fromEntries(
           this.activeGitHubHostedMcpTools.map((hostedTool) => {
             const toolKey = buildMcpAiToolKey('github-mcp', hostedTool.name)
@@ -1004,7 +1012,7 @@ export class RuntimeMcpController {
                 inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
                 execute: async (input) => {
                   const outcome = await this.callGitHubHostedMcpTool(
-                    githubInstallationId,
+                    githubAccount,
                     hostedTool.name,
                     input,
                   )
@@ -1649,12 +1657,18 @@ export class RuntimeMcpController {
    */
   private activateNativeConnectorBindings(bindings: ActiveConnectorBinding[]) {
     const mcpBindings: ActiveConnectorBinding[] = []
-    const nativeConnectorAccounts = new Map<string, string | null>()
+    const nativeConnectorAccounts = new Map<
+      string,
+      ActiveNativeConnectorAccount
+    >()
 
     for (const binding of bindings) {
       const connector = getConnectorById(binding.connectorId)
       if (connector && isNativeConnector(connector)) {
-        nativeConnectorAccounts.set(connector.id, binding.accountId)
+        nativeConnectorAccounts.set(connector.id, {
+          accountId: binding.accountId,
+          status: binding.status === 'degraded' ? 'degraded' : 'connected',
+        })
         continue
       }
 
