@@ -195,9 +195,12 @@ Workers free plan (see above).
 `pnpm --filter @garden/db db:migrate`. For a non-Docker database, check the
 connection string and that the user can create and alter tables.
 
-**Postgres port conflict:** the local Postgres maps port 55432 specifically
-to avoid a system Postgres on 5432; if 55432 is also taken, override
-`DATABASE_URL`.
+**Postgres port conflict:** local Postgres maps host port `55432` to container
+port `5432`. If `55432` is also taken, choose an unused host port (for example,
+`55433`), change the Postgres mapping in `compose.dev.yaml` to `55433:5432`,
+and set the port in `.env`'s `DATABASE_URL` to `55433`. Keep the container port
+at `5432`, then rerun `pnpm offline:up` to apply the mapping. See
+[Fix setup problems](docs/guides/develop/fix-setup-problems.md) for related checks.
 
 **A connector is unavailable:** provider credentials are optional. Add only
 the matching variables from `.env.example`, then restart the development
