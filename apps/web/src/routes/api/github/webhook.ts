@@ -92,7 +92,6 @@ async function deliverComment(
       issueId: binding.issueId,
       commentId: applied.commentId,
       teamId: applied.issue.teamId,
-      assigneeId: applied.issue.assigneeId,
     })
     return {
       status: 'applied',
