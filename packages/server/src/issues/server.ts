@@ -762,6 +762,42 @@ async function toIssueSummary(
   }
 }
 
+/**
+ * Picks the next workspace issue number and an order key at the end of the
+ * issue's status column, inside the caller's transaction.
+ *
+ * Why shared: `createIssue` and the GitHub repository import both insert
+ * issues. Before, only `createIssue` placed new issues at the end of their
+ * column; a second copy of this logic would drift. New issues used to share
+ * one default position, so their order was arbitrary and a card dropped
+ * between two of them did not move.
+ */
+export async function allocateIssueSlot(
+  executor: Pick<IssueDb, 'select'>,
+  args: { workspaceId: string; status: string },
+): Promise<{ number: number; position: string }> {
+  const [{ nextNumber }] = (await executor
+    .select({
+      nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
+    })
+    .from(schema.issue)
+    .where(eq(schema.issue.workspaceId, args.workspaceId))) as [
+    { nextNumber: number },
+  ]
+  const [{ lastPosition }] = (await executor
+    .select({
+      lastPosition: sql<string | null>`max(${schema.issue.position})`,
+    })
+    .from(schema.issue)
+    .where(
+      and(
+        eq(schema.issue.workspaceId, args.workspaceId),
+        eq(schema.issue.status, args.status),
+      ),
+    )) as [{ lastPosition: string | null }]
+  return { number: nextNumber, position: orderKeyBetween(lastPosition, null) }
+}
+
 export async function createIssue(
   input: CreateIssueInput,
 ): Promise<ResultValue<Issue, IssueServiceError>> {
@@ -776,38 +812,19 @@ export async function createIssue(
   const result = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
-        const [{ nextNumber }] = (await tx
-          .select({
-            nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, parsed.data.workspaceId))) as [
-          { nextNumber: number },
-        ]
-
-        // At the end of its column. New issues all defaulted to the same
-        // position, so their order was arbitrary and a card dropped between
-        // two of them did not move.
         const status = parsed.data.status ?? 'todo'
-        const [{ lastPosition }] = (await tx
-          .select({
-            lastPosition: sql<string | null>`max(${schema.issue.position})`,
-          })
-          .from(schema.issue)
-          .where(
-            and(
-              eq(schema.issue.workspaceId, parsed.data.workspaceId),
-              eq(schema.issue.status, status),
-            ),
-          )) as [{ lastPosition: string | null }]
+        const slot = await allocateIssueSlot(tx, {
+          workspaceId: parsed.data.workspaceId,
+          status,
+        })
 
         const [insertedIssue] = await tx
           .insert(schema.issue)
           .values({
             id: crypto.randomUUID(),
             workspaceId: parsed.data.workspaceId,
-            number: nextNumber,
-            position: orderKeyBetween(lastPosition, null),
+            number: slot.number,
+            position: slot.position,
             title: parsed.data.title,
             description: parsed.data.description ?? null,
             status,
