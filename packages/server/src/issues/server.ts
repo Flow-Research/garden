@@ -771,11 +771,24 @@ async function toIssueSummary(
  * column; a second copy of this logic would drift. New issues used to share
  * one default position, so their order was arbitrary and a card dropped
  * between two of them did not move.
+ *
+ * Why the lock: the number is `max + 1`, so two transactions in one workspace
+ * read the same max and the second insert hit `issue_workspace_number_unique`.
+ * A repository import, GitHub webhooks, and people creating issues run at the
+ * same time, so that surfaced as 500s and lost webhook issues. A
+ * transaction-scoped advisory lock on the workspace serializes allocation
+ * until the caller commits its insert. It needs no schema change, unlike a
+ * counter row, and every issue insert already goes through this function.
+ * The caller must hold a transaction, or the lock releases at once.
+ * https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS
  */
 export async function allocateIssueSlot(
-  executor: Pick<IssueDb, 'select'>,
+  executor: Pick<IssueDb, 'select' | 'execute'>,
   args: { workspaceId: string; status: string },
 ): Promise<{ number: number; position: string }> {
+  await executor.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`issue-number:${args.workspaceId}`}, 0))`,
+  )
   const [{ nextNumber }] = (await executor
     .select({
       nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
