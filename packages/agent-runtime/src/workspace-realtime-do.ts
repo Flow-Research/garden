@@ -50,7 +50,6 @@ export class WorkspaceRealtimeDO extends Agent<Cloudflare.Env> {
       userId,
       role,
       teamIds: parseIdList(headers.get('x-garden-team-ids')),
-      ownedTeamIds: parseIdList(headers.get('x-garden-owned-team-ids')),
       connectedAt: Date.now(),
     })
     realtimeLogger.info('realtime.connected', {
