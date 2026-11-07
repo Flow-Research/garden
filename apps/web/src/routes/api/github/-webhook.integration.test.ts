@@ -448,7 +448,6 @@ describe('POST /api/github/webhook (integration)', () => {
           issue_id: issueId,
           comment_id: commentId,
           team_id: null,
-          assignee_id: agentId,
         },
         committedIssueStatus: 'in_progress',
         committedCommentIds: [commentId],

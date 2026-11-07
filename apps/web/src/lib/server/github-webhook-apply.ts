@@ -39,7 +39,7 @@ export type GitHubWebhookCommentApplyOutcome =
       kind: 'applied'
       action: 'created' | 'updated' | 'deleted'
       commentId: string
-      issue: { teamId: string | null; assigneeId: string | null }
+      issue: { teamId: string | null }
     }
 
 export type IssuePatch = Partial<{
@@ -271,7 +271,6 @@ export async function applyGitHubWebhookComment(args: {
   const [issue] = await args.tx
     .select({
       teamId: schema.issue.teamId,
-      assigneeId: schema.issue.assigneeId,
     })
     .from(schema.issue)
     .where(

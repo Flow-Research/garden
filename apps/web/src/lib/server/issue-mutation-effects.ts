@@ -139,7 +139,6 @@ export function publishCommentChangedEvent(args: {
   issueId: string
   commentId: string
   teamId: string | null
-  assigneeId: string | null
 }): void {
   args.waitUntil(
     publishWorkspaceEvent(args.env, args.workspaceId, {
@@ -148,7 +147,6 @@ export function publishCommentChangedEvent(args: {
         issue_id: args.issueId,
         comment_id: args.commentId,
         team_id: args.teamId,
-        assignee_id: args.assigneeId,
       },
     }),
   )
