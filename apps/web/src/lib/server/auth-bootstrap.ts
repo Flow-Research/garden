@@ -70,20 +70,21 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
           activeOrganizationId,
         )
 
-        // Persist an explicit URL workspace choice as the session's active
-        // org — without it the selection was bootstrap-only, and the next
-        // reload after leaving the deep-linked route silently hydrated the
-        // previous org. Failures degrade to bootstrap-only selection.
+        // Persist whatever bootstrap selected when the session active org is
+        // missing or stale. Before: only `?workspace_id=` deep-links called
+        // setActive. After first signup / invite / a cleared active org, the
+        // client hydrated list[0] while `activeOrganizationId` stayed null, so
+        // the next reload could pick a different org or leave APIs without an
+        // active workspace (#208). Failures degrade to bootstrap-only selection.
         if (
-          requestedWorkspaceId !== null &&
-          requestedWorkspaceId === preferredWorkspaceId &&
-          requestedWorkspaceId !== activeOrganizationId
+          preferredWorkspaceId !== null &&
+          preferredWorkspaceId !== activeOrganizationId
         ) {
           const setActive = await Result.tryPromise({
             try: async () =>
               (await auth.api.setActiveOrganization({
                 headers: appContext.request.headers,
-                body: { organizationId: requestedWorkspaceId },
+                body: { organizationId: preferredWorkspaceId },
                 returnHeaders: true,
               })) as { headers: Headers; response: unknown },
             catch: (cause) => cause,
@@ -133,7 +134,16 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
   },
 )
 
-function resolvePreferredWorkspaceId(
+/**
+ * Chooses which workspace the authenticated shell should open.
+ *
+ * Order: explicit `workspace_id` query (invite/deep-link) → session active org
+ * → first membership. Returning null when the user has orgs left the UI to
+ * guess via client hydrate while the session stayed without an active org
+ * (#208). The first-membership fallback is deterministic for that load and is
+ * then persisted by the bootstrap setActive path.
+ */
+export function resolvePreferredWorkspaceId(
   organizations: Array<{ id: string }>,
   requestedWorkspaceId: string | null,
   activeOrganizationId: string | null,
@@ -156,7 +166,7 @@ function resolvePreferredWorkspaceId(
     return activeOrganizationId
   }
 
-  return null
+  return organizations[0]?.id ?? null
 }
 
 export const getAuthBootstrap: () => Promise<AuthBootstrap | null> = () =>
