@@ -51,7 +51,7 @@ Each Flow Research product team (Garden, Workstream, LMS, Blockchain) tracks its
 | First assignee whose GitHub user ID matches a member | Assignee. With no match, a human assignee is cleared and an agent assignee stays. |
 | Labels | `labels` |
 | Title and body | `title` and `description`, set on create and on `issues.edited` |
-| Author | `created_by` is the member matched to the author, else the user who linked the repository |
+| Author | `created_by` is the member matched to the author, else the user who linked the repository, or the Team owner once that user is deleted (`linked_by` is set null) |
 | Pull request | Skipped |
 
 ## Scope
@@ -80,7 +80,7 @@ Out of scope:
 4. A new GitHub issue appears on the board without a refresh.
 5. When the import fails after retries, the row shows **Import failed** and a **Retry import** button. When **Retry** cannot restart the import, a toast says so and the row stays **Import failed** with its button.
 6. **Unlink** stops new issues from arriving. Issues already imported stay on the board, because people may have commented on them or started runs.
-7. Without a connected GitHub App installation, linking fails with `GITHUB_NOT_CONNECTED`. A repository the installation cannot access fails with `GITHUB_REPOSITORY_NOT_FOUND`. A repository linked elsewhere fails with `TEAM_REPOSITORY_LINKED`.
+7. Without a connected GitHub App installation, linking fails with `GITHUB_NOT_CONNECTED`. A repository the installation cannot access fails with `GITHUB_REPOSITORY_NOT_FOUND`. A repository linked elsewhere fails with `TEAM_REPOSITORY_LINKED`. Unlink and Retry answer `TEAM_REPOSITORY_NOT_FOUND` (404) for an unknown or malformed repository ID.
 
 ## Where it lives
 
