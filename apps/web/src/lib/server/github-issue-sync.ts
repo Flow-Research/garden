@@ -1,4 +1,4 @@
-import { and, eq, inArray, ne, sql } from 'drizzle-orm'
+import { and, eq, inArray, like, ne, or, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import type { IssueStatus } from '@garden/core/types/issue'
 import { allocateIssueSlot } from '@garden/server/issues/server'
@@ -6,7 +6,10 @@ import { attachSourceBindingInTransaction } from '@garden/server/issues/source-b
 import { requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import type { TeamRepository } from '@garden/core/types'
 import { recordGitHubIssueSnapshotMarker } from '@/lib/server/github-webhook-delivery'
-import { githubIssueExternalIdCandidates } from '@/lib/server/github-webhook-resolve'
+import {
+  githubIssueBindingKey,
+  githubIssueBindingMatch,
+} from '@/lib/server/github-webhook-resolve'
 
 type Executor = Pick<Db, 'select'>
 
@@ -19,9 +22,12 @@ export type GitHubUserRef = { id: string; login: string }
  * `parseGitHubIssueSnapshot`.
  */
 export type GitHubIssueSnapshot = {
+  githubRepoId: number
   owner: string
   repo: string
   number: number
+  /** GitHub's global node id for the issue, kept for GraphQL lookups. */
+  nodeId: string | null
   htmlUrl: string | null
   title: string
   body: string | null
@@ -40,6 +46,7 @@ export type TeamRepositoryLink = {
   workspaceId: string
   teamId: string
   linkedBy: string
+  githubRepoId: number
   fullName: string
 }
 
@@ -49,6 +56,7 @@ const githubUserSchema = z
 
 const githubIssueSchema = z.object({
   number: z.number().int().positive(),
+  node_id: z.string().nullish(),
   html_url: z.string().nullish(),
   title: z.string(),
   body: z.string().nullish(),
@@ -64,23 +72,25 @@ const githubIssueSchema = z.object({
 })
 
 /**
- * Parses one GitHub issue object. Returns null for pull requests, which the
- * issues API lists alongside issues and Garden does not put on boards, and
- * for objects that are not issues.
+ * Parses one GitHub issue object from the repository it belongs to. Returns
+ * null for pull requests, which the issues API lists alongside issues and
+ * Garden does not put on boards, and for objects that are not issues.
  */
 export function parseGitHubIssueSnapshot(
   issue: unknown,
-  fullName: string,
+  repository: { id: number; fullName: string },
 ): GitHubIssueSnapshot | null {
   const parsed = githubIssueSchema.safeParse(issue)
-  const [owner, repo] = fullName.split('/')
+  const [owner, repo] = repository.fullName.split('/')
   if (!parsed.success || parsed.data.pull_request !== undefined) return null
   if (!owner || !repo) return null
   const data = parsed.data
   return {
+    githubRepoId: repository.id,
     owner,
     repo,
     number: data.number,
+    nodeId: data.node_id ?? null,
     htmlUrl: data.html_url ?? null,
     title: data.title,
     body: data.body ?? null,
@@ -162,6 +172,19 @@ export function githubAssigneeMetadata(assignees: readonly GitHubUserRef[]) {
   return { github_assignees: assignees.map((assignee) => assignee.login) }
 }
 
+/**
+ * Metadata for a binding the sync creates: the rename-proof key the webhook
+ * matches on (`githubIssueBindingMatch`), the issue's node id, and its
+ * GitHub assignees.
+ */
+function githubIssueBindingMetadata(snapshot: GitHubIssueSnapshot) {
+  return {
+    ...githubIssueBindingKey(snapshot.githubRepoId, snapshot.number),
+    github_issue_node_id: snapshot.nodeId,
+    ...githubAssigneeMetadata(snapshot.assignees),
+  }
+}
+
 export type GitHubIssueUpsertOutcome =
   | { kind: 'created'; issue: typeof schema.issue.$inferSelect }
   | { kind: 'existing'; issueId: string }
@@ -175,9 +198,11 @@ export type GitHubIssueUpsertOutcome =
  * one row. Updates to an existing issue go through the webhook delivery
  * ledger, which orders them; refreshing fields here would let a late import
  * page overwrite a newer webhook change. A transaction-scoped advisory lock on
- * the binding key serializes two writers for the same GitHub issue, and the
- * existing check matches every external id form #236 accepts, so an issue
- * someone linked by hand is not imported twice. A created issue records the
+ * the repository id and issue number serializes two writers for the same
+ * GitHub issue, even when one of them still holds the repository's old name.
+ * The existing check is `githubIssueBindingMatch`, so an issue someone linked
+ * by hand is not imported twice and a renamed repository does not duplicate
+ * its issues. A created issue records the
  * snapshot's `updated_at` in the delivery ledger
  * (`recordGitHubIssueSnapshotMarker`), so a webhook older than what was
  * written here is stale.
@@ -191,7 +216,7 @@ export async function upsertGitHubIssue(args: {
   const externalId = githubIssueExternalId(snapshot)
   return args.db.transaction(async (tx) => {
     await tx.execute(
-      sql`select pg_advisory_xact_lock(hashtextextended(${`github-issue:${link.workspaceId}:${externalId}`}, 0))`,
+      sql`select pg_advisory_xact_lock(hashtextextended(${`github-issue:${link.workspaceId}:${snapshot.githubRepoId}:${snapshot.number}`}, 0))`,
     )
     const [existing] = await tx
       .select({ issueId: schema.issueSourceBinding.issueId })
@@ -201,15 +226,13 @@ export async function upsertGitHubIssue(args: {
           eq(schema.issueSourceBinding.workspaceId, link.workspaceId),
           eq(schema.issueSourceBinding.connectorId, 'github'),
           eq(schema.issueSourceBinding.sourceKind, 'issue'),
-          inArray(
-            schema.issueSourceBinding.externalId,
-            githubIssueExternalIdCandidates({
-              owner: snapshot.owner,
-              repo: snapshot.repo,
-              issueNumber: snapshot.number,
-              htmlUrl: snapshot.htmlUrl,
-            }),
-          ),
+          githubIssueBindingMatch({
+            githubRepoId: snapshot.githubRepoId,
+            owner: snapshot.owner,
+            repo: snapshot.repo,
+            issueNumber: snapshot.number,
+            htmlUrl: snapshot.htmlUrl,
+          }),
         ),
       )
       .limit(1)
@@ -248,7 +271,7 @@ export async function upsertGitHubIssue(args: {
       sourceKind: 'issue',
       externalId,
       externalUrl: snapshot.htmlUrl,
-      metadata: githubAssigneeMetadata(snapshot.assignees),
+      metadata: githubIssueBindingMetadata(snapshot),
     })
     await recordGitHubIssueSnapshotMarker(tx, {
       bindingId: binding.binding_id,
@@ -283,6 +306,7 @@ export async function resolveTeamRepositoryLinks(args: {
       workspaceId: schema.teamRepository.workspaceId,
       teamId: schema.teamRepository.teamId,
       linkedBy: schema.teamRepository.linkedBy,
+      githubRepoId: schema.teamRepository.githubRepoId,
       fullName: schema.teamRepository.fullName,
       importState: schema.teamRepository.importState,
     })
@@ -352,7 +376,10 @@ export function githubWebhookIssueCandidate(
     changes.new_repository !== undefined
       ? { issue: changes.new_issue, repository: changes.new_repository }
       : parsed.data
-  const snapshot = parseGitHubIssueSnapshot(issue, repository.full_name)
+  const snapshot = parseGitHubIssueSnapshot(issue, {
+    id: repository.id,
+    fullName: repository.full_name,
+  })
   if (!snapshot) return null
   return {
     githubRepoId: repository.id,
@@ -415,4 +442,158 @@ export async function ensureLinkedGitHubIssue(args: {
     }
   }
   return { created }
+}
+
+/** A repository that moved to a new `Owner/name`, from a `repository` webhook. */
+export type GitHubRepositoryMove = {
+  installationId: string
+  githubRepoId: number
+  fullName: string
+  previousFullName: string
+}
+
+const loginSchema = z.object({ login: z.string().min(1) })
+
+const repositoryEventSchema = z.object({
+  action: z.enum(['renamed', 'transferred']),
+  installation: z.object({ id: z.number().int() }),
+  repository: z.object({
+    id: z.number().int(),
+    name: z.string().min(1),
+    full_name: z.string().min(1),
+    owner: loginSchema,
+  }),
+  changes: z.object({
+    repository: z
+      .object({ name: z.object({ from: z.string().min(1) }) })
+      .optional(),
+    owner: z
+      .object({
+        from: z.object({
+          organization: loginSchema.optional(),
+          user: loginSchema.optional(),
+        }),
+      })
+      .optional(),
+  }),
+})
+
+/**
+ * Reads a `repository.renamed` or `repository.transferred` delivery. GitHub
+ * puts the old name in `changes.repository.name.from` for a rename and the
+ * old owner in `changes.owner.from` for a transfer. Returns null for other
+ * actions and for payloads without the old name.
+ * https://docs.github.com/en/webhooks/webhook-events-and-payloads#repository
+ */
+export function githubRepositoryMove(
+  payload: unknown,
+): GitHubRepositoryMove | null {
+  const parsed = repositoryEventSchema.safeParse(payload)
+  if (!parsed.success) return null
+  const { action, installation, repository, changes } = parsed.data
+  const previousOwner =
+    action === 'transferred'
+      ? (changes.owner?.from.organization ?? changes.owner?.from.user)?.login
+      : repository.owner.login
+  const previousName =
+    action === 'renamed' ? changes.repository?.name.from : repository.name
+  if (!previousOwner || !previousName) return null
+  return {
+    installationId: String(installation.id),
+    githubRepoId: repository.id,
+    fullName: repository.full_name,
+    previousFullName: `${previousOwner}/${previousName}`,
+  }
+}
+
+function likePrefix(value: string) {
+  return `${value.replace(/[\\%_]/g, (char) => `\\${char}`)}%`
+}
+
+const ISSUE_NUMBER_SUFFIX = /(?:#|\/issues\/)(\d+)$/
+
+/**
+ * Points every link and GitHub issue binding for a moved repository at its new
+ * name, across the workspaces on the delivery's installation.
+ *
+ * Why: bindings name the repository in `external_id` and `external_url`, and
+ * `read_source` and comment write-back call GitHub with that name. After a
+ * rename they kept the old one. Synced bindings are found by the repository
+ * id in their metadata; bindings someone attached by hand are found by the
+ * old name in any form #236 accepts, and gain the same metadata so later
+ * events match them by id. Each binding is rewritten to `New/name#<n>`.
+ */
+export async function applyGitHubRepositoryMove(args: {
+  db: Db
+  move: GitHubRepositoryMove
+}): Promise<{ bindings: number }> {
+  const { move } = args
+  return args.db.transaction(async (tx) => {
+    const workspaceIds = tx
+      .select({ workspaceId: schema.githubAppInstallation.workspaceId })
+      .from(schema.githubAppInstallation)
+      .where(
+        and(
+          eq(schema.githubAppInstallation.installationId, move.installationId),
+          ne(schema.githubAppInstallation.status, 'disconnected'),
+        ),
+      )
+    await tx
+      .update(schema.teamRepository)
+      .set({ fullName: move.fullName })
+      .where(
+        and(
+          inArray(schema.teamRepository.workspaceId, workspaceIds),
+          eq(schema.teamRepository.githubRepoId, move.githubRepoId),
+        ),
+      )
+    const previousUrl = `https://github.com/${move.previousFullName}/issues/`
+    const bindings = await tx
+      .select({
+        id: schema.issueSourceBinding.id,
+        issueId: schema.issueSourceBinding.issueId,
+        externalId: schema.issueSourceBinding.externalId,
+      })
+      .from(schema.issueSourceBinding)
+      .where(
+        and(
+          inArray(schema.issueSourceBinding.workspaceId, workspaceIds),
+          eq(schema.issueSourceBinding.connectorId, 'github'),
+          eq(schema.issueSourceBinding.sourceKind, 'issue'),
+          or(
+            sql`${schema.issueSourceBinding.metadata} @> ${JSON.stringify({ github_repo_id: move.githubRepoId })}::jsonb`,
+            like(
+              schema.issueSourceBinding.externalId,
+              likePrefix(`${move.previousFullName}#`),
+            ),
+            like(
+              schema.issueSourceBinding.externalId,
+              likePrefix(`${move.previousFullName}/issues/`),
+            ),
+            like(schema.issueSourceBinding.externalId, likePrefix(previousUrl)),
+          ),
+        ),
+      )
+    let rewritten = 0
+    for (const binding of bindings) {
+      const number = Number(ISSUE_NUMBER_SUFFIX.exec(binding.externalId)?.[1])
+      if (!Number.isInteger(number)) continue
+      const externalUrl = `https://github.com/${move.fullName}/issues/${number}`
+      await tx
+        .update(schema.issueSourceBinding)
+        .set({
+          externalId: `${move.fullName}#${number}`,
+          externalUrl,
+          displayRef: externalUrl,
+          metadata: sql`coalesce(${schema.issueSourceBinding.metadata}, '{}'::jsonb) || ${JSON.stringify(githubIssueBindingKey(move.githubRepoId, number))}::jsonb`,
+        })
+        .where(eq(schema.issueSourceBinding.id, binding.id))
+      await tx
+        .update(schema.issue)
+        .set({ sourceSummary: externalUrl })
+        .where(eq(schema.issue.id, binding.issueId))
+      rewritten += 1
+    }
+    return { bindings: rewritten }
+  })
 }

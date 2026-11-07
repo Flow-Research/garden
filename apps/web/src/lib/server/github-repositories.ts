@@ -223,23 +223,24 @@ export function nextIssueListCursor(
 /**
  * One page of a repository's open issues, least recently updated first, and
  * the cursor for the next page, or null after the last page. The list
- * includes pull requests; callers drop them while parsing.
+ * includes pull requests; callers drop them while parsing. The repository is
+ * addressed by id, so a rename the link has not seen yet does not break the
+ * import.
  */
 export async function listOpenRepositoryIssuesPage(
   request: GitHubRequester,
-  args: { fullName: string; cursor: GitHubIssueListCursor },
+  args: { githubRepoId: number; cursor: GitHubIssueListCursor },
 ): Promise<
   Result<
     { items: unknown[]; next: GitHubIssueListCursor | null },
     GitHubApiError
   >
 > {
-  const [owner, repo] = args.fullName.split('/')
   return Result.gen(async function* () {
     const body = yield* Result.await(
       request({
         operation: 'github.listRepositoryIssues',
-        path: `/repos/${encodeURIComponent(owner ?? '')}/${encodeURIComponent(repo ?? '')}/issues`,
+        path: `/repositories/${args.githubRepoId}/issues`,
         query: {
           state: 'open',
           sort: 'updated',

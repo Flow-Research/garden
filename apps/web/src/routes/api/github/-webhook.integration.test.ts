@@ -862,7 +862,7 @@ describe('POST /api/github/webhook (integration)', () => {
           state_reason: null,
           updated_at: '2026-05-02T09:00:00Z',
         },
-        fullName,
+        { id: repoId, fullName },
       )!
       const outcome = await upsertGitHubIssue({
         db: testDb.db,
@@ -891,9 +891,13 @@ describe('POST /api/github/webhook (integration)', () => {
           workspaceId,
           teamId,
           linkedBy: ownerId,
+          githubRepoId: LINKED_REPO_ID,
           fullName: LINKED_REPO,
         },
-        snapshot: parseGitHubIssueSnapshot(imported.issue, LINKED_REPO)!,
+        snapshot: parseGitHubIssueSnapshot(imported.issue, {
+          id: LINKED_REPO_ID,
+          fullName: LINKED_REPO,
+        })!,
       })
       expect(outcome.kind).toBe('created')
 
@@ -908,6 +912,127 @@ describe('POST /api/github/webhook (integration)', () => {
       expect(late.body).toMatchObject({ status: 'stale' })
       const [row] = await linkedIssues(number)
       expect(row!.issue.title).toBe('Imported title')
+    })
+
+    async function linkRepository(githubRepoId: number, fullName: string) {
+      await testDb.db.insert(schema.teamRepository).values({
+        workspaceId,
+        teamId,
+        githubRepoId,
+        fullName,
+        linkedBy: ownerId,
+        importState: 'ready',
+      })
+    }
+
+    async function bindingFor(issueId: string) {
+      const [binding] = await testDb.db
+        .select()
+        .from(schema.issueSourceBinding)
+        .where(eq(schema.issueSourceBinding.issueId, issueId))
+      return binding!
+    }
+
+    it("keeps one Garden issue when events arrive under the repository's new name", async () => {
+      const repoId = 4444
+      const oldName = 'Flow-Research/rename-repo'
+      const newName = 'Flow-Research/renamed-repo'
+      await linkRepository(repoId, oldName)
+      await deliver({
+        payload: linkedPayload({
+          action: 'opened',
+          number: 5,
+          repoId,
+          fullName: oldName,
+          updatedAt: '2026-05-04T10:00:00Z',
+        }),
+      })
+      const [original] = await linkedIssues(5, oldName)
+
+      const labeled = await deliver({
+        payload: linkedPayload({
+          action: 'labeled',
+          number: 5,
+          repoId,
+          fullName: newName,
+          labels: ['renamed'],
+          updatedAt: '2026-05-04T11:00:00Z',
+        }),
+      })
+      expect(labeled.body).toMatchObject({ status: 'applied' })
+      expect(await linkedIssues(5, newName)).toHaveLength(0)
+      expect((await readIssue(original!.issue.id))?.labels).toEqual(['renamed'])
+    })
+
+    it('points links and bindings at the new name when GitHub renames the repository', async () => {
+      const repoId = 4545
+      const oldName = 'Flow-Research/old_name'
+      const newName = 'Flow-Research/new-name'
+      await linkRepository(repoId, oldName)
+      await deliver({
+        payload: linkedPayload({
+          action: 'opened',
+          number: 3,
+          repoId,
+          fullName: oldName,
+          updatedAt: '2026-05-05T10:00:00Z',
+        }),
+      })
+      const handLinked = randomUUID()
+      const lookalike = randomUUID()
+      for (const [issueId, number, externalId] of [
+        [handLinked, 90_001, `${oldName}/issues/9`],
+        [lookalike, 90_002, 'Flow-Research/oldXname#4'],
+      ] as const) {
+        await testDb.db.insert(schema.issue).values({
+          id: issueId,
+          workspaceId,
+          number,
+          title: 'Linked by hand',
+          status: 'todo',
+          createdBy: ownerId,
+        })
+        await testDb.db.insert(schema.issueSourceBinding).values({
+          id: randomUUID(),
+          workspaceId,
+          issueId,
+          connectorId: 'github',
+          sourceKind: 'issue',
+          externalId,
+        })
+      }
+
+      const renamed = await deliver({
+        event: 'repository',
+        payload: {
+          action: 'renamed',
+          installation: { id: 99 },
+          repository: {
+            id: repoId,
+            name: 'new-name',
+            full_name: newName,
+            owner: { login: 'Flow-Research' },
+          },
+          changes: { repository: { name: { from: 'old_name' } } },
+          sender: { login: 'octocat', type: 'User' },
+        },
+      })
+      expect(renamed.json).toMatchObject({ status: 'applied', bindings: 2 })
+
+      const [link] = await testDb.db
+        .select()
+        .from(schema.teamRepository)
+        .where(eq(schema.teamRepository.githubRepoId, repoId))
+      expect(link!.fullName).toBe(newName)
+      expect(await linkedIssues(3, newName)).toHaveLength(1)
+      expect(await bindingFor(handLinked)).toMatchObject({
+        externalId: `${newName}#9`,
+        externalUrl: `https://github.com/${newName}/issues/9`,
+        metadata: { github_repo_id: repoId, github_issue_number: 9 },
+      })
+      expect((await bindingFor(lookalike)).externalId).toBe(
+        'Flow-Research/oldXname#4',
+      )
     })
 
     it('ignores an opened issue on a repository no Team links', async () => {
@@ -944,7 +1069,9 @@ describe('POST /api/github/webhook (integration)', () => {
         assigneeType: null,
         assigneeId: null,
       })
-      expect(unmatched!.metadata).toEqual({ github_assignees: ['stranger'] })
+      expect(unmatched!.metadata).toMatchObject({
+        github_assignees: ['stranger'],
+      })
 
       await testDb.db
         .update(schema.issue)
