@@ -16,7 +16,11 @@ export const issuePriorityValues = [
 ] as const
 
 export const issueDbAssigneeTypeValues = ['user', 'agent'] as const
-export const issueCommentAuthorTypeValues = ['user', 'agent'] as const
+export const issueCommentAuthorTypeValues = [
+  'user',
+  'agent',
+  'connector',
+] as const
 
 export const connectorIdValues = [
   'github',

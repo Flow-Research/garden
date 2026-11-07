@@ -2,7 +2,10 @@ import { asc, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
-import { toIssueAttachment } from '@garden/server/issues/server'
+import {
+  connectorCommentActorLabel,
+  toIssueAttachment,
+} from '@garden/server/issues/server'
 import type { Attachment } from '@garden/core/types'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 
@@ -11,12 +14,22 @@ function toTimelineComment(
   attachments: Attachment[] = [],
 ) {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const actorType =
+    row.authorType === 'user'
+      ? 'member'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : row.authorType
 
   return {
     type: 'comment' as const,
     id: row.id,
-    actor_type: row.authorType === 'user' ? 'member' : row.authorType,
+    actor_type: actorType,
     actor_id: row.authorId,
+    actor_label:
+      actorType === 'connector'
+        ? connectorCommentActorLabel(row.metadata)
+        : null,
     content: row.body,
     parent_id: null,
     comment_type: 'comment',
