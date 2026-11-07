@@ -3,7 +3,7 @@ title: Realtime keeps three live channels apart
 description: How Garden splits durable data, AI streaming, and the workspace realtime hub, and why the hub only tells clients to refetch.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-07
 ---
 
 Garden has three kinds of live behavior, and each has its own channel:
@@ -80,8 +80,8 @@ The hub publishes team, team member, issue, and comment events today. The routes
 
 - Workspace owners and admins receive every event.
 - `team:*` and `team_member:*` events reach members of that Team.
-- An `issue:*` event with a `team_id` reaches the Team owner, and reaches a member only when the issue is assigned to them.
-- An `issue:*` event without a `team_id` reaches every workspace member.
+- An `issue:*` or `comment:*` event with a `team_id` reaches every member of that Team, the same rule the issue API enforces. See [Teams](../features/teams.md#team-members-work-the-whole-team-board).
+- An `issue:*` or `comment:*` event without a `team_id` reaches every workspace member.
 
 Team event payloads carry identifiers only, never a Team DTO or Team name, because the publisher's `can_manage` flag and visible counts would leak to every recipient. See [Teams](../features/teams.md#realtime-events-say-what-changed-not-what-it-looks-like).
 
