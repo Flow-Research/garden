@@ -30,7 +30,7 @@ A Garden issue can be linked to a GitHub issue through an `issue_source_binding`
 
 A marker column on `issue_source_binding` was rejected. Comments need their own order streams, and replay detection needs every delivery id, not only the latest one.
 
-**Only Garden's own App bot is skipped.** A delivery whose `sender.login` is `<GITHUB_APP_SLUG>[bot]` is recorded but not applied, so Garden's own GitHub writes do not echo back. Other bots apply normally. An earlier draft skipped every `sender.type = Bot`, so issues closed by actions/stale, Dependabot, or an Actions workflow never reached Garden.
+**Only Garden's own App bot is skipped.** A delivery whose `sender.login` is `<GITHUB_APP_SLUG>[bot]` is recorded but not applied, so Garden's own GitHub writes do not echo back. The linked-repository create step in [GitHub issue sync](./github-issue-sync.md) does not skip it, because a create has nothing to echo. Other bots apply normally. An earlier draft skipped every `sender.type = Bot`, so issues closed by actions/stale, Dependabot, or an Actions workflow never reached Garden.
 
 **One installation can serve several workspaces.** GitHub allows one installation of an App per account, so two Garden workspaces that connect the same GitHub org store the same `installation_id`. The webhook applies each delivery to every linked issue across those workspaces, one transaction per link. A unique `installation_id` was rejected because it would make the second workspace's connect flow fail.
 

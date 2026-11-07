@@ -7,6 +7,7 @@
 - A new GitHub issue on a linked repository appears on the board, assigned to the member whose GitHub account matches.
 - Closing the GitHub issue moves the card to Done, or to Cancelled when it was closed as not planned.
 - A failed import shows **Retry import**. **Unlink** keeps imported issues.
+- Renaming the repository on GitHub keeps one Garden issue per GitHub issue and moves the binding to the new name.
 
 ## How to get to it (user POV)
 
