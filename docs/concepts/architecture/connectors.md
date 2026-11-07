@@ -26,7 +26,7 @@ The work splits between the two like this:
 | Remote MCP, OpenAPI, and GraphQL execution | Executor |
 | MCP session warm state | A scoped `ExecutorMcpSession` Durable Object |
 
-The registered connectors are `discord`, `github`, `gmail`, `google-drive`, and `slack`. GitHub and Discord are Garden-native: their tools run through typed Effect services in Garden. The other integrations run through Executor.
+The registered connectors are `discord`, `github`, `gmail`, `google-drive`, and `slack`. GitHub and Discord are Garden-native: their tools run through typed Effect services in Garden. The other integrations run through Executor. Executor's `github-rest` and `github-graphql` presets stay disabled, so GitHub runs only through the Garden GitHub App installation (native tools and the Garden-hosted MCP server), never through sandbox HTTP or personal access token presets.
 
 ## State lives in three places
 

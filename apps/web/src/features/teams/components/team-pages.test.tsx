@@ -197,6 +197,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-1',
         role: 'owner',
+        github_user_id: null,
+        github_login: null,
         name: 'Owner',
         email: 'owner@test.com',
         avatar_url: null,
@@ -206,6 +208,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-2',
         role: 'member',
+        github_user_id: null,
+        github_login: null,
         name: 'Casey',
         email: 'casey@test.com',
         avatar_url: null,
@@ -325,6 +329,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-1',
         role: 'member',
+        github_user_id: null,
+        github_login: null,
         name: 'Owner',
         email: 'owner@test.com',
         avatar_url: null,
@@ -364,6 +370,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-1',
         role: 'member',
+        github_user_id: null,
+        github_login: null,
         name: 'Owner',
         email: 'owner@test.com',
         avatar_url: null,
@@ -399,6 +407,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-1',
         role: 'member',
+        github_user_id: null,
+        github_login: null,
         name: 'Owner',
         email: 'owner@test.com',
         avatar_url: null,
@@ -432,6 +442,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-1',
         role: 'member',
+        github_user_id: null,
+        github_login: null,
         name: 'Owner',
         email: 'owner@test.com',
         avatar_url: null,
@@ -492,6 +504,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-2',
         role: 'member',
+        github_user_id: null,
+        github_login: null,
         name: 'Casey',
         email: 'casey@test.com',
         avatar_url: null,
@@ -629,7 +643,8 @@ describe('teams UI', () => {
     expect(
       screen.getByRole('button', { name: 'See members' }),
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Manage Teams' })).toBeDisabled()
+    // Settings → Teams opens this page, so the dead Manage Teams control is gone.
+    expect(screen.queryByRole('button', { name: 'Manage Teams' })).toBeNull()
     // The card shows the server's distinct member count (4), not the
     // per-Team sum (5).
     const membersCard = screen.getByText('Total Members').closest('div')
@@ -779,6 +794,8 @@ describe('teams UI', () => {
         workspace_id: 'ws-1',
         user_id: 'user-1',
         role: 'member',
+        github_user_id: null,
+        github_login: null,
         name: 'Owner',
         email: 'owner@test.com',
         avatar_url: null,

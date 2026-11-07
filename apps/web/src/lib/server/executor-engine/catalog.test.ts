@@ -249,13 +249,14 @@ describe('Executor server-owned preset catalog', () => {
     )
   })
 
-  it('keeps unsafe presets out while preserving native provider sources', () => {
+  it('keeps GitHub on native/hosted paths and Executor GitHub presets disabled', () => {
     const presetIds = providers.flatMap((provider) =>
       provider.candidates.flatMap((candidate: CatalogCandidate) =>
         candidate.kind === 'preset' ? [candidate.presetId] : [],
       ),
     )
 
+    // #163 path discipline: no Executor OpenAPI/GraphQL GitHub presets.
     expect(presetIds).not.toContain('github-rest')
     expect(presetIds).not.toContain('github-graphql')
     expect(presetIds).not.toContain('emulate-mcp')
