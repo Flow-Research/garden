@@ -25,6 +25,10 @@ import type {
 const logger = createLogger('issues')
 import * as schema from '@garden/db/schema'
 import {
+  isWorkspaceManagerRole,
+  teamIssueVisibilityCondition,
+} from '@garden/db/team-issue-visibility'
+import {
   issueCommentInsertSchema,
   issueInsertSchema,
   issuePrioritySchema,
@@ -945,6 +949,13 @@ export async function readIssue(
   return Result.ok(result.value)
 }
 
+/**
+ * Lists workspace issues for the chat `list_issues` tool as `ownerUserId` sees
+ * them. Before, the query ignored Teams and returned every Team issue in the
+ * workspace to any chat owner; it now applies `teamIssueVisibilityCondition`,
+ * the same rule as `GET /api/issues`, so the agent lists exactly the Team
+ * boards its human can open.
+ */
 export async function listIssues(
   input: ListIssuesInput,
 ): Promise<ResultValue<IssueSummary[], IssueServiceError>> {
@@ -960,7 +971,23 @@ export async function listIssues(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const conditions = [eq(schema.issue.workspaceId, parsed.data.workspaceId)]
+      const [viewer] = await db
+        .select({ role: schema.member.role })
+        .from(schema.member)
+        .where(
+          and(
+            eq(schema.member.organizationId, parsed.data.workspaceId),
+            eq(schema.member.userId, parsed.data.ownerUserId),
+          ),
+        )
+        .limit(1)
+      const conditions = [
+        eq(schema.issue.workspaceId, parsed.data.workspaceId),
+        teamIssueVisibilityCondition({
+          viewerId: parsed.data.ownerUserId,
+          manager: isWorkspaceManagerRole(viewer?.role),
+        }),
+      ]
       if (parsed.data.status) {
         conditions.push(eq(schema.issue.status, parsed.data.status))
       }
