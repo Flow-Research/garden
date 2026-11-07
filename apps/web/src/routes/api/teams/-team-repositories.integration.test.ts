@@ -25,10 +25,12 @@ import {
 import { Route as RepositoriesRoute } from './$teamId/repositories'
 import { Route as AvailableRoute } from './$teamId/repositories/available'
 import { Route as RetryRoute } from './$teamId/repositories/$repositoryId/retry'
+import { Route as RepositoryRoute } from './$teamId/repositories/$repositoryId'
 import {
   TEST_DB_HOOK_TIMEOUT_MS,
   makeContext,
   seedTeamRow,
+  seedUser,
   seedWorkspace,
   type FakeRole,
   type WorkspaceFixture,
@@ -476,7 +478,7 @@ describe('Team repository links and import (integration)', () => {
       id: randomUUID(),
       workspaceId: fixture.workspaceId,
       teamId,
-      linkedBy: fixture.ownerId,
+      fallbackCreatorId: fixture.ownerId,
       githubRepoId: 7099,
       fullName,
     }
@@ -524,5 +526,54 @@ describe('Team repository links and import (integration)', () => {
       .from(schema.teamRepository)
       .where(eq(schema.teamRepository.id, link.id))
     expect(row!.importState).toBe('failed')
+  })
+
+  it('answers 404 for a repository id that is not a UUID', async () => {
+    const request = new Request(
+      `https://garden.test/api/teams/${teamId}/repositories/not-a-uuid`,
+      { method: 'DELETE' },
+    )
+    const unlinked = await invokeRouteHandler(RepositoryRoute, 'DELETE', {
+      context: contextFor(fixture.adminId, 'admin', request),
+      request,
+      params: { teamId, repositoryId: 'not-a-uuid' },
+    })
+    expect(unlinked.status).toBe(404)
+    const retried = await invokeRouteHandler(RetryRoute, 'POST', {
+      context: contextFor(fixture.adminId, 'admin', request),
+      request,
+      params: { teamId, repositoryId: 'not-a-uuid' },
+    })
+    expect(retried.status).toBe(404)
+    expect(await retried.json()).toMatchObject({
+      code: 'TEAM_REPOSITORY_NOT_FOUND',
+    })
+  })
+
+  it('keeps a link when its linking user is deleted and credits the Team owner', async () => {
+    const linker = await seedUser(testDb, fixture.workspaceId, 'admin')
+    const link = await seedLink()
+    await testDb.db
+      .update(schema.teamRepository)
+      .set({ linkedBy: linker })
+      .where(eq(schema.teamRepository.id, link.id))
+    await testDb.db.delete(schema.member).where(eq(schema.member.userId, linker))
+    await testDb.db.delete(schema.user).where(eq(schema.user.id, linker))
+
+    const [kept] = await testDb.db
+      .select()
+      .from(schema.teamRepository)
+      .where(eq(schema.teamRepository.id, link.id))
+    expect(kept!.linkedBy).toBeNull()
+
+    holder.issues = [
+      githubIssue(9001, { user: { id: 900, login: 'stranger' } }),
+    ]
+    const result = await runImport(link.id)
+    expect(result.status).toBe('ready')
+    const row = (await importedIssues()).find(
+      (issue) => issue.externalId === `${REPO}#9001`,
+    )
+    expect(row!.issue.createdBy).toBe(fixture.ownerId)
   })
 })

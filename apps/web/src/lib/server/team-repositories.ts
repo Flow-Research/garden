@@ -4,6 +4,7 @@ import type {
   AvailableTeamRepository,
   TeamRepository,
 } from '@garden/core/types'
+import { uuidSchema } from '@garden/db/validation'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
@@ -34,6 +35,20 @@ export class TeamRepositoryError extends TaggedError('TeamRepositoryError')<{
 }>() {}
 
 type TeamRef = { id: string; workspaceId: string }
+
+/**
+ * The 404 for a link id that names no link of this Team. Why the UUID check:
+ * `repositoryId` comes straight from the URL, and comparing a non-UUID string
+ * to the uuid `id` column made Postgres throw `invalid input syntax for type
+ * uuid`, so a typo'd URL returned a 500 instead of the 404 any unknown id gets.
+ */
+function teamRepositoryNotFound(): TeamRepositoryError {
+  return teamRepositoryError(
+    404,
+    'TEAM_REPOSITORY_NOT_FOUND',
+    'Linked repository not found',
+  )
+}
 
 function teamRepositoryError(
   status: number,
@@ -217,6 +232,9 @@ export async function unlinkTeamRepository(args: {
   team: TeamRef
   teamRepositoryId: string
 }): Promise<Result<void, TeamRepositoryError>> {
+  if (!uuidSchema.safeParse(args.teamRepositoryId).success) {
+    return Result.err(teamRepositoryNotFound())
+  }
   const deleted = await args.db
     .delete(schema.teamRepository)
     .where(
@@ -228,13 +246,7 @@ export async function unlinkTeamRepository(args: {
     .returning({ id: schema.teamRepository.id })
   return deleted.length > 0
     ? Result.ok()
-    : Result.err(
-        teamRepositoryError(
-          404,
-          'TEAM_REPOSITORY_NOT_FOUND',
-          'Linked repository not found',
-        ),
-      )
+    : Result.err(teamRepositoryNotFound())
 }
 
 /**
@@ -254,6 +266,9 @@ export async function retryTeamRepositoryImport(args: {
   team: TeamRef
   teamRepositoryId: string
 }): Promise<Result<TeamRepository, TeamRepositoryError>> {
+  if (!uuidSchema.safeParse(args.teamRepositoryId).success) {
+    return Result.err(teamRepositoryNotFound())
+  }
   const [pending] = await args.db
     .update(schema.teamRepository)
     .set({ importState: 'pending' })
@@ -282,11 +297,7 @@ export async function retryTeamRepositoryImport(args: {
             'TEAM_REPOSITORY_NOT_FAILED',
             'Only a failed import can be retried',
           )
-        : teamRepositoryError(
-            404,
-            'TEAM_REPOSITORY_NOT_FOUND',
-            'Linked repository not found',
-          ),
+        : teamRepositoryNotFound(),
     )
   }
 
