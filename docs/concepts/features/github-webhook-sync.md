@@ -66,7 +66,7 @@ Out of scope:
 - The ledger transaction is `processGitHubWebhookDelivery` in `apps/web/src/lib/server/github-webhook-delivery.ts`.
 - Issue and comment writes are `applyGitHubWebhookIssueUpdate` and `applyGitHubWebhookComment` in `apps/web/src/lib/server/github-webhook-apply.ts`.
 - Lifecycle effects and the realtime publish are in `apps/web/src/lib/server/issue-mutation-effects.ts`.
-- The tables are `github_webhook_delivery` in `packages/db/src/schema/github.ts`, and `issue_comment.external_comment_id` and `issue_comment.metadata` in `packages/db/src/schema/issues.ts`. Migration `0064_superb_multiple_man` creates them.
+- The tables are `github_webhook_delivery` in `packages/db/src/schema/github.ts`, and `issue_comment.external_comment_id` and `issue_comment.metadata` in `packages/db/src/schema/issues.ts`. Migration `0065_youthful_lord_tyger` creates them.
 
 ## Data and permissions
 

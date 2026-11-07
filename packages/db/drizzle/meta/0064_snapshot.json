@@ -1,5 +1,5 @@
 {
-  "id": "a79b87cb-0102-4f88-b1e3-9094c020620d",
+  "id": "1ae427cc-18a8-4e77-954e-a298dee76e79",
   "prevId": "83ad48b0-34aa-428a-baa1-2d77741bd550",
   "version": "7",
   "dialect": "postgresql",
@@ -537,6 +537,18 @@
           "notNull": true,
           "default": "'member'"
         },
+        "github_user_id": {
+          "name": "github_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "github_login": {
+          "name": "github_login",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -581,6 +593,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "member_organization_github_user_unique": {
+          "name": "member_organization_github_user_unique",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "github_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"member\".\"github_user_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -618,6 +652,10 @@
         "member_role_check": {
           "name": "member_role_check",
           "value": "\"member\".\"role\" in ('owner', 'admin', 'member')"
+        },
+        "member_github_identity_pair_check": {
+          "name": "member_github_identity_pair_check",
+          "value": "(\"member\".\"github_user_id\" is null) = (\"member\".\"github_login\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -4031,7 +4069,7 @@
           "name": "author_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "body": {
           "name": "body",
@@ -4041,18 +4079,6 @@
         },
         "mentions": {
           "name": "mentions",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "external_comment_id": {
-          "name": "external_comment_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata": {
-          "name": "metadata",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
@@ -4101,28 +4127,6 @@
           "concurrently": false,
           "method": "gin",
           "with": {}
-        },
-        "issue_comment_external_comment_unique": {
-          "name": "issue_comment_external_comment_unique",
-          "columns": [
-            {
-              "expression": "issue_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "external_comment_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"issue_comment\".\"external_comment_id\" is not null",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4146,11 +4150,7 @@
       "checkConstraints": {
         "issue_comment_author_type_check": {
           "name": "issue_comment_author_type_check",
-          "value": "\"issue_comment\".\"author_type\" in ('user', 'agent', 'connector')"
-        },
-        "issue_comment_author_id_check": {
-          "name": "issue_comment_author_id_check",
-          "value": "(\"issue_comment\".\"author_type\" = 'connector' and \"issue_comment\".\"author_id\" is null) or (\"issue_comment\".\"author_type\" in ('user', 'agent') and \"issue_comment\".\"author_id\" is not null)"
+          "value": "\"issue_comment\".\"author_type\" in ('user', 'agent')"
         }
       },
       "isRLSEnabled": false
@@ -7721,137 +7721,6 @@
         "github_app_installation_status_check": {
           "name": "github_app_installation_status_check",
           "value": "\"github_app_installation\".\"status\" in ('connected', 'degraded', 'disconnected')"
-        }
-      },
-      "isRLSEnabled": false
-    },
-    "public.github_webhook_delivery": {
-      "name": "github_webhook_delivery",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "delivery_id": {
-          "name": "delivery_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "binding_id": {
-          "name": "binding_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "event": {
-          "name": "event",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "order_scope": {
-          "name": "order_scope",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "order_marker": {
-          "name": "order_marker",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "received_at": {
-          "name": "received_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "github_webhook_delivery_binding_delivery_unique": {
-          "name": "github_webhook_delivery_binding_delivery_unique",
-          "columns": [
-            {
-              "expression": "binding_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "delivery_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "github_webhook_delivery_order_scope_marker_idx": {
-          "name": "github_webhook_delivery_order_scope_marker_idx",
-          "columns": [
-            {
-              "expression": "order_scope",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "order_marker",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "github_webhook_delivery_binding_id_issue_source_binding_id_fk": {
-          "name": "github_webhook_delivery_binding_id_issue_source_binding_id_fk",
-          "tableFrom": "github_webhook_delivery",
-          "tableTo": "issue_source_binding",
-          "columnsFrom": [
-            "binding_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "github_webhook_delivery_status_check": {
-          "name": "github_webhook_delivery_status_check",
-          "value": "\"github_webhook_delivery\".\"status\" in ('applied', 'stale')"
         }
       },
       "isRLSEnabled": false

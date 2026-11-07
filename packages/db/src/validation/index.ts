@@ -116,6 +116,8 @@ export const memberSelectSchema = createSelectSchema(member, {
   organizationId: () => uuidSchema,
   userId: () => uuidSchema,
   role: () => memberRoleSchema,
+  githubUserId: (schema) => schema.nullable(),
+  githubLogin: (schema) => schema.nullable(),
 })
 
 export const invitationSelectSchema = createSelectSchema(invitation, {
