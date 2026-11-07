@@ -695,6 +695,7 @@ describe('POST /api/github/webhook (integration)', () => {
       assignees?: { id: number; login: string }[]
       labels?: string[]
       title?: string
+      sender?: string
     }) {
       const fullName = args.fullName ?? LINKED_REPO
       const [owner, name] = fullName.split('/')
@@ -719,7 +720,7 @@ describe('POST /api/github/webhook (integration)', () => {
           user: { id: 777, login: 'outsider' },
           updated_at: args.updatedAt,
         },
-        sender: { login: 'octocat', type: 'User' },
+        sender: { login: args.sender ?? 'octocat', type: 'User' },
       }
     }
 
@@ -794,6 +795,32 @@ describe('POST /api/github/webhook (integration)', () => {
       await deliver({ payload, deliveryId })
       await deliver({ payload })
       expect(await linkedIssues(number)).toHaveLength(1)
+    })
+
+    it('creates an issue the Garden App bot opened and still skips its later echoes', async () => {
+      const { number, issueId } = await openLinkedIssue({
+        sender: 'garden-ai-dev[bot]',
+        labels: ['bug'],
+      })
+      expect(await readIssue(issueId)).toMatchObject({
+        teamId,
+        labels: ['bug'],
+      })
+
+      const echo = await deliver({
+        payload: linkedPayload({
+          action: 'labeled',
+          number,
+          updatedAt: '2026-05-01T11:00:00Z',
+          labels: ['bug', 'echo'],
+          sender: 'garden-ai-dev[bot]',
+        }),
+      })
+      expect(echo.body).toMatchObject({
+        status: 'skipped',
+        skipped_reason: 'own_app_sender',
+      })
+      expect((await readIssue(issueId))?.labels).toEqual(['bug'])
     })
 
     it('ignores an opened issue on a repository no Team links', async () => {

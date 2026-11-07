@@ -21,7 +21,6 @@ import {
   GITHUB_ISSUE_CREATING_ACTIONS,
   applyGitHubWebhookComment,
   applyGitHubWebhookIssueUpdate,
-  isOwnGitHubAppSender,
   isSupportedGitHubCommentAction,
   planGitHubWebhookIssueApply,
   type IssuePatch,
@@ -178,8 +177,13 @@ async function deliverIssue(
 /**
  * Creates the Garden issue for a delivery on a linked repository before the
  * per-binding apply runs, so the apply and the ledger see the new binding.
- * Garden's own App bot is skipped, as in the apply step. Created issues are
- * published only after their transaction commits.
+ * Created issues are published only after their transaction commits.
+ *
+ * Why Garden's own App bot is not skipped here: the earlier version skipped
+ * it as the apply step does, so an issue an agent opened through the App
+ * never reached the Team board. Echo suppression exists so Garden's writes to
+ * an issue it already holds do not come back as updates. A create has nothing
+ * to echo, so only the apply step keeps that skip.
  */
 async function ensureLinkedIssue(
   ctx: Omit<DeliveryContext, 'delivery'>,
@@ -187,7 +191,6 @@ async function ensureLinkedIssue(
   payload: unknown,
 ): Promise<Result<void, GitHubWebhookDeliveryError>> {
   if (!GITHUB_ISSUE_CREATING_ACTIONS.has(target.action)) return Result.ok()
-  if (isOwnGitHubAppSender(target.senderLogin, ctx.appSlug)) return Result.ok()
   const candidate = githubWebhookIssueCandidate(payload, target.action)
   if (!candidate) return Result.ok()
   const ensured = await Result.tryPromise({
