@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type {
   AddTeamMemberRequest,
+  LinkTeamRepositoryRequest,
   CreateTeamRequest,
   TransferTeamOwnerRequest,
   UpdateTeamRequest,
@@ -98,5 +99,58 @@ export function useTransferTeamOwner() {
       qc.invalidateQueries({ queryKey: teamKeys.members(wsId, team.id) })
       qc.invalidateQueries({ queryKey: teamKeys.list(wsId) })
     },
+  })
+}
+
+/**
+ * Repository link writes refresh the Team's repository queries, including the
+ * picker's linked markers, and the Team issue list the import fills.
+ */
+function useTeamRepositoryInvalidation() {
+  const qc = useQueryClient()
+  const wsId = useWorkspaceId()
+  return (teamId: string) => {
+    qc.invalidateQueries({ queryKey: teamKeys.repositories(wsId, teamId) })
+    qc.invalidateQueries({ queryKey: teamKeys.issues(wsId, teamId) })
+  }
+}
+
+export function useLinkTeamRepository() {
+  const invalidate = useTeamRepositoryInvalidation()
+  return useMutation({
+    mutationFn: ({
+      teamId,
+      ...data
+    }: { teamId: string } & LinkTeamRepositoryRequest) =>
+      api.linkTeamRepository(teamId, data),
+    onSuccess: (_repository, vars) => invalidate(vars.teamId),
+  })
+}
+
+export function useUnlinkTeamRepository() {
+  const invalidate = useTeamRepositoryInvalidation()
+  return useMutation({
+    mutationFn: ({
+      teamId,
+      repositoryId,
+    }: {
+      teamId: string
+      repositoryId: string
+    }) => api.unlinkTeamRepository(teamId, repositoryId),
+    onSuccess: (_data, vars) => invalidate(vars.teamId),
+  })
+}
+
+export function useRetryTeamRepositoryImport() {
+  const invalidate = useTeamRepositoryInvalidation()
+  return useMutation({
+    mutationFn: ({
+      teamId,
+      repositoryId,
+    }: {
+      teamId: string
+      repositoryId: string
+    }) => api.retryTeamRepositoryImport(teamId, repositoryId),
+    onSuccess: (_repository, vars) => invalidate(vars.teamId),
   })
 }
