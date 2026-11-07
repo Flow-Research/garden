@@ -2,6 +2,7 @@
   "title": "Features",
   "pages": [
     "issues",
+    "github-webhook-sync",
     "chat",
     "automations",
     "decide",
