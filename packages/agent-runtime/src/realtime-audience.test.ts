@@ -10,28 +10,18 @@ const member: RealtimeConnectionProfile = {
   userId: 'user-member',
   role: 'member',
   teamIds: ['team-1'],
-  ownedTeamIds: [],
-}
-
-const teamOwner: RealtimeConnectionProfile = {
-  userId: 'user-owner',
-  role: 'member',
-  teamIds: ['team-1'],
-  ownedTeamIds: ['team-1'],
 }
 
 const outsider: RealtimeConnectionProfile = {
   userId: 'user-outsider',
   role: 'member',
   teamIds: ['team-2'],
-  ownedTeamIds: [],
 }
 
 const manager: RealtimeConnectionProfile = {
   userId: 'user-admin',
   role: 'admin',
   teamIds: [],
-  ownedTeamIds: [],
 }
 
 const teamUpdated: RealtimePublishableEvent = {
@@ -39,7 +29,6 @@ const teamUpdated: RealtimePublishableEvent = {
   payload: {
     workspace_id: 'ws-1',
     team_id: 'team-1',
-    owner_user_id: 'user-owner',
   },
 }
 
@@ -87,75 +76,46 @@ describe('canReceiveRealtimeEvent', () => {
     expect(canReceiveRealtimeEvent(outsider, teamUpdated)).toBe(false)
   })
 
-  it('delivers a Team issue event to a member only when assigned', () => {
-    expect(
-      canReceiveRealtimeEvent(
-        member,
-        issueEvent('issue:updated', 'team-1', 'user-member'),
-      ),
-    ).toBe(true)
-    expect(
-      canReceiveRealtimeEvent(
-        member,
-        issueEvent('issue:updated', 'team-1', 'someone-else'),
-      ),
-    ).toBe(false)
+  it('delivers every Team issue event to every member of that Team', () => {
+    for (const assigneeId of ['user-member', 'someone-else', null]) {
+      expect(
+        canReceiveRealtimeEvent(
+          member,
+          issueEvent('issue:updated', 'team-1', assigneeId),
+        ),
+      ).toBe(true)
+      expect(
+        canReceiveRealtimeEvent(
+          outsider,
+          issueEvent('issue:updated', 'team-1', assigneeId),
+        ),
+      ).toBe(false)
+    }
   })
 
-  it('delivers Team issue events to the Team owner even when unassigned', () => {
-    expect(
-      canReceiveRealtimeEvent(
-        teamOwner,
-        issueEvent('issue:updated', 'team-1', 'someone-else'),
-      ),
-    ).toBe(true)
-  })
-
-  it('gates Team issue deletions on the assignee', () => {
+  it('delivers Team issue deletions to members of that Team only', () => {
     const deleted: RealtimePublishableEvent = {
       type: 'issue:deleted',
-      payload: {
-        issue_id: 'issue-1',
-        team_id: 'team-1',
-        assignee_id: 'user-member',
-      },
+      payload: { issue_id: 'issue-1', team_id: 'team-1' },
     }
     expect(canReceiveRealtimeEvent(member, deleted)).toBe(true)
     expect(canReceiveRealtimeEvent(outsider, deleted)).toBe(false)
-
-    const deletedUnassigned: RealtimePublishableEvent = {
-      type: 'issue:deleted',
-      payload: { issue_id: 'issue-2', team_id: 'team-1', assignee_id: null },
-    }
-    expect(canReceiveRealtimeEvent(member, deletedUnassigned)).toBe(false)
-    expect(canReceiveRealtimeEvent(teamOwner, deletedUnassigned)).toBe(true)
+    expect(canReceiveRealtimeEvent(manager, deleted)).toBe(true)
   })
 
   it('gates comment events like the issue they belong to', () => {
-    const comment = (
-      teamId: string | null,
-      assigneeId: string | null,
-    ): RealtimePublishableEvent => ({
+    const comment = (teamId: string | null): RealtimePublishableEvent => ({
       type: 'comment:created',
       payload: {
         issue_id: 'issue-1',
         comment_id: 'comment-1',
         team_id: teamId,
-        assignee_id: assigneeId,
       },
     })
-    expect(canReceiveRealtimeEvent(outsider, comment(null, null))).toBe(true)
-    expect(
-      canReceiveRealtimeEvent(member, comment('team-1', 'user-member')),
-    ).toBe(true)
-    expect(canReceiveRealtimeEvent(member, comment('team-1', null))).toBe(false)
-    expect(canReceiveRealtimeEvent(outsider, comment('team-1', null))).toBe(
-      false,
-    )
-    expect(canReceiveRealtimeEvent(teamOwner, comment('team-1', null))).toBe(
-      true,
-    )
-    expect(canReceiveRealtimeEvent(manager, comment('team-1', null))).toBe(true)
+    expect(canReceiveRealtimeEvent(outsider, comment(null))).toBe(true)
+    expect(canReceiveRealtimeEvent(member, comment('team-1'))).toBe(true)
+    expect(canReceiveRealtimeEvent(outsider, comment('team-1'))).toBe(false)
+    expect(canReceiveRealtimeEvent(manager, comment('team-1'))).toBe(true)
   })
 
   it('delivers workspace issue events to every member', () => {
@@ -191,34 +151,32 @@ describe('applyRealtimeProfileUpdate', () => {
     expect(applyRealtimeProfileUpdate(member, teamMemberAdded)).toEqual(member)
   })
 
-  it('moves ownership with an owner transfer', () => {
-    const newOwner = applyRealtimeProfileUpdate(member, {
-      type: 'team:updated',
-      payload: {
-        workspace_id: 'ws-1',
-        team_id: 'team-1',
-        owner_user_id: 'user-member',
-      },
-    })
-    expect(newOwner.ownedTeamIds).toEqual(['team-1'])
+  it('hears Team issue events right after joining and stops after leaving', () => {
+    const event = issueEvent('issue:updated', 'team-1', 'someone-else')
+    expect(canReceiveRealtimeEvent(outsider, event)).toBe(false)
 
-    const previousOwner = applyRealtimeProfileUpdate(teamOwner, {
-      type: 'team:updated',
+    const joined = applyRealtimeProfileUpdate(outsider, teamMemberAdded)
+    expect(canReceiveRealtimeEvent(joined, event)).toBe(true)
+
+    const left = applyRealtimeProfileUpdate(joined, {
+      type: 'team_member:removed',
       payload: {
         workspace_id: 'ws-1',
         team_id: 'team-1',
-        owner_user_id: 'user-member',
+        membership_id: 'tm-1',
+        member_type: 'user',
+        user_id: 'user-outsider',
+        agent_id: null,
       },
     })
-    expect(previousOwner.ownedTeamIds).toEqual([])
+    expect(canReceiveRealtimeEvent(left, event)).toBe(false)
   })
 
   it('drops deleted Teams from every profile', () => {
-    const updated = applyRealtimeProfileUpdate(teamOwner, {
+    const updated = applyRealtimeProfileUpdate(member, {
       type: 'team:deleted',
       payload: { workspace_id: 'ws-1', team_id: 'team-1' },
     })
     expect(updated.teamIds).toEqual([])
-    expect(updated.ownedTeamIds).toEqual([])
   })
 })

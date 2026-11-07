@@ -465,7 +465,6 @@ export const Route = createFileRoute('/api/issues/$id')({
             payload: {
               issue_id: access.issue.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )

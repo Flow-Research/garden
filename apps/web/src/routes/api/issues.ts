@@ -33,7 +33,7 @@ import {
   requireTeamAccess,
   teamError,
 } from '@/lib/server/team-access'
-import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
+import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'

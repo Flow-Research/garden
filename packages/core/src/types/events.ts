@@ -127,22 +127,16 @@ export interface IssueDeletedPayload {
   issue_id: string
   /** Present when the deleted issue belonged to a Team. */
   team_id?: string | null
-  /**
-   * The deleted issue's assignee. Team-scoped deletions gate on this so a
-   * normal member only hears about issues they could see.
-   */
-  assignee_id?: string | null
 }
 
 /**
  * A comment on an issue was added, edited, removed or reacted to. Carries the
- * issue's Team and assignee so the hub gates it like the issue itself.
+ * issue's Team so the hub gates it like the issue itself.
  */
 export interface CommentChangedPayload {
   issue_id: string
   comment_id: string
   team_id: string | null
-  assignee_id: string | null
 }
 
 export interface AgentStatusPayload {
@@ -357,15 +351,11 @@ export interface InvitationRevokedPayload {
 export interface TeamCreatedPayload {
   workspace_id: string
   team_id: string
-  /** The realtime hub keeps each socket's owned-Team list current from this. */
-  owner_user_id: string
 }
 
 export interface TeamUpdatedPayload {
   workspace_id: string
   team_id: string
-  /** The realtime hub keeps each socket's owned-Team list current from this. */
-  owner_user_id: string
 }
 
 export interface TeamDeletedPayload {
