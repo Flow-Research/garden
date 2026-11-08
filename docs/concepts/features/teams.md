@@ -2,9 +2,11 @@
 title: Teams group people and agents, and scope who sees which issues
 description: How Teams work in a workspace, who can manage them, how admins reach them from Settings, and why Team realtime events carry identifiers only.
 status: current
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-07
 ---
+
+Related issue: [#155](https://github.com/Flow-Research/garden/issues/155)
 
 A Team is a group inside a workspace, such as Engineering or Finance. It holds people and agents, has one human owner, and can own issues. Teams decide who sees which Team issues, so they are both an organizing tool and an access rule.
 
@@ -12,15 +14,30 @@ A Team is a group inside a workspace, such as Engineering or Finance. It holds p
 
 Three roles meet on a Team. The server enforces each rule; the UI only hides controls a person cannot use.
 
-| Who | Sees | Can change |
-| --- | --- | --- |
-| Workspace owner or admin | Every Team and every Team issue | Create, edit, and delete any Team, manage members, and transfer ownership |
-| Team owner | Their Team and all of its issues | Edit their Team and manage its members. They cannot transfer ownership or delete the Team. |
-| Team member | The Teams they belong to, and every issue on those Teams' boards | Nothing on the Team itself. On a Team issue they can change status, position, and fields, comment, and assign the issue to themselves. |
+| Who                      | Sees                                                             | Can change                                                                                                                             |
+| ------------------------ | ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace owner or admin | Every Team and every Team issue                                  | Create, edit, and delete any Team, manage members, and transfer ownership                                                              |
+| Team owner               | Their Team and all of its issues                                 | Edit their Team and manage its members. They cannot transfer ownership or delete the Team.                                             |
+| Team member              | The Teams they belong to, and every issue on those Teams' boards | Nothing on the Team itself. On a Team issue they can change status, position, and fields, comment, and assign the issue to themselves. |
 
 A Team has exactly one human owner. An agent can be a member but never the owner. A Team with issues cannot be deleted; the API returns `TEAM_HAS_ISSUES`.
 
 The `can_manage` and `can_transfer_owner` fields in a Team response are rendering hints. `requireTeamAccess`, `requireTeamManage`, and `requireTeamOwnerTransfer` in `apps/web/src/lib/server/team-access.ts` make the actual decision on every request.
+
+## Database errors map by constraint name
+
+`mapDbError` in `apps/web/src/lib/server/teams.ts` turns Postgres failures into stable `{ error, code }` responses. It keys off constraint names, not message text.
+
+| Postgres           | Constraint                                                                      | API code                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `23503` FK         | `issue_team_workspace_fk`                                                       | `TEAM_HAS_ISSUES` (409) — Team still has linked issues (including a delete race after the empty-Team pre-check) |
+| `23503` FK         | Team member / owner identity FKs (for example `team_member_user_id_user_id_fk`) | `INVALID_TEAM_MEMBER` (400)                                                                                     |
+| `23514` check      | Member identity check                                                           | `INVALID_TEAM_MEMBER` (400)                                                                                     |
+| `23505` unique     | `team_workspace_name_unique`                                                    | `TEAM_NAME_EXISTS` (409)                                                                                        |
+| `23505` unique     | Other Team uniques                                                              | `TEAM_MEMBER_EXISTS` (409)                                                                                      |
+| Other / unknown FK | —                                                                               | `TEAM_OPERATION_FAILED` (500)                                                                                   |
+
+Delete still pre-checks for linked issues and returns `TEAM_HAS_ISSUES` without hitting the FK when it can. The `issue_team_workspace_fk` branch covers the race where an issue is inserted between that check and the Team delete.
 
 ## Team members work the whole Team board
 
@@ -30,12 +47,12 @@ Engineering teams import their GitHub issues onto a Team board, and most of thos
 
 The rule lives in one module, `packages/db/src/team-issue-visibility.ts`. `canViewTeamIssue` decides a single issue or realtime event. `teamIssueVisibilityCondition` is the SQL form for collection queries. These callers use it:
 
-| Surface | Caller |
-| --- | --- |
-| Issue detail, update, comments, and subresources | `requireIssueAccess` in `apps/web/src/lib/server/issue-access.ts` |
-| Issue list, search, and child progress | `apps/web/src/routes/api/issues.ts`, `issues/search.ts`, `issues/child-progress.ts` |
-| Realtime issue and comment events | `canReceiveRealtimeEvent` in `packages/agent-runtime/src/realtime-audience.ts` |
-| The chat agent's `list_issues` tool | `listIssues` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace |
+| Surface                                          | Caller                                                                                       |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| Issue detail, update, comments, and subresources | `requireIssueAccess` in `apps/web/src/lib/server/issue-access.ts`                            |
+| Issue list, search, and child progress           | `apps/web/src/routes/api/issues.ts`, `issues/search.ts`, `issues/child-progress.ts`          |
+| Realtime issue and comment events                | `canReceiveRealtimeEvent` in `packages/agent-runtime/src/realtime-audience.ts`               |
+| The chat agent's `list_issues` tool              | `listIssues` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace |
 
 The Team owner needs no separate term. Creating a Team adds its owner as a member, an ownership transfer requires an existing member, and the owner cannot be removed. Team issue counts in `GET /api/teams` and `GET /api/teams/:teamId` count the whole board, because only managers and members can open a Team.
 
@@ -45,11 +62,11 @@ Write access follows read access, with limits on assignment and Team moves. A me
 
 Teams has one home in the app:
 
-| Route | What it shows |
-| --- | --- |
-| `/teams` | Owners and admins see summary cards and a grid of Team cards with create, edit, delete, and ownership actions. Members see a Team selector and their Team's issues. |
+| Route            | What it shows                                                                                                                                                                                                                                                                                      |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/teams`         | Owners and admins see summary cards and a grid of Team cards with create, edit, delete, and ownership actions. Members see a Team selector and their Team's issues.                                                                                                                                |
 | `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md). |
-| `/teams/issues` | Issues across every Team, for owners and admins |
+| `/teams/issues`  | Issues across every Team, for owners and admins                                                                                                                                                                                                                                                    |
 
 The sidebar links to `/teams`. Settings links to it too.
 
@@ -69,22 +86,22 @@ Team query keys are scoped by workspace: `['teams', workspaceId, 'list']`, `['te
 
 ## The API is the contract
 
-| Method | Endpoint | Behavior |
-| --- | --- | --- |
-| `GET` | `/api/teams` | Visible Teams, total, and distinct visible member count |
-| `POST` | `/api/teams` | Create a Team and optional initial members in one transaction |
-| `GET` | `/api/teams/:teamId` | Caller-relative Team detail and counts |
-| `PATCH` | `/api/teams/:teamId` | Update name or description |
-| `DELETE` | `/api/teams/:teamId` | Delete a Team with no issues. Owners and admins only. |
-| `GET` | `/api/teams/:teamId/members` | Member rows for users and agents |
-| `POST` | `/api/teams/:teamId/members` | Add one user or agent from the same workspace |
-| `DELETE` | `/api/teams/:teamId/members/:membershipId` | Remove a member. The owner cannot be removed. |
-| `PUT` | `/api/teams/:teamId/owner` | Transfer ownership to a human member. Owners and admins only. |
-| `GET` | `/api/teams/:teamId/repositories` | GitHub repositories linked to the Team, with import state |
-| `GET` | `/api/teams/:teamId/repositories/available` | Repositories the workspace's GitHub App can access, marked with the Team each is linked to. Team managers only. |
-| `POST` | `/api/teams/:teamId/repositories` | Link a repository by `github_repo_id` and start its import. Team managers only. |
-| `DELETE` | `/api/teams/:teamId/repositories/:repositoryId` | Unlink a repository. Imported issues stay. Team managers only. |
-| `POST` | `/api/teams/:teamId/repositories/:repositoryId/retry` | Run a failed import again. Team managers only. |
+| Method   | Endpoint                                              | Behavior                                                                                                        |
+| -------- | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/teams`                                          | Visible Teams, total, and distinct visible member count                                                         |
+| `POST`   | `/api/teams`                                          | Create a Team and optional initial members in one transaction                                                   |
+| `GET`    | `/api/teams/:teamId`                                  | Caller-relative Team detail and counts                                                                          |
+| `PATCH`  | `/api/teams/:teamId`                                  | Update name or description                                                                                      |
+| `DELETE` | `/api/teams/:teamId`                                  | Delete a Team with no issues. Owners and admins only.                                                           |
+| `GET`    | `/api/teams/:teamId/members`                          | Member rows for users and agents                                                                                |
+| `POST`   | `/api/teams/:teamId/members`                          | Add one user or agent from the same workspace                                                                   |
+| `DELETE` | `/api/teams/:teamId/members/:membershipId`            | Remove a member. The owner cannot be removed.                                                                   |
+| `PUT`    | `/api/teams/:teamId/owner`                            | Transfer ownership to a human member. Owners and admins only.                                                   |
+| `GET`    | `/api/teams/:teamId/repositories`                     | GitHub repositories linked to the Team, with import state                                                       |
+| `GET`    | `/api/teams/:teamId/repositories/available`           | Repositories the workspace's GitHub App can access, marked with the Team each is linked to. Team managers only. |
+| `POST`   | `/api/teams/:teamId/repositories`                     | Link a repository by `github_repo_id` and start its import. Team managers only.                                 |
+| `DELETE` | `/api/teams/:teamId/repositories/:repositoryId`       | Unlink a repository. Imported issues stay. Team managers only.                                                  |
+| `POST`   | `/api/teams/:teamId/repositories/:repositoryId/retry` | Run a failed import again. Team managers only.                                                                  |
 
 Request bodies use the Zod schemas in `apps/web/src/lib/server/validation/teams.ts`. Errors use the `{ error, code }` envelope. The tables are `team` and `team_member` in `packages/db/src/schema/teams.ts`, and `issue.team_id` links an issue to its Team.
 
