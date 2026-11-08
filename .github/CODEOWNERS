@@ -21,8 +21,8 @@
 /apps/web/src/lib/server/stored-object-headers.ts @Flow-Research/security
 
 # Autonomy and policy docs
-/docs/features/codemode-and-permissions-plan.md   @Flow-Research/security
-/docs/known-gaps/auth-and-access.md                @Flow-Research/security
+/docs/concepts/features/permissions.md            @Flow-Research/security
+/docs/reference/known-gaps.md                     @Flow-Research/security
 
 # Environment / secrets config
 /.env*                                            @Flow-Research/security

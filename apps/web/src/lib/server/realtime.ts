@@ -56,7 +56,7 @@ export function publishWorkspaceEvent(
 
 /**
  * Authenticates a realtime WebSocket upgrade, resolves the caller's trusted
- * audience profile (role, Team memberships, owned Teams), and forwards the
+ * audience profile (role and Team memberships), and forwards the
  * upgrade to the workspace hub. Headers are only ever set here, after auth.
  */
 export async function handleRealtimeConnect(
@@ -106,15 +106,6 @@ export async function handleRealtimeConnect(
         eq(schema.teamMember.userId, session.user.id),
       ),
     )
-  const ownedTeams = await db
-    .select({ teamId: schema.team.id })
-    .from(schema.team)
-    .where(
-      and(
-        eq(schema.team.workspaceId, workspaceId),
-        eq(schema.team.ownerUserId, session.user.id),
-      ),
-    )
   await appContext.close()
 
   const headers = new Headers(request.headers)
@@ -123,10 +114,6 @@ export async function handleRealtimeConnect(
   headers.set(
     'x-garden-team-ids',
     teamMemberships.map((row) => row.teamId).join(','),
-  )
-  headers.set(
-    'x-garden-owned-team-ids',
-    ownedTeams.map((row) => row.teamId).join(','),
   )
 
   const stub = env.WORKSPACE_REALTIME.get(

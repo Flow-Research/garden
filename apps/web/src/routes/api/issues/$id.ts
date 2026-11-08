@@ -1,14 +1,9 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { sendIssueAssignmentEmail } from '@/lib/server/email/issue-assignment'
-import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
-import type { IssueStatus } from '@garden/core/types/issue'
-import {
-  archiveTerminalIssueInbox,
-  upsertIssueAssignmentInbox,
-} from '@garden/db/inbox'
+import { upsertIssueAssignmentInbox } from '@garden/db/inbox'
 import {
   addIssueSubscribers,
   assigneeToSubscriberType,
@@ -30,6 +25,7 @@ import {
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
+import { applyIssueMutationSideEffects } from '@/lib/server/issue-mutation-effects'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
   isWorkspaceManager,
@@ -40,11 +36,6 @@ import {
   isWorkspaceIssue,
   isWorkspaceParticipant,
 } from '@/lib/server/workspace-refs'
-import {
-  cancelIssueRun,
-  startIssueRun,
-} from '@garden/server/issues/run-service'
-import { cancelLiveRunsOnIssueChange } from '@garden/core/issues/run-sync'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 
 const logger = createGardenLogger({
@@ -357,85 +348,20 @@ export const Route = createFileRoute('/api/issues/$id')({
             }
           }
         }
-        if (issue.status === 'done' || issue.status === 'cancelled') {
-          await archiveTerminalIssueInbox({
-            db,
-            workspaceId: existingIssue.workspaceId,
-            issueId: issue.id,
-          })
-        }
-        const syncDecision = cancelLiveRunsOnIssueChange({
-          currentStatus: (existingIssue.status ?? 'todo') as IssueStatus,
-          nextStatus: (issue.status ?? 'todo') as IssueStatus,
-          currentAssigneeType: existingIssue.assigneeType as
-            | 'user'
-            | 'member'
-            | 'agent'
-            | null,
-          currentAssigneeId: existingIssue.assigneeId,
-          nextAssigneeType: issue.assigneeType as
-            | 'user'
-            | 'member'
-            | 'agent'
-            | null,
-          nextAssigneeId: issue.assigneeId,
-        })
-
-        if (syncDecision.cancelLiveRuns) {
-          const liveRuns = await db
-            .select({ id: schema.issueRun.id })
-            .from(schema.issueRun)
-            .where(
-              and(
-                eq(schema.issueRun.issueId, issue.id),
-                inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
-                ...(syncDecision.cancelAgentId
-                  ? [eq(schema.issueRun.agentId, syncDecision.cancelAgentId)]
-                  : []),
-              ),
-            )
-          for (const run of liveRuns) {
-            const cancelResult = await cancelIssueRun(appEnv, {
-              workspaceId: existingIssue.workspaceId,
-              runId: run.id,
-              actor: { type: 'member', id: session.user.id },
-              reason: 'issue_changed',
-            })
-            if (cancelResult.isErr()) {
-              logger.error(
-                'issue.run_cancel_failed',
-                errorFields(cancelResult.error),
-              )
-            }
-          }
-        }
-
-        if (syncDecision.shouldWakeAgent && issue.assigneeId) {
-          const startResult = await startIssueRun(appEnv, {
-            workspaceId: existingIssue.workspaceId,
-            issueId: issue.id,
-            agentId: issue.assigneeId,
-            source: 'assignment',
-            actor: { type: 'member', id: session.user.id },
-          })
-          if (startResult.isErr()) {
-            logger.error(
-              'issue.run_start_failed',
-              errorFields(startResult.error),
-            )
-          }
-        }
-        const issuePrefix = await getWorkspaceIssuePrefix(
+        const updatedIssue = await applyIssueMutationSideEffects({
           db,
-          existingIssue.workspaceId,
-        )
-        const updatedIssue = toIssue(issue, { issuePrefix })
-        appContext.waitUntil(
-          publishWorkspaceEvent(appContext.env, existingIssue.workspaceId, {
-            type: 'issue:updated',
-            payload: { issue: updatedIssue },
-          }),
-        )
+          env: appEnv,
+          waitUntil: (promise) => appContext.waitUntil(promise),
+          workspaceId: existingIssue.workspaceId,
+          previous: {
+            status: existingIssue.status,
+            assigneeType: existingIssue.assigneeType,
+            assigneeId: existingIssue.assigneeId,
+          },
+          nextIssue: issue,
+          actor: { type: 'member', id: session.user.id },
+          wakeOnAssignment: true,
+        })
         return Response.json(updatedIssue)
       },
       DELETE: async ({ context, params }) => {
@@ -465,7 +391,6 @@ export const Route = createFileRoute('/api/issues/$id')({
             payload: {
               issue_id: access.issue.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )

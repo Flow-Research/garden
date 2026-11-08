@@ -127,12 +127,7 @@ export function TeamOverview() {
   const [transferTeam, setTransferTeam] = useState<TeamSummary | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TeamSummary | null>(null)
 
-  // The full list envelope is needed for the workspace-wide unique member
-  // count; `teamListOptions` selects only the Teams.
-  const { data: teamsResponse } = useSuspenseQuery({
-    ...teamListOptions(wsId),
-    select: (data) => data,
-  })
+  const { data: teamsResponse } = useSuspenseQuery(teamListOptions(wsId))
   const teams = teamsResponse.teams
   const {
     data: members,
@@ -188,13 +183,6 @@ export function TeamOverview() {
             </div>
             {canManage ? (
               <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  className="h-10 rounded-md px-3 shadow-1"
-                  disabled
-                >
-                  Manage Teams
-                </Button>
                 <Button
                   className="h-10 gap-2 rounded-md px-3"
                   onClick={() => setCreateOpen(true)}

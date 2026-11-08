@@ -1,0 +1,63 @@
+---
+title: How Garden is built
+description: Three planes, what each one owns, and why the boundaries sit where they do.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+Garden runs as one Cloudflare Worker, but its state lives in three places. Most design questions in Garden come down to one question: which plane owns this state?
+
+| Plane     | Owns                                  | Built on                           |
+| --------- | ------------------------------------- | ---------------------------------- |
+| Control   | Records the product lists and audits  | Postgres, Drizzle, R2              |
+| Agent     | Live conversations                    | Durable Objects, Agents SDK, Think |
+| Execution | Work that runs outside a conversation | Workflows, codemode, Sandbox, MCP  |
+
+## Postgres is the record
+
+The control plane holds every record that the product must list, search, permission-check, or audit. That includes users, workspaces, issues, runs, automations, permission grants, documents, and the `tool_call_audit` log. The schemas live in `packages/db/src/schema/`.
+
+File bytes go to R2. The `FILES` bucket holds uploads and generated files, and `BRAIN_FILES` holds Brain documents. Postgres keeps the metadata and access rules for each file.
+
+When Postgres and a Durable Object disagree, Postgres is correct. A run row exists in Postgres before the run starts, so a crashed run still leaves a record to inspect.
+
+## Each conversation gets its own Durable Object
+
+Each agent has one `AgentDO`. It checks access, exposes RPC methods, and starts Workflows. The conversations themselves run in child facets of the `AgentDO`:
+
+- `ChatSubAgent` holds one chat thread.
+- `IssueRunSubAgent` holds the live turn for one issue.
+- `AutomationRunSubAgent` holds one automation run.
+
+A facet keeps its conversation in its own SQLite store. That store is fast and local, but nothing outside the facet can query it. Anything the product needs to show is written back to Postgres. See [agent runtime](./agent-runtime.md).
+
+Two more Durable Objects support the agent plane. `WorkspaceRealtimeDO` holds the browser WebSocket connections for one workspace and sends each event only to connections allowed to see it. See [realtime](./realtime.md). `AutomationTriggerDO` holds the alarms that start scheduled automations.
+
+## Pick the lightest execution tool that fits
+
+The execution plane offers four tools. They differ in how long the work can run and how isolated it is.
+
+| Tool         | Runs                                                           | Use it for                                   |
+| ------------ | -------------------------------------------------------------- | -------------------------------------------- |
+| Codemode     | A short JavaScript program in a dynamic Worker (`LOADER`)      | Chaining several tool calls                  |
+| MCP sessions | An `ExecutorMcpSession` scoped to one workspace, user, and run | Calling connector tools such as GitHub       |
+| Sandbox      | A Python container                                             | Code that needs a filesystem or native tools |
+| Workflows    | `RunWorkflow`, `DecideAnalysisWorkflow`, and `GitHubRepoImportWorkflow` | Runs that must survive crashes and restarts  |
+
+Workflows own retries, waits, resumes, and cancellation. The Workflow instance ID is the run ID, so starting the same run twice does not create two runs. Don't add a second retry layer in agent code. Two layers that both retry can bill a paid provider twice. See [run engine](./run-engine.md) and [execution runtimes](./execution-runtimes.md).
+
+Decide is the one connector that skips Executor's MCP transport. Garden calls Decide directly with the official MCP client and the workspace's saved OAuth token, because the call through Executor failed during the MCP handoff. See [connectors](./connectors.md).
+
+## Follow one issue run across the planes
+
+An issue run crosses all three planes:
+
+1. The API calls `startIssueRun()`, which writes the `issue_run` row to Postgres.
+2. `AgentDO` starts `RUN_WORKFLOW` with the run ID as the instance ID.
+3. The Workflow calls back into `AgentDO`, which passes the turn to `IssueRunSubAgent`.
+4. The agent calls tools. Each call passes a permission check and is written to `tool_call_audit`.
+5. Results are written to Postgres. The browser polls the active run while it runs.
+6. The Workflow marks the run finished. Only the run that owns the issue can finish it.
+
+For file-level detail, read the [architecture map](../../reference/architecture-map.md).

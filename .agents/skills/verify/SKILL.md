@@ -27,7 +27,7 @@ Garden's local stack uses Postgres and HelixDB. Offline mode also needs an
 OpenAI-compatible model, usually Ollama.
 
 Choose the Docker or native Ollama setup in
-[`docs/development/onboarding.md`](../../../docs/development/onboarding.md).
+[`docs/tutorials/get-started.md`](../../../docs/tutorials/get-started.md).
 For Docker-hosted Ollama, run:
 
 ```bash
@@ -114,6 +114,8 @@ Read the feature file before driving it:
 
 - `features/mvp.md` covers the beta path.
 - `features/decide.md` covers Decide installation and the first agent action.
+- `features/handbook.md` covers the internal handbook at `/handbook`.
+- `features/teams.md` covers Teams admin and its Settings entry.
 
 Add a feature file when a shipped user path has no observable proof. Keep the
 feature file focused on what a user can do and see.

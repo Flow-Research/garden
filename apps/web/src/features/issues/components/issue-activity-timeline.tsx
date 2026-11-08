@@ -328,7 +328,7 @@ export function IssueActivityTimeline({
                 </div>
                 <div className="flex min-w-0 flex-1 items-center gap-1">
                   <span className="shrink-0 font-medium">
-                    {getActorName(entry.actor_type, entry.actor_id)}
+                    {getActorName(entry.actor_type, entry.actor_id ?? '')}
                   </span>
                   <span className="truncate">
                     {formatActivity(entry, getActorName)}

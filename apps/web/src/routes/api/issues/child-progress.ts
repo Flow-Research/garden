@@ -8,7 +8,7 @@ import {
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
+import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
 import { isWorkspaceManager } from '@/lib/server/team-access'
 
 export const Route = createFileRoute('/api/issues/child-progress')({

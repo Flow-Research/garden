@@ -331,7 +331,7 @@ export class AutomationTriggerDO extends Agent<AutomationTriggerEnv> {
 
     // Manual, webhook and API runs are not subject to the schedule's
     // concurrency policy (they normally bypass this DO entirely, see
-    // docs/core/workflows-engine.md), so they are not tracked as the
+    // docs/concepts/architecture/run-engine.md), so they are not tracked as the
     // in-flight run either. Previously this overwrote inFlightRunId, which
     // made the policy lose track of a still-running scheduled run.
     return await this.serializeFire(() =>
