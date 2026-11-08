@@ -10,11 +10,14 @@ import {
 export const Route = createFileRoute('/api/inbox/$id/archive')({
   server: {
     handlers: {
-      POST: async ({ context, request, params }) => {
+      POST: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) return unauthorized()
         await archiveInboxThread({
           workspaceId,

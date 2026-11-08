@@ -81,6 +81,24 @@ const runWorkflow = Cloudflare.WorkflowResource(deployTarget.workflowId, {
   scriptName: deployTarget.workerName,
 })
 
+const decideAnalysisWorkflow = Cloudflare.WorkflowResource(
+  deployTarget.decideAnalysisWorkflowId,
+  {
+    workflowName: deployTarget.decideAnalysisWorkflowName,
+    className: 'DecideAnalysisWorkflow',
+    scriptName: deployTarget.workerName,
+  },
+)
+
+const githubRepoImportWorkflow = Cloudflare.WorkflowResource(
+  deployTarget.githubRepoImportWorkflowId,
+  {
+    workflowName: deployTarget.githubRepoImportWorkflowName,
+    className: 'GitHubRepoImportWorkflow',
+    scriptName: deployTarget.workerName,
+  },
+)
+
 /**
  * Owns the gateway named by the deployment target so every environment has a
  * real Workers AI routing/logging boundary. Previously preview referenced a
@@ -266,6 +284,15 @@ export default Alchemy.Stack(
         },
       ],
     })
+    yield* deployed.bind(deployTarget.workspaceRealtimeId, {
+      bindings: [
+        {
+          type: 'durable_object_namespace',
+          name: 'WORKSPACE_REALTIME',
+          className: 'WorkspaceRealtimeDO',
+        },
+      ],
+    })
     yield* deployed.bind(deployTarget.sandboxId, {
       bindings: [
         {
@@ -289,10 +316,45 @@ export default Alchemy.Stack(
         },
       ],
     })
+    const deployedDecideAnalysisWorkflow = yield* decideAnalysisWorkflow.pipe(
+      Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+    )
+    yield* deployed.bind(deployTarget.decideAnalysisWorkflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'DECIDE_ANALYSIS_WORKFLOW',
+          workflowName: deployedDecideAnalysisWorkflow.workflowName,
+          className: 'DecideAnalysisWorkflow',
+        },
+      ],
+    })
+    const deployedGitHubRepoImportWorkflow =
+      yield* githubRepoImportWorkflow.pipe(
+        Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+      )
+    yield* deployed.bind(deployTarget.githubRepoImportWorkflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'GITHUB_REPO_IMPORT_WORKFLOW',
+          workflowName: deployedGitHubRepoImportWorkflow.workflowName,
+          className: 'GitHubRepoImportWorkflow',
+        },
+      ],
+    })
     yield* sandboxApplication.bind('Sandbox', {
       durableObjects: {
         namespaceId: deployed.durableObjectNamespaces.pipe(
-          Output.map((namespaces) => namespaces?.Sandbox),
+          Output.map((namespaces) => {
+            const namespaceId = namespaces?.Sandbox
+            if (!namespaceId) {
+              throw new Error(
+                'The Sandbox Durable Object namespace was not deployed',
+              )
+            }
+            return namespaceId
+          }),
         ),
       },
     })
@@ -381,11 +443,7 @@ function optionalCredentialPairBindings(
   clientId: string,
   clientSecret: string,
 ) {
-  return optionalCredentialPairIsConfigured(
-    process.env,
-    clientId,
-    clientSecret,
-  )
+  return optionalCredentialPairIsConfigured(process.env, clientId, clientSecret)
     ? {
         [clientId]: plainEnv(clientId),
         [clientSecret]: Config.redacted(clientSecret),

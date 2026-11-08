@@ -500,9 +500,7 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
         connectorType: { type: 'string', required: false, input: false },
       },
     },
-    socialProviders: useOptionalProviders
-      ? googleAuthProvider(env)
-      : undefined,
+    socialProviders: useOptionalProviders ? googleAuthProvider(env) : undefined,
     plugins: [
       organization({
         ac: gardenAccessControl,

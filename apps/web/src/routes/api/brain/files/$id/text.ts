@@ -13,7 +13,6 @@ import {
   notFound,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import type { AppEnv } from '@/lib/server/env'
 
 /**
  * Returns the extracted text for a Brain file in the active workspace.
@@ -32,10 +31,7 @@ export const getBrainFileExtractedText = async ({
   const itemIdResult = BrainFileIdSchema.safeParse(params.id)
   if (!itemIdResult.success) return badRequest('Invalid Brain file id')
 
-  const env = appContext.env as AppEnv & {
-    HELIX_URL?: string
-    HELIX_API_KEY?: string
-  }
+  const env = appContext.env
   const helixUrl = env.HELIX_URL
 
   if (helixUrl === undefined) {

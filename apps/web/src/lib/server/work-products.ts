@@ -169,46 +169,34 @@ function firstNumber(input: Record<string, unknown> | null, keys: string[]) {
 }
 
 function parseRepository(value: string | null) {
-  const match = value?.match(/^([^/\s]+)\/([^/\s#]+)$/)
-  if (!match) return null
-  return { owner: match[1], repo: match[2] }
+  const [, owner, repo] = value?.match(/^([^/\s]+)\/([^/\s#]+)$/) ?? []
+  return owner && repo ? { owner, repo } : null
+}
+
+/** Builds an issue ref from a match whose groups are owner, repo, number. */
+function issueRefFromMatch(
+  match: RegExpMatchArray | null,
+): GithubIssueRef | null {
+  const [, owner, repo, issueNumber] = match ?? []
+  return owner && repo && issueNumber
+    ? { owner, repo, issueNumber: Number(issueNumber) }
+    : null
 }
 
 function parseGithubIssueRefFromText(value: string | null) {
   if (!value) return null
-
-  const urlMatch = value.match(
-    /github\.com\/([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/(\d+)/i,
+  return (
+    // https://github.com/owner/repo/issues/12 (or /pull/12)
+    issueRefFromMatch(
+      value.match(/github\.com\/([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/(\d+)/i),
+    ) ??
+    // owner/repo#12
+    issueRefFromMatch(value.match(/^([^/\s]+)\/([^#\s]+)#(\d+)$/)) ??
+    // owner/repo/issues/12
+    issueRefFromMatch(
+      value.match(/^([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/(\d+)$/i),
+    )
   )
-  if (urlMatch) {
-    return {
-      owner: urlMatch[1],
-      repo: urlMatch[2],
-      issueNumber: Number(urlMatch[3]),
-    } satisfies GithubIssueRef
-  }
-
-  const shorthandMatch = value.match(/^([^/\s]+)\/([^#\s]+)#(\d+)$/)
-  if (shorthandMatch) {
-    return {
-      owner: shorthandMatch[1],
-      repo: shorthandMatch[2],
-      issueNumber: Number(shorthandMatch[3]),
-    } satisfies GithubIssueRef
-  }
-
-  const pathMatch = value.match(
-    /^([^/\s]+)\/([^/\s]+)\/(?:issues|pull)\/(\d+)$/i,
-  )
-  if (pathMatch) {
-    return {
-      owner: pathMatch[1],
-      repo: pathMatch[2],
-      issueNumber: Number(pathMatch[3]),
-    } satisfies GithubIssueRef
-  }
-
-  return null
 }
 
 function resolveGithubIssueRef(binding: IssueSourceBindingRow) {
@@ -377,10 +365,8 @@ async function callConnectorTool(args: {
     catch: (cause) => dbError('Failed to load GitHub App installation', cause),
   })
   if (installationResult.isErr()) return Result.err(installationResult.error)
-  if (
-    !installationResult.value ||
-    installationResult.value.status === 'disconnected'
-  ) {
+  const installation = installationResult.value
+  if (!installation || installation.status === 'disconnected') {
     return Result.err(invalidState('GitHub App installation is not connected'))
   }
 
@@ -393,7 +379,7 @@ async function callConnectorTool(args: {
               appId: args.env.GITHUB_APP_ID,
               clientId: args.env.GITHUB_CLIENT_ID,
               privateKey: args.env.GITHUB_APP_PRIVATE_KEY,
-              installationId: installationResult.value.installationId,
+              installationId: installation.installationId,
             }),
           ),
         ),
@@ -555,12 +541,14 @@ async function approveWorkProduct(args: {
         await tx.execute(sql`
           select pg_advisory_xact_lock(hashtextextended(${workProduct.runId as string}::text, 0))
         `)
-        const [{ nextSeq }] = await tx
+        const [seqRow] = await tx
           .select({
             nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
           })
           .from(schema.issueRunEvent)
           .where(eq(schema.issueRunEvent.runId, workProduct.runId as string))
+        // An aggregate always returns one row; max() is null for a new run.
+        const nextSeq = seqRow?.nextSeq ?? 1
         await tx.insert(schema.issueRunEvent).values({
           id: crypto.randomUUID(),
           workspaceId: workProduct.workspaceId,
@@ -773,7 +761,7 @@ async function markWorkProductApplied(args: {
         await tx.execute(sql`
           select pg_advisory_xact_lock(hashtextextended(${args.workProduct.runId as string}::text, 0))
         `)
-        const [{ nextSeq }] = await tx
+        const [seqRow] = await tx
           .select({
             nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
           })
@@ -781,6 +769,8 @@ async function markWorkProductApplied(args: {
           .where(
             eq(schema.issueRunEvent.runId, args.workProduct.runId as string),
           )
+        // An aggregate always returns one row; max() is null for a new run.
+        const nextSeq = seqRow?.nextSeq ?? 1
         await tx.insert(schema.issueRunEvent).values({
           id: crypto.randomUUID(),
           workspaceId: args.workProduct.workspaceId,

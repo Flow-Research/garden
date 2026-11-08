@@ -1,7 +1,7 @@
 // Garden — system overview
 // Prose-led, with bullets only where the content is genuinely a list.
 // Bold emphasis on named primitives and trust levels.
-// Visual language follows docs/vibe.md and docs/core/design.md.
+// Visual language follows docs/concepts/design/design-direction.md.
 
 #set document(title: "Garden", author: "Garden")
 

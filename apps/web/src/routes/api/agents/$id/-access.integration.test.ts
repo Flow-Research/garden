@@ -1,6 +1,7 @@
 import type { AppRequestContext } from '@/lib/server/context'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route } from './access'
+import { invokeRouteHandler } from '@/test/route-handler'
 
 const mocks = vi.hoisted(() => ({
   requireSession: vi.fn(),
@@ -16,22 +17,6 @@ vi.mock('@/lib/server/control-plane', async (importOriginal) => {
     resolveWorkspaceId: mocks.resolveWorkspaceId,
   }
 })
-
-function getGetHandler() {
-  const handlers = Route.options.server?.handlers
-
-  if (!handlers || typeof handlers === 'function') {
-    throw new Error('Expected agent access route handlers')
-  }
-
-  const getHandler = handlers.GET
-
-  if (typeof getHandler !== 'function') {
-    throw new Error('Expected agent access GET handler')
-  }
-
-  return getHandler
-}
 
 function chainable(rows: unknown[]) {
   const arr = [...rows]
@@ -54,12 +39,10 @@ describe('agent access route', () => {
   it('rejects unauthenticated callers', async () => {
     mocks.requireSession.mockResolvedValueOnce(null)
 
-    const response = await getGetHandler()({
+    const response = await invokeRouteHandler(Route, 'GET', {
       context: {} as AppRequestContext,
       request: new Request('https://garden.test/api/agents/agent-id/access'),
       params: { id: 'agent-id' },
-      pathname: '/api/agents/$id/access',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)
@@ -92,14 +75,12 @@ describe('agent access route', () => {
       })),
     }
 
-    const response = await getGetHandler()({
+    const response = await invokeRouteHandler(Route, 'GET', {
       context: {
         db: async () => db,
       } as unknown as AppRequestContext,
       request: new Request('https://garden.test/api/agents/agent-id/access'),
       params: { id: 'agent-id' },
-      pathname: '/api/agents/$id/access',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response).toBeInstanceOf(Response)

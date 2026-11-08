@@ -1,4 +1,3 @@
-
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 
@@ -7,22 +6,17 @@ import {
   sourceBindingBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/issues'
-import {
-  badRequest,
-  notFound,
-} from '@/lib/server/control-plane'
+import { badRequest } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import {
   attachSourceBinding,
   listIssueSourceBindings,
-  type IssueSourceBindingServiceError,
-} from '@garden/core/issues/source-binding'
-
-function sourceBindingError(error: IssueSourceBindingServiceError) {
-  return error.code === 'binding_not_found'
-    ? notFound(error.message)
-    : badRequest(error.message)
-}
+} from '@garden/server/issues/source-binding'
 
 export const Route = createFileRoute('/api/issues/$id/source-bindings')({
   server: {
@@ -37,7 +31,7 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
           issueId: params.id,
         })
         if (bindingsResult.isErr()) {
-          return sourceBindingError(bindingsResult.error)
+          return serviceErrorResponse(bindingsResult.error)
         }
         return Response.json(bindingsResult.value)
       },
@@ -54,6 +48,13 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
         const issue = access.issue
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: issue.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         const attachResult = await attachSourceBinding({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,
@@ -64,7 +65,8 @@ export const Route = createFileRoute('/api/issues/$id/source-bindings')({
           externalId: body.external_id,
           externalUrl: body.external_url,
         })
-        if (attachResult.isErr()) return sourceBindingError(attachResult.error)
+        if (attachResult.isErr())
+          return serviceErrorResponse(attachResult.error)
         return Response.json(attachResult.value, { status: 201 })
       },
     },

@@ -17,6 +17,7 @@ import { cloudflare } from '@cloudflare/vite-plugin'
 import posthogRollupPlugin from '@posthog/rollup-plugin'
 import agents from 'agents/vite'
 import codemode from '@cloudflare/codemode/vite'
+import { fumadocsMdx } from 'fumadocs-mdx/vite'
 
 const legacyEnvFiles = [
   fileURLToPath(new URL('./.env', import.meta.url)),
@@ -264,7 +265,7 @@ const config = defineConfig({
   customLogger: logger,
   server: {
     port: Number(process.env.PORT ?? 3000),
-    allowedHosts: ['.ngrok-free.app'],
+    allowedHosts: ['.ngrok-free.app', '.ngrok-free.dev'],
   },
   resolve: {
     alias: executorSourceAliases,
@@ -323,6 +324,7 @@ const config = defineConfig({
     }),
     agents(),
     codemode(),
+    fumadocsMdx(),
     tailwindcss(),
     tanstackStart(),
     viteReact(),

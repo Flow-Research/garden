@@ -10,6 +10,7 @@
  */
 
 import { buildMessageRenderModel } from './chat-message-model'
+import { DecideAnalysisCard } from './chat-decide-analysis'
 // Re-export the pure model surface so existing importers (chat-timeline,
 // chat-panel-controller, chat-tool-activity, lib/server) keep resolving these
 // from chat-message-parts after the model layer was split out.
@@ -158,6 +159,8 @@ export function MessageOrderedParts({
                 ))}
               </PreResponseWrapper>
             )
+          case 'decide':
+            return <DecideAnalysisCard key={node.key} runId={node.runId} />
           case 'artifact':
             return (
               <GardenDocDownloadBlock

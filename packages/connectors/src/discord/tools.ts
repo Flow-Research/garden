@@ -1,4 +1,5 @@
 import { Effect, Schema } from 'effect'
+import { boundedPageInput } from '../effect/http.ts'
 import { defineNativeConnectorTool } from '../effect/native.ts'
 import { DiscordRestClient } from './rest-client.ts'
 import {
@@ -14,7 +15,8 @@ const GuildInput = Schema.Struct({ guildId: Schema.String })
 const ChannelInput = Schema.Struct({ channelId: Schema.String })
 const ReadMessagesInput = Schema.Struct({
   channelId: Schema.String,
-  limit: Schema.optional(Schema.Number),
+  // Discord returns at most 100 messages per request.
+  limit: boundedPageInput(100),
   before: Schema.optional(Schema.String),
   after: Schema.optional(Schema.String),
   around: Schema.optional(Schema.String),
@@ -23,7 +25,8 @@ const SearchMessagesInput = Schema.Struct({
   guildId: Schema.String,
   query: Schema.String,
   channelId: Schema.optional(Schema.String),
-  limit: Schema.optional(Schema.Number),
+  // Discord message search returns at most 25 results per request.
+  limit: boundedPageInput(25),
 })
 const SendMessageInput = Schema.Struct({
   channelId: Schema.String,

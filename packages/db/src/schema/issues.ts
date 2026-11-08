@@ -39,12 +39,7 @@ import {
   issueWorkProductTypeValues,
   sourceKindValues,
 } from './issue-values.js'
-
-function sqlValueList(values: readonly string[]) {
-  return sql.raw(
-    values.map((value) => `'${value.replace(/'/g, "''")}'`).join(', '),
-  )
-}
+import { sqlValueList } from './sql-values.js'
 
 export const issue = pgTable(
   'issue',
@@ -52,7 +47,7 @@ export const issue = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     teamId: uuid('team_id'),
     number: integer('number').notNull(),
     title: text('title').notNull(),
@@ -61,7 +56,14 @@ export const issue = pgTable(
     priority: text('priority').default('medium'),
     assigneeType: text('assignee_type'),
     assigneeId: uuid('assignee_id'),
-    position: integer('position').notNull().default(0),
+    // A fractional-indexing order key ("a0", "a0V", "a1", ...): there is
+    // always a key between any two, so a card can be dropped anywhere with a
+    // single write. Integer positions could not hold the midpoint between
+    // neighbours, so such drops were rejected. Keys compare by code unit, so
+    // the column uses COLLATE "C" (set in migration 0058; drizzle does not
+    // model collations). New issues get a key at the end of their column in
+    // createIssue; the default only covers direct inserts.
+    position: text('position').notNull().default('a0'),
     dueDate: timestamp('due_date', {
       mode: 'date',
       withTimezone: true,
@@ -75,6 +77,8 @@ export const issue = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
+    // Deleting a parent promotes its sub-issues to top level rather than
+    // deleting them or blocking the delete.
     parentId: uuid('parent_id').references((): AnyPgColumn => issue.id, {
       onDelete: 'set null',
     }),
@@ -82,10 +86,33 @@ export const issue = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('issue_parent_id_idx').on(table.parentId),
+    index('issue_workspace_team_status_idx').on(
+      table.workspaceId,
+      table.teamId,
+      table.status,
+      table.updatedAt,
+    ),
+    foreignKey({
+      name: 'issue_team_workspace_fk',
+      columns: [table.teamId, table.workspaceId],
+      foreignColumns: [team.id, team.workspaceId],
+    }).onDelete('restrict'),
     uniqueIndex('issue_workspace_number_unique').on(
       table.workspaceId,
       table.number,
@@ -105,17 +132,6 @@ export const issue = pgTable(
       table.assigneeType,
       table.assigneeId,
     ),
-    index('issue_workspace_team_status_idx').on(
-      table.workspaceId,
-      table.teamId,
-      table.status,
-      table.updatedAt,
-    ),
-    foreignKey({
-      name: 'issue_team_workspace_fk',
-      columns: [table.teamId, table.workspaceId],
-      foreignColumns: [team.id, team.workspaceId],
-    }).onDelete('restrict'),
     check(
       'issue_status_check',
       sql`${table.status} in (${sqlValueList(issueStatusValues)})`,
@@ -131,6 +147,17 @@ export const issue = pgTable(
   ],
 )
 
+/**
+ * Issue timeline comments.
+ *
+ * Why connector + nullable authorId + metadata: inbound GitHub
+ * `issue_comment` webhooks (#161) must land on the linked Garden issue without
+ * inventing fake user/agent UUIDs. Before this, author_type was only
+ * user|agent and author_id was required — inbound sync had nowhere to store
+ * external identity. After: `connector` comments keep author_id null, stamp
+ * `external_comment_id` for created/edited dedupe, and put display fields
+ * (github_login, html_url, …) in metadata. user/agent rows stay unchanged.
+ */
 export const issueComment = pgTable(
   'issue_comment',
   {
@@ -139,16 +166,36 @@ export const issueComment = pgTable(
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
     authorType: text('author_type').notNull(),
-    authorId: uuid('author_id').notNull(),
+    authorId: uuid('author_id'),
     body: text('body').notNull(),
     mentions: jsonb('mentions'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    /**
+     * Stable external id for connector-sourced comments (e.g. GitHub comment
+     * id). Null for native Garden comments. Unique per issue when set so
+     * webhook created/edited upserts do not double-insert.
+     */
+    externalCommentId: text('external_comment_id'),
+    metadata: jsonb('metadata'),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
+    index('issue_comment_issue_created_idx').on(table.issueId, table.createdAt),
     index('issue_comment_mentions_gin').using('gin', table.mentions),
+    uniqueIndex('issue_comment_external_comment_unique')
+      .on(table.issueId, table.externalCommentId)
+      .where(sql`${table.externalCommentId} is not null`),
     check(
       'issue_comment_author_type_check',
       sql`${table.authorType} in (${sqlValueList(issueCommentAuthorTypeValues)})`,
+    ),
+    check(
+      'issue_comment_author_id_check',
+      sql`(${table.authorType} = 'connector' and ${table.authorId} is null) or (${table.authorType} in ('user', 'agent') and ${table.authorId} is not null)`,
     ),
   ],
 )
@@ -169,7 +216,7 @@ export const issueAttachment = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id').references(() => issue.id, {
       onDelete: 'cascade',
     }),
@@ -182,7 +229,12 @@ export const issueAttachment = pgTable(
     r2Key: text('r2_key').notNull(),
     contentType: text('content_type').notNull(),
     sizeBytes: bigint('size_bytes', { mode: 'number' }).notNull().default(0),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('issue_attachment_workspace_idx').on(table.workspaceId),
@@ -215,7 +267,7 @@ export const issueSubscriber = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -253,7 +305,7 @@ export const issueSourceBinding = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -264,13 +316,17 @@ export const issueSourceBinding = pgTable(
     displayRef: text('display_ref'),
     titleSnapshot: text('title_snapshot'),
     metadata: jsonb('metadata'),
-    lastSyncedAt: timestamp('last_synced_at', { mode: 'date' }),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    lastSyncedAt: timestamp('last_synced_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex('issue_source_binding_external_unique').on(
@@ -297,7 +353,7 @@ export const issueRun = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, {
@@ -333,14 +389,16 @@ export const issueRun = pgTable(
       mode: 'date',
       withTimezone: true,
     }),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('issue_run_workspace_id_idx').on(table.workspaceId),
     index('issue_run_issue_idx').on(table.issueId, table.createdAt),
     index('issue_run_agent_active_idx')
       .on(table.agentId)
@@ -373,7 +431,7 @@ export const issueRunEvent = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -386,7 +444,7 @@ export const issueRunEvent = pgTable(
     level: text('level').notNull().default('info'),
     message: text('message'),
     payload: jsonb('payload'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },
@@ -410,7 +468,7 @@ export const issueWorkProduct = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issue.id, { onDelete: 'cascade' }),
@@ -431,14 +489,16 @@ export const issueWorkProduct = pgTable(
     }),
     appliedExternalId: text('applied_external_id'),
     appliedExternalUrl: text('applied_external_url'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('issue_work_product_run_id_idx').on(table.runId),
     uniqueIndex('issue_work_product_primary_unique')
       .on(table.issueId, table.type)
       .where(sql`${table.isPrimary} = true`),
@@ -464,7 +524,7 @@ export const inboxDismissal = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     userId: uuid('user_id')
       .notNull()
       .references(() => user.id),
@@ -492,7 +552,7 @@ export const inboxItem = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     recipientType: text('recipient_type').notNull(),
     recipientId: uuid('recipient_id')
       .notNull()
@@ -528,9 +588,11 @@ export const inboxItem = pgTable(
       withTimezone: true,
     })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('inbox_item_issue_id_idx').on(table.issueId),
     uniqueIndex('inbox_item_workspace_recipient_key_unique').on(
       table.workspaceId,
       table.recipientType,

@@ -19,9 +19,14 @@ export interface DeploymentTarget {
   readonly executorBlobsId: string
   readonly executorBlobsBucket: string
   readonly agentDoId: string
+  readonly workspaceRealtimeId: string
   readonly automationTriggerId: string
   readonly workflowId: string
   readonly workflowName: string
+  readonly decideAnalysisWorkflowId: string
+  readonly decideAnalysisWorkflowName: string
+  readonly githubRepoImportWorkflowId: string
+  readonly githubRepoImportWorkflowName: string
   readonly sandboxId: string
   readonly sandboxName: string
   readonly aiGatewayId: string

@@ -6,19 +6,23 @@ import {
   commentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/issues'
-import {
-  badRequest,
-  notFound,
-} from '@/lib/server/control-plane'
+import { badRequest, notFound } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 function toComment(row: typeof schema.issueComment.$inferSelect) {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType =
+    row.authorType === 'user'
+      ? 'member'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : row.authorType
 
   return {
     id: row.id,
     issue_id: row.issueId,
-    author_type: row.authorType === 'user' ? 'member' : row.authorType,
+    author_type: authorType,
     author_id: row.authorId,
     content: row.body,
     type: 'comment',
@@ -70,6 +74,16 @@ export const Route = createFileRoute('/api/comments/$id')({
           .returning()
 
         if (!updatedComment) return notFound('Comment not found')
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
+            type: 'comment:updated',
+            payload: {
+              issue_id: access.issue.id,
+              comment_id: updatedComment.id,
+              team_id: access.issue.teamId,
+            },
+          }),
+        )
         return Response.json(toComment(updatedComment))
       },
       DELETE: async ({ context, params }) => {
@@ -98,6 +112,16 @@ export const Route = createFileRoute('/api/comments/$id')({
         await db
           .delete(schema.issueComment)
           .where(eq(schema.issueComment.id, params.id))
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
+            type: 'comment:deleted',
+            payload: {
+              issue_id: access.issue.id,
+              comment_id: existingComment.id,
+              team_id: access.issue.teamId,
+            },
+          }),
+        )
         return new Response(null, { status: 204 })
       },
     },

@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
-  Session,
+  type Session,
   Think,
   type ChatResponseResult,
   type MessageConcurrency,
@@ -49,11 +49,14 @@ import { Result, TaggedError } from 'better-result'
 import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from 'effect'
 import { connectorRegistry } from '@garden/connectors'
 import {
+  executorCatalogSchema,
+  type ExecutorCatalog,
+} from '@garden/core/executor/catalog'
+import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
-import { createGardenLogger } from '@garden/observability/logger'
-import { latestUserText, loadBrainInjection } from './brain-injection'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
   describeSandboxProbe,
@@ -83,7 +86,29 @@ import {
   type McpHost,
   type RuntimeMcpServerStates,
 } from './runtime-mcp-controller'
+import { latestUserText } from './brain-injection'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
+import {
+  extractExecutorToolFailure,
+  extractExecutorToolRefsFromInput,
+  type ExecutorToolFailure,
+} from './executor-codemode'
+import {
+  renderIntegrationRouteDirective,
+  isIntegrationToolAllowed,
+  requestNeedsConnectedTools,
+  selectIntegrationRoute,
+  type IntegrationRouteDecision,
+  type RouteAttachment,
+} from './integration-router'
+import {
+  DECIDE_ANALYSIS_DELIVERY_INSTRUCTIONS,
+  DECIDE_ANALYZE_TOOL_KEY,
+  decideAnalysisDeliveryMessage,
+  isDecideAnalysisDeliveryTurn,
+  chatTurnActiveTools,
+  stopAfterDecideAnalysisStarts,
+} from './decide-analysis-chat'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
 import { isChatToolAllowed } from './chat-permissions'
 import {
@@ -128,15 +153,14 @@ import {
   BrainWriteBackRunner,
   makeBrainWriteBackRunnerLayer,
 } from './brain-write-back-runner'
-
-const ISSUE_WRITE_BACK_STATUSES = new Set(['succeeded', 'blocked'])
-const AUTOMATION_WRITE_BACK_STATUSES = new Set(['completed'])
 import {
   RunWorkflowCreateError,
   type RunWorkflowBinding,
+  type RunWorkflowTurnCompletion,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
 import { logAgentSocketError } from './websocket-errors'
+import { agentSandboxId } from './runtime-utils'
 
 type AgentRuntimeEnv = Cloudflare.Env &
   AgentModelEnv & {
@@ -389,14 +413,53 @@ type ThreadDocumentArtifactSubscription = Awaited<
 >
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.workspace-agent.turn'
+const CHAT_EXECUTOR_CATALOG_TTL_MS = 30_000
 const agentRuntimeLogger = createGardenLogger({
   service: 'garden-staging',
   component: 'agent-do',
 })
+
+/** Run statuses whose summary is worth writing into workspace memory. */
+const ISSUE_WRITE_BACK_STATUSES = new Set(['succeeded', 'blocked'])
+const AUTOMATION_WRITE_BACK_STATUSES = new Set(['completed'])
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
 const documentArtifactEventEncoder = new TextEncoder()
+
+/**
+ * Extracts filenames and media types from the latest user message so the
+ * integration router can use attachment shape (for example CSV) as routing
+ * evidence even when the prose only says "analyze this".
+ */
+function latestUserAttachments(
+  messages: readonly unknown[],
+): RouteAttachment[] {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index] as { role?: string; content?: unknown }
+    if (message?.role !== 'user' || !Array.isArray(message.content)) continue
+    return message.content.flatMap((part) => {
+      if (typeof part !== 'object' || part === null) return []
+      const file = part as {
+        type?: unknown
+        filename?: unknown
+        mediaType?: unknown
+      }
+      if (file.type !== 'file') return []
+      return [
+        {
+          ...(typeof file.filename === 'string'
+            ? { filename: file.filename }
+            : {}),
+          ...(typeof file.mediaType === 'string'
+            ? { mediaType: file.mediaType }
+            : {}),
+        },
+      ]
+    })
+  }
+  return []
+}
 
 /** Encodes one validated collaboration event using the SSE wire grammar. */
 const encodeDocumentArtifactEvent = (
@@ -572,6 +635,59 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.readDocumentBytes(documentId)
+  }
+
+  /**
+   * Hands one finished Decide run to its chat as a model turn. Before, the
+   * Workflow appended Decide's raw blocks as an assistant message, which
+   * landed mid-turn with session IDs and progress logs, and it addressed the
+   * facet by `chat_thread.id` although facets are named by `runtime_key`.
+   * Now the run is joined to its thread to find the facet, and the facet
+   * submits an internal user message that the model turns into the answer.
+   * Returns `delivered: false` for runs that need no message (cancelled).
+   */
+  async deliverDecideAnalysisResult(input: {
+    threadId: string
+    runId: string
+    attempt: number
+  }): Promise<{ delivered: boolean }> {
+    const [run] = await this.getDb()
+      .select({
+        runId: schema.decideAnalysisRun.id,
+        attempt: schema.decideAnalysisRun.attempt,
+        status: schema.decideAnalysisRun.status,
+        resultJson: schema.decideAnalysisRun.resultJson,
+        errorJson: schema.decideAnalysisRun.errorJson,
+        runtimeKey: schema.chatThread.runtimeKey,
+      })
+      .from(schema.decideAnalysisRun)
+      .innerJoin(
+        schema.chatThread,
+        eq(schema.chatThread.id, schema.decideAnalysisRun.threadId),
+      )
+      .where(
+        and(
+          eq(schema.decideAnalysisRun.id, input.runId),
+          eq(schema.decideAnalysisRun.threadId, input.threadId),
+          eq(schema.decideAnalysisRun.attempt, input.attempt),
+        ),
+      )
+      .limit(1)
+
+    if (!run) throw new Error('Decide analysis run not found')
+    if (
+      run.status !== 'completed' &&
+      run.status !== 'failed' &&
+      run.status !== 'cancelled'
+    ) {
+      throw new Error('Decide analysis run is not terminal')
+    }
+
+    const message = decideAnalysisDeliveryMessage(run)
+    if (!message) return { delivered: false }
+    const thread = await this.subAgent(ChatSubAgent, run.runtimeKey)
+    await thread.deliverDecideAnalysisResult(message)
+    return { delivered: true }
   }
 
   @callable()
@@ -846,8 +962,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
         agentRuntimeLogger.warn('agent_do.brain_write_back.cleanup_failed', {
           agentId,
           runId,
-          workspaceId,
           message: messageFromUnknown(cause),
+          workspaceId,
         })
       },
     })
@@ -866,9 +982,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
           Effect.sync(() => {
             agentRuntimeLogger.error('agent_do.brain_write_back.failed', {
               agentId: failure.agentId,
-              runId: input.runId,
               message: messageFromUnknown(failure.cause),
               operation: failure.operation,
+              runId: input.runId,
               workspaceId: input.workspaceId,
             })
           }),
@@ -948,54 +1064,81 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       runId: input.runId,
       submissionId: input.submissionId,
     })
-    const workspaceId = result.workspaceId
-    const summary = result.summary.trim()
+    this.triggerBrainWriteBack({
+      runId: input.runId,
+      workspaceId: result.workspaceId,
+      ownerUserId: result.ownerUserId,
+      summary: result.summary,
+      status: result.status,
+      runKind: 'issue',
+      statuses: ISSUE_WRITE_BACK_STATUSES,
+    })
+    return { status: result.status }
+  }
+
+  /**
+   * Fires an issue/automation Brain write-back once per run without blocking the
+   * Workflow RPC response. Empty summaries and non-product statuses are skipped.
+   */
+  private triggerBrainWriteBack(input: {
+    runId: string
+    workspaceId: string | null
+    ownerUserId: string | null
+    summary: string
+    status: string
+    runKind: 'issue' | 'automation'
+    statuses: ReadonlySet<string>
+  }) {
+    const summary = input.summary.trim()
     agentRuntimeLogger.info('agent_do.brain_write_back.trigger_check', {
       runId: input.runId,
-      status: result.status,
+      status: input.status,
       summaryLength: summary.length,
-      hasWorkspace: workspaceId !== null,
+      hasWorkspace: input.workspaceId !== null,
     })
     if (
-      workspaceId !== null &&
-      summary !== '' &&
-      ISSUE_WRITE_BACK_STATUSES.has(result.status) &&
-      this.claimBrainWriteBackRun(input.runId)
+      input.workspaceId === null ||
+      summary === '' ||
+      !input.statuses.has(input.status) ||
+      !this.claimBrainWriteBackRun(input.runId)
     ) {
-      const bounded = summary.slice(0, 8000)
-      this.ctx.waitUntil(
-        (async () => {
-          const fired = await Result.tryPromise({
-            try: () =>
-              this.startBrainWriteBack({
-                runId: input.runId,
-                workspaceId,
-                runKind: 'issue',
-                ownerUserId: result.ownerUserId,
-                summary: bounded,
-              }),
-            catch: (cause) => messageFromUnknown(cause),
-          })
-          if (fired.isErr()) {
-            agentRuntimeLogger.warn(
-              'agent_do.brain_write_back.trigger_failed',
-              { runId: input.runId, message: fired.error },
-            )
-          }
-        })(),
-      )
+      return
     }
-    return { status: result.status }
+    const bounded = summary.slice(0, 8000)
+    this.ctx.waitUntil(
+      (async () => {
+        const fired = await Result.tryPromise({
+          try: () =>
+            this.startBrainWriteBack({
+              runId: input.runId,
+              workspaceId: input.workspaceId as string,
+              runKind: input.runKind,
+              ownerUserId: input.ownerUserId,
+              summary: bounded,
+            }),
+          catch: (cause) => messageFromUnknown(cause),
+        })
+        if (fired.isErr()) {
+          agentRuntimeLogger.warn('agent_do.brain_write_back.trigger_failed', {
+            runId: input.runId,
+            message: fired.error,
+          })
+        }
+      })(),
+    )
   }
 
   /**
    * Workflow-facing RPC that delegates automation turn submission to the run
    * facet and returns the durable Think submission id without blocking the DO.
+   * `decideRunId` is set on the resume turn after a Decide pause, so the facet
+   * hands the agent that analysis's outcome.
    */
   async executeAutomationRunTurn(input: {
     runId: string
     mode: 'start' | 'resume'
     turn: number
+    decideRunId?: string
   }): Promise<RunWorkflowTurnStartResult> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
@@ -1005,6 +1148,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return await automationAgent.executeWorkflowTurn(input.mode, {
       runId: input.runId,
       turn: input.turn,
+      ...(input.decideRunId === undefined
+        ? {}
+        : { decideRunId: input.decideRunId }),
     })
   }
 
@@ -1015,51 +1161,78 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   async completeAutomationRunTurn(input: {
     runId: string
     submissionId: string
-  }): Promise<{ status: string }> {
+  }): Promise<RunWorkflowTurnCompletion> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
       AutomationRunSubAgent,
       input.runId,
     )
     const result = await automationAgent.completeWorkflowTurn(input)
-    const workspaceId = result.workspaceId
-    const summary = result.summary.trim()
-    agentRuntimeLogger.info('agent_do.brain_write_back.trigger_check', {
+    this.triggerBrainWriteBack({
       runId: input.runId,
+      workspaceId: result.workspaceId,
+      ownerUserId: result.ownerUserId,
+      summary: result.summary,
       status: result.status,
-      summaryLength: summary.length,
-      hasWorkspace: workspaceId !== null,
+      runKind: 'automation',
+      statuses: AUTOMATION_WRITE_BACK_STATUSES,
     })
-    if (
-      workspaceId !== null &&
-      summary !== '' &&
-      AUTOMATION_WRITE_BACK_STATUSES.has(result.status) &&
-      this.claimBrainWriteBackRun(input.runId)
-    ) {
-      const bounded = summary.slice(0, 8000)
-      this.ctx.waitUntil(
-        (async () => {
-          const fired = await Result.tryPromise({
-            try: () =>
-              this.startBrainWriteBack({
-                runId: input.runId,
-                workspaceId,
-                runKind: 'automation',
-                ownerUserId: result.ownerUserId,
-                summary: bounded,
-              }),
-            catch: (cause) => messageFromUnknown(cause),
-          })
-          if (fired.isErr()) {
-            agentRuntimeLogger.warn(
-              'agent_do.brain_write_back.trigger_failed',
-              { runId: input.runId, message: fired.error },
-            )
-          }
-        })(),
-      )
-    }
-    return { status: result.status }
+    return result.waitingOn === undefined
+      ? { status: result.status }
+      : { status: result.status, waitingOn: result.waitingOn }
+  }
+
+  /**
+   * Workflow-facing RPC that reports an issue turn's Think submission status
+   * when its turn-complete event has not arrived.
+   */
+  async readRunTurnStatus(input: {
+    runId: string
+    issueId: string
+    submissionId: string
+  }): Promise<{ status: string | null }> {
+    await this.requireIssueAccess(input.issueId)
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
+    return await issueAgent.readWorkflowTurnStatus(input)
+  }
+
+  /** Automation counterpart of `readRunTurnStatus`. */
+  async readAutomationRunTurnStatus(input: {
+    runId: string
+    submissionId: string
+  }): Promise<{ status: string | null }> {
+    await this.requireAutomationRunAccess(input.runId)
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    )
+    return await automationAgent.readWorkflowTurnStatus(input)
+  }
+
+  /**
+   * Workflow-facing RPC that fails an issue run whose turn never settled.
+   */
+  async failRunTurn(input: {
+    runId: string
+    issueId: string
+    reason: string
+  }): Promise<{ status: string }> {
+    await this.requireIssueAccess(input.issueId)
+    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
+    return await issueAgent.failWorkflowTurn(input)
+  }
+
+  /** Automation counterpart of `failRunTurn`. */
+  async failAutomationRunTurn(input: {
+    runId: string
+    reason: string
+  }): Promise<{ status: string }> {
+    await this.requireAutomationRunAccess(input.runId)
+    const automationAgent = await this.subAgent(
+      AutomationRunSubAgent,
+      input.runId,
+    )
+    return await automationAgent.failWorkflowTurn(input)
   }
 
   override async onBeforeSubAgent(
@@ -1400,7 +1573,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override classifyChatError = classifyGardenContextOverflow
   private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private currentPermissions: AgentPermissions | null = null
+  private currentIntegrationRoute: IntegrationRouteDecision | null = null
+  private currentIntegrationFailure: ExecutorToolFailure | null = null
   private mcpController: RuntimeMcpController | null = null
+  private chatExecutorCatalogCache: {
+    key: string
+    fetchedAtMs: number
+    value: ExecutorCatalog | null
+  } | null = null
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
     getController: () => this.getMcpController(),
     fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
@@ -1409,18 +1589,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     getServerStates: () =>
       this.getMcpServers().servers as RuntimeMcpServerStates,
     connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    backgroundRefreshFailedMessage:
-      '[agent-runtime] chat MCP background warm failed',
-    refreshFailedMessage: '[agent-runtime] chat MCP connector warm failed',
-    continuingWithoutReadyMessage:
-      '[agent-runtime] continuing without warmed chat MCP connectors',
+    logger: agentRuntimeLogger,
     onSuccessfulRefresh: (controller) => {
       const captured = controller.captureObservedMcpToolChanges()
       if (captured.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to capture warmed chat MCP tool changes',
-          captured.error,
-        )
+        agentRuntimeLogger.warn('chat.mcp_tool_changes_capture_failed', {
+          agentName: this.name,
+          phase: 'warm',
+          ...errorFields(captured.error),
+        })
       }
     },
     onThreadNotFound: async (reason, controller) =>
@@ -1464,6 +1641,73 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     )
   }
 
+  /**
+   * Loads the current Executor integration view for Chat inventory queries.
+   * Before this callback, Chat only queried Garden's static connector registry,
+   * so a connected Personal Executor integration such as Decide was reported
+   * as unavailable. The internal route applies the same workspace and user
+   * identity that the MCP session uses. References consulted: the local
+   * Executor catalog route and the shared RuntimeMcpController identity flow.
+   */
+  private async loadChatExecutorCatalog(input: {
+    workspaceId: string
+    userId: string
+  }): Promise<ExecutorCatalog | null> {
+    const key = `${input.workspaceId}:${input.userId}`
+    const cached = this.chatExecutorCatalogCache
+    if (
+      cached?.key === key &&
+      Date.now() - cached.fetchedAtMs < CHAT_EXECUTOR_CATALOG_TTL_MS
+    ) {
+      return cached.value
+    }
+
+    const result = await Result.tryPromise<ExecutorCatalog, string>({
+      try: async () => {
+        const response = await fetch(
+          new URL('/api/internal/executor/catalog', this.env.BETTER_AUTH_URL),
+          {
+            method: 'POST',
+            headers: {
+              'content-type': 'application/json',
+              'x-garden-internal-secret': this.env.BETTER_AUTH_SECRET,
+            },
+            body: JSON.stringify(input),
+          },
+        )
+        if (!response.ok) {
+          throw new Error(
+            `Executor catalog request failed with ${response.status}`,
+          )
+        }
+        return executorCatalogSchema.parse(await response.json())
+      },
+      catch: (cause) =>
+        cause instanceof Error
+          ? cause.message
+          : 'Executor catalog request failed',
+    })
+
+    const value = result.match({
+      ok: (catalog) => catalog,
+      err: (error) => {
+        agentRuntimeLogger.warn('chat.executor_catalog_unavailable', {
+          agentName: this.name,
+          errorMessage: error,
+          workspaceId: input.workspaceId,
+          userId: input.userId,
+        })
+        return null
+      },
+    })
+    this.chatExecutorCatalogCache = {
+      key,
+      fetchedAtMs: Date.now(),
+      value,
+    }
+    return value
+  }
+
   override getTools() {
     return createChatSubAgentTools({
       ctx: this.ctx,
@@ -1473,6 +1717,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       threadId: this.name,
       workspace: this.workspace,
       loader: this.env.LOADER,
+      loadExecutorCatalog: (input) => this.loadChatExecutorCatalog(input),
       getSandbox: () => this.getAgentSandbox(),
       issueRunEnv: this.env,
       brain: {
@@ -1735,6 +1980,25 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return { ok: true }
   }
 
+  /**
+   * Queues the Decide result hand-off as a durable Think submission keyed by
+   * the message ID. A replayed Workflow step finds the existing submission
+   * and starts no second turn, and the turn queue runs it after any active
+   * turn so it never splices into one. `submitMessages` is used instead of
+   * `saveMessages` because it persists the turn in the facet and returns at
+   * once; `saveMessages` would hold the Workflow step's RPC open for the
+   * whole model turn, and its `shouldApplyMessages` option is not part of
+   * the published `SaveMessagesOptions` type (agents 0.17.3). Reference:
+   * `Think.submitMessages` in @cloudflare/think 0.10.0.
+   */
+  async deliverDecideAnalysisResult(message: UIMessage) {
+    const submission = await this.submitMessages([message], {
+      submissionId: message.id,
+      idempotencyKey: message.id,
+    })
+    return { accepted: submission.accepted, status: submission.status }
+  }
+
   async continueAfterGardenApproval(input: {
     approved: boolean
     permissionRequestId: string
@@ -1816,6 +2080,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeTurn(ctx: TurnContext) {
+    this.currentIntegrationFailure = null
     const [identity] = await this.getDb()
       .select({
         id: schema.chatThread.id,
@@ -1850,21 +2115,81 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       )
     }
 
-    const mcpController = this.getMcpController()
-    const captured = mcpController.captureObservedMcpToolChanges()
-    if (captured.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to capture MCP tool changes',
-        captured.error,
-      )
-    }
-
     const documentContext =
       ctx.body &&
       typeof ctx.body.document_context === 'string' &&
       ctx.body.document_context.trim()
         ? ctx.body.document_context.trim()
         : null
+    const userAttachments = latestUserAttachments(ctx.messages)
+    const userText = latestUserText(ctx.messages)
+    // `ctx.messages` are model messages without UI metadata, so the hand-off
+    // marker is read from the persisted UI history.
+    const isDecideDelivery = isDecideAnalysisDeliveryTurn(this.messages)
+
+    const executorCatalog =
+      identity && !isDecideDelivery
+        ? await this.loadChatExecutorCatalog({
+            workspaceId: identity.workspaceId,
+            userId: identity.ownerUserId,
+          })
+        : null
+    // A delivery turn presents a finished result, so the hand-off text must
+    // not route the turn back to Decide.
+    const routeDecision: IntegrationRouteDecision = isDecideDelivery
+      ? {
+          status: 'none',
+          skill: null,
+          routes: [],
+          reason: 'Presenting a finished Decide analysis.',
+        }
+      : selectIntegrationRoute({
+          userText,
+          documentContext,
+          attachments: userAttachments,
+          catalog: executorCatalog,
+        })
+    this.currentIntegrationRoute = routeDecision
+    const needsConnectedTools = requestNeedsConnectedTools(routeDecision)
+    const integrationDirective = isDecideDelivery
+      ? DECIDE_ANALYSIS_DELIVERY_INSTRUCTIONS
+      : renderIntegrationRouteDirective(routeDecision)
+    // A selected Decide call is the requested source of truth for this turn.
+    // Stop the AI SDK loop after a failed tool result so the model cannot
+    // continue with a local analysis. The failed tool output remains in the
+    // UI, where the chat model renders its exact error and stage.
+    const stopAfterSelectedDecideFailure =
+      routeDecision.status === 'selected' &&
+      routeDecision.routes[0]?.slug === 'decide'
+        ? () => this.currentIntegrationFailure !== null
+        : undefined
+
+    const mcpControllerResult = await Result.tryPromise({
+      try: async () =>
+        await this.mcpConnectionPreparer.ensureForTurn('chat-turn', {
+          waitForReadiness: needsConnectedTools,
+        }),
+      catch: (cause) =>
+        cause instanceof Error ? cause.message : 'Chat MCP refresh failed',
+    })
+    const activeMcpController = mcpControllerResult.match({
+      ok: (controller) => controller,
+      err: (error) => {
+        agentRuntimeLogger.warn('chat.mcp_refresh_failed', {
+          agentName: this.name,
+          errorMessage: error,
+        })
+        return this.getMcpController()
+      },
+    })
+    const captured = activeMcpController.captureObservedMcpToolChanges()
+    if (captured.isErr()) {
+      agentRuntimeLogger.warn('chat.mcp_tool_changes_capture_failed', {
+        agentName: this.name,
+        phase: 'turn',
+        ...errorFields(captured.error),
+      })
+    }
 
     const explicitSkillContext = (
       await Result.tryPromise({
@@ -1874,59 +2199,23 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     ).match({
       ok: (context) => context,
       err: (error) => {
-        console.warn(
-          '[agent-runtime] failed to activate slash-invoked skills',
-          {
-            error,
-          },
-        )
+        agentRuntimeLogger.warn('chat.slash_skills_activation_failed', {
+          agentName: this.name,
+          errorMessage: error,
+        })
         return ''
       },
     })
 
-    const brainContext = identity
-      ? (
-          await Result.tryPromise({
-            try: () =>
-              loadBrainInjection({
-                env: {
-                  ...(this.env.HELIX_URL === undefined
-                    ? {}
-                    : { HELIX_URL: this.env.HELIX_URL }),
-                  ...(this.env.HELIX_API_KEY === undefined
-                    ? {}
-                    : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
-                },
-                ai: this.env.AI,
-                files: this.env.BRAIN_FILES,
-                workspaceId: identity.workspaceId,
-                viewer: {
-                  teamIds: new Set<string>(),
-                  userId: identity.ownerUserId,
-                },
-                query: latestUserText(ctx.messages),
-                log: (event) => console.info('[brain-injection]', event),
-              }),
-            catch: (cause) => messageFromUnknown(cause),
-          })
-        ).match({
-          ok: (injection) => injection.text,
-          err: (error) => {
-            console.warn('[agent-runtime] brain injection failed', { error })
-            return ''
-          },
-        })
-      : ''
-
     const systemAdditions = [
-      brainContext,
+      integrationDirective,
       documentContext,
       explicitSkillContext,
     ]
       .filter((part): part is string => Boolean(part?.trim()))
       .join('\n\n')
 
-    const stableMcpTools = mcpController.wrapGetAITools(
+    const stableMcpTools = activeMcpController.wrapGetAITools(
       this.mcp.getAITools.bind(this.mcp),
       undefined,
       {
@@ -1934,7 +2223,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           this.shouldAutoApproveRiskClass(riskClass),
       },
     )
-    const activeTools = mcpController.activeToolKeysWithoutRawMcp({
+    const activeTools = activeMcpController.activeToolKeysWithoutRawMcp({
       assembledTools: ctx.tools,
       stableMcpTools,
     })
@@ -1944,7 +2233,18 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const visibleTools = Object.fromEntries(
       Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
     ) as ToolSet
-    const visibleActiveTools = activeTools.filter((key) => isToolVisible(key))
+    const visibleActiveTools = chatTurnActiveTools(activeTools, {
+      isDecideDelivery,
+      isVisible: isToolVisible,
+    })
+    const stopWhen = [
+      ...(visibleActiveTools.includes(DECIDE_ANALYZE_TOOL_KEY)
+        ? [stopAfterDecideAnalysisStarts]
+        : []),
+      ...(stopAfterSelectedDecideFailure
+        ? [stopAfterSelectedDecideFailure]
+        : []),
+    ]
 
     return {
       model: createAgentModel({
@@ -1959,6 +2259,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         metadata: {
           agentClass: 'ChatSubAgent',
           hasDocumentContext: Boolean(documentContext),
+          hasIntegrationRoute: routeDecision.status === 'selected',
+          selectedIntegration: routeDecision.routes[0]?.slug ?? '',
         },
         recordInputs: false,
         recordOutputs: false,
@@ -1968,6 +2270,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ...(systemAdditions
         ? { system: `${ctx.system}\n\n${systemAdditions}` }
         : {}),
+      ...(stopWhen.length > 0 ? { stopWhen } : {}),
       tools: visibleTools,
       activeTools: visibleActiveTools,
     } satisfies TurnConfig
@@ -1979,11 +2282,82 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         message: `Tool ${ctx.toolName} is not allowed for this agent.`,
       })
     }
+    const selectedRoute = this.currentIntegrationRoute?.routes[0]
+    if (selectedRoute && this.currentIntegrationFailure) {
+      return {
+        action: 'block',
+        reason: [
+          `The selected ${selectedRoute.name} call failed at ${this.currentIntegrationFailure.stage}.`,
+          this.currentIntegrationFailure.message,
+          'Do not retry the integration or replace it with local analysis. Report the failure to the user and ask for a narrower request or a smaller file.',
+        ].join(' '),
+      } as const
+    }
+    if (
+      ctx.toolName === `${EXECUTOR_TOOL_KEY_PREFIX}execute` &&
+      (selectedRoute?.slug === 'decide' ||
+        extractExecutorToolRefsFromInput(ctx.input).some(
+          (ref) => ref.executorSlug === 'decide',
+        ))
+    ) {
+      return {
+        action: 'block',
+        reason:
+          'Use the direct Decide tools. Do not call Executor execute for Decide.',
+      } as const
+    }
+    if (selectedRoute && ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)) {
+      const disallowedRef = extractExecutorToolRefsFromInput(ctx.input).find(
+        (ref) =>
+          !isIntegrationToolAllowed(
+            this.currentIntegrationRoute,
+            ref.executorSlug,
+            ref.tool,
+          ),
+      )
+      if (disallowedRef) {
+        return {
+          action: 'block',
+          reason: `This turn is scoped to the selected ${selectedRoute.name} tools. Do not call executor:${disallowedRef.executorSlug}.${disallowedRef.tool}.`,
+        } as const
+      }
+    }
     this.aiObservation.beforeToolCall(ctx)
     return undefined
   }
 
   override async afterToolCall(ctx: ToolCallResultContext) {
+    const selectedRoute = this.currentIntegrationRoute?.routes[0]
+    const isRouteTool =
+      ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX) ||
+      ctx.toolName === 'readDocument'
+    if (selectedRoute && isRouteTool && !this.currentIntegrationFailure) {
+      const failure = extractExecutorToolFailure({
+        error: ctx.success ? undefined : ctx.error,
+        output: ctx.success ? ctx.output : undefined,
+        toolName: ctx.toolName,
+        toolInput: ctx.input,
+      })
+      if (failure) {
+        this.currentIntegrationFailure = failure
+        agentRuntimeLogger.error('chat.integration_call_failed', {
+          agentName: this.name,
+          integration: selectedRoute.slug,
+          toolName: ctx.toolName,
+          failureStage: failure.stage,
+          failureCode: failure.code,
+          failureMessage: failure.message,
+          failureKind: failure.kind,
+          failureStatus: failure.status,
+          mcpCode: failure.mcpCode,
+          transportKind: failure.transportKind,
+          transportMessage: failure.transportMessage,
+          retryable: failure.retryable,
+          userAction: failure.userAction,
+          durationMs: ctx.durationMs,
+        })
+      }
+    }
     this.aiObservation.afterToolCall(ctx)
   }
 
@@ -2608,20 +2982,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   private getSandboxId() {
-    const pathKey = this.selfPath.map((segment) => segment.name).join('-')
-    const candidate = pathKey || this.name
-    if (candidate.length <= 63) {
-      return candidate
-    }
-
-    return [
-      this.compactSandboxSegment(
-        this.parentPath.at(-1)?.name || 'agent-do',
-        20,
-      ),
-      this.compactSandboxSegment(this.name, 20),
-      this.hashSandboxId(candidate),
-    ].join('-')
+    return agentSandboxId({
+      selfPath: this.selfPath,
+      parentPath: this.parentPath,
+      name: this.name,
+    })
   }
 
   private getAgentRuntimeName() {
@@ -2638,8 +3003,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mcp: this.mcp,
       getServerStates: () =>
         this.getMcpServers().servers as RuntimeMcpServerStates,
-      addExecutorMcpServer: async ({ id, props }) =>
-        await this.addMcpServer(id, this.env.EXECUTOR_MCP_SESSION, {
+      addExecutorMcpServer: async ({ id, remoteName, props }) =>
+        await this.addMcpServer(remoteName, this.env.EXECUTOR_MCP_SESSION, {
           id,
           props,
         }),
@@ -2655,17 +3020,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   ) {
     const resetResult = await mcpController.resetProxyMcpServers()
     if (resetResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to reset MCP connectors for paused chat facet',
-        {
-          reason,
-          agentName: this.name,
-          error: resetResult.error,
-        },
-      )
+      agentRuntimeLogger.warn('chat.mcp_pause_reset_failed', {
+        reason,
+        agentName: this.name,
+        ...errorFields(resetResult.error),
+      })
     }
 
-    console.warn('[agent-runtime] paused MCP connectors for chat facet', {
+    agentRuntimeLogger.warn('chat.mcp_paused', {
       reason,
       agentName: this.name,
     })
@@ -2687,30 +3049,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     await this.session.addContext('agent', promptContexts.agent)
     await this.session.addContext('workspace', promptContexts.workspace)
     await this.session.refreshSystemPrompt()
-  }
-
-  private compactSandboxSegment(value: string, maxLength: number) {
-    const normalized = value
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-
-    if (!normalized) {
-      return 'sandbox'
-    }
-
-    return normalized.slice(0, maxLength)
-  }
-
-  private hashSandboxId(value: string) {
-    let hash = 2166136261
-    for (let index = 0; index < value.length; index += 1) {
-      hash ^= value.charCodeAt(index)
-      hash = Math.imul(hash, 16777619)
-    }
-
-    return (hash >>> 0).toString(16)
   }
 
   private getAgentSandbox() {

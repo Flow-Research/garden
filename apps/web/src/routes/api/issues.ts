@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
@@ -23,10 +23,25 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
-import { isWorkspaceManager, requireTeamAccess, teamError } from '@/lib/server/team-access'
-import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
+import {
+  isWorkspaceIssue,
+  isWorkspaceParticipant,
+} from '@/lib/server/workspace-refs'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
+import {
+  isWorkspaceManager,
+  requireTeamAccess,
+  teamError,
+} from '@/lib/server/team-access'
+import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'issues-api',
+})
 
 export const Route = createFileRoute('/api/issues')({
   server: {
@@ -55,6 +70,7 @@ export const Route = createFileRoute('/api/issues')({
           assignee_id: assigneeId,
           assignee_ids: assigneeIds,
           creator_id: creatorId,
+          has_team: hasTeam,
           limit,
           offset,
           open_only: openOnly = false,
@@ -72,6 +88,10 @@ export const Route = createFileRoute('/api/issues')({
           }),
         ]
         if (teamId) conditions.push(eq(schema.issue.teamId, teamId))
+        // has_team filters team-assigned vs workspace-only issues in SQL so
+        // cross-team lists never scan/return the full workspace issue set.
+        if (hasTeam === true) conditions.push(isNotNull(schema.issue.teamId))
+        if (hasTeam === false) conditions.push(isNull(schema.issue.teamId))
         if (status) conditions.push(eq(schema.issue.status, status))
         if (priority) conditions.push(eq(schema.issue.priority, priority))
         if (assigneeId) conditions.push(eq(schema.issue.assigneeId, assigneeId))
@@ -82,10 +102,11 @@ export const Route = createFileRoute('/api/issues')({
         if (openOnly) conditions.push(sql`${schema.issue.status} <> 'done'`)
 
         const whereClause = and(...conditions)
-        const [{ count }] = await db
+        const [countRow] = await db
           .select({ count: sql<number>`cast(count(*) as int)` })
           .from(schema.issue)
           .where(whereClause)
+        const count = countRow?.count ?? 0
 
         const query = db
           .select()
@@ -109,7 +130,6 @@ export const Route = createFileRoute('/api/issues')({
           ? query.limit(safeLimit).offset(safeOffset)
           : query.offset(safeOffset))
         const issuePrefix = await getWorkspaceIssuePrefix(db, workspaceId)
-
         return Response.json({
           issues: rows.map((row) => toIssue(row, { issuePrefix })),
           total: count,
@@ -189,6 +209,26 @@ export const Route = createFileRoute('/api/issues')({
           if (managePermission) return managePermission
         }
 
+        if (body.assignee_id) {
+          const assigneeInWorkspace = await isWorkspaceParticipant(
+            db,
+            workspaceId,
+            {
+              type: body.assignee_type === 'agent' ? 'agent' : 'member',
+              id: body.assignee_id,
+            },
+          )
+          if (!assigneeInWorkspace) {
+            return badRequest('Assignee is not in this workspace')
+          }
+        }
+        if (
+          body.parent_issue_id &&
+          !(await isWorkspaceIssue(db, workspaceId, body.parent_issue_id))
+        ) {
+          return badRequest('Parent issue is not in this workspace')
+        }
+
         const issueResult = await createIssue({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,
           workspaceId,
@@ -211,7 +251,7 @@ export const Route = createFileRoute('/api/issues')({
           dueDate: body.due_date ? new Date(body.due_date) : null,
           attachmentIds: body.attachment_ids,
         })
-        if (issueResult.isErr()) return badRequest(issueResult.error.message)
+        if (issueResult.isErr()) return serviceErrorResponse(issueResult.error)
         const issue = issueResult.value
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, workspaceId, {
@@ -228,15 +268,24 @@ export const Route = createFileRoute('/api/issues')({
           issue.status !== 'done' &&
           issue.status !== 'cancelled'
         ) {
-          void startIssueRun(appEnv, {
-            workspaceId,
-            issueId: issue.id,
-            agentId: issue.assignee_id,
-            source: 'assignment',
-            actor: { type: 'member', id: session.user.id },
-          }).then((startResult) => {
-            if (startResult.isErr()) console.error(startResult.error.message)
-          })
+          // waitUntil keeps the Worker alive until the run has started; a bare
+          // floating promise can be cancelled once the response is sent.
+          appContext.waitUntil(
+            startIssueRun(appEnv, {
+              workspaceId,
+              issueId: issue.id,
+              agentId: issue.assignee_id,
+              source: 'assignment',
+              actor: { type: 'member', id: session.user.id },
+            }).then((startResult) => {
+              if (startResult.isErr()) {
+                logger.error(
+                  'issue.run_start_failed',
+                  errorFields(startResult.error),
+                )
+              }
+            }),
+          )
         }
         capturePostHogEvent(appContext, {
           distinctId: session.user.id,

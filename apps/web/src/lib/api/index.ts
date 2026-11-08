@@ -1,4 +1,4 @@
-export { ApiError } from './errors'
+export { ApiError, isMissingError } from './errors'
 export { ApiTransport } from './transport'
 export type { ApiTransportOptions, ApiRequestInit } from './transport'
 export {
@@ -19,6 +19,7 @@ export * from './files'
 export * from './projects'
 export * from './connections'
 export * from './chat-threads'
+export * from './decide-analyses'
 export * from './documents'
 export * from './automations'
 export * from './teams'

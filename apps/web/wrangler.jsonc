@@ -101,6 +101,16 @@
       "binding": "RUN_WORKFLOW",
       "class_name": "RunWorkflow",
     },
+    {
+      "name": "garden-decide-analysis-workflow-local",
+      "binding": "DECIDE_ANALYSIS_WORKFLOW",
+      "class_name": "DecideAnalysisWorkflow",
+    },
+    {
+      "name": "garden-github-repo-import-workflow-local",
+      "binding": "GITHUB_REPO_IMPORT_WORKFLOW",
+      "class_name": "GitHubRepoImportWorkflow",
+    },
   ],
   "r2_buckets": [
     {

@@ -37,13 +37,19 @@ describe('Executor MCP one-Worker cutover', () => {
     const automationRun = projectFile(
       '../../packages/agent-runtime/src/automation-run-sub-agent.ts',
     )
+    const base = projectFile(
+      '../../packages/agent-runtime/src/run-sub-agent-base.ts',
+    )
+
+    expect(base).toContain('EXECUTOR_MCP_SESSION')
+    expect(base).toContain(
+      'EXECUTOR_MCP_SESSION: DurableObjectNamespace<McpAgent>',
+    )
+    expect(base).toContain('addExecutorMcpServer')
+    expect(base).not.toContain('this.env.MCP_SESSION')
+    expect(base).not.toContain('addRpcMcpServer')
 
     for (const source of [issueRun, automationRun]) {
-      expect(source).toContain('EXECUTOR_MCP_SESSION')
-      expect(source).toContain(
-        'EXECUTOR_MCP_SESSION: DurableObjectNamespace<McpAgent>',
-      )
-      expect(source).toContain('addExecutorMcpServer')
       expect(source).not.toContain('this.env.MCP_SESSION')
       expect(source).not.toContain('addRpcMcpServer')
     }

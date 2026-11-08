@@ -12,6 +12,7 @@
  * `@garden/ui/components/ui/button`.
  */
 
+import type { ReactElement } from 'react'
 import { X } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
@@ -52,7 +53,7 @@ const SUGGESTION_ROWS = Array.from(
 export function ComposerSuggestions({
   onSelect,
   onDismiss,
-}: ComposerSuggestionsProps): JSX.Element {
+}: ComposerSuggestionsProps): ReactElement {
   return (
     <div className={cn('mx-auto w-full', COMPOSER_WIDTH_CLASS_NAME)}>
       <div className="mx-3 md:mx-10">

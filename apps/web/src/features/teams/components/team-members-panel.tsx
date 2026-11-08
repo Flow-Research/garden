@@ -30,14 +30,8 @@ export function TeamMembersPanel({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex gap-3">
-        <TeamSummaryCard
-          label="Total members"
-          value={team.member_count}
-        />
-        <TeamSummaryCard
-          label="Total Roles"
-          value={roleCount}
-        />
+        <TeamSummaryCard label="Total members" value={team.member_count} />
+        <TeamSummaryCard label="Total Roles" value={roleCount} />
         <TeamSummaryCard
           label="Total Activity"
           value={team.activity_count}

@@ -26,6 +26,8 @@ export function listIssues(
   if (params?.offset) search.set('offset', String(params.offset))
   if (params?.workspace_id) search.set('workspace_id', params.workspace_id)
   if (params?.team_id) search.set('team_id', params.team_id)
+  if (params?.has_team === true) search.set('has_team', 'true')
+  if (params?.has_team === false) search.set('has_team', 'false')
   if (params?.status) search.set('status', params.status)
   if (params?.priority) search.set('priority', params.priority)
   if (params?.assignee_id) search.set('assignee_id', params.assignee_id)

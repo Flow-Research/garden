@@ -3,7 +3,7 @@
  *
  * Written to be read by someone who has never touched Cloudflare's stack. Define
  * a thing before using its name, prefer plain words over jargon, and keep it
- * honest to the code (docs/core/technical.md, project-think-cloudflare.md,
+ * honest to the code (docs/reference/architecture-map.md, agent-runtime.md,
  * chat-runtime-model.md). Component shapes here are consumed by the page and the
  * diagram components — keep the keys stable when editing copy.
  */
@@ -307,7 +307,7 @@ export type Flow = {
   steps: FlowStep[]
 }
 
-export const flows: Flow[] = [
+export const flows: [Flow, ...Flow[]] = [
   {
     id: 'task',
     label: 'A task run',
@@ -583,8 +583,7 @@ export const contrast = {
 }
 
 export const sources = [
-  'docs/core/technical.md',
-  'docs/core/project-think-cloudflare.md',
-  'docs/core/chat-runtime-model.md',
+  'docs/reference/architecture-map.md',
+  'docs/concepts/architecture/agent-runtime.md',
   'github.com/earendil-works/pi',
 ]

@@ -1,5 +1,5 @@
 import { parseServerEnv } from '@garden/env'
-import { db } from '@garden/db'
+import { createNodeDb } from '@garden/db'
 import { createBetterAuth } from './lib/auth/instance'
 
 const env = parseServerEnv({
@@ -28,7 +28,7 @@ if (!env.BETTER_AUTH_SECRET || !env.BETTER_AUTH_URL) {
   )
 }
 
-export const auth = createBetterAuth(db, {
+export const auth = createBetterAuth(createNodeDb(), {
   BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
   BETTER_AUTH_URL: env.BETTER_AUTH_URL,
   GOOGLE_AUTH_CLIENT_ID: env.GOOGLE_AUTH_CLIENT_ID,

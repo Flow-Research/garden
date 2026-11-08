@@ -6,6 +6,7 @@ type BrainFileTypeIconProps = {
 }
 
 const FILE_TYPE_ICONS = {
+  csv: { label: 'CSV', src: '/file-types/txt.svg' },
   docx: { label: 'DOC', src: '/file-types/docx.svg' },
   md: { label: 'MD', src: '/file-types/md.svg' },
   pdf: { label: 'PDF', src: '/file-types/pdf.svg' },

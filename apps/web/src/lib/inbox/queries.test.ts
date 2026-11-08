@@ -1,3 +1,4 @@
+import { QueryClient } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 import type { InboxItem } from '@garden/core/types'
 
@@ -41,7 +42,8 @@ describe('inbox queries', () => {
     listInbox.mockResolvedValue(items)
 
     const options = inboxListOptions('workspace-1')
-    const result = await options.queryFn({
+    const result = await options.queryFn!({
+      client: new QueryClient(),
       queryKey: options.queryKey,
       signal: new AbortController().signal,
       meta: undefined,

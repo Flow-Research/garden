@@ -90,184 +90,264 @@ describe('team issue access (integration)', () => {
     }
   }
 
-  it('scopes the issue list to assigned Team issues for normal members', async () => {
-    const { fixture, teamId, assignedIssueId, otherTeamIssueId } =
-      await seedScenario()
-
-    const memberRequest = new Request(
-      `https://garden.test/api/issues?team_id=${teamId}`,
-      { headers: { 'X-Workspace-ID': fixture.workspaceId } },
+  /** Calls one route handler as a workspace user and returns the response. */
+  async function callAs(args: {
+    route: unknown
+    method?: string
+    url: string
+    workspaceId: string
+    userId: string
+    role: 'owner' | 'admin' | 'member'
+    params?: Record<string, string>
+    body?: unknown
+  }): Promise<Response> {
+    const request = jsonRequest(
+      `https://garden.test${args.url}`,
+      args.workspaceId,
+      args.method ?? 'GET',
+      args.body,
     )
-    const memberResponse = await handlerFor(IssuesRoute, 'GET')(
+    return handlerFor(
+      args.route,
+      args.method ?? 'GET',
+    )(
       invocation(
         makeContext({
           testDb,
-          userId: fixture.memberId,
-          role: 'member',
-          request: memberRequest,
+          userId: args.userId,
+          role: args.role,
+          request,
         }),
-        memberRequest,
-        {},
-        '/api/issues',
+        request,
+        args.params ?? {},
+        new URL(request.url).pathname,
       ),
     )
-    const memberBody = (await memberResponse.json()) as {
-      issues: Array<{ id: string }>
-    }
-    expect(memberBody.issues.map((issue) => issue.id)).toEqual([
-      assignedIssueId,
-    ])
+  }
 
-    const managerRequest = new Request(
-      `https://garden.test/api/issues?team_id=${teamId}`,
+  async function issueIds(response: Response): Promise<string[]> {
+    const body = (await response.json()) as { issues: Array<{ id: string }> }
+    return body.issues.map((issue) => issue.id).sort()
+  }
+
+  it('shows the whole Team board to every Team member', async () => {
+    const { fixture, teamId, assignedIssueId, otherTeamIssueId } =
+      await seedScenario()
+    const board = `/api/issues?team_id=${teamId}`
+    const wholeBoard = [assignedIssueId, otherTeamIssueId].sort()
+
+    const member = await callAs({
+      route: IssuesRoute,
+      url: board,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.memberId,
+      role: 'member',
+    })
+    expect(await issueIds(member)).toEqual(wholeBoard)
+
+    const nonMember = await callAs({
+      route: IssuesRoute,
+      url: board,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.otherId,
+      role: 'member',
+    })
+    expect(await issueIds(nonMember)).toEqual([])
+
+    const manager = await callAs({
+      route: IssuesRoute,
+      url: board,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.ownerId,
+      role: 'owner',
+    })
+    expect(await issueIds(manager)).toEqual(wholeBoard)
+  })
+
+  /**
+   * has_team=true must push team_id IS NOT NULL into SQL so cross-team lists
+   * never return workspace-only issues (issue #153). Without this filter the
+   * Teams › Issues surface fetched every workspace row and discarded
+   * non-team ones client-side.
+   */
+  it('lists only team issues when has_team=true', async () => {
+    const { fixture, assignedIssueId, otherTeamIssueId, workspaceIssueId } =
+      await seedScenario()
+
+    const request = new Request(
+      'https://garden.test/api/issues?has_team=true',
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const managerResponse = await handlerFor(IssuesRoute, 'GET')(
+    const response = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
           userId: fixture.ownerId,
           role: 'owner',
-          request: managerRequest,
+          request,
         }),
-        managerRequest,
+        request,
         {},
         '/api/issues',
       ),
     )
-    const managerBody = (await managerResponse.json()) as {
-      issues: Array<{ id: string }>
+    const body = (await response.json()) as {
+      issues: Array<{ id: string; team_id: string | null }>
     }
-    expect(managerBody.issues.map((issue) => issue.id).sort()).toEqual(
-      [assignedIssueId, otherTeamIssueId].sort(),
-    )
+    const ids = body.issues.map((issue) => issue.id).sort()
+    expect(ids).toEqual([assignedIssueId, otherTeamIssueId].sort())
+    expect(ids).not.toContain(workspaceIssueId)
+    expect(body.issues.every((issue) => issue.team_id !== null)).toBe(true)
   })
 
-  it('hides unassigned Team issues from workspace-wide lists', async () => {
-    const { fixture, teamId, assignedIssueId, workspaceIssueId } =
+  it('hides Team issues from non-members in workspace-wide lists', async () => {
+    const { fixture, assignedIssueId, otherTeamIssueId, workspaceIssueId } =
       await seedScenario()
 
-    const outsideRequest = new Request('https://garden.test/api/issues', {
-      headers: { 'X-Workspace-ID': fixture.workspaceId },
+    const nonMember = await callAs({
+      route: IssuesRoute,
+      url: '/api/issues',
+      workspaceId: fixture.workspaceId,
+      userId: fixture.otherId,
+      role: 'member',
     })
-    const outsideResponse = await handlerFor(IssuesRoute, 'GET')(
-      invocation(
-        makeContext({
-          testDb,
-          userId: fixture.otherId,
-          role: 'member',
-          request: outsideRequest,
-        }),
-        outsideRequest,
-        {},
-        '/api/issues',
-      ),
-    )
-    const outsideBody = (await outsideResponse.json()) as {
-      issues: Array<{ id: string }>
-    }
-    expect(outsideBody.issues.map((issue) => issue.id)).toEqual([
-      workspaceIssueId,
-    ])
+    expect(await issueIds(nonMember)).toEqual([workspaceIssueId])
 
-    const teamMemberRequest = new Request('https://garden.test/api/issues', {
-      headers: { 'X-Workspace-ID': fixture.workspaceId },
+    const member = await callAs({
+      route: IssuesRoute,
+      url: '/api/issues',
+      workspaceId: fixture.workspaceId,
+      userId: fixture.memberId,
+      role: 'member',
     })
-    const teamMemberResponse = await handlerFor(IssuesRoute, 'GET')(
-      invocation(
-        makeContext({
-          testDb,
-          userId: fixture.memberId,
-          role: 'member',
-          request: teamMemberRequest,
-        }),
-        teamMemberRequest,
-        {},
-        '/api/issues',
-      ),
+    expect(await issueIds(member)).toEqual(
+      [assignedIssueId, otherTeamIssueId, workspaceIssueId].sort(),
     )
-    const teamMemberBody = (await teamMemberResponse.json()) as {
-      issues: Array<{ id: string }>
-    }
-    expect(teamMemberBody.issues.map((issue) => issue.id).sort()).toEqual(
-      [assignedIssueId, workspaceIssueId].sort(),
-    )
-    expect(teamId).toBeTruthy()
   })
 
-  it('denies direct reads of another member Team issue', async () => {
+  it('lets a Team member open a Team issue assigned to someone else', async () => {
     const { fixture, otherTeamIssueId } = await seedScenario()
-    const request = new Request(
-      `https://garden.test/api/issues/${otherTeamIssueId}`,
-      { headers: { 'X-Workspace-ID': fixture.workspaceId } },
-    )
-    const response = await handlerFor(IssueRoute, 'GET')(
-      invocation(
-        makeContext({
-          testDb,
-          userId: fixture.memberId,
-          role: 'member',
-          request,
-        }),
-        request,
-        { id: otherTeamIssueId },
-        '/api/issues/$id',
-      ),
-    )
-    expect(response.status).toBe(403)
-    expect(((await response.json()) as { code: string }).code).toBe(
+
+    const detail = await callAs({
+      route: IssueRoute,
+      url: `/api/issues/${otherTeamIssueId}`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.memberId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+    })
+    expect(detail.status).toBe(200)
+    expect(((await detail.json()) as { id: string }).id).toBe(otherTeamIssueId)
+
+    const comments = await callAs({
+      route: IssueCommentsRoute,
+      url: `/api/issues/${otherTeamIssueId}/comments`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.memberId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+    })
+    expect(comments.status).toBe(200)
+  })
+
+  it('denies Team issue reads and subresources to non-members', async () => {
+    const { fixture, otherTeamIssueId } = await seedScenario()
+
+    const detail = await callAs({
+      route: IssueRoute,
+      url: `/api/issues/${otherTeamIssueId}`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.otherId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+    })
+    expect(detail.status).toBe(403)
+    expect(((await detail.json()) as { code: string }).code).toBe(
       'ISSUE_TEAM_ACCESS_DENIED',
     )
+
+    const comments = await callAs({
+      route: IssueCommentsRoute,
+      url: `/api/issues/${otherTeamIssueId}/comments`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.otherId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+    })
+    expect(comments.status).toBe(403)
   })
 
-  it('denies subresources of another member Team issue', async () => {
-    const { fixture, otherTeamIssueId } = await seedScenario()
-    const request = new Request(
-      `https://garden.test/api/issues/${otherTeamIssueId}/comments`,
-      { headers: { 'X-Workspace-ID': fixture.workspaceId } },
-    )
-    const response = await handlerFor(IssueCommentsRoute, 'GET')(
-      invocation(
-        makeContext({
-          testDb,
-          userId: fixture.memberId,
-          role: 'member',
-          request,
-        }),
-        request,
-        { id: otherTeamIssueId },
-        '/api/issues/$id/comments',
-      ),
-    )
-    expect(response.status).toBe(403)
-  })
-
-  it('excludes inaccessible Team issues from search', async () => {
+  it('searches the whole Team board for members and none of it for non-members', async () => {
     const { fixture, otherTeamIssueId, assignedIssueId } = await seedScenario()
+    const search = '/api/issues/search?q=Team'
 
-    const searchRequest = new Request(
-      'https://garden.test/api/issues/search?q=Team',
-      { headers: { 'X-Workspace-ID': fixture.workspaceId } },
+    const member = await callAs({
+      route: IssueSearchRoute,
+      url: search,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.memberId,
+      role: 'member',
+    })
+    const memberIds = await issueIds(member)
+    expect(memberIds).toContain(assignedIssueId)
+    expect(memberIds).toContain(otherTeamIssueId)
+
+    const nonMember = await callAs({
+      route: IssueSearchRoute,
+      url: search,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.otherId,
+      role: 'member',
+    })
+    const nonMemberIds = await issueIds(nonMember)
+    expect(nonMemberIds).not.toContain(assignedIssueId)
+    expect(nonMemberIds).not.toContain(otherTeamIssueId)
+  })
+
+  it('lets a Team member move any Team issue on the board but not reassign it to others', async () => {
+    const { fixture, otherTeamIssueId } = await seedScenario()
+
+    const moved = await callAs({
+      route: IssueRoute,
+      method: 'PUT',
+      url: `/api/issues/${otherTeamIssueId}`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.memberId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+      body: { status: 'in_progress', position: 'a1' },
+    })
+    expect(moved.status).toBe(200)
+    expect(((await moved.json()) as { status: string }).status).toBe(
+      'in_progress',
     )
-    const searchResponse = await handlerFor(IssueSearchRoute, 'GET')(
-      invocation(
-        makeContext({
-          testDb,
-          userId: fixture.memberId,
-          role: 'member',
-          request: searchRequest,
-        }),
-        searchRequest,
-        {},
-        '/api/issues/search',
-      ),
-    )
-    const searchBody = (await searchResponse.json()) as {
-      issues: Array<{ id: string }>
-    }
-    const ids = searchBody.issues.map((issue) => issue.id)
-    expect(ids).toContain(assignedIssueId)
-    expect(ids).not.toContain(otherTeamIssueId)
+
+    const reassigned = await callAs({
+      route: IssueRoute,
+      method: 'PUT',
+      url: `/api/issues/${otherTeamIssueId}`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.memberId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+      body: { assignee_id: fixture.adminId },
+    })
+    expect(reassigned.status).toBe(403)
+
+    const nonMember = await callAs({
+      route: IssueRoute,
+      method: 'PUT',
+      url: `/api/issues/${otherTeamIssueId}`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.otherId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+      body: { status: 'done' },
+    })
+    expect(nonMember.status).toBe(403)
   })
 
   it('lets Team members create self-assigned Team issues only', async () => {
@@ -284,7 +364,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.memberId,
       },
     )
-    const selfResponse = await handlerFor(IssuesRoute, 'POST')(
+    const selfResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -318,7 +401,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.ownerId,
       },
     )
-    const otherResponse = await handlerFor(IssuesRoute, 'POST')(
+    const otherResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -339,7 +425,10 @@ describe('team issue access (integration)', () => {
       'POST',
       { title: 'Unassigned', team_id: teamId },
     )
-    const unassignedResponse = await handlerFor(IssuesRoute, 'POST')(
+    const unassignedResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -369,7 +458,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.otherId,
       },
     )
-    const outsiderResponse = await handlerFor(IssuesRoute, 'POST')(
+    const outsiderResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -395,7 +487,10 @@ describe('team issue access (integration)', () => {
         assignee_id: fixture.otherId,
       },
     )
-    const badAssigneeResponse = await handlerFor(IssuesRoute, 'POST')(
+    const badAssigneeResponse = await handlerFor(
+      IssuesRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -411,7 +506,7 @@ describe('team issue access (integration)', () => {
     expect(badAssigneeResponse.status).toBe(400)
   })
 
-  it('restricts Team member issue updates to their own assignment', async () => {
+  it('limits Team members to self-assignment and keeps Team moves with managers', async () => {
     const { fixture, assignedIssueId } = await seedScenario()
 
     const statusRequest = jsonRequest(
@@ -420,7 +515,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { status: 'in_progress' },
     )
-    const statusResponse = await handlerFor(IssueRoute, 'PUT')(
+    const statusResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -441,7 +539,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { assignee_id: fixture.ownerId },
     )
-    const reassignResponse = await handlerFor(IssueRoute, 'PUT')(
+    const reassignResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -462,7 +563,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { team_id: null },
     )
-    const moveResponse = await handlerFor(IssueRoute, 'PUT')(
+    const moveResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -487,7 +591,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { team_id: teamId },
     )
-    const unassignedMoveResponse = await handlerFor(IssueRoute, 'PUT')(
+    const unassignedMoveResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -506,9 +613,16 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues/${workspaceIssueId}`,
       fixture.workspaceId,
       'PUT',
-      { team_id: teamId, assignee_type: 'member', assignee_id: fixture.memberId },
+      {
+        team_id: teamId,
+        assignee_type: 'member',
+        assignee_id: fixture.memberId,
+      },
     )
-    const moveInResponse = await handlerFor(IssueRoute, 'PUT')(
+    const moveInResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -535,7 +649,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { team_id: null },
     )
-    const moveOutResponse = await handlerFor(IssueRoute, 'PUT')(
+    const moveOutResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -549,7 +666,9 @@ describe('team issue access (integration)', () => {
       ),
     )
     expect(moveOutResponse.status).toBe(200)
-    const movedOut = (await moveOutResponse.json()) as { team_id: string | null }
+    const movedOut = (await moveOutResponse.json()) as {
+      team_id: string | null
+    }
     expect(movedOut.team_id).toBeNull()
   })
 
@@ -571,7 +690,10 @@ describe('team issue access (integration)', () => {
     const listRequest = new Request('https://garden.test/api/issues', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const listResponse = await handlerFor(IssuesRoute, 'GET')(
+    const listResponse = await handlerFor(
+      IssuesRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -595,7 +717,10 @@ describe('team issue access (integration)', () => {
       `https://garden.test/api/issues/${issueId}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const detailResponse = await handlerFor(IssueRoute, 'GET')(
+    const detailResponse = await handlerFor(
+      IssueRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -617,7 +742,10 @@ describe('team issue access (integration)', () => {
       'PUT',
       { title: 'Prefixed issue' },
     )
-    const updateResponse = await handlerFor(IssueRoute, 'PUT')(
+    const updateResponse = await handlerFor(
+      IssueRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,

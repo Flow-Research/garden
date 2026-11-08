@@ -120,6 +120,7 @@ export function FileViewer({
               <TooltipTrigger
                 render={
                   <Button
+                    aria-label={isEditing ? 'Preview' : 'Edit'}
                     variant="ghost"
                     size="icon-xs"
                     onClick={() => setEditing((v) => !v)}

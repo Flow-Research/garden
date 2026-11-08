@@ -18,6 +18,7 @@ import { useSettingsDialogStore } from '@/features/settings'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { teamListOptions, teamMemberListOptions } from '../queries'
 import { CreateTeamDialog } from './create-team-dialog'
+import { TeamMembersLoadError } from './team-route-error'
 import { TeamMemberView } from './team-member-view'
 import { TeamSummaryCard } from './team-summary-card'
 import {
@@ -99,8 +100,7 @@ function TeamCard({
             <Users className="size-4 text-icon-neutral-secondary" />
           </span>
           <span className="text-sm text-text-secondary">
-            {team.member_count}{' '}
-            {team.member_count === 1 ? 'member' : 'members'}
+            {team.member_count} {team.member_count === 1 ? 'member' : 'members'}
           </span>
         </span>
         <span className="inline-flex h-8 items-center rounded-md border border-border-default bg-background-main-default px-3 text-sm shadow-1">
@@ -127,14 +127,14 @@ export function TeamOverview() {
   const [transferTeam, setTransferTeam] = useState<TeamSummary | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TeamSummary | null>(null)
 
-  // The full list envelope is needed for the workspace-wide unique member
-  // count; `teamListOptions` selects only the Teams.
-  const { data: teamsResponse } = useSuspenseQuery({
-    ...teamListOptions(wsId),
-    select: (data) => data,
-  })
+  const { data: teamsResponse } = useSuspenseQuery(teamListOptions(wsId))
   const teams = teamsResponse.teams
-  const { data: members } = useQuery(memberListOptions(wsId))
+  const {
+    data: members,
+    isPending: membersPending,
+    isError: membersError,
+    refetch: refetchMembers,
+  } = useQuery(memberListOptions(wsId))
   const { data: transferMembers } = useQuery({
     ...teamMemberListOptions(wsId, transferTeam?.id ?? ''),
     enabled: Boolean(transferTeam),
@@ -142,15 +142,20 @@ export function TeamOverview() {
 
   const currentMemberRole =
     members?.find((member) => member.user_id === currentUserId)?.role ?? null
-  const canManage = currentMemberRole === 'owner' || currentMemberRole === 'admin'
+  const canManage =
+    currentMemberRole === 'owner' || currentMemberRole === 'admin'
 
   // Members get the design's combined Team view (selector + Issues/Tasks)
   // instead of the admin overview grid. Wait for the role query so admins
-  // never flash the member surface.
-  if (!members) {
+  // never flash the member surface. Distinguish pending vs error — failing
+  // the members query used to leave `data` undefined and spin forever (#153).
+  if (membersPending) {
     return (
       <div className="flex-1 p-6 text-sm text-text-secondary">Loading…</div>
     )
+  }
+  if (membersError || !members) {
+    return <TeamMembersLoadError onRetry={() => void refetchMembers()} />
   }
   if (!canManage) return <TeamMemberView />
 
@@ -178,13 +183,6 @@ export function TeamOverview() {
             </div>
             {canManage ? (
               <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  className="h-10 rounded-md px-3 shadow-1"
-                  disabled
-                >
-                  Manage Teams
-                </Button>
                 <Button
                   className="h-10 gap-2 rounded-md px-3"
                   onClick={() => setCreateOpen(true)}
@@ -214,7 +212,10 @@ export function TeamOverview() {
                 {canManage ? (
                   <>
                     <div className="flex gap-4">
-                      <TeamSummaryCard label="Total Teams" value={teams.length} />
+                      <TeamSummaryCard
+                        label="Total Teams"
+                        value={teams.length}
+                      />
                       <TeamSummaryCard
                         label="Total Members"
                         value={totalMembers}

@@ -6,6 +6,7 @@ import { useAuthStore } from '@garden/app-state/auth'
 import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
 import type { TeamMember } from '@garden/core/types'
 import {
+  FolderGit2,
   Funnel,
   MoreHorizontal,
   Trash2,
@@ -13,6 +14,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +48,7 @@ import {
 } from './team-dialogs'
 import { TeamIssuesPanel } from './team-issues-panel'
 import { TeamMembersPanel } from './team-members-panel'
+import { TeamRepositoriesPanel } from './team-repositories-panel'
 import { memberRoleLabel } from './team-members-table'
 import { StatusIcon } from '@/features/issues/components/status-icon'
 import { TeamSummaryCard } from './team-summary-card'
@@ -59,7 +62,7 @@ import {
 } from './team-tab-toolbar'
 import { teamColor } from './team-tokens'
 
-export type TeamTab = 'members' | 'issues'
+export type TeamTab = 'members' | 'issues' | 'repositories'
 
 type MemberRoleFilter = 'all' | 'Owner' | 'Admin' | 'Member' | 'Agent'
 
@@ -70,6 +73,7 @@ const TAB_ITEMS: readonly {
 }[] = [
   { value: 'members', label: 'Members', icon: Users },
   { value: 'issues', label: 'Issues', icon: TriangleAlert },
+  { value: 'repositories', label: 'Repositories', icon: FolderGit2 },
 ]
 
 /** Members toolbar: identity search plus a role/type filter. */
@@ -111,9 +115,7 @@ function MembersToolbar({
             onValueChange={(value) => onRoleChange(value as MemberRoleFilter)}
             value={role}
           >
-            <DropdownMenuRadioItem value="all">
-              All roles
-            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="all">All roles</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="Owner">Owner</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="Admin">Admin</DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="Member">Member</DropdownMenuRadioItem>
@@ -209,6 +211,8 @@ export function TeamDetail({
     setCreateIssueOpen(true)
   }
 
+  // Removing a member used to happen on the first click of the trash icon.
+  const [memberToRemove, setMemberToRemove] = useState<TeamMember | null>(null)
   const handleRemoveMember = async (member: TeamMember) => {
     try {
       await removeMember.mutateAsync({
@@ -220,6 +224,7 @@ export function TeamDetail({
       toast.error(
         error instanceof Error ? error.message : 'Failed to remove member',
       )
+      throw error
     }
   }
 
@@ -249,21 +254,23 @@ export function TeamDetail({
     return map
   }, [issues, team.id, team.name])
 
-  const owner = members.find(
-    (member) => member.user_id === team.owner_user_id,
-  )
+  const owner = members.find((member) => member.user_id === team.owner_user_id)
   const ownerLabel = owner?.name ?? 'Owner'
 
   const statusCounts = {
     todo: issues.filter((issue) => issue.status === 'todo').length,
-    in_progress: issues.filter((issue) => issue.status === 'in_progress').length,
+    in_progress: issues.filter((issue) => issue.status === 'in_progress')
+      .length,
     done: issues.filter((issue) => issue.status === 'done').length,
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader className="gap-1.5">
-        <Link to="/teams" className="text-sm text-text-secondary hover:underline">
+        <Link
+          to="/teams"
+          className="text-sm text-text-secondary hover:underline"
+        >
           Teams
         </Link>
         <span className="text-sm text-text-tertiary">/</span>
@@ -370,21 +377,21 @@ export function TeamDetail({
                     role={memberRole}
                     search={memberSearch}
                   />
-                ) : (
+                ) : tab === 'issues' ? (
                   <IssuesToolbar
                     issues={issues}
                     onCreateIssue={() => openCreateIssue(null)}
                     onSearchChange={setIssueSearch}
                     search={issueSearch}
                   />
-                )}
+                ) : null}
               </div>
 
               <TabsContent className="mt-8 flex flex-col" value="members">
                 <TeamMembersPanel
                   canManage={team.can_manage}
                   members={members}
-                  onRemove={handleRemoveMember}
+                  onRemove={setMemberToRemove}
                   search={memberSearch}
                   team={team}
                   visibleMembers={visibleMembers}
@@ -404,6 +411,13 @@ export function TeamDetail({
                     teamChips={teamChips}
                   />
                 </div>
+              </TabsContent>
+
+              <TabsContent className="mt-8 flex flex-col" value="repositories">
+                <TeamRepositoriesPanel
+                  canManage={team.can_manage}
+                  teamId={team.id}
+                />
               </TabsContent>
             </Tabs>
           </ViewStoreProvider>
@@ -446,6 +460,22 @@ export function TeamDetail({
           }}
         />
       ) : null}
+      <ConfirmDialog
+        open={memberToRemove !== null}
+        onOpenChange={(open) => {
+          if (!open) setMemberToRemove(null)
+        }}
+        title={`Remove ${memberToRemove?.name ?? 'member'} from ${team.name}?`}
+        description="They will no longer be a member of this Team. You can add them back later."
+        confirmLabel="Remove"
+        pendingLabel="Removing…"
+        tone="destructive"
+        onConfirm={() =>
+          memberToRemove
+            ? handleRemoveMember(memberToRemove)
+            : Promise.resolve()
+        }
+      />
     </div>
   )
 }

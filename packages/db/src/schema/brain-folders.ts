@@ -25,7 +25,7 @@ export const brainFolder = pgTable(
       .default(sql`gen_random_uuid()`),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     privacy: text('privacy', { enum: ['private', 'shared'] })
       .notNull()
@@ -33,8 +33,19 @@ export const brainFolder = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
+    updatedAt: timestamp('updated_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('brain_folder_workspace_idx').on(table.workspaceId, table.privacy),
@@ -60,7 +71,12 @@ export const brainFolderFile = pgTable(
     addedBy: uuid('added_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     primaryKey({ columns: [table.folderId, table.fileId] }),

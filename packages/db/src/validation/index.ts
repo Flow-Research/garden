@@ -116,6 +116,8 @@ export const memberSelectSchema = createSelectSchema(member, {
   organizationId: () => uuidSchema,
   userId: () => uuidSchema,
   role: () => memberRoleSchema,
+  githubUserId: (schema) => schema.nullable(),
+  githubLogin: (schema) => schema.nullable(),
 })
 
 export const invitationSelectSchema = createSelectSchema(invitation, {
@@ -257,28 +259,34 @@ export const issueUpdateSchema = createUpdateSchema(issue, {
 export const issueCommentSelectSchema = createSelectSchema(issueComment, {
   id: () => uuidSchema,
   issueId: () => uuidSchema,
-  authorId: () => uuidSchema,
+  authorId: () => uuidSchema.nullable(),
   authorType: () => issueCommentAuthorTypeSchema,
   body: (schema) => schema.trim().min(1),
   mentions: () => issueCommentMentionsSchema.nullable(),
+  externalCommentId: (schema) => schema.trim().min(1).nullable(),
+  metadata: () => jsonObjectSchema.nullable(),
 })
 
 export const issueCommentInsertSchema = createInsertSchema(issueComment, {
   id: () => uuidSchema,
   issueId: () => uuidSchema,
-  authorId: () => uuidSchema,
+  authorId: () => uuidSchema.nullable(),
   authorType: () => issueCommentAuthorTypeSchema,
   body: (schema) => schema.trim().min(1),
   mentions: () => issueCommentMentionsSchema.nullable(),
+  externalCommentId: (schema) => schema.trim().min(1).nullable(),
+  metadata: () => jsonObjectSchema.nullable(),
 })
 
 export const issueCommentUpdateSchema = createUpdateSchema(issueComment, {
   id: () => uuidSchema,
   issueId: () => uuidSchema,
-  authorId: () => uuidSchema,
+  authorId: () => uuidSchema.nullable(),
   authorType: () => issueCommentAuthorTypeSchema,
   body: (schema) => schema.trim().min(1),
   mentions: () => issueCommentMentionsSchema.nullable(),
+  externalCommentId: (schema) => schema.trim().min(1).nullable(),
+  metadata: () => jsonObjectSchema.nullable(),
 })
 
 export const issueAttachmentSelectSchema = createSelectSchema(issueAttachment, {

@@ -1,5 +1,7 @@
+import { Effect, Layer, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vitest'
 import githubConnector from './connector.ts'
+import { GitHubRestClient, type GitHubRequest } from './rest-client.ts'
 import { githubHostedMcpExtraClassifications } from './mcp-tools.ts'
 import { githubNativeTools } from './tools.ts'
 
@@ -19,8 +21,82 @@ describe('GitHub App tool surface', () => {
         'update_pull_request',
         'update_pull_request_branch',
         'sub_issue_write',
+        'issue_write',
       ]),
     )
+  })
+
+  it('accepts assignees on issue_write for create and update', () => {
+    const issueWrite = githubNativeTools.find(
+      (tool) => tool.name === 'issue_write',
+    )
+    expect(issueWrite).toBeDefined()
+    if (!issueWrite) return
+
+    expect(
+      Option.isSome(
+        Schema.decodeUnknownOption(issueWrite.input)({
+          owner: 'acme',
+          repo: 'garden',
+          title: 'Assign me',
+          assignees: ['octocat'],
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      Option.isSome(
+        Schema.decodeUnknownOption(issueWrite.input)({
+          owner: 'acme',
+          repo: 'garden',
+          issueNumber: 12,
+          assignees: ['octocat'],
+        }),
+      ),
+    ).toBe(true)
+  })
+
+  it('adds assignees on update instead of replacing the existing list', async () => {
+    const issueWrite = githubNativeTools.find(
+      (tool) => tool.name === 'issue_write',
+    )
+    if (!issueWrite) throw new Error('issue_write missing')
+    const requests: GitHubRequest[] = []
+    const fakeClient = Layer.succeed(GitHubRestClient, {
+      request: (request) => {
+        requests.push(request)
+        return Effect.succeed({ ok: true })
+      },
+    })
+
+    await Effect.runPromise(
+      issueWrite
+        .execute({
+          owner: 'acme',
+          repo: 'garden',
+          issueNumber: 12,
+          title: 'Renamed',
+          assignees: ['octocat'],
+        })
+        .pipe(Effect.provide(fakeClient)),
+    )
+
+    expect(requests.map((r) => [r.method, r.path, r.body])).toEqual([
+      [
+        'PATCH',
+        '/repos/acme/garden/issues/12',
+        {
+          title: 'Renamed',
+          body: undefined,
+          state: undefined,
+          labels: undefined,
+        },
+      ],
+      [
+        'POST',
+        '/repos/acme/garden/issues/12/assignees',
+        { assignees: ['octocat'] },
+      ],
+    ])
   })
 
   it('classifies the live hosted-MCP-only operations', () => {

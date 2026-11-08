@@ -3,10 +3,12 @@ import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import type { AppRequestContext } from '@/lib/server/context'
 import { computeInboxItems } from '@/lib/server/inbox-compute'
+import { deduplicateInboxItems } from '@/lib/inbox/threads'
 import { sortIssuesByUpdatedAt } from '@/lib/server/inbox-surface'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
+import { STATUS_CONFIG } from '@garden/core/issues/config'
 
 export type DashboardIssue = {
   id: string
@@ -80,13 +82,12 @@ export type DashboardResourcesSnapshot = {
  * Distribution colors reference token vars (not literals) so charts follow the
  * design system in both modes. Resolved client-side by CSS.
  */
-const statusColors: Record<string, string> = {
-  todo: 'var(--blue-500)',
-  in_progress: 'var(--green-500)',
-  in_review: 'var(--yellow-500)',
-  blocked: 'var(--red-500)',
-  done: 'var(--green-600)',
-}
+const statusColors: Record<string, string> = Object.fromEntries(
+  Object.entries(STATUS_CONFIG).map(([status, config]) => [
+    status,
+    config.pillFill,
+  ]),
+)
 
 const priorityColors: Record<string, string> = {
   urgent: 'var(--red-600)',
@@ -240,7 +241,8 @@ export async function getDashboardOverviewSnapshot(
       blockedIssues: issues.filter((issue) => issue.status === 'blocked')
         .length,
       completedIssues: issues.filter((issue) => issue.status === 'done').length,
-      agentCount: agents.length,
+      // Archived agents no longer work, so they are not counted.
+      agentCount: agents.filter((agent) => agent.status !== 'archived').length,
       skillCount: skills.length,
       connectedCount: connectionSurface.filter(
         (connector) => connector.status === 'connected',
@@ -316,10 +318,14 @@ export async function getDashboardActivitySnapshot(
         issue.assigneeType === 'user' ? 'member' : issue.assigneeType,
     }))
 
+  // One row per issue thread, as the sidebar badge and the inbox page count
+  // them. Counting raw events showed a higher number here than in the badge.
+  const threads = deduplicateInboxItems(inbox)
+
   return {
-    unreadCount: inbox.filter((item) => !item.read).length,
+    unreadCount: threads.filter((item) => !item.read).length,
     recentIssues,
-    inbox: inbox.slice(0, 6).map((item) => ({
+    inbox: threads.slice(0, 6).map((item) => ({
       id: item.id,
       title: item.title,
       issue_id: item.issue_id ?? '',
@@ -355,13 +361,16 @@ export async function getDashboardResourcesSnapshot(
   }, new Map<string, number>())
 
   return {
-    agents: agents.slice(0, 5).map((agent) => ({
-      id: agent.id,
-      name: agent.name,
-      status: agent.status ?? 'idle',
-      roleTitle: agent.roleTitle ?? null,
-      activeIssueCount: activeIssueCountByAgentId.get(agent.id) ?? 0,
-    })),
+    agents: agents
+      .filter((agent) => agent.status !== 'archived')
+      .slice(0, 5)
+      .map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status ?? 'idle',
+        roleTitle: agent.roleTitle ?? null,
+        activeIssueCount: activeIssueCountByAgentId.get(agent.id) ?? 0,
+      })),
     connections: connectionSurface.map((connector) => ({
       id: connector.id,
       label: connector.label,

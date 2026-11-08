@@ -1,15 +1,19 @@
 import { eq } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
-import { buildContentDisposition } from '@garden/agent-runtime'
 import { requireAppRequestContext } from '@/lib/server/context'
+import { storedObjectHeaders } from '@/lib/server/stored-object-headers'
 import { schema } from '@/lib/server/db'
 import {
-  badRequest,
   notFound,
   requireWorkspaceAccess,
+  serviceUnavailable,
 } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 
 class IssueAttachmentStorageError extends TaggedError(
   'IssueAttachmentStorageError',
@@ -28,14 +32,12 @@ async function requireAttachmentAccess(
 ) {
   let issueId = attachment.issueId
   if (!issueId && attachment.commentId) {
-    const [comment] = await appContext
-      .db()
-      .then((db) =>
-        db
-          .select({ issueId: schema.issueComment.issueId })
-          .from(schema.issueComment)
-          .where(eq(schema.issueComment.id, attachment.commentId as string)),
-      )
+    const [comment] = await appContext.db().then((db) =>
+      db
+        .select({ issueId: schema.issueComment.issueId })
+        .from(schema.issueComment)
+        .where(eq(schema.issueComment.id, attachment.commentId as string)),
+    )
     issueId = comment?.issueId ?? null
   }
 
@@ -80,20 +82,16 @@ export const Route = createFileRoute('/api/attachments/$id')({
               message: cause instanceof Error ? cause.message : String(cause),
             }),
         })
-        if (objectResult.isErr()) return badRequest(objectResult.error.message)
+        if (objectResult.isErr()) {
+          return serviceUnavailable('Attachment storage is unavailable')
+        }
         if (!objectResult.value) return notFound('Attachment bytes not found')
 
-        const download = new URL(request.url).searchParams.has('download')
-        const headers = new Headers()
-        objectResult.value.writeHttpMetadata(headers)
-        headers.set('Content-Type', attachment.contentType)
-        headers.set(
-          'Content-Disposition',
-          buildContentDisposition(
-            download ? 'attachment' : 'inline',
-            attachment.filename,
-          ),
-        )
+        const headers = storedObjectHeaders({
+          contentType: attachment.contentType,
+          filename: attachment.filename,
+          download: new URL(request.url).searchParams.has('download'),
+        })
         headers.set('Cache-Control', 'private, max-age=3600')
         return new Response(objectResult.value.body, { headers })
       },
@@ -114,6 +112,19 @@ export const Route = createFileRoute('/api/attachments/$id')({
         )
         if (access instanceof Response) return access
 
+        const isUploader =
+          attachment.uploaderType === 'member' &&
+          attachment.uploaderId === access.session.user.id
+        if (!isUploader) {
+          const permission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: attachment.workspaceId,
+            permissions: workspacePermissions.issueManage,
+          })
+          if (permission) return permission
+        }
+
         const deleteObjectResult = await Result.tryPromise({
           try: async () => await appContext.env.FILES.delete(attachment.r2Key),
           catch: (cause) =>
@@ -122,7 +133,7 @@ export const Route = createFileRoute('/api/attachments/$id')({
             }),
         })
         if (deleteObjectResult.isErr()) {
-          return badRequest(deleteObjectResult.error.message)
+          return serviceUnavailable('Attachment storage is unavailable')
         }
 
         const deleteRowResult = await Result.tryPromise({
@@ -136,7 +147,7 @@ export const Route = createFileRoute('/api/attachments/$id')({
             }),
         })
         if (deleteRowResult.isErr()) {
-          return badRequest(deleteRowResult.error.message)
+          return serviceUnavailable('Attachment could not be deleted')
         }
 
         return new Response(null, { status: 204 })

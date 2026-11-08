@@ -5,7 +5,9 @@ import { requireTeamManage } from '@/lib/server/team-access'
 import { removeTeamMember } from '@/lib/server/teams'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
-export const Route = createFileRoute('/api/teams/$teamId/members/$membershipId')({
+export const Route = createFileRoute(
+  '/api/teams/$teamId/members/$membershipId',
+)({
   server: {
     handlers: {
       DELETE: async ({ context, params }) => {

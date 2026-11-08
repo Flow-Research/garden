@@ -4,8 +4,9 @@ import {
   ReactNodeViewRenderer,
   type NodeViewProps,
 } from '@tiptap/react'
-import { Download, FileText, Loader2 } from 'lucide-react'
+import { Download, FileText } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 
 const FILE_MARKDOWN = /^!file\[([^\]]*)\]\((https?:\/\/[^)]+)\)/
 
@@ -23,7 +24,7 @@ function FileCardView({ node }: NodeViewProps) {
         onMouseDown={(event) => event.stopPropagation()}
       >
         {uploading ? (
-          <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+          <Spinner className="shrink-0 text-muted-foreground" />
         ) : (
           <FileText className="size-4 shrink-0 text-muted-foreground" />
         )}
@@ -107,9 +108,9 @@ export const FileCardExtension = Node.create({
       }
     },
   },
-  parseMarkdown: (token: any, helpers: any) =>
+  parseMarkdown: (token, helpers) =>
     helpers.createNode('fileCard', token.attributes),
-  renderMarkdown: (node: any) => {
+  renderMarkdown: (node) => {
     const filename = node.attrs?.filename || 'file'
     const href = node.attrs?.href || ''
     return `!file[${filename}](${href})`

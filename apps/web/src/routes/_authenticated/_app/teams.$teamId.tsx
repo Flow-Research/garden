@@ -8,6 +8,7 @@ import {
   teamDetailOptions,
   teamIssueListOptions,
   teamMemberListOptions,
+  teamRepositoryListOptions,
 } from '@/features/teams/queries'
 import { TeamRouteError } from '@/features/teams/components/team-route-error'
 import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
@@ -15,7 +16,11 @@ import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
 export const Route = createFileRoute('/_authenticated/_app/teams/$teamId')({
   validateSearch: (search) => {
     const out: { tab?: TeamTab } = {}
-    if (search.tab === 'members' || search.tab === 'issues') {
+    if (
+      search.tab === 'members' ||
+      search.tab === 'issues' ||
+      search.tab === 'repositories'
+    ) {
       out.tab = search.tab
     }
     return out
@@ -25,6 +30,7 @@ export const Route = createFileRoute('/_authenticated/_app/teams/$teamId')({
       teamDetailOptions(workspaceId, params.teamId),
       teamMemberListOptions(workspaceId, params.teamId),
       teamIssueListOptions(workspaceId, params.teamId),
+      teamRepositoryListOptions(workspaceId, params.teamId),
     ]),
   component: TeamDetailRoute,
   errorComponent: TeamRouteError,
@@ -37,7 +43,11 @@ function TeamDetailRoute() {
 
   return (
     <Suspense
-      fallback={<div className="flex-1 p-6 text-sm text-text-secondary">Loading Team…</div>}
+      fallback={
+        <div className="flex-1 p-6 text-sm text-text-secondary">
+          Loading Team…
+        </div>
+      }
     >
       <TeamDetail
         teamId={teamId}

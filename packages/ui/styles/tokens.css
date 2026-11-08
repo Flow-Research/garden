@@ -125,6 +125,16 @@
   --slate-800: #434343;
   --slate-900: #303030;
   --slate-1000: #242424;
+  --garden-moss-light: #4d7250;
+  --garden-moss-light-hover: #3f5e42;
+  --garden-moss-dark: #7a9b6f;
+  --garden-moss-dark-hover: #8aab7f;
+  --garden-sage-light: #7a9b6f;
+  --garden-sage-dark: #9bb491;
+  --garden-parchment: #f9f7f2;
+  --garden-parchment-deep: #efebe1;
+  --garden-charcoal: #1a1f1c;
+  --garden-charcoal-deep: #232a25;
 
   /* Primitives — type atoms */
   --font-size-base: 16px;
@@ -201,9 +211,9 @@
   --stroke-width-2: 2px;
 
   /* Semantic tokens — Light mode */
-  --background-main-default: #ffffff;
+  --background-main-default: #f9f7f2;
   --background-main-default-hover: #f5f5f5;
-  --background-main-secondary: #f5f5f5;
+  --background-main-secondary: #efebe1;
   --background-main-secondary-hover: #e6e6e6;
   --background-main-tertiary: #d9d9d9;
   --background-main-tertiary-hover: #b3b3b3;
@@ -213,13 +223,13 @@
   --background-neutral-secondary-hover: #b2b2b2;
   --background-neutral-tertiary: #e3e3e3;
   --background-neutral-tertiary-hover: #cdcdcd;
-  --background-brand-default: #012f1d;
-  --background-brand-default-hover: #002417;
+  --background-brand-default: #4d7250;
+  --background-brand-default-hover: #3f5e42;
   --background-brand-secondary: #8efed3;
   --background-brand-secondary-hover: #26fcab;
   --background-brand-tertiary: #f5fffb;
   --background-brand-tertiary-hover: #8efed3;
-  --background-success-default: #14ae5c;
+  --background-success-default: #7a9b6f;
   --background-success-default-hover: #009951;
   --background-success-secondary: #cff7d3;
   --background-success-secondary-hover: #aff4c6;
@@ -242,7 +252,7 @@
   --background-utilities-blanket: rgba(12, 12, 13, 0.7);
   --background-utilities-overlay: rgba(12, 12, 13, 0.4);
   --text-success-default: #02542d;
-  --text-success-secondary: #009951;
+  --text-success-secondary: #7a9b6f;
   --text-success-tertiary: #14ae5c;
   --text-success-on-success: #ebffee;
   --text-success-on-success-secondary: #02542d;
@@ -259,10 +269,10 @@
   --text-warning-on-warning: #401b01;
   --text-warning-on-warning-secondary: #682d03;
   --text-warning-on-warning-tertiary: #522504;
-  --text-brand-default: #012f1d;
+  --text-brand-default: #4d7250;
   --text-brand-secondary: #01452b;
   --text-brand-tertiary: #015032;
-  --text-brand-on-brand: #f5fffb;
+  --text-brand-on-brand: #f9f7f2;
   --text-brand-on-brand-secondary: #002417;
   --text-brand-on-brand-tertiary: #012f1d;
   --text-secondary: #757575;
@@ -285,7 +295,7 @@
   --border-warning-default: #522504;
   --border-warning-secondary: #975102;
   --border-warning-tertiary: #bf6a02;
-  --border-brand-default: #012f1d;
+  --border-brand-default: #4d7250;
   --border-brand-secondary: #01452b;
   --border-brand-tertiary: #015032;
   --border-secondary: #757575;
@@ -313,10 +323,10 @@
   --icon-warning-on-warning: #401b01;
   --icon-warning-on-warning-secondary: #682d03;
   --icon-warning-on-warning-tertiary: #522504;
-  --icon-brand-default: #012f1d;
+  --icon-brand-default: #4d7250;
   --icon-brand-secondary: #01452b;
   --icon-brand-tertiary: #015032;
-  --icon-brand-on-brand: #f5fffb;
+  --icon-brand-on-brand: #f9f7f2;
   --icon-brand-on-brand-secondary: #002417;
   --icon-brand-on-brand-tertiary: #012f1d;
   --icon-secondary: #757575;
@@ -386,36 +396,13 @@
   --warning: var(--text-warning-secondary);
   --info: var(--blue-500);
   --priority: var(--text-danger-secondary);
-
-  /* Compat — legacy garden vocabulary (TRANSITION ONLY — deleted after sweep) */
-  --parchment: var(--background-main-default);
-  --parchment-deep: var(--background-main-secondary);
-  --vellum: var(--background-main-default);
-  --vellum-heavy: var(--background-main-default);
-  --bone: var(--white-1000);
-  --ink: var(--text-neutral-default);
-  --gravel: var(--text-neutral-secondary);
-  --slate: var(--text-neutral-tertiary);
-  --stone: var(--text-tertiary);
-  --hairline: var(--border-default);
-  --hairline-soft: var(--gray-200);
-  --moss: var(--text-success-secondary);
-  --sage: var(--text-success-tertiary);
-  --amber: var(--text-warning-tertiary);
-  --clay: var(--text-danger-tertiary);
-  --lichen: var(--badge-green-background);
-  --lavender-mist: var(--badge-blue-background);
-  --peach: var(--badge-yellow-background);
-  --dusk-rose: var(--badge-gray-background);
-  --shadow-hairline: var(--shadow-1);
-  --shadow-hairline-soft: var(--shadow-2);
 }
 
 :root.dark {
   /* Semantic tokens — Dark mode */
-  --background-main-default: #1e1e1e;
+  --background-main-default: #1a1f1c;
   --background-main-default-hover: #383838;
-  --background-main-secondary: #2c2c2c;
+  --background-main-secondary: #232a25;
   --background-main-secondary-hover: #1e1e1e;
   --background-main-tertiary: #444444;
   --background-main-tertiary-hover: #383838;
@@ -425,13 +412,13 @@
   --background-neutral-secondary-hover: #242424;
   --background-neutral-tertiary: #303030;
   --background-neutral-tertiary-hover: #242424;
-  --background-brand-default: #f5fffb;
-  --background-brand-default-hover: #26fcab;
+  --background-brand-default: #7a9b6f;
+  --background-brand-default-hover: #8aab7f;
   --background-brand-secondary: #01452b;
   --background-brand-secondary-hover: #015032;
   --background-brand-tertiary: #01452b;
   --background-brand-tertiary-hover: #012f1d;
-  --background-success-default: #008043;
+  --background-success-default: #9bb491;
   --background-success-default-hover: #02542d;
   --background-success-secondary: #02542d;
   --background-success-secondary-hover: #024023;
@@ -454,7 +441,7 @@
   --background-utilities-overlay: rgba(12, 12, 13, 0.4);
   --background-utilities-scrim: rgba(12, 12, 13, 0.8);
   --text-success-default: #cff7d3;
-  --text-success-secondary: #85e0a3;
+  --text-success-secondary: #9bb491;
   --text-success-tertiary: #009951;
   --text-success-on-success: #ebffee;
   --text-success-on-success-secondary: #ebffee;
@@ -471,10 +458,10 @@
   --text-warning-on-warning: #fffbeb;
   --text-warning-on-warning-secondary: #fffbeb;
   --text-warning-on-warning-tertiary: #fffbeb;
-  --text-brand-default: #f5fffb;
+  --text-brand-default: #7a9b6f;
   --text-brand-secondary: #26fcab;
   --text-brand-tertiary: #02b773;
-  --text-brand-on-brand: #002417;
+  --text-brand-on-brand: #1a1f1c;
   --text-brand-on-brand-secondary: #f5fffb;
   --text-brand-on-brand-tertiary: #f5fffb;
   --text-secondary: #b3b3b3;
@@ -497,7 +484,7 @@
   --border-warning-default: #fff1c2;
   --border-warning-secondary: #e8b931;
   --border-warning-tertiary: #bf6a02;
-  --border-brand-default: #f5fffb;
+  --border-brand-default: #7a9b6f;
   --border-brand-secondary: #26fcab;
   --border-brand-tertiary: #02b773;
   --border-secondary: #757575;
@@ -525,10 +512,10 @@
   --icon-warning-on-warning: #401b01;
   --icon-warning-on-warning-secondary: #fffbeb;
   --icon-warning-on-warning-tertiary: #fffbeb;
-  --icon-brand-default: #f5fffb;
+  --icon-brand-default: #7a9b6f;
   --icon-brand-secondary: #26fcab;
   --icon-brand-tertiary: #02b773;
-  --icon-brand-on-brand: #002417;
+  --icon-brand-on-brand: #1a1f1c;
   --icon-brand-on-brand-secondary: #f5fffb;
   --icon-brand-on-brand-tertiary: #f5fffb;
   --icon-secondary: rgba(255, 255, 255, 0.7);
@@ -686,6 +673,16 @@
   --color-slate-800: var(--slate-800);
   --color-slate-900: var(--slate-900);
   --color-slate-1000: var(--slate-1000);
+  --color-garden-moss-light: var(--garden-moss-light);
+  --color-garden-moss-light-hover: var(--garden-moss-light-hover);
+  --color-garden-moss-dark: var(--garden-moss-dark);
+  --color-garden-moss-dark-hover: var(--garden-moss-dark-hover);
+  --color-garden-sage-light: var(--garden-sage-light);
+  --color-garden-sage-dark: var(--garden-sage-dark);
+  --color-garden-parchment: var(--garden-parchment);
+  --color-garden-parchment-deep: var(--garden-parchment-deep);
+  --color-garden-charcoal: var(--garden-charcoal);
+  --color-garden-charcoal-deep: var(--garden-charcoal-deep);
 
   /* Semantic colors */
   --color-background-main-default: var(--background-main-default);
@@ -883,6 +880,8 @@
   --color-badge-yellow-text: var(--badge-yellow-text);
   --color-badge-gray-background: var(--badge-gray-background);
   --color-badge-gray-text: var(--badge-gray-text);
+  --color-shadow-float-1: var(--shadow-float-1);
+  --color-shadow-float-2: var(--shadow-float-2);
 
   /* Compat — shadcn + garden extras */
   --color-background: var(--background);
@@ -922,29 +921,6 @@
   --color-warning: var(--warning);
   --color-info: var(--info);
   --color-priority: var(--priority);
-
-  /* Compat — legacy (transition only) */
-  --color-parchment: var(--parchment);
-  --color-parchment-deep: var(--parchment-deep);
-  --color-vellum: var(--vellum);
-  --color-vellum-heavy: var(--vellum-heavy);
-  --color-bone: var(--bone);
-  --color-ink: var(--ink);
-  --color-gravel: var(--gravel);
-  --color-slate: var(--slate);
-  --color-stone: var(--stone);
-  --color-hairline: var(--hairline);
-  --color-hairline-soft: var(--hairline-soft);
-  --color-moss: var(--moss);
-  --color-sage: var(--sage);
-  --color-amber: var(--amber);
-  --color-clay: var(--clay);
-  --color-lichen: var(--lichen);
-  --color-lavender-mist: var(--lavender-mist);
-  --color-peach: var(--peach);
-  --color-dusk-rose: var(--dusk-rose);
-  --shadow-hairline: var(--shadow-hairline);
-  --shadow-hairline-soft: var(--shadow-hairline-soft);
 
   /* Type scale — token values override Tailwind defaults (line-heights paired per composite roles) */
   --text-base: var(--font-size-base);
@@ -993,10 +969,6 @@
   --shadow-dark-5: var(--shadow-dark-5);
   --shadow-7: var(--shadow-7);
   --shadow-4: var(--shadow-4);
-
-  /* Semantic shadows (flip with the mode) */
-  --shadow-float-1: var(--shadow-float-1);
-  --shadow-float-2: var(--shadow-float-2);
 }
 
 @utility heading-large {

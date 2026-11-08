@@ -1,5 +1,5 @@
 import { drizzle } from 'drizzle-orm/node-postgres'
-import { Client } from 'pg'
+import { Client, Pool } from 'pg'
 import type { GardenDatabase } from './client.js'
 import * as schema from './schema/index.js'
 
@@ -79,11 +79,29 @@ export async function createRuntimeDbClient(
   }
 }
 
-/** Creates a Garden database client for one-off callers that own the invocation. */
+/**
+ * Creates a Garden database client for callers that never close it. It used to
+ * open a `Client` and drop the `close()` handle, leaking one connection per call;
+ * now it is a single-connection pool that releases the connection after a short
+ * idle period, so an abandoned client cleans up after itself. Prefer
+ * {@link createRuntimeDbClient} (or a request-scoped provider) and close it.
+ */
 export async function createDb(
   connection: DatabaseConnection | null | undefined,
 ): Promise<Db> {
-  return (await createRuntimeDbClient(connection)).db
+  const connectionString = connection?.connectionString
+  if (!connectionString) {
+    throw new Error('Missing database connection string')
+  }
+
+  const pool = new Pool({
+    connectionString,
+    max: 1,
+    idleTimeoutMillis: 5_000,
+    allowExitOnIdle: true,
+  })
+  pool.on('error', () => {})
+  return drizzle(pool, { schema })
 }
 
 export { schema }

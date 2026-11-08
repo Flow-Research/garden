@@ -1,6 +1,7 @@
 import type { AppRequestContext } from '@/lib/server/context'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route } from './$connectorId'
+import { invokeRouteHandler } from '@/test/route-handler'
 
 const mocks = vi.hoisted(() => ({
   capturePostHogEvent: vi.fn(),
@@ -36,14 +37,6 @@ vi.mock('@/lib/posthog-server', () => ({
 
 vi.mock('@/lib/server/env', () => ({ appEnv: {} }))
 
-function getPostHandler() {
-  const handlers = Route.options.server?.handlers
-  if (!handlers || typeof handlers === 'function' || !handlers.POST) {
-    throw new Error('Expected connection POST handler')
-  }
-  return handlers.POST
-}
-
 describe('GitHub connection actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -75,12 +68,10 @@ describe('GitHub connection actions', () => {
       body: JSON.stringify({ action: 'disconnect' }),
     })
 
-    const response = await getPostHandler()({
+    const response = await invokeRouteHandler(Route, 'POST', {
       context: { db: async () => db } as unknown as AppRequestContext,
       request,
       params: { connectorId: 'github' },
-      pathname: '/api/connections/$connectorId',
-      next: () => ({ isNext: true, context: undefined }),
     })
 
     expect(response?.status).toBe(200)

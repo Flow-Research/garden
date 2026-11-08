@@ -4,6 +4,12 @@ import { z } from 'zod'
 import { startIssueRun } from '@garden/server/issues/run-service'
 import type { AppEnv } from './env'
 import { schema, type Db } from './db'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'agent-proposal-request',
+})
 
 const agentProposalPayloadSchema = z.object({
   source_issue_id: z.string().uuid().nullable().optional(),
@@ -238,7 +244,12 @@ export async function resolveAgentProposalRequest(
       trigger: { correlationId: request.id },
       actor: input.runActor,
     })
-    if (runResult.isErr()) console.error(runResult.error.message)
+    if (runResult.isErr()) {
+      logger.error(
+        'agent_proposal.hire_run_start_failed',
+        errorFields(runResult.error),
+      )
+    }
   }
 
   return Result.ok({

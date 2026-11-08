@@ -4,6 +4,14 @@ import { useSurfaceTabsStore } from '@garden/app-state/surface-tabs'
 import type { AgentChatSession } from '@garden/core/types'
 
 /**
+ * The URL of an issue's detail page. Use it for every `href` that points at an
+ * issue, so links work for middle-click, copy-link and open-in-new-tab too.
+ */
+export function issuePath(issueId: string) {
+  return `/tasks/${encodeURIComponent(issueId)}`
+}
+
+/**
  * Surface navigation for the redesigned shell — the dock.openPanel replacement.
  * Every cross-surface open goes through typed helpers here: they navigate to the
  * owning route and, for tabbable surfaces (Chats, Tasks), record the tab in the

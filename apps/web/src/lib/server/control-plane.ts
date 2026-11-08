@@ -5,13 +5,7 @@ import type { AppRequestContext } from '@/lib/server/context'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
 import { getAuthSession, toCoreUser } from '@/lib/server/session'
-import type {
-  Issue,
-  IssueAssigneeType,
-  IssuePriority,
-  IssueStatus,
-  MemberRole,
-} from '@garden/core/types'
+import type { MemberRole } from '@garden/core/types'
 
 export function json(data: unknown, status = 200) {
   return Response.json(data, { status })
@@ -31,6 +25,15 @@ export function forbidden(message = 'Forbidden') {
 
 export function notFound(message = 'Not found') {
   return json({ error: message }, 404)
+}
+
+/**
+ * For infrastructure failures (database, storage). Callers pass a generic
+ * message: provider error text must not reach the client, and a 5xx is what
+ * request logging alerts on.
+ */
+export function serviceUnavailable(message = 'Service unavailable') {
+  return json({ error: message }, 503)
 }
 
 type RequestBoundary = Request | AppRequestContext
@@ -302,50 +305,8 @@ export async function getWorkspaceIssuePrefix(
     : 'ISS'
 }
 
-export function toIssue(
-  record: typeof schema.issue.$inferSelect,
-  options: { issuePrefix?: string } = {},
-): Issue {  const sourceSummary = record.sourceSummary
-    ? {
-        connector_id: 'manual',
-        display_ref: record.sourceSummary,
-        external_url: null,
-      }
-    : null
-  const prefix = options.issuePrefix ?? 'ISS'
-
-  return {
-    id: record.id,
-    workspace_id: record.workspaceId,
-    team_id: record.teamId ?? null,
-    number: record.number,
-    identifier: formatIssueIdentifier(prefix, record.number),
-    title: record.title,
-    description: record.description ?? null,
-    status: record.status as IssueStatus,
-    priority: record.priority as IssuePriority,
-    assignee_type:
-      record.assigneeType === 'user'
-        ? 'member'
-        : (record.assigneeType as IssueAssigneeType | null),
-    assignee_id: record.assigneeId ?? null,
-    creator_type: 'member',
-    creator_id: record.createdBy,
-    parent_issue_id: record.parentId ?? null,
-    project_id: record.projectId ?? null,
-    position: record.position,
-    due_date: record.dueDate ? new Date(record.dueDate).toISOString() : null,
-    active_run_id: record.activeRunId ?? null,
-    source_summary: sourceSummary,
-    reactions: [],
-    created_at: record.createdAt
-      ? new Date(record.createdAt).toISOString()
-      : new Date().toISOString(),
-    updated_at: record.updatedAt
-      ? new Date(record.updatedAt).toISOString()
-      : new Date().toISOString(),
-  }
-}
+/** The issue DTO mapper lives with the issue services; re-exported for routes. */
+export { toIssue } from '@garden/server/issues/server'
 
 export function toAgent(record: typeof schema.agent.$inferSelect) {
   const created = record.createdAt
@@ -388,6 +349,8 @@ export function toChatThread(
     number: number
     title: string
     status: string | null
+    /** The workspace's prefix; see `getWorkspaceIssuePrefix`. */
+    issuePrefix: string
   } | null,
 ) {
   const createdAt = record.createdAt
@@ -410,7 +373,10 @@ export function toChatThread(
     primaryIssue: primaryIssue
       ? {
           id: primaryIssue.id,
-          identifier: formatIssueIdentifier('ISS', primaryIssue.number),
+          identifier: formatIssueIdentifier(
+            primaryIssue.issuePrefix,
+            primaryIssue.number,
+          ),
           title: primaryIssue.title,
           status: primaryIssue.status ?? 'todo',
         }

@@ -98,6 +98,8 @@ describe('createMentionSuggestion types filter', () => {
     workspace_id: wsId,
     user_id: 'user-1',
     role: 'member',
+    github_user_id: null,
+    github_login: null,
     created_at: '2026-01-01T00:00:00.000Z',
     name: 'Ada Lovelace',
     email: 'ada@example.com',
@@ -124,6 +126,7 @@ describe('createMentionSuggestion types filter', () => {
     is_default: false,
     max_concurrent_tasks: 1,
     owner_id: null,
+    permissions: null,
     skills: [],
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -134,6 +137,7 @@ describe('createMentionSuggestion types filter', () => {
   const issue: Issue = {
     id: 'issue-1',
     workspace_id: wsId,
+    team_id: null,
     number: 1,
     identifier: 'TST-1',
     title: 'Fix the thing',
@@ -146,7 +150,7 @@ describe('createMentionSuggestion types filter', () => {
     creator_id: 'user-1',
     parent_issue_id: null,
     project_id: null,
-    position: 0,
+    position: 'a0',
     due_date: null,
     created_at: '2026-01-01T00:00:00.000Z',
     updated_at: '2026-01-01T00:00:00.000Z',
@@ -166,9 +170,9 @@ describe('createMentionSuggestion types filter', () => {
     return qc
   }
 
-  it('offers every type by default', () => {
+  it('offers every type by default', async () => {
     const qc = makeQueryClient()
-    const items = createMentionSuggestion(qc).items!({
+    const items = await createMentionSuggestion(qc).items!({
       query: '',
       editor: null as never,
     })
@@ -177,9 +181,10 @@ describe('createMentionSuggestion types filter', () => {
     )
   })
 
-  it('offers only the requested types', () => {
+  it('offers only the requested types', async () => {
     const qc = makeQueryClient()
-    const items = createMentionSuggestion(qc, { types: ['member'] }).items!({
+    const items = await createMentionSuggestion(qc, { types: ['member'] })
+      .items!({
       query: '',
       editor: null as never,
     })

@@ -46,8 +46,10 @@ import { TeamPicker } from '../teams/components/team-picker'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useIssueDraftStore } from '@garden/app-state/issues/stores/draft-store'
 import { useCreateIssue, useUpdateIssue } from '@/lib/issues/mutations'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
-import { api } from '@/lib/api'
+import {
+  UPLOAD_IN_PROGRESS_MESSAGE,
+  useAttachmentUpload,
+} from '@/lib/hooks/use-attachment-upload'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 
 // ---------------------------------------------------------------------------
@@ -143,7 +145,7 @@ export function CreateIssueModal({
 
   // File upload — collect attachment IDs so we can link them after issue creation.
   const [attachmentIds, setAttachmentIds] = useState<string[]>([])
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const handleUpload = async (file: File) => {
     const result = await uploadWithToast(file)
     if (result) {
@@ -181,6 +183,10 @@ export function CreateIssueModal({
     if (!title.trim() || submitting) return
     if (showTeamPicker && !pickedTeamId) return
     if (requiresAssignee && !lockedAssigneeUserId && !assigneeId) return
+    if (descEditorRef.current?.hasActiveUploads()) {
+      toast.info(UPLOAD_IN_PROGRESS_MESSAGE)
+      return
+    }
     setSubmitting(true)
     try {
       const issue = await createIssueMutation.mutateAsync({
@@ -215,7 +221,7 @@ export function CreateIssueModal({
           (t) => (
             <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-4 w-[360px]">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center size-5 rounded-full bg-emerald-500/15 text-emerald-500">
+                <div className="flex items-center justify-center size-5 rounded-full bg-background-success-default/15 text-text-success-tertiary">
                   <Check className="size-3" />
                 </div>
                 <span className="text-sm font-medium">Issue created</span>
@@ -265,8 +271,9 @@ export function CreateIssueModal({
         }
       }}
     >
+      {/* Focus returns to whatever opened the dialog when it closes
+          (finalFocus was turned off, leaving keyboard users at the top). */}
       <DialogContent
-        finalFocus={false}
         showCloseButton={false}
         className={cn(
           'p-0 gap-0 flex flex-col overflow-hidden',
@@ -325,6 +332,8 @@ export function CreateIssueModal({
                   <TooltipTrigger
                     render={
                       <button
+                        type="button"
+                        aria-label={isExpanded ? 'Collapse' : 'Expand'}
                         onClick={() => setIsExpanded(!isExpanded)}
                         className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
                       >
@@ -344,6 +353,7 @@ export function CreateIssueModal({
                   <TooltipTrigger
                     render={
                       <button
+                        aria-label="Close"
                         onClick={onClose}
                         className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
                       >

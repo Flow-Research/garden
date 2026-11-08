@@ -15,7 +15,7 @@ export function hashColor(id: string): string {
   for (let index = 0; index < id.length; index += 1) {
     hash = (hash * 31 + id.charCodeAt(index)) >>> 0
   }
-  return HASH_COLOR_TOKENS[hash % HASH_COLOR_TOKENS.length]
+  return HASH_COLOR_TOKENS[hash % HASH_COLOR_TOKENS.length]!
 }
 
 /** Team chip dot color. Thin alias over the shared hash. */

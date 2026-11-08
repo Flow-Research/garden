@@ -272,6 +272,30 @@ export function parseAutomationExecutionConfig(value: unknown) {
   return automationExecutionConfigSchema.safeParse(value)
 }
 
+function readField(value: unknown, field: string) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)[field]
+    : undefined
+}
+
+/**
+ * True when an automation was built from the QA sweep template (its execution
+ * config names the template or its output config uses the QA report contract).
+ * Only these automations carry QA closure controls; the run payload alone can
+ * not tell, because every payload field has a default.
+ */
+export function isQaSweepAutomation(automation: {
+  executionConfig: unknown
+  outputConfig: unknown
+}) {
+  return (
+    readField(automation.executionConfig, 'templateId') ===
+      QA_SWEEP_EXECUTION_CONFIG.templateId ||
+    readField(automation.outputConfig, 'contractId') ===
+      QA_SWEEP_OUTPUT_CONTRACT_ID
+  )
+}
+
 export function parseQaSweepRunPayload(value: unknown) {
   const objectValue =
     value && typeof value === 'object' && !Array.isArray(value)

@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm'
 import { getAgentByName } from 'agents'
+import { z } from 'zod'
 import type { AgentDO } from '@garden/agent-runtime'
 import { bindExistingCapabilitiesToAgent } from './agent-bindings'
-import { getDb, schema, type Db } from '@/lib/server/db'
+import { getDb, requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
@@ -54,20 +55,23 @@ export async function ensureAgentRow(input: {
   }
 
   const agentId = crypto.randomUUID()
-  const [createdAgent] = await db
-    .insert(schema.agent)
-    .values({
-      id: agentId,
-      workspaceId: input.workspaceId,
-      ownerUserId: input.ownerUserId,
-      name: 'Garden',
-      roleTitle: null,
-      isDefault: true,
-      status: 'active',
-      hostName: agentId,
-      permissions: DEFAULT_AGENT_PERMISSIONS,
-    })
-    .returning()
+  const createdAgent = requireReturnedRow(
+    await db
+      .insert(schema.agent)
+      .values({
+        id: agentId,
+        workspaceId: input.workspaceId,
+        ownerUserId: input.ownerUserId,
+        name: 'Garden',
+        roleTitle: null,
+        isDefault: true,
+        status: 'active',
+        hostName: agentId,
+        permissions: DEFAULT_AGENT_PERMISSIONS,
+      })
+      .returning(),
+    'default agent',
+  )
 
   await bindExistingCapabilitiesToAgent({
     db,
@@ -204,21 +208,44 @@ export async function readChatThreadDocumentBytes(input: {
   )
 }
 
+const chatDocumentVersionBytesSchema = z.discriminatedUnion('ok', [
+  z.object({
+    ok: z.literal(true),
+    base64: z.string(),
+    filename: z.string().nullish(),
+    file_type: z.string().nullish(),
+    media_type: z.string().nullish(),
+    version_id: z.string().nullish(),
+  }),
+  z.object({ ok: z.literal(false), error: z.string().optional() }),
+])
+
+export type ChatDocumentVersionBytes = z.infer<
+  typeof chatDocumentVersionBytesSchema
+>
+
+/**
+ * Reads one document version's bytes from the chat thread runtime. The RPC
+ * result is validated here instead of cast by each caller: its inferred
+ * Cloudflare RPC type is deep enough that casting it at call sites made the
+ * compiler hit "type instantiation is excessively deep" (TS2589).
+ */
 export async function readChatThreadDocumentVersionBytes(input: {
   documentId: string
   hostName: string
   preferPdf?: boolean
   threadId: string
   versionId?: string | null
-}) {
+}): Promise<ChatDocumentVersionBytes> {
   const stub = await getAgentRuntimeStub(input.hostName)
-  return disposeRpcResult(
+  const result: unknown = disposeRpcResult(
     await stub.readThreadDocumentVersionBytes(input.threadId, {
       documentId: input.documentId,
       preferPdf: input.preferPdf,
       versionId: input.versionId ?? null,
     }),
   )
+  return chatDocumentVersionBytesSchema.parse(result)
 }
 
 export async function listChatThreadDocumentVersions(input: {

@@ -20,7 +20,7 @@ export const Route = createFileRoute('/api/issues/$id/usage')({
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
         const db = access.db
-        
+
         const runs = await db
           .select({ usageJson: schema.issueRun.usageJson })
           .from(schema.issueRun)

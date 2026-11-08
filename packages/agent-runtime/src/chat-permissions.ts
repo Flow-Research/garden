@@ -1,7 +1,14 @@
 import { connectorRegistry } from '@garden/connectors'
-import type { AgentPermissions } from '@garden/core/agents/permissions'
+import {
+  evaluateToolPermission,
+  type AgentPermissions,
+} from '@garden/core/agents/permissions'
 
-function chatConnectorToolForName(runtimeToolName: string): {
+/**
+ * Splits a runtime tool name such as `tool_github_add_issue_comment` into its
+ * connector and bare tool name. Returns null for non-connector tools.
+ */
+export function connectorToolForName(runtimeToolName: string): {
   connectorId: string
   toolName: string
 } | null {
@@ -17,28 +24,22 @@ function chatConnectorToolForName(runtimeToolName: string): {
   return null
 }
 
+/** Applies {@link evaluateToolPermission} to a runtime tool name. */
+export function evaluateRuntimeToolPermission(
+  permissions: AgentPermissions | null,
+  runtimeToolName: string,
+) {
+  const connectorTool = connectorToolForName(runtimeToolName)
+  return evaluateToolPermission(permissions, {
+    toolName: connectorTool?.toolName ?? runtimeToolName,
+    runtimeToolName,
+    connectorId: connectorTool?.connectorId ?? null,
+  })
+}
+
 export function isChatToolAllowed(
   permissions: AgentPermissions | null,
   runtimeToolName: string,
 ): boolean {
-  if (!permissions || permissions.full_access) return true
-
-  const connectorTool = chatConnectorToolForName(runtimeToolName)
-  const toolName = connectorTool?.toolName ?? runtimeToolName
-
-  if (
-    !permissions.allowed_tools.includes(toolName) &&
-    !permissions.allowed_tools.includes(runtimeToolName)
-  ) {
-    return false
-  }
-
-  if (
-    connectorTool &&
-    !permissions.allowed_connectors.includes(connectorTool.connectorId)
-  ) {
-    return false
-  }
-
-  return true
+  return evaluateRuntimeToolPermission(permissions, runtimeToolName).allowed
 }

@@ -1,5 +1,6 @@
 import { queryOptions } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import type { AutomationRunStatus } from '@/lib/api/automations'
 
 export const automationKeys = {
   all: (wsId: string) => ['workspaces', wsId, 'automations'] as const,
@@ -34,5 +35,17 @@ export function automationRunsOptions(
     queryKey: automationKeys.runs(wsId, automationId, debug),
     queryFn: () => api.listAutomationRuns(automationId, { debug }),
     enabled: Boolean(automationId),
+    // Run history never refreshed on its own, so a run started with
+    // "Run now" stayed "queued" on screen. Poll while any run is unsettled.
+    refetchInterval: (query) =>
+      query.state.data?.some((run) => UNSETTLED_RUN_STATUSES.has(run.status))
+        ? 3000
+        : false,
   })
 }
+
+const UNSETTLED_RUN_STATUSES = new Set<AutomationRunStatus>([
+  'pending',
+  'queued',
+  'running',
+])

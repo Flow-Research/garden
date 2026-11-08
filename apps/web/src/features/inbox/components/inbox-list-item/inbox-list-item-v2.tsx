@@ -39,79 +39,71 @@ export function InboxListItemV2({
     ) ??
     'Garden'
 
+  // The row and Archive are siblings. Archive used to sit inside a
+  // role="button" row with its own key handler, so Enter on it fired it
+  // twice (keydown, then the click that Enter produces).
   return (
     <div
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onClick()
-        }
-      }}
       className={cn(
-        'group relative grid min-h-20.25 w-full cursor-pointer grid-cols-[32px_minmax(0,1fr)] gap-x-3 border-b bg-background px-3 py-3 pr-10 text-left transition-colors last:border-b-0',
+        'group relative border-b bg-background transition-colors last:border-b-0',
         isSelected ? 'border-l-2 border-l-muted bg-muted' : 'hover:bg-muted/40',
       )}
     >
-      {item.details?.avatar_url ? (
-        <img
-          src={item.details.avatar_url}
-          alt=""
-          className="mt-0.5 size-8 rounded-full object-cover"
-        />
-      ) : (
-        <span className="mt-0.5 inline-flex size-8 items-center justify-center rounded-full bg-muted-foreground/15 text-xs font-semibold text-muted-foreground">
-          {actorName.slice(0, 1).toUpperCase()}
-        </span>
-      )}
+      <button
+        type="button"
+        onClick={onClick}
+        aria-current={isSelected ? 'true' : undefined}
+        className="grid min-h-20.25 w-full cursor-pointer grid-cols-[32px_minmax(0,1fr)] gap-x-3 px-3 py-3 pr-10 text-left"
+      >
+        {item.details?.avatar_url ? (
+          <img
+            src={item.details.avatar_url}
+            alt=""
+            className="mt-0.5 size-8 rounded-full object-cover"
+          />
+        ) : (
+          <span className="mt-0.5 inline-flex size-8 items-center justify-center rounded-full bg-muted-foreground/15 text-xs font-semibold text-muted-foreground">
+            {actorName.slice(0, 1).toUpperCase()}
+          </span>
+        )}
 
-      <div className="min-w-0">
-        <span className="truncate text-[13px] font-semibold leading-5 text-foreground">
-          {actorName}
-        </span>
+        <span className="block min-w-0">
+          <span className="block truncate text-[13px] font-semibold leading-5 text-foreground">
+            {actorName}
+          </span>
 
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="min-w-0 flex-1 truncate text-[13px] leading-5 text-muted-foreground">
-            {item.title}
-          </p>
-          {eventCount > 1 && (
-            <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              {eventCount}
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-[13px] leading-5 text-muted-foreground">
+              {item.title}
             </span>
-          )}
-        </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="mt-2 flex items-center gap-1.5 text-[11px] font-medium leading-4 text-foreground">
-            <CalendarDays className="size-3.5 text-muted-foreground" />
-            <span>{formatInboxDate(item.created_at)}</span>
-          </div>
-          {!item.read && (
-            <span className="ml-auto rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium leading-4 text-emerald-700">
-              New
+            {eventCount > 1 && (
+              <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                {eventCount}
+              </span>
+            )}
+          </span>
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="mt-2 flex items-center gap-1.5 text-[11px] font-medium leading-4 text-foreground">
+              <CalendarDays className="size-3.5 text-muted-foreground" />
+              <span>{formatInboxDate(item.created_at)}</span>
             </span>
-          )}
-        </div>
-      </div>
+            {!item.read && (
+              <span className="ml-auto rounded-full bg-background-success-secondary px-2 py-0.5 text-[11px] font-medium leading-4 text-text-success-on-success-secondary">
+                New
+              </span>
+            )}
+          </span>
+        </span>
+      </button>
 
       <button
         type="button"
         title="Archive"
         aria-label={`Archive thread for ${item.title}`}
-        onClick={(e) => {
-          e.stopPropagation()
-          onArchive()
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.stopPropagation()
-            onArchive()
-          }
-        }}
+        onClick={onArchive}
         className="absolute top-3 right-3 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
       >
-        <Archive className="h-3.5 w-3.5" />
+        <Archive className="size-3.5" />
       </button>
     </div>
   )

@@ -1,13 +1,12 @@
 import type { ReactNode } from 'react'
 import {
-  DotsThreeVertical,
+  EllipsisVertical,
   Download,
   Eye,
   Folder as FolderIcon,
   FolderPlus,
-  Trash,
-} from '@phosphor-icons/react'
-import { Loader2 } from 'lucide-react'
+  Trash2,
+} from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,6 +17,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { brainFileDownloadUrl, type BrainFileSummary } from '../api'
 import type { BrainFolderSummary } from '../contract'
 import {
@@ -70,7 +70,7 @@ export function FileCardMenu({
         aria-label={`File actions for ${uploadedFile.name}`}
         className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-icon-neutral-default transition-colors hover:bg-background-main-secondary"
       >
-        <DotsThreeVertical className="size-4" weight="regular" />
+        <EllipsisVertical className="size-4" />
       </DropdownMenuTrigger>
       {/* sideOffset drops the popup visibly below the trigger row so it
           doesn't sit flush against the Delete|View pills beside it. */}
@@ -119,7 +119,7 @@ export function FileCardMenu({
               variant="destructive"
               onClick={() => onDelete(uploadedFile)}
             >
-              <Trash />
+              <Trash2 />
               Delete file
             </DropdownMenuItem>
           </>
@@ -153,7 +153,7 @@ export function FileStatusChip({
   return (
     <span className="flex items-center gap-1.5 text-xs text-text-secondary">
       {isPolling || isRetrying ? (
-        <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+        <Spinner className="size-3" aria-hidden="true" />
       ) : null}
       {isRetrying
         ? 'Retrying'

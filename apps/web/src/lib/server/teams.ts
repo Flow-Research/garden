@@ -55,11 +55,7 @@ function isPgError(
  */
 function mapDbError(error: unknown): TeamServiceError {
   if (!isPgError(error)) {
-    return serviceError(
-      'TEAM_OPERATION_FAILED',
-      500,
-      'Team operation failed',
-    )
+    return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
   }
   if (error.code === '23505') {
     if (error.constraint === 'team_workspace_name_unique') {
@@ -85,9 +81,7 @@ function mapDbError(error: unknown): TeamServiceError {
   return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
 }
 
-export function toCurrentMembership(
-  row: TeamMemberRow,
-): TeamCurrentMembership {
+export function toCurrentMembership(row: TeamMemberRow): TeamCurrentMembership {
   return {
     id: row.id,
     member_type: row.userId ? 'user' : 'agent',
@@ -150,8 +144,12 @@ function toTeamMember(row: TeamMemberQueryRow): TeamMember {
     name: (human ? row.userName : row.agentName) ?? 'Unknown member',
     email: human ? (row.userEmail ?? null) : null,
     avatar_url: human ? (row.userAvatarUrl ?? null) : null,
-    workspace_role: human ? ((row.workspaceRole as TeamMember['workspace_role']) ?? null) : null,
-    agent_status: human ? null : ((row.agentStatus as TeamMember['agent_status']) ?? null),
+    workspace_role: human
+      ? ((row.workspaceRole as TeamMember['workspace_role']) ?? null)
+      : null,
+    agent_status: human
+      ? null
+      : ((row.agentStatus as TeamMember['agent_status']) ?? null),
     assigned_issue_count: row.assignedIssueCount,
     created_at: new Date(row.membership.createdAt).toISOString(),
   }
@@ -211,16 +209,12 @@ export async function loadTeamMember(args: {
 }
 
 /**
- * Issue counts respect the caller's visibility: managers and the Team owner
- * see every Team issue; everyone else only issues assigned to them.
+ * Counts every issue on the Team. Both callers only serve viewers who can open
+ * the Team (workspace managers and Team members), and every such viewer sees
+ * the whole Team board (`canViewTeamIssue`), so the count needs no
+ * per-viewer filter.
  */
-function issueVisibilityCondition(args: {
-  manager: boolean
-  viewerId: string
-}) {
-  if (args.manager) return sql`true`
-  return sql`("team"."owner_user_id" = ${args.viewerId} or (i.assignee_type = 'user' and i.assignee_id = ${args.viewerId}))`
-}
+const teamIssueCount = sql<number>`(select cast(count(*) as int) from ${schema.issue} i where i.team_id = "team"."id")`
 
 export async function getTeamForViewer(args: {
   db: Db
@@ -232,10 +226,7 @@ export async function getTeamForViewer(args: {
   const [counts] = await args.db
     .select({
       memberCount: sql<number>`(select cast(count(*) as int) from "team_member" where "team_member"."team_id" = "team"."id")`,
-      issueCount: sql<number>`(select cast(count(*) as int) from ${schema.issue} i where i.team_id = "team"."id" and ${issueVisibilityCondition({
-        manager,
-        viewerId: args.viewerId,
-      })})`,
+      issueCount: teamIssueCount,
       activityCount: sql<number>`(select cast(count(*) as int) from ${schema.activityEvent} where ${schema.activityEvent.subjectType} = 'team' and ${schema.activityEvent.subjectId} = "team"."id")`,
     })
     .from(schema.team)
@@ -280,12 +271,7 @@ export async function listTeams(args: {
     .select({
       team: schema.team,
       memberCount: sql<number>`(select cast(count(*) as int) from "team_member" where "team_member"."team_id" = "team"."id")`,
-      issueCount: sql<number>`(select cast(count(*) as int) from ${schema.issue} i where i.team_id = "team"."id" and ${issueVisibilityCondition(
-        {
-          manager,
-          viewerId: args.viewerId,
-        },
-      )})`,
+      issueCount: teamIssueCount,
     })
     .from(schema.team)
     .where(
@@ -505,9 +491,7 @@ export async function createTeam(args: {
   if (outcomeResult.isErr()) return Result.err(outcomeResult.error)
   const outcome = outcomeResult.value
   if (outcome.kind === 'invalid') {
-    return Result.err(
-      serviceError('INVALID_TEAM_MEMBER', 400, outcome.message),
-    )
+    return Result.err(serviceError('INVALID_TEAM_MEMBER', 400, outcome.message))
   }
   if (outcome.kind === 'name_exists') {
     return Result.err(
@@ -778,13 +762,9 @@ export async function addTeamMember(args: {
             teamId: args.team.id,
             workspaceId: args.team.workspaceId,
             userId:
-              args.member.member_type === 'user'
-                ? args.member.user_id
-                : null,
+              args.member.member_type === 'user' ? args.member.user_id : null,
             agentId:
-              args.member.member_type === 'agent'
-                ? args.member.agent_id
-                : null,
+              args.member.member_type === 'agent' ? args.member.agent_id : null,
             createdBy: args.actorUserId,
           })
           .returning()
@@ -864,10 +844,7 @@ export async function removeTeamMember(args: {
           )
         if (!membership) return { kind: 'not_found' as const }
 
-        if (
-          membership.userId &&
-          membership.userId === args.team.ownerUserId
-        ) {
+        if (membership.userId && membership.userId === args.team.ownerUserId) {
           return { kind: 'owner' as const }
         }
 
@@ -935,7 +912,8 @@ export async function deleteTeam(args: {
           })
           .from(schema.issue)
           .where(eq(schema.issue.teamId, args.team.id))
-        if ((counts?.issueCount ?? 0) > 0) return { kind: 'has_issues' as const }
+        if ((counts?.issueCount ?? 0) > 0)
+          return { kind: 'has_issues' as const }
 
         await tx.delete(schema.team).where(eq(schema.team.id, args.team.id))
 
@@ -956,11 +934,7 @@ export async function deleteTeam(args: {
   const outcome = outcomeResult.value
   if (outcome.kind === 'has_issues') {
     return Result.err(
-      serviceError(
-        'TEAM_HAS_ISSUES',
-        409,
-        'Team has linked issues',
-      ),
+      serviceError('TEAM_HAS_ISSUES', 409, 'Team has linked issues'),
     )
   }
   teamLogger.info('team.deleted', {

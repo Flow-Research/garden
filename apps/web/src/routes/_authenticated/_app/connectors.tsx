@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { createFileRoute } from '@tanstack/react-router'
-import { CheckCircle, WarningCircle } from '@phosphor-icons/react'
+import { CircleAlert, CircleCheck } from 'lucide-react'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   Alert,
@@ -87,7 +87,7 @@ function ConnectorCallbackNotice({
 
   const dismissNotice = () => {
     setDismissed(true)
-    void navigate({ search: {}, replace: true })
+    void navigate({ to: '/connectors', replace: true })
   }
 
   return (
@@ -96,9 +96,9 @@ function ConnectorCallbackNotice({
       className="mx-8 mt-4 w-auto"
     >
       {failed || event?.status === 'degraded' ? (
-        <WarningCircle className="size-4" />
+        <CircleAlert className="size-4" />
       ) : (
-        <CheckCircle className="size-4" />
+        <CircleCheck className="size-4" />
       )}
       <AlertTitle>{title}</AlertTitle>
       <AlertDescription>{description}</AlertDescription>
@@ -125,6 +125,11 @@ function ConnectorCallbackNotice({
 
 function ConnectionsRoute() {
   const { connector_flow, connector_id } = Route.useSearch()
+  const navigate = Route.useNavigate()
+  const [dismissedFocusId, setDismissedFocusId] = useState<string | null>(null)
+  const focusedConnectorId =
+    connector_id && connector_id !== dismissedFocusId ? connector_id : undefined
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <ConnectorCallbackNotice
@@ -132,7 +137,14 @@ function ConnectionsRoute() {
         connectorId={connector_id}
       />
       <div className="min-h-0 flex-1">
-        <ConnectionsPage focusedConnectorId={connector_id} />
+        <ConnectionsPage
+          focusedConnectorId={focusedConnectorId}
+          onDismissFocus={() => {
+            if (!connector_id) return
+            setDismissedFocusId(connector_id)
+            void navigate({ to: '/connectors', replace: true })
+          }}
+        />
       </div>
     </div>
   )

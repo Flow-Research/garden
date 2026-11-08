@@ -49,7 +49,7 @@
  * dropdown popovers.
  */
 
-import type { JSX } from 'react'
+import type { ReactElement } from 'react'
 import { Button } from '@garden/ui/components/ui/button'
 import {
   DropdownMenu,
@@ -68,13 +68,13 @@ import {
 export function ComposerToolsMenu(props: {
   presetId: ToolPresetId
   onPresetChange: (id: ToolPresetId) => void
-}): JSX.Element {
+}): ReactElement {
   const { presetId, onPresetChange } = props
 
   const selectedPreset =
     TOOL_PRESETS.find((preset) => preset.id === presetId) ??
     TOOL_PRESETS.find((preset) => preset.id === DEFAULT_TOOL_PRESET_ID) ??
-    TOOL_PRESETS[0]
+    TOOL_PRESETS[0]!
   const SelectedIcon = selectedPreset.icon
 
   return (

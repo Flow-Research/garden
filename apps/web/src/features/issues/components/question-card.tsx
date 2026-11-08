@@ -17,6 +17,7 @@ import {
 } from '@garden/ui/components/ui/empty'
 import { Kbd } from '@garden/ui/components/ui/kbd'
 import { Textarea } from '@garden/ui/components/ui/textarea'
+import { useOptionHotkeys } from '@/lib/hooks/use-option-hotkeys'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -73,13 +74,10 @@ export function QuestionCard({
   // Focus the free-text input on mount when this is a deep-link arrival,
   // since "from inbox" implies the user wants to answer immediately.
   useEffect(() => {
-    if (pulseOnMount && inputRef.current) {
-      inputRef.current.focus()
-    }
-    if (pulseOnMount) {
-      const id = setTimeout(() => setIsPulsing(false), 1400)
-      return () => clearTimeout(id)
-    }
+    if (!pulseOnMount) return
+    inputRef.current?.focus()
+    const id = setTimeout(() => setIsPulsing(false), 1400)
+    return () => clearTimeout(id)
   }, [pulseOnMount])
 
   const hasOptions = question.options.length > 0
@@ -125,27 +123,19 @@ export function QuestionCard({
     [handleSubmit],
   )
 
-  // Number-key shortcuts (1–9) select chips when no input is focused.
-  useEffect(() => {
-    if (!hasOptions || submitting) return
-    const handler = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
-      const target = event.target
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement
-      )
-        return
-      const digit = Number.parseInt(event.key, 10)
-      if (Number.isNaN(digit) || digit < 1 || digit > 9) return
-      const option = question.options[digit - 1]
-      if (!option) return
-      event.preventDefault()
-      handleToggle(option.label)
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [hasOptions, question.options, submitting, handleToggle])
+  // Number-key shortcuts (1–9) select chips unless the user is typing.
+  const selectOption = useCallback(
+    (index: number) => {
+      const option = question.options[index]
+      if (option) handleToggle(option.label)
+    },
+    [question.options, handleToggle],
+  )
+  const handleOptionKeyDown = useOptionHotkeys({
+    count: question.options.length,
+    enabled: hasOptions && !submitting,
+    onSelect: selectOption,
+  })
 
   const canSubmit =
     customAnswer.trim().length > 0 ||
@@ -153,6 +143,8 @@ export function QuestionCard({
 
   return (
     <div
+      onKeyDown={handleOptionKeyDown}
+      role="group"
       data-question-id={question.id}
       className={cn(
         !compact && 'rounded-lg border border-warning/30 bg-warning/[0.04]',
@@ -163,7 +155,7 @@ export function QuestionCard({
       {/* Header — hidden in compact mode (panel already provides context) */}
       {!compact && (
         <div className="flex items-start gap-2.5 px-3.5 pt-3 pb-2">
-          <MessageCircleQuestion className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <MessageCircleQuestion className="mt-0.5 size-4 shrink-0 text-warning" />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-semibold uppercase tracking-wider text-warning/80">
@@ -282,7 +274,7 @@ export function QuestionCard({
             onClick={handleSubmit}
             className="h-9 shrink-0 gap-1 px-2.5"
           >
-            <ArrowUp className="h-3.5 w-3.5" />
+            <ArrowUp className="size-3.5" />
             <span className="text-xs">
               {question.multiSelect && selected.length > 0 && !customAnswer
                 ? `Submit ${selected.length}`

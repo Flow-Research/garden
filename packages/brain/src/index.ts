@@ -8,9 +8,11 @@ export * from './services/LocalEmbeddings.ts'
 export * from './services/Chunker.ts'
 export * from './services/Extractor.ts'
 export * from './services/RawFileStore.ts'
+
 export * from './services/selection.ts'
 export * from './services/freshness.ts'
 export * from './services/write-back.ts'
+
 export {
   PageIndex,
   PageIndexLive,

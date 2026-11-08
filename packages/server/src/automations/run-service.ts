@@ -1,41 +1,25 @@
-import { and, eq } from 'drizzle-orm'
+import { and, eq, inArray } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
+import {
+  RUN_WORKFLOW_CONTROL_EVENT_TYPE,
+  isAgentRuntimeName,
+  type AgentDONamespace,
+  type HyperdriveConnection,
+  type RunWorkflowBinding,
+  type RunWorkflowControlEvent,
+} from '../runtime-bindings'
 
-const AGENT_RUNTIME_NAME_PATTERN = /^[A-Za-z0-9._:-]+$/
-const RUN_WORKFLOW_CONTROL_EVENT_TYPE = 'run-control'
-
-type RunWorkflowControlEvent = { kind: 'resume' | 'cancel' }
-
-type RunWorkflowBinding = {
-  get: (id: string) => Promise<{
-    sendEvent: (event: {
-      type: typeof RUN_WORKFLOW_CONTROL_EVENT_TYPE
-      payload: RunWorkflowControlEvent
-    }) => Promise<void>
-  }>
-}
-
-/**
- * Minimal structural shape of the Cloudflare Hyperdrive binding this package
- * consumes. `@garden/server` does not pull in `@cloudflare/workers-types` as an
- * ambient global, and the run service only reads `connectionString`. Workers
- * (web app, agent runtime) pass the full global `Hyperdrive` binding here, which
- * is structurally assignable to this narrower type.
- */
-type HyperdriveConnection = { readonly connectionString: string }
+const LIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
 
 export type AutomationRunEnv = {
   HYPERDRIVE: HyperdriveConnection
   RUN_WORKFLOW?: RunWorkflowBinding
-  AgentDO?: {
-    idFromName: (name: string) => any
-    get: (id: any) => {
-      startAutomationRunWorkflow: (input: { runId: string }) => Promise<void>
-      cancelAutomationRun: (input: { runId: string }) => Promise<void>
-    }
-  }
+  AgentDO?: AgentDONamespace<{
+    startAutomationRunWorkflow: (input: { runId: string }) => Promise<void>
+    cancelAutomationRun: (input: { runId: string }) => Promise<void>
+  }>
 }
 
 export type StartAutomationRunInput = {
@@ -78,15 +62,12 @@ export class AutomationRunServiceError extends TaggedError(
   cause?: unknown
 }>() {}
 
-function isAgentRuntimeName(value: string) {
-  return AGENT_RUNTIME_NAME_PATTERN.test(value)
-}
-
+// The driver's message stays on `cause` for logs; `message` reaches API clients
+// and must not carry raw Postgres error text.
 function serviceDbError(operation: string, cause: unknown) {
-  const message = cause instanceof Error ? cause.message : String(cause)
   return new AutomationRunServiceError({
     code: 'db_error',
-    message: `${operation} failed: ${message}`,
+    message: `${operation} failed`,
     cause,
   })
 }
@@ -214,7 +195,7 @@ async function markAutomationStartFailed(args: {
   const now = new Date()
   const writeResult = await Result.tryPromise({
     try: async () => {
-      await db
+      const [failedRun] = await db
         .update(schema.automationRun)
         .set({
           status: 'failed',
@@ -223,7 +204,15 @@ async function markAutomationStartFailed(args: {
           failureReason: args.error.message,
           updatedAt: now,
         })
-        .where(eq(schema.automationRun.id, args.runId))
+        .where(
+          and(
+            eq(schema.automationRun.id, args.runId),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
+        .returning({ id: schema.automationRun.id })
+      if (!failedRun) return false
+      return true
     },
     catch: (cause) =>
       serviceDbError('mark automation workflow start failure', cause),
@@ -239,31 +228,33 @@ export async function startAutomationRun(
   const db = getDb(env)
   const lookupResult = await Result.tryPromise({
     try: async () => {
-      const [automation] = await db
-        .select({ id: schema.automation.id })
-        .from(schema.automation)
-        .where(
-          and(
-            eq(schema.automation.id, input.automationId),
-            eq(schema.automation.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
-      const [agent] = await db
-        .select({
-          id: schema.agent.id,
-          workspaceId: schema.agent.workspaceId,
-          hostName: schema.agent.hostName,
-          status: schema.agent.status,
-        })
-        .from(schema.agent)
-        .where(
-          and(
-            eq(schema.agent.id, input.agentId),
-            eq(schema.agent.workspaceId, input.workspaceId),
-          ),
-        )
-        .limit(1)
+      const [[automation], [agent]] = await Promise.all([
+        db
+          .select({ id: schema.automation.id })
+          .from(schema.automation)
+          .where(
+            and(
+              eq(schema.automation.id, input.automationId),
+              eq(schema.automation.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+        db
+          .select({
+            id: schema.agent.id,
+            workspaceId: schema.agent.workspaceId,
+            hostName: schema.agent.hostName,
+            status: schema.agent.status,
+          })
+          .from(schema.agent)
+          .where(
+            and(
+              eq(schema.agent.id, input.agentId),
+              eq(schema.agent.workspaceId, input.workspaceId),
+            ),
+          )
+          .limit(1),
+      ])
       return { automation: automation ?? null, agent: agent ?? null }
     },
     catch: (cause) => serviceDbError('load automation run inputs', cause),
@@ -358,13 +349,20 @@ export async function cancelAutomationRun(
       if (!run) return { kind: 'missing' as const }
 
       const previousStatus = run.status
-      await db
+      const [updatedRun] = await db
         .update(schema.automationRun)
         .set({
           cancelRequestedAt: new Date(),
           updatedAt: new Date(),
         })
-        .where(eq(schema.automationRun.id, input.runId))
+        .where(
+          and(
+            eq(schema.automationRun.id, input.runId),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
+        .returning({ id: schema.automationRun.id })
+      if (!updatedRun) return { kind: 'ignored' as const }
       return {
         kind: 'cancelled' as const,
         agentRuntimeName: run.hostName,
@@ -383,6 +381,7 @@ export async function cancelAutomationRun(
       }),
     )
   }
+  if (result.value.kind === 'ignored') return Result.ok()
 
   const workflowResult = await sendAutomationWorkflowControlEvent({
     env,

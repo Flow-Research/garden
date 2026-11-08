@@ -48,6 +48,7 @@ export const extractText = (
       switch (format) {
         case FileFormat.Text:
         case FileFormat.Markdown:
+        case FileFormat.Csv:
           return new TextDecoder().decode(bytes)
         case FileFormat.Pdf: {
           const { extractText: extractPdfText, getDocumentProxy } =

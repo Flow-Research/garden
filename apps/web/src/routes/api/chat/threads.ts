@@ -6,12 +6,13 @@ import {
 } from '@/lib/server/validation/chat'
 import { ensureAgentRow } from '@/lib/server/chat-agents'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import {
   badRequest,
   forbidden,
   requireSession,
   resolveWorkspaceId,
+  getWorkspaceIssuePrefix,
   toChatThread,
   unauthorized,
 } from '@/lib/server/control-plane'
@@ -69,13 +70,14 @@ export const Route = createFileRoute('/api/chat/threads')({
           )
           .orderBy(desc(schema.chatThread.updatedAt))
 
+        const issuePrefix = await getWorkspaceIssuePrefix(db, workspaceId)
         return Response.json(
           rows.flatMap((row) => {
             if (!row.hostName) return []
             const thread = toChatThread(
               row.thread,
               row.hostName,
-              row.primaryIssue,
+              row.primaryIssue ? { ...row.primaryIssue, issuePrefix } : null,
             )
             if (
               thread.title.trim().toLowerCase() !== NEW_CHAT_TITLE.toLowerCase()
@@ -245,22 +247,25 @@ export const Route = createFileRoute('/api/chat/threads')({
             }
           }
 
-          const [createdThread] = await tx
-            .insert(schema.chatThread)
-            .values({
-              id,
-              workspaceId,
-              ownerUserId: session.user.id,
-              agentId: agentRow.id,
-              title,
-              lastMessage: '',
-              primaryIssueId,
-              runtimeKind,
-              runtimeKey,
-              createdAt: now,
-              updatedAt: now,
-            })
-            .returning()
+          const createdThread = requireReturnedRow(
+            await tx
+              .insert(schema.chatThread)
+              .values({
+                id,
+                workspaceId,
+                ownerUserId: session.user.id,
+                agentId: agentRow.id,
+                title,
+                lastMessage: '',
+                primaryIssueId,
+                runtimeKind,
+                runtimeKey,
+                createdAt: now,
+                updatedAt: now,
+              })
+              .returning(),
+            'chat thread',
+          )
 
           return { thread: createdThread, transition: 'created' as const }
         })
@@ -281,7 +286,16 @@ export const Route = createFileRoute('/api/chat/threads')({
           },
         })
         return Response.json(
-          toChatThread(threadResult.thread, agentRuntimeName, primaryIssue),
+          toChatThread(
+            threadResult.thread,
+            agentRuntimeName,
+            primaryIssue
+              ? {
+                  ...primaryIssue,
+                  issuePrefix: await getWorkspaceIssuePrefix(db, workspaceId),
+                }
+              : null,
+          ),
           {
             status: 201,
           },

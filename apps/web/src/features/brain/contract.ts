@@ -79,7 +79,7 @@ export const BRAIN_FOLDER_NAME_MAX = 50
  * File-picker filter shared by the page dropzone and the create-folder
  * dialog's "Add file to folder" zone so both accept the same Brain types.
  */
-export const BRAIN_ACCEPTED_FILE_TYPES = '.txt,.md,.pdf,.docx,.xlsx'
+export const BRAIN_ACCEPTED_FILE_TYPES = '.txt,.md,.pdf,.docx,.xlsx,.csv'
 
 export const BrainFolderCreateInputSchema = z
   .object({

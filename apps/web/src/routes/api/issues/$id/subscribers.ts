@@ -1,9 +1,7 @@
-
 import { createFileRoute } from '@tanstack/react-router'
 import { listIssueSubscribers } from '@garden/db/subscribers'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { requireIssueAccess } from '@/lib/server/issue-access'
-
 
 export const Route = createFileRoute('/api/issues/$id/subscribers')({
   server: {
@@ -20,7 +18,7 @@ export const Route = createFileRoute('/api/issues/$id/subscribers')({
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
         const db = access.db
-        
+
         const subscribers = await listIssueSubscribers(db, {
           issueId: params.id,
         })

@@ -1,5 +1,8 @@
 import { spawnSync } from 'node:child_process'
-import { deploymentTargetFromBranch, deploymentTargets } from '../deploy-targets.mjs'
+import {
+  deploymentTargetFromBranch,
+  deploymentTargets,
+} from '../deploy-targets.mjs'
 
 /**
  * Workers Builds uses separate production and non-production triggers. Its
@@ -10,7 +13,10 @@ import { deploymentTargetFromBranch, deploymentTargets } from '../deploy-targets
  * Reference: https://developers.cloudflare.com/workers/ci-cd/builds/configuration/
  */
 const branch = process.env.WORKERS_CI_BRANCH
-if (branch && !Object.values(deploymentTargets).some((target) => target.branch === branch)) {
+if (
+  branch &&
+  !Object.values(deploymentTargets).some((target) => target.branch === branch)
+) {
   console.log(`Skipping automatic deployment for ${branch}`)
   process.exit(0)
 }

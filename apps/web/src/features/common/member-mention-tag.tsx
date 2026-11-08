@@ -7,10 +7,10 @@ type MentionActorType = 'member' | 'agent' | 'all'
 
 const TYPE_STYLES: Record<MentionActorType, string> = {
   member:
-    'bg-lichen/25 text-moss shadow-[var(--shadow-hairline-soft)] dark:bg-lichen/15 dark:text-sage',
+    'bg-badge-green-background/25 text-success shadow-2 dark:bg-badge-green-background/15 dark:text-text-success-tertiary',
   agent:
-    'bg-lavender-mist/25 text-foreground shadow-[var(--shadow-hairline-soft)] dark:bg-lavender-mist/15',
-  all: 'bg-peach/30 text-foreground shadow-[var(--shadow-hairline-soft)] dark:bg-peach/15',
+    'bg-badge-blue-background/25 text-foreground shadow-2 dark:bg-badge-blue-background/15',
+  all: 'bg-badge-yellow-background/30 text-foreground shadow-2 dark:bg-badge-yellow-background/15',
 }
 
 /**
@@ -62,10 +62,10 @@ export function MemberMentionTag({
         className={cn(
           'size-1.5 shrink-0 rounded-full',
           type === 'member'
-            ? 'bg-moss'
+            ? 'bg-success'
             : type === 'agent'
-              ? 'bg-lavender-mist'
-              : 'bg-amber',
+              ? 'bg-badge-blue-background'
+              : 'bg-icon-warning-tertiary',
         )}
       />
       <span className="truncate">@{resolvedLabel ?? label ?? id}</span>

@@ -13,10 +13,9 @@ import {
   commentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/issues'
-import {
-  badRequest,
-} from '@/lib/server/control-plane'
+import { badRequest } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
@@ -69,9 +68,9 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const db = await appContext.db()
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
         const existingIssue = access.issue
 
         const commentResult = await postIssueComment({
@@ -94,6 +93,16 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           })
         }
 
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, existingIssue.workspaceId, {
+            type: 'comment:created',
+            payload: {
+              issue_id: existingIssue.id,
+              comment_id: commentResult.value.comment.id,
+              team_id: existingIssue.teamId,
+            },
+          }),
+        )
         return Response.json(commentResult.value.comment, { status: 201 })
       },
     },

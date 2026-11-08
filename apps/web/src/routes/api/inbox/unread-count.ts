@@ -10,12 +10,15 @@ import {
 export const Route = createFileRoute('/api/inbox/unread-count')({
   server: {
     handlers: {
-      GET: async ({ context, request }) => {
+      GET: async ({ context }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) return Response.json({ count: 0 })
 
         const count = await computeInboxUnreadCount({

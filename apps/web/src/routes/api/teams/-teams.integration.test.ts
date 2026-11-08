@@ -54,12 +54,30 @@ function handlerFor(route: unknown, method: string) {
  */
 function makeContext(args: {
   testDb: TestDb
-  userId: string
+  /** `null` signs the request out. */
+  userId: string | null
   role: FakeRole
   request: Request
+  /** When given, collects every realtime envelope the route publishes. */
+  published?: Array<{ type: string; payload: Record<string, unknown> }>
 }): AppRequestContext {
+  const published = args.published
   return {
-    env: {} as AppRequestContext['env'],
+    env: (published
+      ? {
+          WORKSPACE_REALTIME: {
+            idFromName: (name: string) => name,
+            get: () => ({
+              publish: async (envelope: {
+                type: string
+                payload: Record<string, unknown>
+              }) => {
+                published.push(envelope)
+              },
+            }),
+          },
+        }
+      : {}) as unknown as AppRequestContext['env'],
     request: args.request,
     db: async () => args.testDb.db,
     close: async () => {},
@@ -73,15 +91,39 @@ function makeContext(args: {
           ReturnType<AppRequestContext['auth']['getAuth']>
         >,
       getSession: async () =>
-        ({
-          user: { id: args.userId },
-          session: { activeOrganizationId: null },
-        }) as Awaited<ReturnType<AppRequestContext['auth']['getSession']>>,
+        (args.userId === null
+          ? null
+          : {
+              user: { id: args.userId },
+              session: { activeOrganizationId: null },
+            }) as Awaited<ReturnType<AppRequestContext['auth']['getSession']>>,
       getCachedSession: () => undefined,
     },
-    waitUntil: () => {},
+    waitUntil: (promise) => {
+      pending.push(promise)
+    },
   }
 }
+
+/** Realtime publishes run through `waitUntil`; tests await them before asserting. */
+const pending: Promise<unknown>[] = []
+async function flushWaitUntil() {
+  await Promise.all(pending.splice(0))
+}
+
+/**
+ * Payload fields every viewer may see. Team events tell clients what to
+ * refetch; they must not carry a caller-relative Team DTO (`can_manage`,
+ * visibility-dependent counts) or Team content such as its name (#154).
+ */
+const SAFE_TEAM_EVENT_FIELDS = new Set([
+  'workspace_id',
+  'team_id',
+  'membership_id',
+  'member_type',
+  'user_id',
+  'agent_id',
+])
 
 async function seedUser(
   testDb: TestDb,
@@ -255,7 +297,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'Engineering' },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -279,7 +324,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'Engineering', description: 'Builds things' },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -339,7 +387,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'Counted' },
     )
-    const createResponse = await handlerFor(TeamsRoute, 'POST')(
+    const createResponse = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -361,7 +412,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'user', user_id: fixture.memberId },
     )
-    const addResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const addResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -380,7 +434,10 @@ describe('teams API (integration)', () => {
       `https://garden.test/api/teams/${created.id}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const detailResponse = await handlerFor(TeamRoute, 'GET')(
+    const detailResponse = await handlerFor(
+      TeamRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -411,7 +468,10 @@ describe('teams API (integration)', () => {
       'POST',
       { name: 'engineering' },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -437,12 +497,13 @@ describe('teams API (integration)', () => {
       'POST',
       {
         name: 'Rollback team',
-        initial_members: [
-          { member_type: 'user', user_id: fixture.outsiderId },
-        ],
+        initial_members: [{ member_type: 'user', user_id: fixture.outsiderId }],
       },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -480,12 +541,13 @@ describe('teams API (integration)', () => {
       {
         name: 'Owner missing team',
         owner_user_id: fixture.adminId,
-        initial_members: [
-          { member_type: 'user', user_id: fixture.memberId },
-        ],
+        initial_members: [{ member_type: 'user', user_id: fixture.memberId }],
       },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -514,7 +576,10 @@ describe('teams API (integration)', () => {
         ],
       },
     )
-    const response = await handlerFor(TeamsRoute, 'POST')(
+    const response = await handlerFor(
+      TeamsRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -573,7 +638,10 @@ describe('teams API (integration)', () => {
     const managerRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const managerResponse = await handlerFor(TeamsRoute, 'GET')(
+    const managerResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -602,7 +670,10 @@ describe('teams API (integration)', () => {
     const memberRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const memberResponse = await handlerFor(TeamsRoute, 'GET')(
+    const memberResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -624,7 +695,7 @@ describe('teams API (integration)', () => {
     expect(memberBody.unique_member_count).toBe(3)
   })
 
-  it('scopes issue counts to the caller visibility', async () => {
+  it('counts the whole Team board for members and managers alike', async () => {
     const fixture = await seedWorkspace(testDb)
     const teamId = await seedTeamRow(testDb, {
       workspaceId: fixture.workspaceId,
@@ -650,7 +721,10 @@ describe('teams API (integration)', () => {
     const memberRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const memberResponse = await handlerFor(TeamsRoute, 'GET')(
+    const memberResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -666,12 +740,15 @@ describe('teams API (integration)', () => {
     const memberBody = (await memberResponse.json()) as {
       teams: Array<{ issue_count: number }>
     }
-    expect(memberBody.teams[0]?.issue_count).toBe(1)
+    expect(memberBody.teams[0]?.issue_count).toBe(2)
 
     const ownerRequest = new Request('https://garden.test/api/teams', {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const ownerResponse = await handlerFor(TeamsRoute, 'GET')(
+    const ownerResponse = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -700,7 +777,10 @@ describe('teams API (integration)', () => {
     const request = new Request(`https://garden.test/api/teams/${teamId}`, {
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const response = await handlerFor(TeamRoute, 'GET')(
+    const response = await handlerFor(
+      TeamRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -724,7 +804,10 @@ describe('teams API (integration)', () => {
       `https://garden.test/api/teams/${randomUUID()}`,
       { headers: { 'X-Workspace-ID': fixture.workspaceId } },
     )
-    const response = await handlerFor(TeamRoute, 'GET')(
+    const response = await handlerFor(
+      TeamRoute,
+      'GET',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -757,7 +840,10 @@ describe('teams API (integration)', () => {
       'PATCH',
       { name: 'Nope' },
     )
-    const memberResponse = await handlerFor(TeamRoute, 'PATCH')(
+    const memberResponse = await handlerFor(
+      TeamRoute,
+      'PATCH',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -778,7 +864,10 @@ describe('teams API (integration)', () => {
       'PATCH',
       { name: 'Renamed', description: 'Updated' },
     )
-    const ownerResponse = await handlerFor(TeamRoute, 'PATCH')(
+    const ownerResponse = await handlerFor(
+      TeamRoute,
+      'PATCH',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -816,7 +905,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'user', user_id: fixture.otherId },
     )
-    const addResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const addResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -845,7 +937,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'user', user_id: fixture.otherId },
     )
-    const duplicateResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const duplicateResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -859,9 +954,9 @@ describe('teams API (integration)', () => {
       ),
     )
     expect(duplicateResponse.status).toBe(409)
-    expect(
-      ((await duplicateResponse.json()) as { code: string }).code,
-    ).toBe('TEAM_MEMBER_EXISTS')
+    expect(((await duplicateResponse.json()) as { code: string }).code).toBe(
+      'TEAM_MEMBER_EXISTS',
+    )
 
     const archivedRequest = jsonRequest(
       `https://garden.test/api/teams/${teamId}/members`,
@@ -869,7 +964,10 @@ describe('teams API (integration)', () => {
       'POST',
       { member_type: 'agent', agent_id: fixture.archivedAgentId },
     )
-    const archivedResponse = await handlerFor(TeamMembersRoute, 'POST')(
+    const archivedResponse = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -911,7 +1009,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const removeOtherResponse = await handlerFor(TeamMemberRoute, 'DELETE')(
+    const removeOtherResponse = await handlerFor(
+      TeamMemberRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -933,7 +1034,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const removeOwnerResponse = await handlerFor(TeamMemberRoute, 'DELETE')(
+    const removeOwnerResponse = await handlerFor(
+      TeamMemberRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -947,9 +1051,9 @@ describe('teams API (integration)', () => {
       ),
     )
     expect(removeOwnerResponse.status).toBe(409)
-    expect(
-      ((await removeOwnerResponse.json()) as { code: string }).code,
-    ).toBe('TEAM_OWNER_REQUIRES_TRANSFER')
+    expect(((await removeOwnerResponse.json()) as { code: string }).code).toBe(
+      'TEAM_OWNER_REQUIRES_TRANSFER',
+    )
   })
 
   it('only workspace managers transfer ownership and the target must be a member', async () => {
@@ -967,7 +1071,10 @@ describe('teams API (integration)', () => {
       'PUT',
       { owner_user_id: fixture.otherId },
     )
-    const ownerAttemptResponse = await handlerFor(TeamOwnerRoute, 'PUT')(
+    const ownerAttemptResponse = await handlerFor(
+      TeamOwnerRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -988,7 +1095,10 @@ describe('teams API (integration)', () => {
       'PUT',
       { owner_user_id: fixture.adminId },
     )
-    const invalidTargetResponse = await handlerFor(TeamOwnerRoute, 'PUT')(
+    const invalidTargetResponse = await handlerFor(
+      TeamOwnerRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1009,7 +1119,10 @@ describe('teams API (integration)', () => {
       'PUT',
       { owner_user_id: fixture.otherId },
     )
-    const transferResponse = await handlerFor(TeamOwnerRoute, 'PUT')(
+    const transferResponse = await handlerFor(
+      TeamOwnerRoute,
+      'PUT',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1048,7 +1161,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const blockedResponse = await handlerFor(TeamRoute, 'DELETE')(
+    const blockedResponse = await handlerFor(
+      TeamRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1078,7 +1194,10 @@ describe('teams API (integration)', () => {
         headers: { 'X-Workspace-ID': fixture.workspaceId },
       },
     )
-    const deleteResponse = await handlerFor(TeamRoute, 'DELETE')(
+    const deleteResponse = await handlerFor(
+      TeamRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1126,7 +1245,10 @@ describe('teams API (integration)', () => {
       method: 'DELETE',
       headers: { 'X-Workspace-ID': fixture.workspaceId },
     })
-    const response = await handlerFor(TeamRoute, 'DELETE')(
+    const response = await handlerFor(
+      TeamRoute,
+      'DELETE',
+    )(
       invocation(
         makeContext({
           testDb,
@@ -1140,5 +1262,229 @@ describe('teams API (integration)', () => {
       ),
     )
     expect(response.status).toBe(403)
+  })
+
+  it('returns 401 to a signed-out caller', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const request = jsonRequest(
+      'https://garden.test/api/teams',
+      fixture.workspaceId,
+      'GET',
+    )
+    const response = await handlerFor(
+      TeamsRoute,
+      'GET',
+    )(
+      invocation(
+        makeContext({ testDb, userId: null, role: 'member', request }),
+        request,
+        {},
+        '/api/teams',
+      ),
+    )
+    expect(response.status).toBe(401)
+  })
+
+  it('refuses to add a user from outside the workspace', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const teamId = await seedTeamRow(testDb, {
+      workspaceId: fixture.workspaceId,
+      name: 'Closed',
+      ownerUserId: fixture.ownerId,
+    })
+    const request = jsonRequest(
+      `https://garden.test/api/teams/${teamId}/members`,
+      fixture.workspaceId,
+      'POST',
+      { member_type: 'user', user_id: fixture.outsiderId },
+    )
+    const response = await handlerFor(
+      TeamMembersRoute,
+      'POST',
+    )(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request,
+        }),
+        request,
+        { teamId },
+        '/api/teams/$teamId/members',
+      ),
+    )
+    expect(response.status).toBeGreaterThanOrEqual(400)
+    expect(response.status).toBeLessThan(500)
+    const members = await testDb.db
+      .select()
+      .from(schema.teamMember)
+      .where(eq(schema.teamMember.teamId, teamId))
+    expect(members.map((member) => member.userId)).toEqual([fixture.ownerId])
+  })
+
+  it('refuses to make an agent the Team owner', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const teamId = await seedTeamRow(testDb, {
+      workspaceId: fixture.workspaceId,
+      name: 'Humans only',
+      ownerUserId: fixture.ownerId,
+    })
+    const request = jsonRequest(
+      `https://garden.test/api/teams/${teamId}/owner`,
+      fixture.workspaceId,
+      'PUT',
+      { owner_user_id: fixture.activeAgentId },
+    )
+    const response = await handlerFor(
+      TeamOwnerRoute,
+      'PUT',
+    )(
+      invocation(
+        makeContext({
+          testDb,
+          userId: fixture.ownerId,
+          role: 'owner',
+          request,
+        }),
+        request,
+        { teamId },
+        '/api/teams/$teamId/owner',
+      ),
+    )
+    expect(response.status).toBeGreaterThanOrEqual(400)
+    expect(response.status).toBeLessThan(500)
+    const [team] = await testDb.db
+      .select()
+      .from(schema.team)
+      .where(eq(schema.team.id, teamId))
+    expect(team?.ownerUserId).toBe(fixture.ownerId)
+  })
+
+  it('publishes Team events with identifiers only, after each write', async () => {
+    const fixture = await seedWorkspace(testDb)
+    const published: Array<{ type: string; payload: Record<string, unknown> }> =
+      []
+    const call = async (
+      route: Parameters<typeof handlerFor>[0],
+      method: string,
+      url: string,
+      params: Record<string, string>,
+      pathname: string,
+      body?: unknown,
+    ) => {
+      const request = jsonRequest(url, fixture.workspaceId, method, body)
+      const response = await handlerFor(
+        route,
+        method,
+      )(
+        invocation(
+          makeContext({
+            testDb,
+            userId: fixture.ownerId,
+            role: 'owner',
+            request,
+            published,
+          }),
+          request,
+          params,
+          pathname,
+        ),
+      )
+      await flushWaitUntil()
+      return response
+    }
+
+    const created = await call(
+      TeamsRoute,
+      'POST',
+      'https://garden.test/api/teams',
+      {},
+      '/api/teams',
+      { name: 'Broadcast', description: 'Secret plans' },
+    )
+    expect(created.status).toBe(201)
+    const { id: teamId } = (await created.json()) as { id: string }
+    const teamUrl = `https://garden.test/api/teams/${teamId}`
+
+    expect(
+      (
+        await call(
+          TeamRoute,
+          'PATCH',
+          teamUrl,
+          { teamId },
+          '/api/teams/$teamId',
+          {
+            description: 'New plans',
+          },
+        )
+      ).status,
+    ).toBe(200)
+    expect(
+      (
+        await call(
+          TeamMembersRoute,
+          'POST',
+          `${teamUrl}/members`,
+          { teamId },
+          '/api/teams/$teamId/members',
+          { member_type: 'user', user_id: fixture.memberId },
+        )
+      ).status,
+    ).toBe(201)
+    expect(
+      (
+        await call(
+          TeamOwnerRoute,
+          'PUT',
+          `${teamUrl}/owner`,
+          { teamId },
+          '/api/teams/$teamId/owner',
+          { owner_user_id: fixture.memberId },
+        )
+      ).status,
+    ).toBe(200)
+    expect(
+      (
+        await call(
+          TeamRoute,
+          'DELETE',
+          teamUrl,
+          { teamId },
+          '/api/teams/$teamId',
+        )
+      ).status,
+    ).toBe(204)
+
+    // A refused write publishes nothing.
+    const before = published.length
+    const refused = await call(
+      TeamsRoute,
+      'POST',
+      'https://garden.test/api/teams',
+      {},
+      '/api/teams',
+      { name: '' },
+    )
+    expect(refused.status).toBe(400)
+    expect(published).toHaveLength(before)
+
+    expect(published.map((event) => event.type)).toEqual([
+      'team:created',
+      'team:updated',
+      'team_member:added',
+      'team:updated',
+      'team:deleted',
+    ])
+    for (const event of published) {
+      expect(event.payload.team_id).toBe(teamId)
+      for (const field of Object.keys(event.payload)) {
+        expect(
+          SAFE_TEAM_EVENT_FIELDS.has(field),
+          `${event.type}.${field}`,
+        ).toBe(true)
+      }
+    }
   })
 })

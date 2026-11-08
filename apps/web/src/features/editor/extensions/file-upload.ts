@@ -1,14 +1,14 @@
-import { Extension } from '@tiptap/core'
+import { Extension, type Editor } from '@tiptap/core'
 import { Plugin, PluginKey } from '@tiptap/pm/state'
 import type { UploadResult } from '@garden/app-state/hooks/use-file-upload'
 import { createSafeId } from '@garden/core/utils'
 
 /** Find and remove a fileCard node by uploadId. */
 
-function removeUploadingFileCard(editor: any, uploadId: string) {
+function removeUploadingFileCard(editor: Editor, uploadId: string) {
   const { tr } = editor.state
   let deleted = false
-  editor.state.doc.descendants((node: any, pos: number) => {
+  editor.state.doc.descendants((node, pos) => {
     if (deleted) return false
     if (node.type.name === 'fileCard' && node.attrs.uploadId === uploadId) {
       tr.delete(pos, pos + node.nodeSize)
@@ -22,10 +22,10 @@ function removeUploadingFileCard(editor: any, uploadId: string) {
 
 /** Update a fileCard node from uploading state to final state with real URL. */
 
-function finalizeFileCard(editor: any, uploadId: string, href: string) {
+function finalizeFileCard(editor: Editor, uploadId: string, href: string) {
   const { tr } = editor.state
   let updated = false
-  editor.state.doc.descendants((node: any, nodePos: number) => {
+  editor.state.doc.descendants((node, nodePos) => {
     if (updated) return false
     if (node.type.name === 'fileCard' && node.attrs.uploadId === uploadId) {
       tr.setNodeMarkup(nodePos, undefined, {
@@ -41,11 +41,11 @@ function finalizeFileCard(editor: any, uploadId: string, href: string) {
   if (updated) editor.view.dispatch(tr)
 }
 
-function removeImageBySrc(editor: any, src: string) {
+function removeImageBySrc(editor: Editor | null, src: string) {
   if (!editor) return
   const { tr } = editor.state
   let deleted = false
-  editor.state.doc.descendants((node: any, pos: number) => {
+  editor.state.doc.descendants((node, pos) => {
     if (deleted) return false
     if (node.type.name === 'image' && node.attrs.src === src) {
       tr.delete(pos, pos + node.nodeSize)
@@ -62,7 +62,7 @@ function removeImageBySrc(editor: any, src: string) {
  * Used by both paste/drop (at cursor) and button upload (at end of doc).
  */
 export async function uploadAndInsertFile(
-  editor: any,
+  editor: Editor,
   file: File,
   handler: (file: File) => Promise<UploadResult | null>,
   pos?: number,
@@ -87,25 +87,20 @@ export async function uploadAndInsertFile(
       if (result) {
         const { tr } = editor.state
         let found = false
-        editor.state.doc.descendants(
-          (
-            node: { type: { name: string }; attrs: { src: string } },
-            nodePos: number,
-          ) => {
-            if (found) return false
-            if (node.type.name === 'image' && node.attrs.src === blobUrl) {
-              tr.setNodeMarkup(nodePos, undefined, {
-                ...node.attrs,
-                src: result.link,
-                alt: result.filename,
-                uploading: false,
-              })
-              found = true
-              return false
-            }
-            return undefined
-          },
-        )
+        editor.state.doc.descendants((node, nodePos) => {
+          if (found) return false
+          if (node.type.name === 'image' && node.attrs.src === blobUrl) {
+            tr.setNodeMarkup(nodePos, undefined, {
+              ...node.attrs,
+              src: result.link,
+              alt: result.filename,
+              uploading: false,
+            })
+            found = true
+            return false
+          }
+          return undefined
+        })
         if (found) editor.view.dispatch(tr)
       } else {
         removeImageBySrc(editor, blobUrl)

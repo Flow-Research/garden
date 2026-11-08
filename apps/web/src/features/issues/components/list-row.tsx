@@ -1,24 +1,19 @@
 import { memo, useCallback } from 'react'
 import type { Issue } from '@garden/core/types'
 import { FileText } from 'lucide-react'
+import { formatShortDate } from '@garden/core/format'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { PriorityIcon } from './priority-icon'
 import { ProgressRing } from './progress-ring'
+import { issuePath } from '@/features/navigation/use-surface-navigation'
 import { StatusIcon } from './status-icon'
 
 export interface ChildProgress {
   done: number
   total: number
-}
-
-function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-  })
 }
 
 /** Design pill used by the Team list variant's team/project/description chips. */
@@ -91,7 +86,7 @@ export const ListRow = memo(function ListRow({
           inheritColor
         />
         <a
-          href={`/issues/${issue.id}`}
+          href={issuePath(issue.id)}
           onClick={handleOpen}
           className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-4"
         >
@@ -116,7 +111,7 @@ export const ListRow = memo(function ListRow({
         selected ? 'bg-accent/30' : ''
       }`}
     >
-      <div className="relative flex shrink-0 items-center justify-center w-4 h-4">
+      <div className="relative flex shrink-0 items-center justify-center size-4">
         <PriorityIcon
           priority={issue.priority}
           className={selected ? 'hidden' : 'group-hover/row:hidden'}
@@ -124,12 +119,14 @@ export const ListRow = memo(function ListRow({
         <Checkbox
           checked={selected}
           onCheckedChange={() => toggle(issue.id)}
-          className={`absolute inset-0 size-4 ${selected ? '' : 'hidden group-hover/row:flex'}`}
+          // Opacity, not display:none, so the checkbox stays reachable by
+          // keyboard and shows when it has focus. It covers the priority icon.
+          className={`absolute inset-0 size-4 ${selected ? '' : 'opacity-0 group-hover/row:opacity-100 focus-visible:bg-background focus-visible:opacity-100'}`}
           aria-label={selected ? 'Deselect issue' : 'Select issue'}
         />
       </div>
       <a
-        href={`/issues/${issue.id}`}
+        href={issuePath(issue.id)}
         onClick={handleOpen}
         className="flex flex-1 items-center gap-2 min-w-0 cursor-pointer"
       >
@@ -163,7 +160,7 @@ export const ListRow = memo(function ListRow({
         )}
         {issue.due_date && (
           <span className="shrink-0 text-xs text-muted-foreground">
-            {formatDate(issue.due_date)}
+            {formatShortDate(issue.due_date)}
           </span>
         )}
         {issue.assignee_type && issue.assignee_id && (

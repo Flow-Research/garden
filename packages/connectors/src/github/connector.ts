@@ -9,6 +9,12 @@ export default defineConnector({
   label: 'GitHub',
   description:
     'Repository-scoped issues, pull requests, code, releases, and Actions through the Garden GitHub App.',
+  capabilities: [
+    'read and search source code repositories',
+    'manage issues and pull requests',
+    'review code changes',
+    'inspect releases and workflow runs',
+  ],
   icon: './icon.svg',
   native: {
     availability: 'installation',

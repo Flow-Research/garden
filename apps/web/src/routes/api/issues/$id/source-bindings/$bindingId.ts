@@ -3,21 +3,14 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import {
-  badRequest,
-  notFound,
-} from '@/lib/server/control-plane'
+import { notFound } from '@/lib/server/control-plane'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
-  removeSourceBinding,
-  type IssueSourceBindingServiceError,
-} from '@garden/core/issues/source-binding'
-
-function sourceBindingError(error: IssueSourceBindingServiceError) {
-  return error.code === 'binding_not_found'
-    ? notFound(error.message)
-    : badRequest(error.message)
-}
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import { removeSourceBinding } from '@garden/server/issues/source-binding'
 
 export const Route = createFileRoute(
   '/api/issues/$id/source-bindings/$bindingId',
@@ -41,11 +34,20 @@ export const Route = createFileRoute(
           .limit(1)
         if (!binding) return notFound('Source binding not found')
 
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request: appContext.request,
+          workspaceId: binding.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
+
         const removeResult = await removeSourceBinding({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,
           bindingId: params.bindingId,
         })
-        if (removeResult.isErr()) return sourceBindingError(removeResult.error)
+        if (removeResult.isErr())
+          return serviceErrorResponse(removeResult.error)
         return new Response(null, { status: 204 })
       },
     },

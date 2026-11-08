@@ -63,12 +63,11 @@ export function SkillGlyph({ className }: { className?: string }) {
   )
 }
 
-// ACCEPTED_FILE_TYPES is the composer picker's accept attribute AND the
-// allowlist used by paste/drop. Images, PDFs, Word docs, plain text, markdown,
-// CSV, JSON.
-// Kept as a single source of truth so all three ingest paths agree.
+// ACCEPTED_FILE_TYPES is the composer picker's accept attribute. Images, PDFs,
+// Word docs, plain text, markdown, CSV, XLSX, JSON. Kept as a single source of
+// truth so all three ingest paths expose the same formats.
 export const ACCEPTED_FILE_TYPES =
-  'image/*,application/pdf,.pdf,.doc,.docx,.txt,.md,.markdown,.csv,.json,text/plain,text/markdown,text/csv,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  'image/*,application/pdf,.pdf,.doc,.docx,.txt,.md,.markdown,.csv,.xlsx,.json,text/plain,text/markdown,text/csv,application/json,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
 export function createFileList(files: File[]) {
   const transfer = new DataTransfer()

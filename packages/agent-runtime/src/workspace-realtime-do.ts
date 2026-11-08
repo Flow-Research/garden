@@ -50,7 +50,6 @@ export class WorkspaceRealtimeDO extends Agent<Cloudflare.Env> {
       userId,
       role,
       teamIds: parseIdList(headers.get('x-garden-team-ids')),
-      ownedTeamIds: parseIdList(headers.get('x-garden-owned-team-ids')),
       connectedAt: Date.now(),
     })
     realtimeLogger.info('realtime.connected', {
@@ -80,7 +79,9 @@ export class WorkspaceRealtimeDO extends Agent<Cloudflare.Env> {
    * them.
    */
   async publish(envelope: RealtimePublishableEnvelope): Promise<number> {
-    const connections = [...this.getConnections<WorkspaceRealtimeConnectionState>()]
+    const connections = [
+      ...this.getConnections<WorkspaceRealtimeConnectionState>(),
+    ]
     for (const connection of connections) {
       if (!connection.state) continue
       const updated = applyRealtimeProfileUpdate(

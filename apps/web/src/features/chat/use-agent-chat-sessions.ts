@@ -15,6 +15,7 @@ import {
 import { useAuthStore } from '@garden/app-state/auth'
 import { useChatStore } from '@garden/app-state/chat'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { chatThreadKeys } from './queries'
 
 export type { AgentChatSession }
 export { isPendingFirstTurn, NEW_SESSION_TITLE, sortSessions }
@@ -26,6 +27,15 @@ function isWarmSession(session: AgentChatSession) {
     isPendingFirstTurn(session)
   )
 }
+
+/**
+ * Warm-session claims in flight, keyed by workspace and agent. The chat
+ * runtime provider and the chat screen each run `useAgentSessions`, and each
+ * call owns its own mutation, so both used to create a thread when no warm one
+ * existed; the screen's effect also re-ran on every mutation state change and
+ * created more. Sharing the pending claim gives every caller the same thread.
+ */
+const warmClaimsInFlight = new Map<string, Promise<AgentChatSession>>()
 
 export function useAgentSessions() {
   const qc = useQueryClient()
@@ -40,7 +50,7 @@ export function useAgentSessions() {
   const workspaceId = workspace?.id ?? null
 
   const queryKey = useMemo(
-    () => ['chat-threads', workspaceId, user?.id ?? null] as const,
+    () => chatThreadKeys.list(workspaceId, user?.id ?? null),
     [workspaceId, user?.id],
   )
 
@@ -80,6 +90,7 @@ export function useAgentSessions() {
     mutationFn: async (input: { sessionId: string; title: string }) =>
       updateChatThread(input.sessionId, { title: input.title }),
     onMutate: async ({ sessionId, title }) => {
+      const previousSessions = qc.getQueryData<AgentChatSession[]>(queryKey)
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
         current.map((session) =>
           session.id === sessionId
@@ -87,6 +98,14 @@ export function useAgentSessions() {
             : session,
         ),
       )
+      return { previousSessions }
+    },
+    // The new title used to stay on screen after a failed rename.
+    onError: (_err, _input, context) => {
+      if (context?.previousSessions) {
+        qc.setQueryData(queryKey, context.previousSessions)
+      }
+      toast.error('Failed to rename chat')
     },
     onSuccess: (updated) => {
       qc.setQueryData<AgentChatSession[]>(queryKey, (current = []) =>
@@ -248,7 +267,7 @@ export function useAgentSessions() {
     [qc, queryKey],
   )
 
-  const sessions = sessionsQuery.data ?? []
+  const sessions = useMemo(() => sessionsQuery.data ?? [], [sessionsQuery.data])
 
   // Keep exactly one warm empty chat per workspace/agent. Used only for the
   // snappy first click path; non-empty chats are never recycled. Errored ids
@@ -266,10 +285,20 @@ export function useAgentSessions() {
     [erroredSessionIds, selectedAgentId, sessions],
   )
 
+  // `mutateAsync` is stable; the mutation object is not (it is a new object
+  // every render), so depending on it re-created this callback constantly.
+  const { mutateAsync: createSessionAsync } = createSession
   const claimWarmSession = useCallback(async () => {
     if (warmSession) return warmSession
-    return createSession.mutateAsync(NEW_SESSION_TITLE)
-  }, [createSession, warmSession])
+    const claimKey = `${workspaceId ?? ''}:${selectedAgentId ?? ''}`
+    const pending = warmClaimsInFlight.get(claimKey)
+    if (pending) return pending
+    const claim = createSessionAsync(NEW_SESSION_TITLE).finally(() => {
+      warmClaimsInFlight.delete(claimKey)
+    })
+    warmClaimsInFlight.set(claimKey, claim)
+    return claim
+  }, [createSessionAsync, selectedAgentId, warmSession, workspaceId])
 
   return {
     createSession,

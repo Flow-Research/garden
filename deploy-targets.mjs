@@ -28,6 +28,7 @@ export const deploymentTargets = {
     executorBlobsId: 'executor-blobs',
     executorBlobsBucket: 'harnessy-connectors-blobs',
     agentDoId: 'agent-do',
+    workspaceRealtimeId: 'workspace-realtime',
     // The v1 Worker tag stored the runtime binding name `AUTOMATION_TRIGGER`
     // as the class for logical ID `automation-trigger`. Use the binding name as
     // the v2 logical ID so adoption matches the observed `AutomationTriggerDO`
@@ -35,6 +36,10 @@ export const deploymentTargets = {
     automationTriggerId: 'AUTOMATION_TRIGGER',
     workflowId: 'run-workflow',
     workflowName: 'garden-run-workflow-staging',
+    decideAnalysisWorkflowId: 'decide-analysis-workflow',
+    decideAnalysisWorkflowName: 'garden-decide-analysis-workflow-staging',
+    githubRepoImportWorkflowId: 'github-repo-import-workflow',
+    githubRepoImportWorkflowName: 'garden-github-repo-import-workflow-staging',
     sandboxId: 'sandbox',
     sandboxName: 'garden-web-sandbox-staging',
     aiGatewayId: 'garden-staging',
@@ -64,10 +69,15 @@ export const deploymentTargets = {
     executorBlobsId: 'executor-blobs-dev',
     executorBlobsBucket: 'harnessy-connectors-blobs-dev',
     agentDoId: 'agent-do-dev',
+    workspaceRealtimeId: 'workspace-realtime-dev',
     // Match the runtime binding name for newly provisioned Durable Objects.
     automationTriggerId: 'AUTOMATION_TRIGGER',
     workflowId: 'run-workflow-dev',
     workflowName: 'garden-run-workflow-dev',
+    decideAnalysisWorkflowId: 'decide-analysis-workflow-dev',
+    decideAnalysisWorkflowName: 'garden-decide-analysis-workflow-dev',
+    githubRepoImportWorkflowId: 'github-repo-import-workflow-dev',
+    githubRepoImportWorkflowName: 'garden-github-repo-import-workflow-dev',
     sandboxId: 'sandbox-dev',
     sandboxName: 'garden-web-sandbox-dev',
     aiGatewayId: 'garden-dev',
@@ -97,11 +107,16 @@ export const deploymentTargets = {
     executorBlobsId: 'executor-blobs-preview',
     executorBlobsBucket: 'harnessy-connectors-blobs-preview',
     agentDoId: 'agent-do-preview',
+    workspaceRealtimeId: 'workspace-realtime-preview',
     // The first v2 preview adoption registered this binding under its runtime
     // name. Keep that state identity to avoid a Durable Object class migration.
     automationTriggerId: 'AUTOMATION_TRIGGER',
     workflowId: 'run-workflow-preview',
     workflowName: 'garden-run-workflow-preview',
+    decideAnalysisWorkflowId: 'decide-analysis-workflow-preview',
+    decideAnalysisWorkflowName: 'garden-decide-analysis-workflow-preview',
+    githubRepoImportWorkflowId: 'github-repo-import-workflow-preview',
+    githubRepoImportWorkflowName: 'garden-github-repo-import-workflow-preview',
     sandboxId: 'sandbox-preview',
     sandboxName: 'garden-web-sandbox-preview',
     aiGatewayId: 'garden-preview',

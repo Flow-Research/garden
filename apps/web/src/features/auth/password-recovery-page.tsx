@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Result, TaggedError } from 'better-result'
-import { ArrowLeftIcon, ArrowRightIcon, Loader2Icon } from 'lucide-react'
+import { ArrowLeftIcon, ArrowRightIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import { Button, buttonVariants } from '@garden/ui/components/ui/button'
@@ -13,6 +13,7 @@ import {
   FieldLabel,
 } from '@garden/ui/components/ui/field'
 import { Input } from '@garden/ui/components/ui/input'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { LoginFoliage } from '@/components/login-foliage'
 import { authClient } from '@/lib/auth/client'
 
@@ -126,7 +127,7 @@ export function RequestPasswordResetPage({
               <FieldLabel htmlFor="recovery-email">Email</FieldLabel>
               <Input
                 id="recovery-email"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -140,7 +141,7 @@ export function RequestPasswordResetPage({
             <Field>
               <Button type="submit" className="h-10 w-full" disabled={loading}>
                 {loading ? (
-                  <Loader2Icon className="size-4 animate-spin" />
+                  <Spinner aria-hidden="true" />
                 ) : (
                   <ArrowRightIcon className="size-4" />
                 )}
@@ -233,7 +234,7 @@ export function ResetPasswordPage({
               <FieldLabel htmlFor="new-password">New password</FieldLabel>
               <Input
                 id="new-password"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -249,7 +250,7 @@ export function ResetPasswordPage({
               </FieldLabel>
               <Input
                 id="confirm-password"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="password"
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}
@@ -262,7 +263,7 @@ export function ResetPasswordPage({
             <Field>
               <Button type="submit" className="h-10 w-full" disabled={loading}>
                 {loading ? (
-                  <Loader2Icon className="size-4 animate-spin" />
+                  <Spinner aria-hidden="true" />
                 ) : (
                   <ArrowRightIcon className="size-4" />
                 )}

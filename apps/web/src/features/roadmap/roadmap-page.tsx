@@ -44,16 +44,18 @@ function Masthead() {
         <div className="flex items-center gap-3">
           <SproutMark />
           <span className="text-[15px] font-medium tracking-tight">Garden</span>
-          <span className="text-[13px] text-[color:var(--slate)]">Roadmap</span>
+          <span className="text-[13px] text-text-neutral-tertiary">
+            Roadmap
+          </span>
         </div>
-        <span className="font-mono text-[11px] tabular-nums text-[color:var(--slate)]">
+        <span className="font-mono text-[11px] tabular-nums text-text-neutral-tertiary">
           {roadmapMeta.horizon} · {roadmapMeta.updated}
         </span>
       </div>
       <h1 className="roadmap-rise-2 mt-8 max-w-[24ch] text-balance text-[clamp(1.9rem,4.5vw,2.6rem)] font-semibold leading-[1.08] tracking-[-0.022em]">
         Make recurring work reliable.
       </h1>
-      <p className="roadmap-rise-3 font-prose mt-4 max-w-[62ch] text-[15.5px] leading-7 text-[color:var(--gravel)]">
+      <p className="roadmap-rise-3 font-prose mt-4 max-w-[62ch] text-[15.5px] leading-7 text-muted-foreground">
         {roadmapMeta.goal}
       </p>
       <div className="roadmap-rise-3 mt-8 grid gap-2 sm:grid-cols-3">
@@ -80,11 +82,9 @@ function ContextCallout({
   children: ReactNode
 }) {
   return (
-    <div className="rounded-[var(--radius-card,0.75rem)] border border-[color:var(--hairline)] bg-[color:var(--vellum)] px-3.5 py-3">
-      <p className="text-[12px] font-semibold text-[color:var(--ink)]">
-        {title}
-      </p>
-      <p className="mt-1 text-[12px] leading-5 text-[color:var(--slate)]">
+    <div className="rounded-[var(--radius-card,0.75rem)] border border-border bg-card/74 px-3.5 py-3">
+      <p className="text-[12px] font-semibold text-foreground">{title}</p>
+      <p className="mt-1 text-[12px] leading-5 text-text-neutral-tertiary">
         {children}
       </p>
     </div>
@@ -100,7 +100,7 @@ function SproutMark() {
       viewBox="0 0 20 20"
       fill="none"
       aria-hidden="true"
-      className="text-[color:var(--moss)]"
+      className="text-success"
     >
       <path
         d="M10 17.5v-6.2M10 11.3C10 8 7.8 5.8 4 5.5c.3 3.8 2.5 6 6 5.8ZM10 9.8c0-2.9 1.9-4.8 5.2-5-.2 3.3-2.1 5.2-5.2 5Z"
@@ -124,18 +124,18 @@ function ViewHeader({
 }) {
   return (
     <div>
-      <div className="flex items-baseline justify-between gap-4 border-b border-[color:var(--hairline)] pb-3">
+      <div className="flex items-baseline justify-between gap-4 border-b border-border pb-3">
         <h2 className="text-[20px] font-semibold tracking-[-0.02em]">
           {title}
         </h2>
         {meta && (
-          <span className="whitespace-nowrap font-mono text-[11px] tabular-nums text-[color:var(--slate)]">
+          <span className="whitespace-nowrap font-mono text-[11px] tabular-nums text-text-neutral-tertiary">
             {meta}
           </span>
         )}
       </div>
       {lede && (
-        <p className="font-prose mt-3 max-w-[66ch] text-[14.5px] leading-6.5 text-[color:var(--gravel)]">
+        <p className="font-prose mt-3 max-w-[66ch] text-[14.5px] leading-6.5 text-muted-foreground">
           {lede}
         </p>
       )}
@@ -151,10 +151,10 @@ const priorityLabel: Record<WorkPriority, string> = {
 }
 
 const priorityColor: Record<WorkPriority, string> = {
-  shipped: 'var(--moss)',
-  high: 'var(--amber-ink)',
-  medium: 'var(--gravel)',
-  low: 'var(--stone)',
+  shipped: 'var(--success)',
+  high: 'var(--text-warning-secondary)',
+  medium: 'var(--muted-foreground)',
+  low: 'var(--text-tertiary)',
 }
 
 function PriorityTag({ priority }: { priority: WorkPriority }) {
@@ -167,7 +167,7 @@ function PriorityTag({ priority }: { priority: WorkPriority }) {
         className="roadmap-dot"
         style={{
           backgroundColor:
-            priority === 'shipped' ? 'var(--moss)' : 'transparent',
+            priority === 'shipped' ? 'var(--success)' : 'transparent',
           border:
             priority === 'shipped'
               ? 'none'
@@ -190,14 +190,14 @@ function IssueLinks({ links }: { links?: IssueLink[] }) {
             href={link.href}
             target="_blank"
             rel="noreferrer"
-            className="font-mono text-[11px] text-[color:var(--moss)] underline decoration-[color:var(--hairline)] underline-offset-4 hover:decoration-[color:var(--moss)]"
+            className="font-mono text-[11px] text-success underline decoration-border underline-offset-4 hover:decoration-success"
           >
             {link.label} ↗
           </a>
         ) : (
           <span
             key={link.label}
-            className="font-mono text-[11px] text-[color:var(--slate)]"
+            className="font-mono text-[11px] text-text-neutral-tertiary"
           >
             {link.label}
           </span>
@@ -218,21 +218,21 @@ const BOARD_COLUMNS: Array<{
     key: 'now',
     label: 'Now',
     why: 'Use Garden ourselves. Fix what breaks and close the launch gaps.',
-    color: 'var(--amber-ink)',
+    color: 'var(--text-warning-secondary)',
     items: launchGates,
   },
   {
     key: 'next',
     label: 'Next',
     why: 'Bring in a few pilots once our own workflows hold up.',
-    color: 'var(--gravel)',
+    color: 'var(--muted-foreground)',
     items: betaQuality,
   },
   {
     key: 'later',
     label: 'Later',
     why: 'Build mini apps and a marketplace after people reuse the same patterns.',
-    color: 'var(--moss)',
+    color: 'var(--success)',
     items: longHorizon,
   },
 ]
@@ -297,11 +297,11 @@ function RoadmapOverview() {
                 >
                   {column.label}
                 </h3>
-                <span className="ml-auto font-mono text-[11px] tabular-nums text-[color:var(--slate)]">
+                <span className="ml-auto font-mono text-[11px] tabular-nums text-text-neutral-tertiary">
                   {column.items.length}
                 </span>
               </div>
-              <p className="mt-2 min-h-10 text-[11.5px] leading-5 text-[color:var(--slate)]">
+              <p className="mt-2 min-h-10 text-[11.5px] leading-5 text-text-neutral-tertiary">
                 {column.why}
               </p>
             </header>
@@ -313,26 +313,26 @@ function RoadmapOverview() {
                 >
                   <summary>
                     <span className="flex items-center justify-between gap-2">
-                      <span className="font-mono text-[11px] text-[color:var(--slate)]">
+                      <span className="font-mono text-[11px] text-text-neutral-tertiary">
                         {item.ref}
                       </span>
                       <PriorityTag priority={item.priority} />
                     </span>
-                    <span className="mt-1.5 block text-[13.5px] font-medium leading-5 text-[color:var(--ink)]">
+                    <span className="mt-1.5 block text-[13.5px] font-medium leading-5 text-foreground">
                       {item.title}
                     </span>
                     {item.note && (
-                      <span className="mt-1 block font-mono text-[10.5px] text-[color:var(--moss)]">
+                      <span className="mt-1 block font-mono text-[10.5px] text-success">
                         {item.note}
                       </span>
                     )}
                   </summary>
                   <div className="roadmap-card-body">
-                    <p className="text-[13px] leading-6 text-[color:var(--gravel)]">
+                    <p className="text-[13px] leading-6 text-muted-foreground">
                       {item.detail}
                     </p>
                     {item.evidence && (
-                      <p className="mt-1.5 font-mono text-[10.5px] text-[color:var(--slate)]">
+                      <p className="mt-1.5 font-mono text-[10.5px] text-text-neutral-tertiary">
                         {item.evidence}
                       </p>
                     )}
@@ -358,16 +358,16 @@ function ArchitectureView() {
         title="Who owns what"
         lede="The full architecture is bigger than this page. These three boundaries are enough for the work in front of us."
       />
-      <dl className="mt-6 divide-y divide-[color:var(--hairline-soft)] border-y border-[color:var(--hairline-soft)]">
+      <dl className="mt-6 divide-y divide-border/60 border-y border-border/60">
         {architectureBoundaries.map((boundary) => (
           <div
             key={boundary.owner}
             className="grid gap-1 py-4 sm:grid-cols-[10rem_1fr] sm:gap-5"
           >
-            <dt className="font-mono text-[11px] font-medium text-[color:var(--moss)]">
+            <dt className="font-mono text-[11px] font-medium text-success">
               {boundary.owner}
             </dt>
-            <dd className="text-[13.5px] leading-6 text-[color:var(--gravel)]">
+            <dd className="text-[13.5px] leading-6 text-muted-foreground">
               {boundary.responsibility}
             </dd>
           </div>
@@ -389,7 +389,7 @@ function NotNowList({
       {items.map((item) => (
         <li
           key={item.text}
-          className="flex gap-2.5 text-[13.5px] leading-6 text-[color:var(--gravel)]"
+          className="flex gap-2.5 text-[13.5px] leading-6 text-muted-foreground"
         >
           {marker(item)}
           <span>
@@ -423,13 +423,13 @@ function NotNowView() {
             marker={() => (
               <span
                 aria-hidden="true"
-                className="mt-[9px] h-px w-3 shrink-0 bg-[color:var(--stone)]"
+                className="mt-[9px] h-px w-3 shrink-0 bg-icon-tertiary"
               />
             )}
           />
         </div>
         <div>
-          <h3 className="text-[12.5px] font-semibold text-[color:var(--clay-ink)]">
+          <h3 className="text-[12.5px] font-semibold text-text-danger-secondary">
             Guardrails
           </h3>
           <NotNowList
@@ -437,7 +437,7 @@ function NotNowView() {
             marker={() => (
               <span
                 aria-hidden="true"
-                className="mt-[7px] shrink-0 font-mono text-[10px] leading-none text-[color:var(--clay-ink)]"
+                className="mt-[7px] shrink-0 font-mono text-[10px] leading-none text-text-danger-secondary"
               >
                 ×
               </span>
@@ -451,13 +451,13 @@ function NotNowView() {
 
 function Footer() {
   return (
-    <footer className="mt-20 border-t border-[color:var(--hairline)] pt-5">
-      <p className="text-[12px] leading-6 text-[color:var(--slate)]">
+    <footer className="mt-20 border-t border-border pt-5">
+      <p className="text-[12px] leading-6 text-text-neutral-tertiary">
         Updated {roadmapMeta.updated} from{' '}
         {roadmapMeta.sources.map((source, index) => (
           <span key={source.label}>
             {index > 0 && ' · '}
-            <span className="font-mono text-[11px] text-[color:var(--gravel)]">
+            <span className="font-mono text-[11px] text-muted-foreground">
               {source.label}
             </span>{' '}
             ({source.detail})
@@ -468,7 +468,7 @@ function Footer() {
           href={roadmapMeta.boardsUrl}
           target="_blank"
           rel="noreferrer"
-          className="text-[color:var(--moss)] underline decoration-[color:var(--hairline)] underline-offset-4 hover:decoration-[color:var(--moss)]"
+          className="text-success underline decoration-border underline-offset-4 hover:decoration-success"
         >
           Garden issue tracker
         </a>

@@ -56,10 +56,7 @@ export const team = pgTable(
     // A table-level UNIQUE constraint (not a bare unique index) so Postgres has
     // the referenced key available when the composite child FKs are created.
     unique('team_id_workspace_unique').on(table.id, table.workspaceId),
-    index('team_workspace_updated_idx').on(
-      table.workspaceId,
-      table.updatedAt,
-    ),
+    index('team_workspace_updated_idx').on(table.workspaceId, table.updatedAt),
   ],
 )
 
@@ -101,10 +98,7 @@ export const teamMember = pgTable(
       table.teamId,
       table.agentId,
     ),
-    index('team_member_workspace_team_idx').on(
-      table.workspaceId,
-      table.teamId,
-    ),
+    index('team_member_workspace_team_idx').on(table.workspaceId, table.teamId),
     check(
       'team_member_identity_check',
       sql`(${table.userId} is not null) <> (${table.agentId} is not null)`,

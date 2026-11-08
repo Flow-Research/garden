@@ -1,8 +1,8 @@
-import type { MCPServerFilter } from 'agents/mcp/client'
+import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
 import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
@@ -23,12 +23,23 @@ import {
   resolveEffectiveTrust,
 } from '@garden/connectors/capabilities'
 import {
+  extractExecutorToolFailure,
   extractExecutorToolRefsFromInput,
   mentionsUnparsedExecutorTools,
+  type ExecutorToolFailure,
 } from './executor-codemode'
+import type {
+  DecideAnalysisOwner,
+  GardenDecideMeta,
+} from './decide-analysis-types'
 import * as schema from '@garden/db/schema'
 import { captureGardenAnalyticsEvent } from '@garden/observability/analytics/client'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import {
+  createGardenLogger,
+  errorFields,
+  type GardenLogger,
+} from '@garden/observability/logger'
 import { upsertPermissionRequestInbox } from '@garden/db/inbox'
 import {
   extractThreadIdFromAgentName,
@@ -37,8 +48,14 @@ import {
 } from './mcp-connectors'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { mcpRuntimeConfig } from './mcp-runtime-config'
+import { checkGithubIssueAssignees } from './member-github-identity'
 
 export { canonicalJsonString } from '@garden/connectors/capabilities'
+
+const runtimeMcpLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'runtime-mcp-controller',
+})
 
 export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS mcp_connector_server (
@@ -56,6 +73,136 @@ export const MCP_CONNECTOR_SERVER_SCHEMA_SQL = `
 export const PERMISSION_APPROVAL_REUSE_WINDOW_MS = 60 * 1000
 
 const EXECUTOR_MCP_SERVER_ID = 'executor'
+
+/**
+ * Summarizes an Executor call for lifecycle logs without logging code or input
+ * data. The earlier logs showed only the generic MCP method result, so these
+ * fields identify the selected integration and tool call safely.
+ */
+function executorToolCallFields(args: readonly unknown[]) {
+  const input = args[0]
+  const options =
+    args[1] && typeof args[1] === 'object'
+      ? (args[1] as Record<string, unknown>)
+      : null
+  const code =
+    input && typeof input === 'object'
+      ? (input as Record<string, unknown>).code
+      : undefined
+  const refs = extractExecutorToolRefsFromInput(input)
+  return {
+    ...(typeof options?.toolCallId === 'string'
+      ? { toolCallId: options.toolCallId }
+      : {}),
+    executorRefCount: refs.length,
+    executorSlugs: [...new Set(refs.map((ref) => ref.executorSlug))],
+    hasCode: typeof code === 'string',
+    ...(typeof code === 'string' ? { codeLength: code.length } : {}),
+  }
+}
+
+/**
+ * Summarizes an Executor result for lifecycle logs without logging returned
+ * text, file contents, or resource URLs. Counts make delayed or malformed
+ * responses visible while the original result remains unchanged.
+ */
+function executorResultFields(output: unknown) {
+  if (!output || typeof output !== 'object') {
+    return {
+      contentBlockCount: 0,
+      generatedFileUrlCount: 0,
+      hasContinuationId: false,
+    }
+  }
+  const record = output as Record<string, unknown>
+  const content = Array.isArray(record.content) ? record.content : []
+  const structured =
+    record.structuredContent && typeof record.structuredContent === 'object'
+      ? (record.structuredContent as Record<string, unknown>)
+      : null
+  const generatedFileUrlCount = content.filter((block) => {
+    if (!block || typeof block !== 'object') return false
+    const item = block as Record<string, unknown>
+    const resource =
+      item.resource &&
+      typeof item.resource === 'object' &&
+      !Array.isArray(item.resource)
+        ? (item.resource as Record<string, unknown>)
+        : null
+    return (
+      (item.type === 'resource' &&
+        ((typeof item.uri === 'string' && item.uri.length > 0) ||
+          (typeof resource?.uri === 'string' && resource.uri.length > 0))) ||
+      (item.type === 'text' &&
+        typeof item.text === 'string' &&
+        /https?:\/\/\S+/u.test(item.text))
+    )
+  }).length
+  return {
+    contentBlockCount: content.length,
+    generatedFileUrlCount,
+    hasContinuationId: typeof structured?.session_id === 'string',
+  }
+}
+
+/**
+ * Converts an AI SDK tool input into the object shape required by an MCP tool.
+ * Executor tools use object schemas, but this boundary still guards the
+ * transport from receiving an invalid primitive or array.
+ */
+function asMcpToolArguments(
+  input: unknown,
+): NonNullable<McpCallToolParams['arguments']> {
+  return input && typeof input === 'object' && !Array.isArray(input)
+    ? (input as NonNullable<McpCallToolParams['arguments']>)
+    : {}
+}
+
+/**
+ * Converts a thrown Executor/MCP error into the same safe result shape used by
+ * provider-reported MCP errors. Returning this envelope preserves the failure
+ * stage and cause for the chat UI while keeping stacks and request data private.
+ */
+function executorToolFailureResult(
+  error: Error,
+  failure: ExecutorToolFailure | null,
+) {
+  const message = failure?.message || error.message || 'MCP tool call failed.'
+  const details = {
+    ...(failure?.kind === undefined ? {} : { kind: failure.kind }),
+    ...(failure?.status === undefined ? {} : { status: failure.status }),
+    ...(failure?.mcpCode === undefined ? {} : { mcpCode: failure.mcpCode }),
+    ...(failure?.transportFailure === undefined
+      ? {}
+      : { transportFailure: failure.transportFailure }),
+    ...(failure?.transportKind === undefined
+      ? {}
+      : { transportKind: failure.transportKind }),
+    ...(failure?.transportMessage === undefined
+      ? {}
+      : { transportMessage: failure.transportMessage }),
+    ...(failure?.retryable === undefined
+      ? {}
+      : { retryable: failure.retryable }),
+    ...(failure?.userAction === undefined
+      ? {}
+      : { userAction: failure.userAction }),
+  }
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text: message }],
+    structuredContent: {
+      status: 'error' as const,
+      failureStage: failure?.stage ?? 'mcp_handoff',
+      ...(failure?.code === undefined ? {} : { errorCode: failure.code }),
+      error: {
+        message,
+        ...(failure?.code === undefined ? {} : { code: failure.code }),
+      },
+      ...(Object.keys(details).length === 0 ? {} : { details }),
+    },
+  }
+}
 
 export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   EXECUTOR_MCP_SERVER_ID,
@@ -82,6 +229,28 @@ export type ThreadRuntimeIdentity = {
   agentId: string
   issueId?: string
   runId?: string
+}
+
+/**
+ * Builds the remote Executor MCP name for one Garden runtime scope.
+ *
+ * Before this scope was explicit, every runtime used `rpc:executor`. Agents
+ * maps that name to one Durable Object, so the first initialized Executor
+ * runtime could serve later workspaces or users. The installed agents@0.17.3
+ * `addMcpServer()` and PartyServer `getServerByName()` implementations use the
+ * remote name for Durable Object addressing. This name therefore includes the
+ * opaque Garden workspace, member, agent, thread, and run identifiers.
+ */
+export function buildExecutorMcpServerName(identity: ThreadRuntimeIdentity) {
+  return [
+    'executor',
+    identity.workspaceId,
+    identity.userId,
+    identity.agentId,
+    identity.threadId,
+    identity.issueId ?? 'chat',
+    identity.runId ?? 'session',
+  ].join(':')
 }
 
 type StoredConnectorServerRowRecord = {
@@ -132,6 +301,10 @@ export type McpToolRecord = {
   serverId: string
 }
 
+type McpCallToolParams = Parameters<MCPClientManager['callTool']>[0]
+type McpCallToolResultSchema = Parameters<MCPClientManager['callTool']>[1]
+type McpCallToolOptions = Parameters<MCPClientManager['callTool']>[2]
+
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
 
 function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
@@ -144,6 +317,11 @@ function asAiJsonSchema(schemaValue: unknown): AiJsonSchemaInput {
 
 export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet
+  callTool: (
+    params: McpCallToolParams,
+    resultSchema?: McpCallToolResultSchema,
+    options?: McpCallToolOptions,
+  ) => Promise<unknown>
   listTools: (filter?: MCPServerFilter) => McpToolRecord[]
   listServers: () => Array<{
     id: string
@@ -173,6 +351,7 @@ export type McpHost = {
   }) => Promise<McpRegistration & { id?: string }>
   addExecutorMcpServer?: (input: {
     id: string
+    remoteName: string
     props: {
       session: {
         organizationId: string
@@ -197,6 +376,12 @@ export type McpHost = {
   resolveRuntimeIdentity?: () => Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >
+  /**
+   * The Decide owner this host's `decide_analyze` calls belong to. Omitted
+   * means a chat facet, whose name is the thread key. Run facets supply it
+   * so an automation's analysis is owned by its run, never by a chat.
+   */
+  decideAnalysisOwner?: () => DecideAnalysisOwner
 }
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
@@ -207,8 +392,49 @@ export function isMcpFailedConnectionStateMessage(message: string | undefined) {
   return Boolean(message?.toLowerCase().includes('failed state'))
 }
 
+type ActiveNativeConnectorAccount = {
+  accountId: string | null
+  status: 'connected' | 'degraded'
+}
+
+function requestedGithubAssignees(input: unknown): string[] {
+  return typeof input === 'object' &&
+    input !== null &&
+    'assignees' in input &&
+    Array.isArray(input.assignees)
+    ? input.assignees.filter(
+        (login): login is string => typeof login === 'string',
+      )
+    : []
+}
+
+/**
+ * Whether the call carries an `assignees` key at all. The hosted server treats
+ * a present key as provided even when the list is empty, so `assignees: []`
+ * on update clears every assignee.
+ * Ref: github/github-mcp-server pkg/github/issues.go (AssigneesProvided)
+ */
+function hasAssigneesKey(input: unknown): boolean {
+  return typeof input === 'object' && input !== null && 'assignees' in input
+}
+
+/**
+ * The hosted GitHub MCP `issue_write` selects create vs update with `method`;
+ * an `issue_number` also targets an existing issue, so either marks update.
+ */
+function isGithubIssueUpdate(input: unknown): boolean {
+  if (typeof input !== 'object' || input === null) return false
+  return (
+    ('method' in input && input.method === 'update') ||
+    ('issue_number' in input && input.issue_number !== undefined)
+  )
+}
+
 export class RuntimeMcpController {
-  private activeNativeConnectorAccounts = new Map<string, string | null>()
+  private activeNativeConnectorAccounts = new Map<
+    string,
+    ActiveNativeConnectorAccount
+  >()
   private activeGitHubHostedMcpTools: readonly GitHubHostedMcpTool[] = []
   private githubHostedCapabilitiesSynced = false
 
@@ -298,8 +524,134 @@ export class RuntimeMcpController {
         wrappedRawToolKeys.add(rawToolKey)
 
         if (!connectorId) {
+          const baseExecute = rawTool.execute
           acc[rawToolKey] = {
             ...rawTool,
+            ...(baseExecute
+              ? {
+                  execute: async (
+                    ...args: Parameters<NonNullable<typeof baseExecute>>
+                  ) => {
+                    const startedAt = Date.now()
+                    const callFields = executorToolCallFields(args)
+                    runtimeMcpLogger.info('mcp.tool_call.started', {
+                      agentName: this.host.name,
+                      serverId: tool.serverId,
+                      toolName: tool.name,
+                      ...callFields,
+                    })
+
+                    const executeOptions = args[1]
+                    const toolCallId =
+                      executeOptions &&
+                      typeof executeOptions === 'object' &&
+                      'toolCallId' in executeOptions &&
+                      typeof executeOptions.toolCallId === 'string'
+                        ? executeOptions.toolCallId
+                        : null
+                    // Trusted owner metadata comes from the host, never from
+                    // model arguments, so a start cannot be attributed to
+                    // another thread or run.
+                    const decideOwner: DecideAnalysisOwner =
+                      this.host.decideAnalysisOwner?.() ?? {
+                        kind: 'chat',
+                        threadId: this.host.name,
+                      }
+                    const gardenMeta: { garden: GardenDecideMeta } | undefined =
+                      tool.serverId === EXECUTOR_MCP_SERVER_ID &&
+                      tool.name === 'decide_analyze'
+                        ? {
+                            garden: {
+                              ...decideOwner,
+                              ...(toolCallId === null ? {} : { toolCallId }),
+                            },
+                          }
+                        : undefined
+
+                    const result = await Result.tryPromise({
+                      try: async () => {
+                        const output = await this.host.mcp.callTool(
+                          {
+                            arguments: asMcpToolArguments(args[0]),
+                            name: tool.name,
+                            serverId: tool.serverId,
+                            ...(gardenMeta === undefined
+                              ? {}
+                              : { _meta: gardenMeta }),
+                          },
+                          undefined,
+                          {
+                            timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            maxTotalTimeout:
+                              mcpRuntimeConfig.executorToolCallTimeoutMs,
+                            resetTimeoutOnProgress: true,
+                          },
+                        )
+                        return output
+                      },
+                      catch: (cause) =>
+                        cause instanceof Error
+                          ? cause
+                          : new Error(String(cause)),
+                    })
+
+                    if (result.isErr()) {
+                      const failure = extractExecutorToolFailure({
+                        error: result.error,
+                        toolName: tool.name,
+                        toolInput: args[0],
+                      })
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure?.stage ?? 'mcp_handoff',
+                        ...callFields,
+                        ...errorFields(result.error),
+                      })
+                      return executorToolFailureResult(result.error, failure)
+                    }
+
+                    const failure = extractExecutorToolFailure({
+                      output: result.value,
+                      toolName: tool.name,
+                      toolInput: args[0],
+                    })
+                    if (failure) {
+                      runtimeMcpLogger.error('mcp.tool_call.failed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        failureStage: failure.stage,
+                        failureCode: failure.code,
+                        failureMessage: failure.message,
+                        failureKind: failure.kind,
+                        failureStatus: failure.status,
+                        mcpCode: failure.mcpCode,
+                        transportKind: failure.transportKind,
+                        transportMessage: failure.transportMessage,
+                        retryable: failure.retryable,
+                        userAction: failure.userAction,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    } else {
+                      runtimeMcpLogger.info('mcp.tool_call.completed', {
+                        agentName: this.host.name,
+                        serverId: tool.serverId,
+                        toolName: tool.name,
+                        durationMs: Date.now() - startedAt,
+                        ...callFields,
+                        ...executorResultFields(result.value),
+                      })
+                    }
+
+                    return result.value
+                  },
+                }
+              : {}),
             needsApproval: async (
               input: unknown,
               options: {
@@ -336,10 +688,11 @@ export class RuntimeMcpController {
 
                   if (result.isOk()) return result.value
 
-                  console.warn('[agent-runtime] MCP tool call failed', {
+                  runtimeMcpLogger.warn('mcp.tool_call.failed', {
+                    agentName: this.host.name,
                     connectorId,
                     toolName: tool.name,
-                    error: result.error.message,
+                    ...errorFields(result.error),
                   })
 
                   return {
@@ -402,18 +755,20 @@ export class RuntimeMcpController {
     }
   }
 
-  private githubAppConfig(installationId: string) {
+  private githubAppConfig(account: ActiveNativeConnectorAccount) {
     return {
       appId: this.host.env.GITHUB_APP_ID,
       clientId: this.host.env.GITHUB_CLIENT_ID,
       privateKey: this.host.env.GITHUB_APP_PRIVATE_KEY,
-      installationId,
+      installationId: account.accountId ?? '',
+      installationStatus: account.status,
     }
   }
 
   private async refreshGitHubHostedMcpTools() {
-    const installationId = this.activeNativeConnectorAccounts.get('github')
-    if (!installationId) {
+    const githubAccount = this.activeNativeConnectorAccounts.get('github')
+    const installationId = githubAccount?.accountId
+    if (!githubAccount || !installationId) {
       this.activeGitHubHostedMcpTools = []
       this.githubHostedCapabilitiesSynced = false
       return
@@ -430,7 +785,7 @@ export class RuntimeMcpController {
               }).pipe(
                 Effect.provide(
                   makeGitHubHostedMcpBaseLayer(
-                    this.githubAppConfig(installationId),
+                    this.githubAppConfig(githubAccount),
                   ),
                 ),
               ),
@@ -440,8 +795,9 @@ export class RuntimeMcpController {
     })
     if (result.isErr()) {
       this.activeGitHubHostedMcpTools = []
-      console.warn('[agent-runtime] GitHub hosted MCP discovery failed', {
-        error: result.error.message,
+      runtimeMcpLogger.warn('mcp.github_hosted.discovery_failed', {
+        agentName: this.host.name,
+        ...errorFields(result.error),
       })
       return
     }
@@ -462,21 +818,108 @@ export class RuntimeMcpController {
       ])
       if (syncResult.isErr()) {
         this.activeGitHubHostedMcpTools = []
-        console.warn(
-          '[agent-runtime] GitHub hosted MCP capability sync failed',
-          { error: syncResult.error.message },
-        )
+        runtimeMcpLogger.warn('mcp.github_hosted.capability_sync_failed', {
+          agentName: this.host.name,
+          ...errorFields(syncResult.error),
+        })
         return
       }
       this.githubHostedCapabilitiesSynced = true
     }
   }
 
+  /**
+   * The one assignee gate for GitHub `issue_write`, called by both tool
+   * surfaces that can write an issue: the native `github` tool and the hosted
+   * GitHub MCP tool (`github-mcp`), which is exposed alongside it when the
+   * hosted server lists the same name. Before: only the native surface was
+   * gated, so the hosted tool could assign any login and its update replaced
+   * the issue's assignees wholesale.
+   *
+   * Hosted update with `assignees` is rejected outright. The hosted server's
+   * update sends `assignees` as the full replacement list, and making it
+   * additive would mean reading current assignees and merging them into the
+   * payload: a read-then-write race against other editors, plus a second
+   * GitHub client on this path. The native tool already adds through
+   * POST /issues/{n}/assignees, which only appends, so the agent is steered
+   * there. Hosted create has no prior assignees to lose, so it gets the same
+   * linked-login check as native.
+   * Ref: https://docs.github.com/en/rest/issues/assignees#add-assignees-to-an-issue
+   * Ref: https://github.com/github/github-mcp-server (issue_write method=update)
+   *
+   * Returns the rejection message, or null to proceed.
+   */
+  private async rejectGithubIssueWrite(
+    surface: 'native' | 'hosted',
+    toolName: string,
+    input: unknown,
+  ): Promise<string | null> {
+    if (toolName !== 'issue_write') return null
+    if (
+      surface === 'hosted' &&
+      isGithubIssueUpdate(input) &&
+      hasAssigneesKey(input)
+    ) {
+      return 'github-mcp.issue_write cannot set assignees on update: it replaces existing assignees. Use github.issue_write, which adds assignees without removing current ones.'
+    }
+    const requested = requestedGithubAssignees(input)
+    if (requested.length === 0) return null
+    return this.rejectUnlinkedGithubAssignees(requested)
+  }
+
+  /**
+   * Checks each requested login against linked members of the runtime's
+   * workspace. Before: any string reached GitHub, so an agent could assign a
+   * handle no member linked.
+   */
+  private async rejectUnlinkedGithubAssignees(
+    requested: readonly string[],
+  ): Promise<string | null> {
+    const linked = await Result.gen(async function* (
+      this: RuntimeMcpController,
+    ) {
+      const identity = yield* Result.await(this.resolveRuntimeIdentity())
+      const rows = yield* Result.await(
+        Result.tryPromise({
+          try: () =>
+            this.getDb()
+              .select({ login: schema.member.githubLogin })
+              .from(schema.member)
+              .where(
+                and(
+                  eq(schema.member.organizationId, identity.workspaceId),
+                  isNotNull(schema.member.githubUserId),
+                  isNotNull(schema.member.githubLogin),
+                ),
+              ),
+          catch: () =>
+            new RuntimeMcpError({
+              code: 'database_failed',
+              message: 'Failed to load linked GitHub identities',
+            }),
+        }),
+      )
+      return Result.ok(rows)
+    }, this)
+
+    return linked.match({
+      ok: (rows) => {
+        const check = checkGithubIssueAssignees({
+          requested,
+          linkedLogins: rows.flatMap((row) => (row.login ? [row.login] : [])),
+        })
+        return check.status === 'allowed' ? null : check.message
+      },
+      err: (error) => error.message,
+    })
+  }
+
   private callGitHubHostedMcpTool(
-    installationId: string,
+    account: ActiveNativeConnectorAccount,
     name: string,
     input: unknown,
   ) {
+    const installationId = account.accountId ?? ''
     return Result.tryPromise({
       try: async () =>
         this.host.githubHostedMcp
@@ -491,9 +934,7 @@ export class RuntimeMcpController {
                 return yield* client.callTool(name, input)
               }).pipe(
                 Effect.provide(
-                  makeGitHubHostedMcpBaseLayer(
-                    this.githubAppConfig(installationId),
-                  ),
+                  makeGitHubHostedMcpBaseLayer(this.githubAppConfig(account)),
                 ),
               ),
             ),
@@ -514,7 +955,8 @@ export class RuntimeMcpController {
       riskClass: string
     }) => boolean
   }) {
-    const discordGuildId = this.activeNativeConnectorAccounts.get('discord')
+    const discordAccount = this.activeNativeConnectorAccounts.get('discord')
+    const discordGuildId = discordAccount?.accountId
     const discordTools = discordGuildId
       ? Object.fromEntries(
           discordNativeTools.map((nativeTool) => {
@@ -554,14 +996,12 @@ export class RuntimeMcpController {
 
                   if (outcome.kind === 'success') return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'discord',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.native_tool_call.failed', {
+                    agentName: this.host.name,
+                    connectorId: 'discord',
+                    toolName: nativeTool.name,
+                    errorMessage: outcome.message,
+                  })
 
                   return {
                     error: true,
@@ -596,9 +1036,8 @@ export class RuntimeMcpController {
         )
       : {}
 
-    const githubInstallationId =
-      this.activeNativeConnectorAccounts.get('github')
-    const githubTools = githubInstallationId
+    const githubAccount = this.activeNativeConnectorAccounts.get('github')
+    const githubTools = githubAccount?.accountId
       ? Object.fromEntries(
           githubNativeTools.map((nativeTool) => {
             const toolKey = buildMcpAiToolKey('github', nativeTool.name)
@@ -612,18 +1051,25 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
                 execute: async (input) => {
+                  const rejection = await this.rejectGithubIssueWrite(
+                    'native',
+                    nativeTool.name,
+                    input,
+                  )
+                  if (rejection !== null) {
+                    return { error: true, message: rejection }
+                  }
                   const outcome = await Effect.runPromise(
                     Effect.match(
-                      nativeTool.execute(input).pipe(
-                        Effect.provide(
-                          makeGitHubBaseLayer({
-                            appId: this.host.env.GITHUB_APP_ID,
-                            clientId: this.host.env.GITHUB_CLIENT_ID,
-                            privateKey: this.host.env.GITHUB_APP_PRIVATE_KEY,
-                            installationId: githubInstallationId,
-                          }),
+                      nativeTool
+                        .execute(input)
+                        .pipe(
+                          Effect.provide(
+                            makeGitHubBaseLayer(
+                              this.githubAppConfig(githubAccount),
+                            ),
+                          ),
                         ),
-                      ),
                       {
                         onFailure: (error) => ({
                           kind: 'failure' as const,
@@ -639,14 +1085,12 @@ export class RuntimeMcpController {
 
                   if (outcome.kind === 'success') return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] native connector tool call failed',
-                    {
-                      connectorId: 'github',
-                      toolName: nativeTool.name,
-                      error: outcome.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.native_tool_call.failed', {
+                    agentName: this.host.name,
+                    connectorId: 'github',
+                    toolName: nativeTool.name,
+                    errorMessage: outcome.message,
+                  })
 
                   return {
                     error: true,
@@ -681,7 +1125,7 @@ export class RuntimeMcpController {
         )
       : {}
 
-    const githubHostedMcpTools = githubInstallationId
+    const githubHostedMcpTools = githubAccount?.accountId
       ? Object.fromEntries(
           this.activeGitHubHostedMcpTools.map((hostedTool) => {
             const toolKey = buildMcpAiToolKey('github-mcp', hostedTool.name)
@@ -695,20 +1139,26 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
                 execute: async (input) => {
+                  const rejection = await this.rejectGithubIssueWrite(
+                    'hosted',
+                    hostedTool.name,
+                    input,
+                  )
+                  if (rejection !== null) {
+                    return { error: true, message: rejection }
+                  }
                   const outcome = await this.callGitHubHostedMcpTool(
-                    githubInstallationId,
+                    githubAccount,
                     hostedTool.name,
                     input,
                   )
                   if (outcome.isOk()) return outcome.value
 
-                  console.warn(
-                    '[agent-runtime] GitHub hosted MCP tool call failed',
-                    {
-                      toolName: hostedTool.name,
-                      error: outcome.error.message,
-                    },
-                  )
+                  runtimeMcpLogger.warn('mcp.github_hosted.tool_call_failed', {
+                    agentName: this.host.name,
+                    toolName: hostedTool.name,
+                    ...errorFields(outcome.error),
+                  })
                   return {
                     error: true,
                     message: `github-mcp.${hostedTool.name} failed: ${outcome.error.message}`,
@@ -766,7 +1216,8 @@ export class RuntimeMcpController {
   }) {
     const refs = extractExecutorToolRefsFromInput(args.toolArgs)
     if (refs.length === 0 && mentionsUnparsedExecutorTools(args.toolArgs)) {
-      console.warn('[agent-runtime] unparsed executor tool call', {
+      runtimeMcpLogger.warn('mcp.executor_tool_call.unparsed', {
+        agentName: this.host.name,
         toolCallId: args.toolCallId,
       })
     }
@@ -1060,12 +1511,10 @@ export class RuntimeMcpController {
       catch: (cause) => cause,
     }).then((result) => {
       if (result.isErr()) {
-        console.warn('[agent-runtime] failed to capture approval request', {
-          error:
-            result.error instanceof Error
-              ? result.error.message
-              : String(result.error),
+        runtimeMcpLogger.warn('mcp.approval_request.capture_failed', {
+          agentName: this.host.name,
           approvalId: insertResult.value,
+          ...errorFields(result.error),
         })
       }
     })
@@ -1263,6 +1712,15 @@ export class RuntimeMcpController {
     return Result.ok(connectorIdsToSync)
   }
 
+  /**
+   * Ensures the current runtime has one correctly scoped Executor MCP server.
+   *
+   * Previously this method registered every runtime as `executor`, which
+   * addressed the shared `rpc:executor` Durable Object. The remote name now
+   * includes the resolved runtime identity while the local server id remains
+   * `executor` for stable Garden tool keys. An old global registration is
+   * removed before the scoped registration is created.
+   */
   async ensureProxyMcpConnections(_options?: {
     allowReplacingRegisteredServers?: boolean
   }) {
@@ -1288,18 +1746,23 @@ export class RuntimeMcpController {
     this.activateNativeConnectorBindings(bindingsResult.value)
     await this.refreshGitHubHostedMcpTools()
     const executorServerId = EXECUTOR_MCP_SERVER_ID
+    const executorRemoteName = buildExecutorMcpServerName(identityResult.value)
+    let executorServer = this.host.mcp
+      .listServers()
+      .find((server) => server.id === executorServerId)
+    if (executorServer && executorServer.name !== executorRemoteName) {
+      await this.host.removeMcpServer(executorServerId)
+      executorServer = undefined
+    }
     for (const server of this.host.mcp.listServers()) {
       if (server.id !== executorServerId && getConnectorById(server.id)) {
         await this.host.removeMcpServer(server.id)
       }
     }
-    if (
-      !this.host.mcp
-        .listServers()
-        .some((server) => server.id === executorServerId)
-    ) {
+    if (!executorServer) {
       const registration = await addExecutorMcpServer({
         id: executorServerId,
+        remoteName: executorRemoteName,
         props: {
           session: {
             organizationId: identityResult.value.workspaceId,
@@ -1330,12 +1793,18 @@ export class RuntimeMcpController {
    */
   private activateNativeConnectorBindings(bindings: ActiveConnectorBinding[]) {
     const mcpBindings: ActiveConnectorBinding[] = []
-    const nativeConnectorAccounts = new Map<string, string | null>()
+    const nativeConnectorAccounts = new Map<
+      string,
+      ActiveNativeConnectorAccount
+    >()
 
     for (const binding of bindings) {
       const connector = getConnectorById(binding.connectorId)
       if (connector && isNativeConnector(connector)) {
-        nativeConnectorAccounts.set(connector.id, binding.accountId)
+        nativeConnectorAccounts.set(connector.id, {
+          accountId: binding.accountId,
+          status: binding.status === 'degraded' ? 'degraded' : 'connected',
+        })
         continue
       }
 
@@ -1387,41 +1856,43 @@ export class RuntimeMcpController {
       this.host.env.BETTER_AUTH_URL,
     ).toString()
 
-    for (const connectorId of uniqueConnectorIds) {
-      const syncResult = await Result.tryPromise({
-        try: async () => {
-          const response = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-garden-internal-secret': this.host.env.BETTER_AUTH_SECRET,
-            },
-            body: JSON.stringify({
-              connectorId,
-              userId: identityResult.value.userId,
-              workspaceId: identityResult.value.workspaceId,
-            }),
-          })
+    // Each connector syncs independently, so request them all at once.
+    const syncResults = await Promise.all(
+      uniqueConnectorIds.map((connectorId) =>
+        Result.tryPromise({
+          try: async () => {
+            const response = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-garden-internal-secret': this.host.env.BETTER_AUTH_SECRET,
+              },
+              body: JSON.stringify({
+                connectorId,
+                userId: identityResult.value.userId,
+                workspaceId: identityResult.value.workspaceId,
+              }),
+            })
 
-          if (!response.ok) {
-            throw new Error(
-              `Capability sync failed for ${connectorId} with ${response.status}`,
-            )
-          }
-        },
-        catch: (cause) =>
-          new RuntimeMcpError({
-            code: 'database_failed',
-            message:
-              cause instanceof Error
-                ? cause.message
-                : `Failed to request capability sync for ${connectorId}`,
-          }),
-      })
-      if (syncResult.isErr()) {
-        return syncResult
-      }
-    }
+            if (!response.ok) {
+              throw new Error(
+                `Capability sync failed for ${connectorId} with ${response.status}`,
+              )
+            }
+          },
+          catch: (cause) =>
+            new RuntimeMcpError({
+              code: 'database_failed',
+              message:
+                cause instanceof Error
+                  ? cause.message
+                  : `Failed to request capability sync for ${connectorId}`,
+            }),
+        }),
+      ),
+    )
+    const failed = syncResults.find((syncResult) => syncResult.isErr())
+    if (failed) return failed
 
     return Result.ok(undefined)
   }
@@ -1448,9 +1919,8 @@ type RuntimeMcpConnectionPreparerOptions = {
   waitForConnections?: (timeoutMs: number) => Promise<unknown>
   getServerStates?: () => RuntimeMcpServerStates
   connectionWaitTimeoutMs?: number
-  backgroundRefreshFailedMessage: string
-  refreshFailedMessage: string
-  continuingWithoutReadyMessage: string
+  /** The owning runtime's logger, so MCP events carry its component. */
+  logger: GardenLogger
   readinessPolicy?: 'opportunistic' | 'required'
   onSuccessfulRefresh?: (controller: RuntimeMcpController) => void
   onThreadNotFound?: (
@@ -1465,23 +1935,28 @@ export class RuntimeMcpConnectionPreparer {
 
   constructor(private readonly options: RuntimeMcpConnectionPreparerOptions) {}
 
-  async ensureForTurn(reason: string) {
+  async ensureForTurn(
+    reason: string,
+    options?: { waitForReadiness?: boolean },
+  ) {
     const controller = this.options.getController()
     const now = Date.now()
     const warmResult = controller.hasWarmProxyMcpConnections(now)
+    const waitForReadiness = options?.waitForReadiness ?? true
 
     if (
       warmResult.isOk() &&
       warmResult.value &&
       now - this.lastFullSyncAt < this.options.fullSyncIntervalMs
     ) {
-      if (!this.shouldWaitForReadiness()) return controller
+      if (!this.shouldWaitForReadiness(waitForReadiness)) return controller
 
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isOk()) return controller
 
-      console.warn('[agent-runtime] warm MCP connector state is stale', {
-        error: readinessResult.error.message,
+      this.options.logger.warn('mcp.connectors.stale', {
+        reason,
+        errorMessage: readinessResult.error.message,
         serverIds: readinessResult.error.serverIds,
       })
 
@@ -1491,25 +1966,26 @@ export class RuntimeMcpConnectionPreparer {
           : undefined,
       )
       if (resetResult.isErr()) {
-        console.warn(
-          '[agent-runtime] failed to reset stale MCP connector servers',
-          resetResult.error,
-        )
+        this.options.logger.warn('mcp.connectors.reset_failed', {
+          reason,
+          ...errorFields(resetResult.error),
+        })
       }
     }
 
     if (warmResult.isErr()) {
-      console.warn(
-        '[agent-runtime] failed to inspect warm MCP connector state',
-        warmResult.error,
-      )
+      this.options.logger.warn('mcp.connectors.inspect_failed', {
+        reason,
+        ...errorFields(warmResult.error),
+      })
     }
 
-    const readyResult = await this.ensureLoaded(reason)
+    const readyResult = await this.ensureLoaded(reason, { waitForReadiness })
     if (readyResult.isErr()) {
-      console.warn(this.options.continuingWithoutReadyMessage, {
+      this.options.logger.warn('mcp.connectors.not_ready', {
         reason,
-        error: readyResult.error,
+        readinessPolicy: this.options.readinessPolicy ?? 'opportunistic',
+        errorMessage: readyResult.error,
       })
       if (this.options.readinessPolicy === 'required') {
         throw new RuntimeMcpError({
@@ -1538,9 +2014,9 @@ export class RuntimeMcpConnectionPreparer {
       },
       (cause: unknown) => {
         const message = cause instanceof Error ? cause.message : String(cause)
-        console.warn(this.options.backgroundRefreshFailedMessage, {
+        this.options.logger.warn('mcp.connectors.background_refresh_failed', {
           reason,
-          error: message,
+          errorMessage: message,
         })
         this.refreshInFlight = null
         return Result.err(message)
@@ -1564,9 +2040,9 @@ export class RuntimeMcpConnectionPreparer {
         await this.options.onThreadNotFound?.(reason, controller)
         return Result.ok(undefined)
       }
-      console.warn(this.options.refreshFailedMessage, {
+      this.options.logger.warn('mcp.connectors.refresh_failed', {
         reason,
-        error: connectionResult.error,
+        ...errorFields(connectionResult.error),
       })
       return Result.err(connectionResult.error.message)
     }
@@ -1574,9 +2050,9 @@ export class RuntimeMcpConnectionPreparer {
     if (options?.waitForReadiness !== false && this.shouldWaitForReadiness()) {
       const readinessResult = await this.waitForConnectionsReady(reason)
       if (readinessResult.isErr()) {
-        console.warn('[agent-runtime] MCP connector readiness check failed', {
+        this.options.logger.warn('mcp.connectors.readiness_failed', {
           reason,
-          error: readinessResult.error.message,
+          errorMessage: readinessResult.error.message,
           serverIds: readinessResult.error.serverIds,
         })
 
@@ -1586,10 +2062,10 @@ export class RuntimeMcpConnectionPreparer {
             : undefined,
         )
         if (resetResult.isErr()) {
-          console.warn(
-            '[agent-runtime] failed to reset stale MCP connector servers',
-            resetResult.error,
-          )
+          this.options.logger.warn('mcp.connectors.reset_failed', {
+            reason,
+            ...errorFields(resetResult.error),
+          })
         }
         return Result.err(readinessResult.error.message)
       }
@@ -1600,9 +2076,10 @@ export class RuntimeMcpConnectionPreparer {
     return Result.ok(undefined)
   }
 
-  private shouldWaitForReadiness() {
-    return Boolean(
-      this.options.waitForConnections && this.options.getServerStates,
+  private shouldWaitForReadiness(enabled = true) {
+    return (
+      enabled &&
+      Boolean(this.options.waitForConnections && this.options.getServerStates)
     )
   }
 

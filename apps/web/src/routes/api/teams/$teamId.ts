@@ -6,11 +6,7 @@ import {
   requireTeamManage,
   teamError,
 } from '@/lib/server/team-access'
-import {
-  deleteTeam,
-  getTeamForViewer,
-  updateTeam,
-} from '@/lib/server/teams'
+import { deleteTeam, getTeamForViewer, updateTeam } from '@/lib/server/teams'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { updateTeamBodySchema } from '@/lib/server/validation/teams'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
@@ -68,7 +64,6 @@ export const Route = createFileRoute('/api/teams/$teamId')({
             payload: {
               workspace_id: access.team.workspaceId,
               team_id: team.id,
-              team,
             },
           }),
         )
@@ -103,7 +98,6 @@ export const Route = createFileRoute('/api/teams/$teamId')({
             payload: {
               workspace_id: access.team.workspaceId,
               team_id: access.team.id,
-              name: access.team.name,
             },
           }),
         )

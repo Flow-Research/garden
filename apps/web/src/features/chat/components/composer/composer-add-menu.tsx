@@ -28,11 +28,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
+import type { ReactElement } from 'react'
 import { GoogleDriveIcon } from '@garden/ui/components/icons'
 
 export function ComposerAddMenu(props: {
   onUploadClick: () => void
-}): JSX.Element {
+}): ReactElement {
   const { onUploadClick } = props
 
   return (

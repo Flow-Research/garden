@@ -74,10 +74,14 @@ export type ExecutorRegistrySearchResponse =
 export const ExecutorInstallRequest = Schema.Struct({
   providerId: ExecutorProviderId,
   source: ExecutorIntegrationSource,
+  owner: ExecutorConnectionOwner,
 })
 export type ExecutorInstallRequest = typeof ExecutorInstallRequest.Type
 
-export const ExecutorToolPreviewRequest = ExecutorInstallRequest
+export const ExecutorToolPreviewRequest = Schema.Struct({
+  providerId: ExecutorProviderId,
+  source: ExecutorIntegrationSource,
+})
 export type ExecutorToolPreviewRequest = typeof ExecutorToolPreviewRequest.Type
 
 export const ExecutorToolPreviewItem = Schema.Struct({

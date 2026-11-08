@@ -30,10 +30,10 @@ const TONE_STYLES: Record<
     icon: 'text-muted-foreground',
   },
   attention: {
-    border: 'border-amber-300/50 dark:border-amber-500/40',
-    bg: 'bg-amber-50/60 dark:bg-amber-500/10',
-    chip: 'bg-amber-100 text-amber-900 dark:bg-amber-500/20 dark:text-amber-100',
-    icon: 'text-amber-600 dark:text-amber-400',
+    border: 'border-border-warning-tertiary/40',
+    bg: 'bg-background-warning-tertiary/60',
+    chip: 'bg-background-warning-secondary text-text-warning-on-warning-secondary',
+    icon: 'text-icon-warning-secondary',
   },
   action: {
     border: 'border-brand/40',
@@ -42,16 +42,16 @@ const TONE_STYLES: Record<
     icon: 'text-brand',
   },
   success: {
-    border: 'border-emerald-300/50 dark:border-emerald-500/40',
-    bg: 'bg-emerald-50/60 dark:bg-emerald-500/10',
-    chip: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-500/20 dark:text-emerald-100',
-    icon: 'text-emerald-600 dark:text-emerald-400',
+    border: 'border-border-success-tertiary/40',
+    bg: 'bg-background-success-tertiary/60',
+    chip: 'bg-background-success-secondary text-text-success-on-success-secondary',
+    icon: 'text-icon-success-secondary',
   },
   danger: {
-    border: 'border-rose-300/50 dark:border-rose-500/40',
-    bg: 'bg-rose-50/60 dark:bg-rose-500/10',
-    chip: 'bg-rose-100 text-rose-900 dark:bg-rose-500/20 dark:text-rose-100',
-    icon: 'text-rose-600 dark:text-rose-400',
+    border: 'border-border-danger-tertiary/40',
+    bg: 'bg-background-danger-tertiary/60',
+    chip: 'bg-background-danger-secondary text-text-danger-on-danger-secondary',
+    icon: 'text-icon-danger-secondary',
   },
 }
 
@@ -262,7 +262,7 @@ export function InboxItemPreviewCard({ item }: { item: InboxItem }) {
       )}
     >
       <div className="flex items-center gap-2 border-b border-inherit px-4 py-2.5">
-        <Icon className={cn('h-4 w-4 shrink-0', styles.icon)} />
+        <Icon className={cn('size-4 shrink-0', styles.icon)} />
         <span
           className={cn(
             'rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide',

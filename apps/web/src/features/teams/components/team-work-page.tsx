@@ -28,6 +28,7 @@ import { memberListOptions } from '@/lib/workspace/queries'
 import { allTeamIssuesOptions, teamListOptions } from '../queries'
 import { teamIssueViewStore } from '../view-store'
 import { StatusIcon } from '@/features/issues/components/status-icon'
+import { TeamMembersLoadError } from './team-route-error'
 import { TeamSummaryCard } from './team-summary-card'
 import { ViewModeToggle } from './team-tab-toolbar'
 import { hashColor, teamColor } from './team-tokens'
@@ -44,15 +45,19 @@ export function TeamWorkPage() {
   const currentUserId = useAuthStore((s) => s.user?.id ?? '')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [createData, setCreateData] = useState<Record<
-    string,
-    unknown
-  > | null>(null)
+  const [createData, setCreateData] = useState<Record<string, unknown> | null>(
+    null,
+  )
   const updateIssueMutation = useUpdateIssue()
 
-  const { data: members } = useQuery(memberListOptions(wsId))
+  const {
+    data: members,
+    isPending: membersPending,
+    isError: membersError,
+    refetch: refetchMembers,
+  } = useQuery(memberListOptions(wsId))
   const { data: projectList = [] } = useQuery(projectListOptions(wsId))
-  const [{ data: allIssues }, { data: teams }] = useSuspenseQueries({
+  const [{ data: allIssues }, { data: teamList }] = useSuspenseQueries({
     queries: [allTeamIssuesOptions(wsId), teamListOptions(wsId)],
   })
 
@@ -60,6 +65,7 @@ export function TeamWorkPage() {
     members?.find((member) => member.user_id === currentUserId)?.role ?? null
   const isAdmin = currentRole === 'owner' || currentRole === 'admin'
 
+  const teams = teamList.teams
   const teamById = useMemo(
     () => new Map(teams.map((team) => [team.id, team] as const)),
     [teams],
@@ -135,7 +141,7 @@ export function TeamWorkPage() {
   )
 
   const handleMoveIssue = useCallback(
-    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
+    (issueId: string, newStatus: IssueStatus, newPosition?: string) => {
       const viewState = teamIssueViewStore.getState()
       if (viewState.sortBy !== 'position') {
         viewState.setSortBy('position')
@@ -153,10 +159,13 @@ export function TeamWorkPage() {
     [updateIssueMutation],
   )
 
-  if (!members) {
+  if (membersPending) {
     return (
       <div className="flex-1 p-6 text-sm text-text-secondary">Loading…</div>
     )
+  }
+  if (membersError || !members) {
+    return <TeamMembersLoadError onRetry={() => void refetchMembers()} />
   }
   if (!isAdmin) {
     return <Navigate to="/teams" replace />
@@ -165,7 +174,10 @@ export function TeamWorkPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader className="gap-1.5">
-        <Link to="/teams" className="text-sm text-text-secondary hover:underline">
+        <Link
+          to="/teams"
+          className="text-sm text-text-secondary hover:underline"
+        >
           Teams
         </Link>
         <span className="text-sm text-text-tertiary">/</span>
@@ -299,7 +311,7 @@ function TeamWorkPanel({
   onMoveIssue: (
     issueId: string,
     newStatus: IssueStatus,
-    newPosition?: number,
+    newPosition?: string,
   ) => void
   projects: Map<string, { title: string; color: string }>
   teamChips: Map<string, { name: string; color: string }>
