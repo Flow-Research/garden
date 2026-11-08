@@ -48,9 +48,9 @@ visibility; the removed member cannot retain invisible assigned work.
 - `DELETE /api/teams/:teamId/members/:membershipId` —
   `apps/web/src/routes/api/teams/$teamId/members/$membershipId.ts`
 - Visibility still enforced by `teamIssueVisibilityCondition` in
-  `apps/web/src/lib/server/issue-access.ts`
+  `packages/db/src/team-issue-visibility.ts`
 - Broader Teams admin surface:
-  [`teams-admin-profile-implementation-spec.md`](./teams-admin-profile-implementation-spec.md)
+  [Teams](../concepts/features/teams.md)
 
 ## Data and permissions
 

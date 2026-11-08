@@ -832,12 +832,12 @@ type RemoveMemberOutcome =
  * Remove a Team membership.
  *
  * Before: deleting `team_member` left `issue.assignee_id` pointing at the
- * removed user. Non-managers then lost visibility of those Team issues
+ * removed user, who no longer sees the Team board
  * (`teamIssueVisibilityCondition`), so assigned work went silent.
  * After: open Team issues assigned to the removed user are reassigned to the
  * Team owner in the same transaction, then the membership row is deleted.
  * Owner removal stays blocked; agent memberships do not rewrite user
- * assignees. Refs: #152, `docs/features/teams-admin-profile-implementation-spec.md`.
+ * assignees. Refs: #152, `docs/features/team-member-removal-assignees.md`.
  */
 export async function removeTeamMember(args: {
   db: Db
@@ -929,14 +929,15 @@ export async function removeTeamMember(args: {
   })
 }
 
+const TERMINAL_ISSUE_STATUSES = ['done', 'cancelled'] as const
+
 /**
  * Move non-terminal Team issues from a removed user onto the Team owner.
  *
  * Open = not `done` / `cancelled` (includes `blocked`). Keeps `team_id`.
- * Used so removal cannot leave invisible assigned work for non-managers.
+ * Used so removal cannot leave open Team work assigned to someone who is no
+ * longer on the Team.
  */
-const TERMINAL_ISSUE_STATUSES = ['done', 'cancelled'] as const
-
 async function reassignOpenTeamIssuesToOwner(
   tx: Tx,
   args: {
