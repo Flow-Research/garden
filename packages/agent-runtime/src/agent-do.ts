@@ -156,6 +156,7 @@ import {
 import {
   RunWorkflowCreateError,
   type RunWorkflowBinding,
+  type RunWorkflowTurnCompletion,
   type RunWorkflowTurnStartResult,
 } from './run-workflow'
 import { logAgentSocketError } from './websocket-errors'
@@ -1130,11 +1131,14 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   /**
    * Workflow-facing RPC that delegates automation turn submission to the run
    * facet and returns the durable Think submission id without blocking the DO.
+   * `decideRunId` is set on the resume turn after a Decide pause, so the facet
+   * hands the agent that analysis's outcome.
    */
   async executeAutomationRunTurn(input: {
     runId: string
     mode: 'start' | 'resume'
     turn: number
+    decideRunId?: string
   }): Promise<RunWorkflowTurnStartResult> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
@@ -1144,6 +1148,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return await automationAgent.executeWorkflowTurn(input.mode, {
       runId: input.runId,
       turn: input.turn,
+      ...(input.decideRunId === undefined
+        ? {}
+        : { decideRunId: input.decideRunId }),
     })
   }
 
@@ -1154,7 +1161,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   async completeAutomationRunTurn(input: {
     runId: string
     submissionId: string
-  }): Promise<{ status: string }> {
+  }): Promise<RunWorkflowTurnCompletion> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
       AutomationRunSubAgent,
@@ -1170,7 +1177,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       runKind: 'automation',
       statuses: AUTOMATION_WRITE_BACK_STATUSES,
     })
-    return { status: result.status }
+    return result.waitingOn === undefined
+      ? { status: result.status }
+      : { status: result.status, waitingOn: result.waitingOn }
   }
 
   /**

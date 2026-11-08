@@ -48,21 +48,6 @@ export type DirectDecideCallOptions = {
 }
 
 /**
- * How long Garden waits for one background Decide analysis. Before, the call
- * used the MCP SDK's 60s silence timeout (DEFAULT_REQUEST_TIMEOUT_MSEC with
- * `resetTimeoutOnProgress`), and Decide's progress events are optional, so a
- * run that went quiet for a minute was failed while Decide kept working and
- * charging. Decide no longer limits analysis time and has no tool to fetch a
- * result later (decide-mcp-integration-guide: analyze, list_generated_files,
- * read_generated_file, whoami), so Garden holds the connection open. Workflows
- * give a step unlimited wall-clock time while it waits on I/O
- * (developers.cloudflare.com/workflows/reference/limits), so this bound is a
- * product choice, not a platform one: one hour lets long reports finish and
- * still ends a request that will never answer.
- */
-export const DECIDE_ANALYSIS_TIME_LIMIT_MS = 60 * 60 * 1000
-
-/**
  * Maps Garden call options onto MCP SDK request options. With `timeoutMs`,
  * the limit is total and progress no longer resets it; without it, progress
  * resets the SDK's 60s default as before.
@@ -663,7 +648,7 @@ export const registerDirectDecideTools = (
     {
       title: 'Run analysis with Decide',
       description:
-        'Analyze data with Decide. For a file stored in Brain, pass source with its file id and Garden reads the whole file, including XLSX sheets; otherwise pass complete raw CSV, TSV, JSON, or text as data. Inputs over 100 MB are refused. In chat the analysis runs in the background and its answer arrives later in the chat: do not poll, retry, or substitute a local analysis, and never mention run or session IDs. Omit data and source for a follow-up on the same data.',
+        'Analyze data with Decide. For a file stored in Brain, pass source with its file id and Garden reads the whole file, including XLSX sheets; otherwise pass complete raw CSV, TSV, JSON, or text as data. Inputs over 100 MB are refused. In a chat or an automation the analysis runs in the background and its answer arrives later (in the chat, or when the automation run resumes): do not poll, retry, or substitute a local analysis, and never mention run or session IDs. Omit data and source for a follow-up on the same data.',
       inputSchema: directDecideAnalyzeInputSchema,
       annotations: { readOnlyHint: true },
     },
@@ -677,11 +662,11 @@ export const registerDirectDecideTools = (
       const args = parsed.data
       const started = await options?.startAnalysis?.({ args, extra })
       if (started) return started
-      // Only the chat starter can read a source; the direct call would send
+      // Only the runtime starter can read a source; the direct call would send
       // Decide no data.
       if (args.source !== undefined) {
         return invalidAnalyzeArgs(
-          'A source can only be analyzed from a Garden chat. Send the data instead.',
+          'A source can only be analyzed from a Garden chat or automation. Send the data instead.',
         )
       }
       return callDirectDecideTool(executor, 'analyze', args, {

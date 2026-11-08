@@ -118,3 +118,50 @@ export interface TransferTeamOwnerRequest {
 export type ListTeamIssuesParams = Omit<ListIssuesParams, 'workspace_id'> & {
   team_id: string
 }
+
+/** Where a linked repository's first import of open issues stands. */
+export type TeamRepositoryImportState =
+  | 'pending'
+  | 'importing'
+  | 'ready'
+  | 'failed'
+
+/**
+ * A GitHub repository linked to a Team. Its open issues are imported onto the
+ * Team board once, and new GitHub issues arrive through the App webhook.
+ */
+export interface TeamRepository {
+  id: string
+  team_id: string
+  github_repo_id: number
+  /** `owner/name`, as GitHub last reported it. */
+  full_name: string
+  import_state: TeamRepositoryImportState
+  imported_at: string | null
+  /** Null after the linking user was deleted. */
+  linked_by: string | null
+  created_at: string
+}
+
+/**
+ * A repository the workspace's GitHub App installation can access, with the
+ * Team it is already linked to, if any.
+ */
+export interface AvailableTeamRepository {
+  github_repo_id: number
+  full_name: string
+  private: boolean
+  linked_team_id: string | null
+}
+
+export interface ListTeamRepositoriesResponse {
+  repositories: TeamRepository[]
+}
+
+export interface ListAvailableTeamRepositoriesResponse {
+  repositories: AvailableTeamRepository[]
+}
+
+export interface LinkTeamRepositoryRequest {
+  github_repo_id: number
+}

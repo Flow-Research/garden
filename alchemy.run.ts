@@ -90,6 +90,15 @@ const decideAnalysisWorkflow = Cloudflare.WorkflowResource(
   },
 )
 
+const githubRepoImportWorkflow = Cloudflare.WorkflowResource(
+  deployTarget.githubRepoImportWorkflowId,
+  {
+    workflowName: deployTarget.githubRepoImportWorkflowName,
+    className: 'GitHubRepoImportWorkflow',
+    scriptName: deployTarget.workerName,
+  },
+)
+
 /**
  * Owns the gateway named by the deployment target so every environment has a
  * real Workers AI routing/logging boundary. Previously preview referenced a
@@ -317,6 +326,20 @@ export default Alchemy.Stack(
           name: 'DECIDE_ANALYSIS_WORKFLOW',
           workflowName: deployedDecideAnalysisWorkflow.workflowName,
           className: 'DecideAnalysisWorkflow',
+        },
+      ],
+    })
+    const deployedGitHubRepoImportWorkflow =
+      yield* githubRepoImportWorkflow.pipe(
+        Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+      )
+    yield* deployed.bind(deployTarget.githubRepoImportWorkflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'GITHUB_REPO_IMPORT_WORKFLOW',
+          workflowName: deployedGitHubRepoImportWorkflow.workflowName,
+          className: 'GitHubRepoImportWorkflow',
         },
       ],
     })

@@ -159,7 +159,9 @@ async function refreshIssueSourceSummary(
 
 export async function attachSourceBindingInTransaction(
   executor: IssueSourceBindingExecutor,
-  input: Omit<AttachSourceBindingInput, 'databaseUrl'>,
+  input: Omit<AttachSourceBindingInput, 'databaseUrl'> & {
+    metadata?: Record<string, unknown> | null
+  },
 ): Promise<{ binding_id: string }> {
   const displayRef = sourceDisplayRef(input)
   const [binding] = await executor
@@ -173,6 +175,7 @@ export async function attachSourceBindingInTransaction(
       externalId: input.externalId,
       externalUrl: input.externalUrl ?? null,
       displayRef,
+      metadata: input.metadata ?? null,
     })
     .returning({ id: schema.issueSourceBinding.id })
 
