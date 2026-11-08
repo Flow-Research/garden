@@ -30,6 +30,7 @@ This page lists where each part of Garden lives in the code. For why the parts f
 | `BrainAuditSubAgent`, `BrainWriteBackSubAgent` | Brain audit and write-back facets | `packages/agent-runtime/src/brain-audit-sub-agent.ts`, `brain-write-back-sub-agent.ts` |
 | `RunWorkflow` | Durable turn, retry, wait, resume, and cancel for issue and automation runs | `packages/agent-runtime/src/run-workflow.ts` |
 | `DecideAnalysisWorkflow` | Durable Decide analysis | `apps/web/src/decide-analysis-workflow.ts` |
+| `GitHubRepoImportWorkflow` | Imports a linked repository's open GitHub issues onto a Team board | `apps/web/src/github-repo-import-workflow.ts` |
 | `AutomationTriggerDO` | Schedule alarms and trigger concurrency | `packages/agent-runtime/src/automation-trigger-do.ts` |
 | `WorkspaceRealtimeDO` | Workspace WebSocket hub | `packages/agent-runtime/src/workspace-realtime-do.ts` |
 | `ExecutorMcpSession`, `ExecutorMcpExecutionOwnerDirectory` | Executor MCP sessions hosted in the Garden Worker | `apps/web/src/lib/server/executor-engine/mcp.ts`, exported from `apps/web/src/server.ts` |
@@ -44,7 +45,7 @@ This page lists where each part of Garden lives in the code. For why the parts f
 | Kind | Bindings |
 | --- | --- |
 | Durable Objects | `AgentDO`, `Sandbox`, `AUTOMATION_TRIGGER`, `EXECUTOR_MCP_SESSION`, `EXECUTOR_MCP_EXECUTION_OWNER`, `WORKSPACE_REALTIME` |
-| Workflows | `RUN_WORKFLOW`, `DECIDE_ANALYSIS_WORKFLOW` |
+| Workflows | `RUN_WORKFLOW`, `DECIDE_ANALYSIS_WORKFLOW`, `GITHUB_REPO_IMPORT_WORKFLOW` |
 | R2 | `FILES`, `BRAIN_FILES`, `EXECUTOR_BLOBS` |
 | D1 | `EXECUTOR_DB` |
 | Hyperdrive | `HYPERDRIVE` |

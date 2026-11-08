@@ -143,6 +143,8 @@ const uniqueFields = [
   'workflowName',
   'decideAnalysisWorkflowId',
   'decideAnalysisWorkflowName',
+  'githubRepoImportWorkflowId',
+  'githubRepoImportWorkflowName',
   'sandboxId',
   'sandboxName',
 ]
@@ -242,6 +244,22 @@ assert.match(
   alchemySource,
   /name:\s*'DECIDE_ANALYSIS_WORKFLOW',\s*workflowName:\s*deployedDecideAnalysisWorkflow\.workflowName,\s*className:\s*'DecideAnalysisWorkflow'/s,
 )
+assert.match(
+  alchemySource,
+  /Cloudflare\.WorkflowResource\(\s*deployTarget\.githubRepoImportWorkflowId,/s,
+)
+assert.match(
+  alchemySource,
+  /workflowName:\s*deployTarget\.githubRepoImportWorkflowName,\s*className:\s*'GitHubRepoImportWorkflow',\s*scriptName:\s*deployTarget\.workerName/s,
+)
+assert.match(
+  alchemySource,
+  /deployed\.bind\(deployTarget\.githubRepoImportWorkflowId,\s*\{/s,
+)
+assert.match(
+  alchemySource,
+  /name:\s*'GITHUB_REPO_IMPORT_WORKFLOW',\s*workflowName:\s*deployedGitHubRepoImportWorkflow\.workflowName,\s*className:\s*'GitHubRepoImportWorkflow'/s,
+)
 assert.match(alchemySource, /name:\s*'AgentDO',\s*className:\s*'AgentDO'/s)
 assert.match(alchemySource, /name:\s*'Sandbox',\s*className:\s*'Sandbox'/s)
 assert.match(
@@ -310,6 +328,7 @@ for (const field of [
   'executorBlobsBucket',
   'workflowName',
   'decideAnalysisWorkflowName',
+  'githubRepoImportWorkflowName',
   'sandboxName',
 ]) {
   assert.match(
