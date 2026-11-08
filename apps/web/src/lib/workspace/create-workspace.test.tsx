@@ -15,15 +15,18 @@ vi.mock('@/lib/api', async (importActual) => ({
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }))
 
 describe('useCreateWorkspace', () => {
-  it('says so when the new workspace cannot be switched to', async () => {
-    api.createWorkspace.mockResolvedValue({
+  it('still opens the new workspace locally when setActive fails', async () => {
+    const created = {
       id: 'ws-2',
       name: 'Orchard',
-    } as Workspace)
+    } as Workspace
+    api.createWorkspace.mockResolvedValue(created)
+    const hydrateWorkspace = vi.fn(() => created)
     useWorkspaceStore.setState({
       switchWorkspace: vi.fn(async () => {
         throw new Error('offline')
       }),
+      hydrateWorkspace,
     })
     const error = vi.spyOn(toast, 'error')
     const wrapper = ({ children }: { children: ReactNode }) => (
@@ -37,8 +40,12 @@ describe('useCreateWorkspace', () => {
       result.current.mutateAsync({ name: 'Orchard', slug: 'orchard' }),
     )
 
+    expect(hydrateWorkspace).toHaveBeenCalledWith(
+      expect.arrayContaining([created]),
+      'ws-2',
+    )
     expect(error).toHaveBeenCalledWith(
-      'Orchard was created, but switching to it failed. Open it from the workspace menu.',
+      'Orchard was created, but saving it as the active workspace failed. Reload if the wrong workspace appears.',
     )
   })
 })

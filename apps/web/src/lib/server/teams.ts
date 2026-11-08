@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import type {
   AddTeamMemberRequest,
@@ -48,12 +48,34 @@ function isPgError(
   return typeof error === 'object' && error !== null && 'code' in error
 }
 
+/** Named FK that blocks deleting a Team while issues still reference it. */
+const ISSUE_TEAM_WORKSPACE_FK = 'issue_team_workspace_fk'
+
 /**
- * Maps Postgres constraint failures onto stable Team error codes. Constraint
- * names are checked instead of message text; anything unknown becomes a
- * generic operation failure so raw database errors never reach the client.
+ * Member/owner identity foreign keys. Before #155 every `23503` was treated as
+ * an invalid member, so an issue→team delete race returned the wrong message.
  */
-function mapDbError(error: unknown): TeamServiceError {
+const INVALID_TEAM_MEMBER_FK_CONSTRAINTS = new Set([
+  'team_member_user_id_user_id_fk',
+  'team_member_agent_id_agent_id_fk',
+  'team_member_team_workspace_fk',
+  'team_member_workspace_id_organization_id_fk',
+  'team_member_created_by_user_id_fk',
+  'team_owner_user_id_user_id_fk',
+  'team_created_by_user_id_fk',
+])
+
+/**
+ * Maps Postgres constraint failures onto stable Team error codes.
+ *
+ * Before: any foreign-key violation (`23503`) became `INVALID_TEAM_MEMBER`, so
+ * deleting a Team that still had issues (race after the pre-check) looked like
+ * a bad member pick. After: `issue_team_workspace_fk` maps to `TEAM_HAS_ISSUES`;
+ * member/owner FKs stay `INVALID_TEAM_MEMBER`; unknown FKs stay generic.
+ * Check violations (`23514`, member identity) remain invalid-member. Constraint
+ * names are authoritative — never message text. Refs: #155.
+ */
+export function mapDbError(error: unknown): TeamServiceError {
   if (!isPgError(error)) {
     return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
   }
@@ -71,12 +93,28 @@ function mapDbError(error: unknown): TeamServiceError {
       'This member already belongs to the Team',
     )
   }
-  if (error.code === '23514' || error.code === '23503') {
+  if (error.code === '23514') {
     return serviceError(
       'INVALID_TEAM_MEMBER',
       400,
       'The selected member is not valid for this Team',
     )
+  }
+  if (error.code === '23503') {
+    if (error.constraint === ISSUE_TEAM_WORKSPACE_FK) {
+      return serviceError('TEAM_HAS_ISSUES', 409, 'Team has linked issues')
+    }
+    if (
+      error.constraint &&
+      INVALID_TEAM_MEMBER_FK_CONSTRAINTS.has(error.constraint)
+    ) {
+      return serviceError(
+        'INVALID_TEAM_MEMBER',
+        400,
+        'The selected member is not valid for this Team',
+      )
+    }
+    return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
   }
   return serviceError('TEAM_OPERATION_FAILED', 500, 'Team operation failed')
 }
@@ -819,6 +857,26 @@ export async function addTeamMember(args: {
   return Result.ok(outcome.membership)
 }
 
+type RemoveMemberOutcome =
+  | {
+      kind: 'ok'
+      membership: TeamMemberRow
+      reassignedIssueCount: number
+    }
+  | { kind: 'not_found' }
+  | { kind: 'owner' }
+
+/**
+ * Remove a Team membership.
+ *
+ * Before: deleting `team_member` left `issue.assignee_id` pointing at the
+ * removed user, who no longer sees the Team board
+ * (`teamIssueVisibilityCondition`), so assigned work went silent.
+ * After: open Team issues assigned to the removed user are reassigned to the
+ * Team owner in the same transaction, then the membership row is deleted.
+ * Owner removal stays blocked; agent memberships do not rewrite user
+ * assignees. Refs: #152, `docs/features/team-member-removal-assignees.md`.
+ */
 export async function removeTeamMember(args: {
   db: Db
   team: TeamRow
@@ -832,7 +890,7 @@ export async function removeTeamMember(args: {
 > {
   const outcomeResult = await Result.tryPromise({
     try: async () =>
-      args.db.transaction(async (tx) => {
+      args.db.transaction(async (tx): Promise<RemoveMemberOutcome> => {
         const [membership] = await tx
           .select()
           .from(schema.teamMember)
@@ -842,10 +900,19 @@ export async function removeTeamMember(args: {
               eq(schema.teamMember.teamId, args.team.id),
             ),
           )
-        if (!membership) return { kind: 'not_found' as const }
+        if (!membership) return { kind: 'not_found' }
 
         if (membership.userId && membership.userId === args.team.ownerUserId) {
-          return { kind: 'owner' as const }
+          return { kind: 'owner' }
+        }
+
+        let reassignedIssueCount = 0
+        if (membership.userId) {
+          reassignedIssueCount = await reassignOpenTeamIssuesToOwner(tx, {
+            teamId: args.team.id,
+            fromUserId: membership.userId,
+            ownerUserId: args.team.ownerUserId,
+          })
         }
 
         await tx
@@ -861,10 +928,11 @@ export async function removeTeamMember(args: {
             team_id: args.team.id,
             member_type: membership.userId ? 'user' : 'agent',
             member_id: membership.userId ?? membership.agentId,
+            reassigned_issue_count: reassignedIssueCount,
           },
         })
 
-        return { kind: 'ok' as const, membership }
+        return { kind: 'ok', membership, reassignedIssueCount }
       }),
     catch: mapDbError,
   })
@@ -890,12 +958,49 @@ export async function removeTeamMember(args: {
     teamId: args.team.id,
     actorId: args.actorUserId,
     membershipId: args.membershipId,
+    reassignedIssueCount: outcome.reassignedIssueCount,
   })
   return Result.ok({
     id: outcome.membership.id,
     userId: outcome.membership.userId,
     agentId: outcome.membership.agentId,
   })
+}
+
+const TERMINAL_ISSUE_STATUSES = ['done', 'cancelled'] as const
+
+/**
+ * Move non-terminal Team issues from a removed user onto the Team owner.
+ *
+ * Open = not `done` / `cancelled` (includes `blocked`). Keeps `team_id`.
+ * Used so removal cannot leave open Team work assigned to someone who is no
+ * longer on the Team.
+ */
+async function reassignOpenTeamIssuesToOwner(
+  tx: Tx,
+  args: {
+    teamId: string
+    fromUserId: string
+    ownerUserId: string
+  },
+): Promise<number> {
+  const reassigned = await tx
+    .update(schema.issue)
+    .set({
+      assigneeType: 'user',
+      assigneeId: args.ownerUserId,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.issue.teamId, args.teamId),
+        eq(schema.issue.assigneeType, 'user'),
+        eq(schema.issue.assigneeId, args.fromUserId),
+        notInArray(schema.issue.status, [...TERMINAL_ISSUE_STATUSES]),
+      ),
+    )
+    .returning({ id: schema.issue.id })
+  return reassigned.length
 }
 
 export async function deleteTeam(args: {
