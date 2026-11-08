@@ -282,9 +282,9 @@ export function CreateIssueModal({
             ? '!max-w-[480px] !w-[calc(100vw-2rem)] !h-auto !-translate-y-1/2 !transition-none !duration-0'
             : '!transition-all !duration-300 !ease-out',
           !todoHintIssueId && isExpanded
-            ? '!max-w-4xl !w-full !h-5/6 !-translate-y-1/2'
+            ? '!max-w-4xl !w-[calc(100vw-2rem)] !h-5/6 !-translate-y-1/2'
             : !todoHintIssueId
-              ? '!max-w-2xl !w-full !h-96 !-translate-y-1/2'
+              ? '!max-w-2xl !w-[calc(100vw-2rem)] !h-96 !-translate-y-1/2'
               : '',
         )}
       >
