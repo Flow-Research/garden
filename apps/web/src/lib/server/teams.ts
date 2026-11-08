@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, notInArray, sql } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import type {
   AddTeamMemberRequest,
@@ -857,6 +857,26 @@ export async function addTeamMember(args: {
   return Result.ok(outcome.membership)
 }
 
+type RemoveMemberOutcome =
+  | {
+      kind: 'ok'
+      membership: TeamMemberRow
+      reassignedIssueCount: number
+    }
+  | { kind: 'not_found' }
+  | { kind: 'owner' }
+
+/**
+ * Remove a Team membership.
+ *
+ * Before: deleting `team_member` left `issue.assignee_id` pointing at the
+ * removed user, who no longer sees the Team board
+ * (`teamIssueVisibilityCondition`), so assigned work went silent.
+ * After: open Team issues assigned to the removed user are reassigned to the
+ * Team owner in the same transaction, then the membership row is deleted.
+ * Owner removal stays blocked; agent memberships do not rewrite user
+ * assignees. Refs: #152, `docs/features/team-member-removal-assignees.md`.
+ */
 export async function removeTeamMember(args: {
   db: Db
   team: TeamRow
@@ -870,7 +890,7 @@ export async function removeTeamMember(args: {
 > {
   const outcomeResult = await Result.tryPromise({
     try: async () =>
-      args.db.transaction(async (tx) => {
+      args.db.transaction(async (tx): Promise<RemoveMemberOutcome> => {
         const [membership] = await tx
           .select()
           .from(schema.teamMember)
@@ -880,10 +900,19 @@ export async function removeTeamMember(args: {
               eq(schema.teamMember.teamId, args.team.id),
             ),
           )
-        if (!membership) return { kind: 'not_found' as const }
+        if (!membership) return { kind: 'not_found' }
 
         if (membership.userId && membership.userId === args.team.ownerUserId) {
-          return { kind: 'owner' as const }
+          return { kind: 'owner' }
+        }
+
+        let reassignedIssueCount = 0
+        if (membership.userId) {
+          reassignedIssueCount = await reassignOpenTeamIssuesToOwner(tx, {
+            teamId: args.team.id,
+            fromUserId: membership.userId,
+            ownerUserId: args.team.ownerUserId,
+          })
         }
 
         await tx
@@ -899,10 +928,11 @@ export async function removeTeamMember(args: {
             team_id: args.team.id,
             member_type: membership.userId ? 'user' : 'agent',
             member_id: membership.userId ?? membership.agentId,
+            reassigned_issue_count: reassignedIssueCount,
           },
         })
 
-        return { kind: 'ok' as const, membership }
+        return { kind: 'ok', membership, reassignedIssueCount }
       }),
     catch: mapDbError,
   })
@@ -928,12 +958,49 @@ export async function removeTeamMember(args: {
     teamId: args.team.id,
     actorId: args.actorUserId,
     membershipId: args.membershipId,
+    reassignedIssueCount: outcome.reassignedIssueCount,
   })
   return Result.ok({
     id: outcome.membership.id,
     userId: outcome.membership.userId,
     agentId: outcome.membership.agentId,
   })
+}
+
+const TERMINAL_ISSUE_STATUSES = ['done', 'cancelled'] as const
+
+/**
+ * Move non-terminal Team issues from a removed user onto the Team owner.
+ *
+ * Open = not `done` / `cancelled` (includes `blocked`). Keeps `team_id`.
+ * Used so removal cannot leave open Team work assigned to someone who is no
+ * longer on the Team.
+ */
+async function reassignOpenTeamIssuesToOwner(
+  tx: Tx,
+  args: {
+    teamId: string
+    fromUserId: string
+    ownerUserId: string
+  },
+): Promise<number> {
+  const reassigned = await tx
+    .update(schema.issue)
+    .set({
+      assigneeType: 'user',
+      assigneeId: args.ownerUserId,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(schema.issue.teamId, args.teamId),
+        eq(schema.issue.assigneeType, 'user'),
+        eq(schema.issue.assigneeId, args.fromUserId),
+        notInArray(schema.issue.status, [...TERMINAL_ISSUE_STATUSES]),
+      ),
+    )
+    .returning({ id: schema.issue.id })
+  return reassigned.length
 }
 
 export async function deleteTeam(args: {
