@@ -25,11 +25,16 @@ import type {
 const logger = createLogger('issues')
 import * as schema from '@garden/db/schema'
 import {
+  isWorkspaceManagerRole,
+  teamIssueVisibilityCondition,
+} from '@garden/db/team-issue-visibility'
+import {
   issueCommentInsertSchema,
   issueInsertSchema,
   issuePrioritySchema,
   issueSourceBindingInsertSchema,
   issueStatusSchema,
+  uuidSchema,
 } from '@garden/db/validation'
 import { z } from 'zod'
 import {
@@ -103,7 +108,9 @@ const postIssueCommentInputSchema = z
     databaseUrl: z.string().trim().min(1),
     workspaceId: issueInsertSchema.shape.workspaceId,
     issueIdOrIdentifier: z.string().trim().min(1),
-    authorUserId: issueCommentInsertSchema.shape.authorId,
+    // Native Garden comments are always member-authored; connector comments
+    // use nullable authorId and arrive via webhook apply, not this path.
+    authorUserId: uuidSchema,
     body: issueCommentInsertSchema.shape.body,
     parentId: issueCommentInsertSchema.shape.id.optional().nullable(),
     attachmentIds: z.array(z.string().uuid()).optional(),
@@ -279,19 +286,45 @@ export function toIssueAttachment(
   }
 }
 
+/**
+ * Timeline label for connector-sourced comments. Metadata shape comes from
+ * inbound GitHub webhooks (#161): `{ github_login, ... }`.
+ */
+export function connectorCommentActorLabel(metadata: unknown): string {
+  if (
+    metadata !== null &&
+    typeof metadata === 'object' &&
+    !Array.isArray(metadata)
+  ) {
+    const login = (metadata as Record<string, unknown>).github_login
+    if (typeof login === 'string' && login.trim().length > 0) {
+      return `GitHub · @${login.trim()}`
+    }
+  }
+  return 'GitHub'
+}
+
 export function toIssueComment(
   row: typeof schema.issueComment.$inferSelect,
   attachments: Attachment[] = [],
 ): Comment {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType: Comment['author_type'] =
+    row.authorType === 'agent'
+      ? 'agent'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : 'member'
 
   return {
     id: row.id,
     issue_id: row.issueId,
-    author_type: (row.authorType === 'agent'
-      ? 'agent'
-      : 'member') as Comment['author_type'],
+    author_type: authorType,
     author_id: row.authorId,
+    author_display:
+      authorType === 'connector'
+        ? connectorCommentActorLabel(row.metadata)
+        : null,
     content: row.body,
     type: 'comment',
     parent_id: null,
@@ -729,6 +762,55 @@ async function toIssueSummary(
   }
 }
 
+/**
+ * Picks the next workspace issue number and an order key at the end of the
+ * issue's status column, inside the caller's transaction.
+ *
+ * Why shared: `createIssue` and the GitHub repository import both insert
+ * issues. Before, only `createIssue` placed new issues at the end of their
+ * column; a second copy of this logic would drift. New issues used to share
+ * one default position, so their order was arbitrary and a card dropped
+ * between two of them did not move.
+ *
+ * Why the lock: the number is `max + 1`, so two transactions in one workspace
+ * read the same max and the second insert hit `issue_workspace_number_unique`.
+ * A repository import, GitHub webhooks, and people creating issues run at the
+ * same time, so that surfaced as 500s and lost webhook issues. A
+ * transaction-scoped advisory lock on the workspace serializes allocation
+ * until the caller commits its insert. It needs no schema change, unlike a
+ * counter row, and every issue insert already goes through this function.
+ * The caller must hold a transaction, or the lock releases at once.
+ * https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS
+ */
+export async function allocateIssueSlot(
+  executor: Pick<IssueDb, 'select' | 'execute'>,
+  args: { workspaceId: string; status: string },
+): Promise<{ number: number; position: string }> {
+  await executor.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`issue-number:${args.workspaceId}`}, 0))`,
+  )
+  const [{ nextNumber }] = (await executor
+    .select({
+      nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
+    })
+    .from(schema.issue)
+    .where(eq(schema.issue.workspaceId, args.workspaceId))) as [
+    { nextNumber: number },
+  ]
+  const [{ lastPosition }] = (await executor
+    .select({
+      lastPosition: sql<string | null>`max(${schema.issue.position})`,
+    })
+    .from(schema.issue)
+    .where(
+      and(
+        eq(schema.issue.workspaceId, args.workspaceId),
+        eq(schema.issue.status, args.status),
+      ),
+    )) as [{ lastPosition: string | null }]
+  return { number: nextNumber, position: orderKeyBetween(lastPosition, null) }
+}
+
 export async function createIssue(
   input: CreateIssueInput,
 ): Promise<ResultValue<Issue, IssueServiceError>> {
@@ -743,38 +825,19 @@ export async function createIssue(
   const result = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
-        const [{ nextNumber }] = (await tx
-          .select({
-            nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, parsed.data.workspaceId))) as [
-          { nextNumber: number },
-        ]
-
-        // At the end of its column. New issues all defaulted to the same
-        // position, so their order was arbitrary and a card dropped between
-        // two of them did not move.
         const status = parsed.data.status ?? 'todo'
-        const [{ lastPosition }] = (await tx
-          .select({
-            lastPosition: sql<string | null>`max(${schema.issue.position})`,
-          })
-          .from(schema.issue)
-          .where(
-            and(
-              eq(schema.issue.workspaceId, parsed.data.workspaceId),
-              eq(schema.issue.status, status),
-            ),
-          )) as [{ lastPosition: string | null }]
+        const slot = await allocateIssueSlot(tx, {
+          workspaceId: parsed.data.workspaceId,
+          status,
+        })
 
         const [insertedIssue] = await tx
           .insert(schema.issue)
           .values({
             id: crypto.randomUUID(),
             workspaceId: parsed.data.workspaceId,
-            number: nextNumber,
-            position: orderKeyBetween(lastPosition, null),
+            number: slot.number,
+            position: slot.position,
             title: parsed.data.title,
             description: parsed.data.description ?? null,
             status,
@@ -945,6 +1008,13 @@ export async function readIssue(
   return Result.ok(result.value)
 }
 
+/**
+ * Lists workspace issues for the chat `list_issues` tool as `ownerUserId` sees
+ * them. Before, the query ignored Teams and returned every Team issue in the
+ * workspace to any chat owner; it now applies `teamIssueVisibilityCondition`,
+ * the same rule as `GET /api/issues`, so the agent lists exactly the Team
+ * boards its human can open.
+ */
 export async function listIssues(
   input: ListIssuesInput,
 ): Promise<ResultValue<IssueSummary[], IssueServiceError>> {
@@ -960,7 +1030,23 @@ export async function listIssues(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const conditions = [eq(schema.issue.workspaceId, parsed.data.workspaceId)]
+      const [viewer] = await db
+        .select({ role: schema.member.role })
+        .from(schema.member)
+        .where(
+          and(
+            eq(schema.member.organizationId, parsed.data.workspaceId),
+            eq(schema.member.userId, parsed.data.ownerUserId),
+          ),
+        )
+        .limit(1)
+      const conditions = [
+        eq(schema.issue.workspaceId, parsed.data.workspaceId),
+        teamIssueVisibilityCondition({
+          viewerId: parsed.data.ownerUserId,
+          manager: isWorkspaceManagerRole(viewer?.role),
+        }),
+      ]
       if (parsed.data.status) {
         conditions.push(eq(schema.issue.status, parsed.data.status))
       }
@@ -1121,8 +1207,8 @@ export async function postIssueComment(
     issueId: result.value.issueId,
     comment: {
       id: result.value.dbComment.id,
-      authorType: result.value.dbComment.authorType as 'user' | 'agent',
-      authorId: result.value.dbComment.authorId,
+      authorType: 'user',
+      authorId: parsed.data.authorUserId,
       body: result.value.dbComment.body,
       parentId: parsed.data.parentId ?? null,
     },
@@ -1223,13 +1309,16 @@ export async function wakeAgentsForIssueComment(
           body: input.comment.body,
           parentId: input.comment.parentId ?? null,
         },
-        parentComment: parentComment
-          ? {
-              authorType:
-                parentComment.authorType === 'agent' ? 'agent' : 'user',
-              authorId: parentComment.authorId,
-            }
-          : null,
+        parentComment:
+          parentComment &&
+          parentComment.authorId &&
+          parentComment.authorType !== 'connector'
+            ? {
+                authorType:
+                  parentComment.authorType === 'agent' ? 'agent' : 'user',
+                authorId: parentComment.authorId,
+              }
+            : null,
         runningRuns,
         mentionedAgentIds: input.mentionedAgentIds ?? [],
       })

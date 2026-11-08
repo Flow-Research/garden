@@ -100,7 +100,6 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
               issue_id: existingIssue.id,
               comment_id: commentResult.value.comment.id,
               team_id: existingIssue.teamId,
-              assignee_id: existingIssue.assigneeId,
             },
           }),
         )

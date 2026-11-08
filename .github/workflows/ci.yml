@@ -45,6 +45,9 @@ jobs:
       - name: Verify connector coverage
         run: pnpm verify:connectors
 
+      - name: Verify docs
+        run: pnpm verify:docs
+
       - name: Lint
         run: pnpm lint
 
