@@ -18,6 +18,7 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { githubIdentityByMemberId } from '@/lib/server/workspace-members'
 
 const logger = createLogger('workspace-members-api')
 
@@ -133,17 +134,29 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             }
           }>
         }
+        const db = await appContext.db()
+        const githubById = await githubIdentityByMemberId({
+          db,
+          workspaceId: params.id,
+          memberIds: result.members.map((row) => row.id),
+        })
+
         return Response.json(
-          result.members.map((row) => ({
-            id: row.id,
-            workspace_id: row.organizationId,
-            user_id: row.userId,
-            role: row.role,
-            created_at: new Date(row.createdAt).toISOString(),
-            name: row.user.name,
-            email: row.user.email,
-            avatar_url: row.user.image ?? null,
-          })),
+          result.members.map((row) => {
+            const github = githubById.get(row.id)
+            return {
+              id: row.id,
+              workspace_id: row.organizationId,
+              user_id: row.userId,
+              role: row.role,
+              github_user_id: github?.githubUserId ?? null,
+              github_login: github?.githubLogin ?? null,
+              created_at: new Date(row.createdAt).toISOString(),
+              name: row.user.name,
+              email: row.user.email,
+              avatar_url: row.user.image ?? null,
+            }
+          }),
         )
       },
       POST: async ({ context, request, params }) => {

@@ -247,16 +247,12 @@ export async function loadTeamMember(args: {
 }
 
 /**
- * Issue counts respect the caller's visibility: managers and the Team owner
- * see every Team issue; everyone else only issues assigned to them.
+ * Counts every issue on the Team. Both callers only serve viewers who can open
+ * the Team (workspace managers and Team members), and every such viewer sees
+ * the whole Team board (`canViewTeamIssue`), so the count needs no
+ * per-viewer filter.
  */
-function issueVisibilityCondition(args: {
-  manager: boolean
-  viewerId: string
-}) {
-  if (args.manager) return sql`true`
-  return sql`("team"."owner_user_id" = ${args.viewerId} or (i.assignee_type = 'user' and i.assignee_id = ${args.viewerId}))`
-}
+const teamIssueCount = sql<number>`(select cast(count(*) as int) from ${schema.issue} i where i.team_id = "team"."id")`
 
 export async function getTeamForViewer(args: {
   db: Db
@@ -268,12 +264,7 @@ export async function getTeamForViewer(args: {
   const [counts] = await args.db
     .select({
       memberCount: sql<number>`(select cast(count(*) as int) from "team_member" where "team_member"."team_id" = "team"."id")`,
-      issueCount: sql<number>`(select cast(count(*) as int) from ${schema.issue} i where i.team_id = "team"."id" and ${issueVisibilityCondition(
-        {
-          manager,
-          viewerId: args.viewerId,
-        },
-      )})`,
+      issueCount: teamIssueCount,
       activityCount: sql<number>`(select cast(count(*) as int) from ${schema.activityEvent} where ${schema.activityEvent.subjectType} = 'team' and ${schema.activityEvent.subjectId} = "team"."id")`,
     })
     .from(schema.team)
@@ -318,12 +309,7 @@ export async function listTeams(args: {
     .select({
       team: schema.team,
       memberCount: sql<number>`(select cast(count(*) as int) from "team_member" where "team_member"."team_id" = "team"."id")`,
-      issueCount: sql<number>`(select cast(count(*) as int) from ${schema.issue} i where i.team_id = "team"."id" and ${issueVisibilityCondition(
-        {
-          manager,
-          viewerId: args.viewerId,
-        },
-      )})`,
+      issueCount: teamIssueCount,
     })
     .from(schema.team)
     .where(

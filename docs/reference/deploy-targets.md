@@ -29,6 +29,7 @@ The `staging` target keeps the `garden-production` stack and `production` stage 
 | `EXECUTOR_BLOBS` bucket  | `harnessy-connectors-blobs`               | `harnessy-connectors-blobs-dev`       | `harnessy-connectors-blobs-preview`       |
 | `RUN_WORKFLOW`           | `garden-run-workflow-staging`             | `garden-run-workflow-dev`             | `garden-run-workflow-preview`             |
 | `DECIDE_ANALYSIS_WORKFLOW` | `garden-decide-analysis-workflow-staging` | `garden-decide-analysis-workflow-dev` | `garden-decide-analysis-workflow-preview` |
+| `GITHUB_REPO_IMPORT_WORKFLOW` | `garden-github-repo-import-workflow-staging` | `garden-github-repo-import-workflow-dev` | `garden-github-repo-import-workflow-preview` |
 | Sandbox container        | `garden-web-sandbox-staging`              | `garden-web-sandbox-dev`              | `garden-web-sandbox-preview`              |
 | AI Gateway               | `garden-staging`                          | `garden-dev`                          | `garden-preview`                          |
 | Empty buckets on destroy | No                                        | No                                    | Yes                                       |

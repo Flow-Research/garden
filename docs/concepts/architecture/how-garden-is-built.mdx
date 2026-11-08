@@ -43,7 +43,7 @@ The execution plane offers four tools. They differ in how long the work can run 
 | Codemode     | A short JavaScript program in a dynamic Worker (`LOADER`)      | Chaining several tool calls                  |
 | MCP sessions | An `ExecutorMcpSession` scoped to one workspace, user, and run | Calling connector tools such as GitHub       |
 | Sandbox      | A Python container                                             | Code that needs a filesystem or native tools |
-| Workflows    | `RunWorkflow` and `DecideAnalysisWorkflow`                     | Runs that must survive crashes and restarts  |
+| Workflows    | `RunWorkflow`, `DecideAnalysisWorkflow`, and `GitHubRepoImportWorkflow` | Runs that must survive crashes and restarts  |
 
 Workflows own retries, waits, resumes, and cancellation. The Workflow instance ID is the run ID, so starting the same run twice does not create two runs. Don't add a second retry layer in agent code. Two layers that both retry can bill a paid provider twice. See [run engine](./run-engine.md) and [execution runtimes](./execution-runtimes.md).
 

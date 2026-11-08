@@ -3,9 +3,9 @@ import { fileURLToPath } from 'node:url'
 import type { Link, Root } from 'mdast'
 import { visit } from 'unist-util-visit'
 import type { VFile } from 'vfile'
+import { handbookBasePath } from './base-path'
 
 const githubBlobBase = 'https://github.com/Flow-Research/garden/blob/dev/'
-export const handbookBasePath = '/handbook'
 
 /**
  * Converts a path inside `docs/` to its handbook URL. `index` files map to

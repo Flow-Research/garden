@@ -1,10 +1,14 @@
 import type {
   AddTeamMemberRequest,
   CreateTeamRequest,
+  LinkTeamRepositoryRequest,
+  ListAvailableTeamRepositoriesResponse,
   ListTeamMembersResponse,
+  ListTeamRepositoriesResponse,
   ListTeamsResponse,
   Team,
   TeamMember,
+  TeamRepository,
   TransferTeamOwnerRequest,
   UpdateTeamRequest,
 } from '@garden/core/types'
@@ -75,4 +79,48 @@ export function transferTeamOwner(
     method: 'PUT',
     body: JSON.stringify(data),
   })
+}
+
+export function listTeamRepositories(
+  teamId: string,
+): Promise<ListTeamRepositoriesResponse> {
+  return getApiTransport().request(`/api/teams/${teamId}/repositories`)
+}
+
+export function listAvailableTeamRepositories(
+  teamId: string,
+): Promise<ListAvailableTeamRepositoriesResponse> {
+  return getApiTransport().request(
+    `/api/teams/${teamId}/repositories/available`,
+  )
+}
+
+export function linkTeamRepository(
+  teamId: string,
+  data: LinkTeamRepositoryRequest,
+): Promise<TeamRepository> {
+  return getApiTransport().request(`/api/teams/${teamId}/repositories`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+}
+
+export function unlinkTeamRepository(
+  teamId: string,
+  repositoryId: string,
+): Promise<void> {
+  return getApiTransport().request(
+    `/api/teams/${teamId}/repositories/${repositoryId}`,
+    { method: 'DELETE' },
+  )
+}
+
+export function retryTeamRepositoryImport(
+  teamId: string,
+  repositoryId: string,
+): Promise<TeamRepository> {
+  return getApiTransport().request(
+    `/api/teams/${teamId}/repositories/${repositoryId}/retry`,
+    { method: 'POST' },
+  )
 }

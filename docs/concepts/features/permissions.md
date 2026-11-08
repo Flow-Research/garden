@@ -3,7 +3,7 @@ title: One permission story covers direct tools, codemode, and connectors
 description: How agent permissions, capability risk classes, and trust levels decide whether a tool call runs, asks for approval, or is blocked, and the rules that keep approvals out of codemode.
 status: current
 owner: "@Flow-Research/security"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-07
 ---
 
 An agent can act through direct tools, through codemode, and through connector tools that Executor serves over MCP. Approval behavior should not depend on which of those paths a call took. Garden is not fully there yet, but every path already reads the same two inputs: the agent's permissions and the capability's trust level.
@@ -61,6 +61,10 @@ The intended shape has five parts:
 5. Every tool call is audited, including calls made inside codemode.
 
 Open policy gaps are tracked in [known gaps](../../reference/known-gaps.md).
+
+## Issue tools see the workspace as the chat owner does
+
+A chat agent's issue tools act for the person who owns the chat. `list_issues` applies the Team issue rule to that person, so the agent lists workspace issues and the boards of Teams the owner belongs to, and every Team issue when the owner is a workspace owner or admin. `listIssues` in `packages/server/src/issues/server.ts` reads the owner's workspace role and applies `teamIssueVisibilityCondition`. See [Teams](teams.md#team-members-work-the-whole-team-board) for the rule. `read_issue` and `post_issue_comment` do not apply it yet. [Known gaps](../../reference/known-gaps.md) tracks that.
 
 ## Rules for permission changes
 

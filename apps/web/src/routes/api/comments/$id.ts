@@ -12,11 +12,17 @@ import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 function toComment(row: typeof schema.issueComment.$inferSelect) {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType =
+    row.authorType === 'user'
+      ? 'member'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : row.authorType
 
   return {
     id: row.id,
     issue_id: row.issueId,
-    author_type: row.authorType === 'user' ? 'member' : row.authorType,
+    author_type: authorType,
     author_id: row.authorId,
     content: row.body,
     type: 'comment',
@@ -75,7 +81,6 @@ export const Route = createFileRoute('/api/comments/$id')({
               issue_id: access.issue.id,
               comment_id: updatedComment.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )
@@ -114,7 +119,6 @@ export const Route = createFileRoute('/api/comments/$id')({
               issue_id: access.issue.id,
               comment_id: existingComment.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )
