@@ -73,6 +73,7 @@
       "@babel/core": "7.29.6",
       "@modelcontextprotocol/sdk": "1.32.0",
       "@modelcontextprotocol/sdk>@hono/node-server": "2.0.10",
+      "zod@4": "4.6.6",
       "@tanstack/start-server-core": "1.167.30",
       "body-parser": "2.3.0",
       "brace-expansion@2": "2.1.4",
