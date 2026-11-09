@@ -3,7 +3,12 @@
   "plugins": [
     "typescript",
     "unicorn",
-    "oxc"
+    "oxc",
+    "react",
+    "jsx-a11y",
+    "import",
+    "promise",
+    "vitest"
   ],
   "categories": {
     "correctness": "error"
@@ -15,20 +20,76 @@
     "**/node_modules/**",
     "**/dist/**",
     "**/.output/**",
-    "**/.tanstack/**"
+    "**/.tanstack/**",
+    "**/routeTree.gen.ts",
+    "**/worker-configuration.d.ts"
   ],
   "rules": {
+    "typescript/no-explicit-any": "error",
+    "typescript/ban-ts-comment": [
+      "error",
+      {
+        "ts-expect-error": "allow-with-description"
+      }
+    ],
+    "react/rules-of-hooks": "error",
+    "react/jsx-key": "error",
+    "vitest/no-focused-tests": "error",
+    "jsx-a11y/alt-text": "error",
+    "jsx-a11y/anchor-is-valid": "error",
+    "eqeqeq": [
+      "error",
+      "smart"
+    ],
+    "no-var": "error",
+    "prefer-const": "error",
+    "typescript/no-non-null-assertion": "warn",
+    "typescript/consistent-type-imports": "warn",
+    "no-console": [
+      "warn",
+      {
+        "allow": [
+          "warn",
+          "error"
+        ]
+      }
+    ],
+    "react/exhaustive-deps": "warn",
+    "import/no-cycle": "warn",
+    "import/no-duplicates": "warn",
+    "jsx-a11y/click-events-have-key-events": "warn",
+    "jsx-a11y/no-static-element-interactions": "warn",
+    "jsx-a11y/iframe-has-title": "warn",
+    "react/no-danger": "warn",
+    "react/iframe-missing-sandbox": "warn",
+    "vitest/valid-expect": "off",
+    "vitest/require-mock-type-parameters": "off",
+    "vitest/no-conditional-expect": "warn",
+    "vitest/require-to-throw-message": "warn",
+    "jsx-a11y/no-autofocus": "warn",
+    "jsx-a11y/label-has-associated-control": "warn",
+    "jsx-a11y/anchor-has-content": "warn",
+    "jsx-a11y/prefer-tag-over-role": "warn",
+    "promise/no-callback-in-promise": "warn",
     "no-restricted-imports": [
       "error",
       {
         "paths": [
           {
             "name": "drizzle-orm/neon-serverless",
-            "message": "Don't connect straight to Neon — direct neon-serverless connections bypass Hyperdrive and keep Neon's compute awake (autosuspend defeated, compute quota burned). Route Postgres through Hyperdrive via getPooledDb / getPooledDbWith from @garden/db/runtime, passing env.HYPERDRIVE.connectionString."
+            "message": "Don't connect straight to Neon \u2014 direct neon-serverless connections bypass Hyperdrive and keep Neon's compute awake (autosuspend defeated, compute quota burned). Route Postgres through Hyperdrive via getPooledDb / getPooledDbWith from @garden/db/runtime, passing env.HYPERDRIVE.connectionString."
           },
           {
             "name": "@neondatabase/serverless",
-            "message": "Don't use the Neon serverless driver directly — it bypasses Hyperdrive and burns Neon compute. Go through @garden/db/runtime (Hyperdrive-backed node-postgres)."
+            "message": "Don't use the Neon serverless driver directly \u2014 it bypasses Hyperdrive and burns Neon compute. Go through @garden/db/runtime (Hyperdrive-backed node-postgres)."
+          },
+          {
+            "name": "@phosphor-icons/react",
+            "message": "Garden uses one icon library: import icons from lucide-react instead."
+          },
+          {
+            "name": "@tabler/icons-react",
+            "message": "Garden uses one icon library: import icons from lucide-react instead."
           }
         ]
       }

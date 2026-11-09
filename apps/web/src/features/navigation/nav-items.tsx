@@ -1,23 +1,24 @@
 import {
   BookOpen,
-  ChatCircleDots,
+  MessageCircleMore,
   Folders,
   House,
-  Lightning,
+  Zap,
   ListChecks,
-  FinnTheHuman,
-  Plugs,
-  Tray,
-  UsersThree,
-} from '@phosphor-icons/react'
+  Bot,
+  Plug,
+  Inbox,
+  TriangleAlert,
+  Users,
+} from 'lucide-react'
 import type { ComponentType } from 'react'
 
 /**
  * Primary nav config for the redesigned shell (Penpot "Garden" file, 2026-09).
  * Single source of truth for sidebar labels/icons/routes — the product renames
  * agreed with design matching the Penpot sidebar exactly (Home, Chats, Tasks, Files & Folders,
- * Inbox, Workflows, Agents, Skills, Connectors, Teams). Icons are Phosphor
- * (the design's icon set).
+ * Inbox, Workflows, Agents, Skills, Connectors, Teams). Icons are lucide-react,
+ * picked to match the Phosphor set in the design file.
  */
 export type NavItem = {
   id: string
@@ -29,17 +30,40 @@ export type NavItem = {
 
 export const NAV_ITEMS: NavItem[] = [
   { id: 'home', label: 'Home', to: '/home', icon: House },
-  { id: 'chats', label: 'Chats', to: '/chats', icon: ChatCircleDots },
+  { id: 'chats', label: 'Chats', to: '/chats', icon: MessageCircleMore },
   { id: 'tasks', label: 'Tasks', to: '/tasks', icon: ListChecks },
   // Design spec: office / regular / folders
   { id: 'files', label: 'Files & Folders', to: '/files', icon: Folders },
-  { id: 'inbox', label: 'Inbox', to: '/inbox', icon: Tray },
-  { id: 'automations', label: 'Workflows', to: '/workflows', icon: Lightning },
-  { id: 'agents', label: 'Agents', to: '/agents', icon: FinnTheHuman },
+  { id: 'inbox', label: 'Inbox', to: '/inbox', icon: Inbox },
+  { id: 'automations', label: 'Workflows', to: '/workflows', icon: Zap },
+  { id: 'agents', label: 'Agents', to: '/agents', icon: Bot },
   { id: 'skills', label: 'Skills', to: '/skills', icon: BookOpen },
-  { id: 'connections', label: 'Connectors', to: '/connectors', icon: Plugs },
-  { id: 'teams', label: 'Teams', to: '/teams', icon: UsersThree },
+  { id: 'connections', label: 'Connectors', to: '/connectors', icon: Plug },
+  { id: 'teams', label: 'Teams', to: '/teams', icon: Users },
 ]
+
+/**
+ * Admin-only Teams dropdown child (Penpot Teams_Main `Items`): the cross-team
+ * Issues surface, which toggles between list and board in place. Members keep
+ * the flat Teams item and reach their work through the member Teams view.
+ */
+export const TEAM_NAV_CHILDREN: NavItem[] = [
+  {
+    id: 'teams-issues',
+    label: 'Issues',
+    to: '/teams/issues',
+    icon: TriangleAlert,
+  },
+]
+
+/** Resolves the nav child that owns a pathname (exact route-base match). */
+export function teamNavChildForPathname(pathname: string): NavItem | null {
+  return (
+    TEAM_NAV_CHILDREN.find(
+      (item) => pathname === item.to || pathname.startsWith(`${item.to}/`),
+    ) ?? null
+  )
+}
 
 /** Resolves the nav item that owns a pathname (longest route-base match). */
 export function navItemForPathname(pathname: string): NavItem | null {

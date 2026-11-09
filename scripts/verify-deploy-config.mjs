@@ -6,6 +6,7 @@ import {
   deploymentTargetFromBranch,
   deploymentTargetFromEnv,
 } from '../deploy-targets.mjs'
+import { optionalCredentialPairIsConfigured } from '../deploy-env.mjs'
 
 const root = resolve(import.meta.dirname, '..')
 const alchemySource = readFileSync(resolve(root, 'alchemy.run.ts'), 'utf8')
@@ -21,6 +22,10 @@ const viteSource = readFileSync(
 )
 const devSource = readFileSync(
   resolve(root, 'apps/web/scripts/dev.mjs'),
+  'utf8',
+)
+const ciWorkflowSource = readFileSync(
+  resolve(root, '.github/workflows/ci.yml'),
   'utf8',
 )
 const publicWranglerSources = [
@@ -43,7 +48,6 @@ assert.equal(deploymentTargets.preview.workerName, 'garden-preview')
 assert.equal(deploymentTargets.staging.emptyBucketsOnDestroy, false)
 assert.equal(deploymentTargets.preview.emptyBucketsOnDestroy, true)
 assert.equal(deploymentTargets.preview.databaseUrlEnv, 'DATABASE_URL')
-assert.equal(deploymentTargets.preview.bindConfiguredBetterAuthUrl, false)
 
 assert.match(publicWranglerSources[0], /"name": "garden-staging"/)
 assert.match(publicWranglerSources[1], /"name": "garden-local"/)
@@ -137,6 +141,10 @@ const uniqueFields = [
   'agentDoId',
   'workflowId',
   'workflowName',
+  'decideAnalysisWorkflowId',
+  'decideAnalysisWorkflowName',
+  'githubRepoImportWorkflowId',
+  'githubRepoImportWorkflowName',
   'sandboxId',
   'sandboxName',
 ]
@@ -220,6 +228,38 @@ assert.match(
   alchemySource,
   /name:\s*'RUN_WORKFLOW',\s*workflowName:\s*deployedRunWorkflow\.workflowName,\s*className:\s*'RunWorkflow'/s,
 )
+assert.match(
+  alchemySource,
+  /Cloudflare\.WorkflowResource\(\s*deployTarget\.decideAnalysisWorkflowId,/s,
+)
+assert.match(
+  alchemySource,
+  /workflowName:\s*deployTarget\.decideAnalysisWorkflowName,\s*className:\s*'DecideAnalysisWorkflow',\s*scriptName:\s*deployTarget\.workerName/s,
+)
+assert.match(
+  alchemySource,
+  /deployed\.bind\(deployTarget\.decideAnalysisWorkflowId,\s*\{/s,
+)
+assert.match(
+  alchemySource,
+  /name:\s*'DECIDE_ANALYSIS_WORKFLOW',\s*workflowName:\s*deployedDecideAnalysisWorkflow\.workflowName,\s*className:\s*'DecideAnalysisWorkflow'/s,
+)
+assert.match(
+  alchemySource,
+  /Cloudflare\.WorkflowResource\(\s*deployTarget\.githubRepoImportWorkflowId,/s,
+)
+assert.match(
+  alchemySource,
+  /workflowName:\s*deployTarget\.githubRepoImportWorkflowName,\s*className:\s*'GitHubRepoImportWorkflow',\s*scriptName:\s*deployTarget\.workerName/s,
+)
+assert.match(
+  alchemySource,
+  /deployed\.bind\(deployTarget\.githubRepoImportWorkflowId,\s*\{/s,
+)
+assert.match(
+  alchemySource,
+  /name:\s*'GITHUB_REPO_IMPORT_WORKFLOW',\s*workflowName:\s*deployedGitHubRepoImportWorkflow\.workflowName,\s*className:\s*'GitHubRepoImportWorkflow'/s,
+)
 assert.match(alchemySource, /name:\s*'AgentDO',\s*className:\s*'AgentDO'/s)
 assert.match(alchemySource, /name:\s*'Sandbox',\s*className:\s*'Sandbox'/s)
 assert.match(
@@ -232,13 +272,52 @@ assert.match(
 )
 assert.match(
   alchemySource,
-  /optionalPlainBindings\(\[[^\]]*'GOOGLE_AUTH_CLIENT_ID'/s,
-)
-assert.match(
-  alchemySource,
-  /optionalSecretBindings\(\[[^\]]*'GOOGLE_AUTH_CLIENT_SECRET'/s,
+  /optionalCredentialPairBindings\(\s*'GOOGLE_AUTH_CLIENT_ID',\s*'GOOGLE_AUTH_CLIENT_SECRET',/s,
 )
 assert.doesNotMatch(alchemySource, /GOOGLE_AUTH_CLIENT_SECRET:\s*plainEnv/)
+assert.match(alchemySource, /BETTER_AUTH_URL:\s*Cloudflare\.Worker\.URL/)
+
+assert.equal(
+  optionalCredentialPairIsConfigured(
+    {},
+    'GOOGLE_AUTH_CLIENT_ID',
+    'GOOGLE_AUTH_CLIENT_SECRET',
+  ),
+  false,
+)
+assert.equal(
+  optionalCredentialPairIsConfigured(
+    {
+      GOOGLE_AUTH_CLIENT_ID: 'client-id',
+      GOOGLE_AUTH_CLIENT_SECRET: 'client-secret',
+    },
+    'GOOGLE_AUTH_CLIENT_ID',
+    'GOOGLE_AUTH_CLIENT_SECRET',
+  ),
+  true,
+)
+for (const env of [
+  { GOOGLE_AUTH_CLIENT_ID: 'client-id' },
+  { GOOGLE_AUTH_CLIENT_SECRET: 'client-secret' },
+  {
+    GOOGLE_AUTH_CLIENT_ID: '   ',
+    GOOGLE_AUTH_CLIENT_SECRET: 'client-secret',
+  },
+  {
+    GOOGLE_AUTH_CLIENT_ID: 'client-id',
+    GOOGLE_AUTH_CLIENT_SECRET: '',
+  },
+]) {
+  assert.throws(
+    () =>
+      optionalCredentialPairIsConfigured(
+        env,
+        'GOOGLE_AUTH_CLIENT_ID',
+        'GOOGLE_AUTH_CLIENT_SECRET',
+      ),
+    /must both be non-empty when configured/,
+  )
+}
 
 for (const field of [
   'workerName',
@@ -248,6 +327,8 @@ for (const field of [
   'executorDatabaseName',
   'executorBlobsBucket',
   'workflowName',
+  'decideAnalysisWorkflowName',
+  'githubRepoImportWorkflowName',
   'sandboxName',
 ]) {
   assert.match(
@@ -293,6 +374,11 @@ assert.equal(
   packageJson.scripts['deploy:migrate'],
   'pnpm --filter @garden/db db:migrate',
 )
+// CI must gate migrations through the production runner. The db tests apply
+// migrations with drizzle-orm's migrator, so only this step proves a migration
+// survives drizzle-kit before it reaches the `main` deploy.
+assert.match(ciWorkflowSource, /^\s+run: pnpm --filter @garden\/db db:check$/m)
+assert.match(ciWorkflowSource, /^\s+run: pnpm run deploy:migrate$/m)
 assert.match(
   packageJson.scripts['deploy:alchemy'],
   /GARDEN_DEPLOY_TARGET=staging.*alchemy deploy --stage production --yes/,

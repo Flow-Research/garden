@@ -18,7 +18,6 @@ import {
   notFound,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
-import type { AppEnv } from '@/lib/server/env'
 import {
   brainFolderSummaryOf,
   deleteBrainFolder,
@@ -59,7 +58,7 @@ export const getBrainFolderDetail = async ({
   })
 
   const resolved = await loadBrainItemsByIds({
-    env: appContext.env as AppEnv & { HELIX_URL?: string },
+    env: appContext.env,
     workspaceId: workspaceContext.workspaceId,
     fileIds: memberIds,
   })

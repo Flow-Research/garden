@@ -6,8 +6,8 @@ tabbed app, so a team can see what its agents are doing and decide what they are
 allowed to do.
 
 > Garden is under active development and is preparing for a small-user beta.
-> Read the [roadmap](docs/roadmap.md) and
-> [known gaps](docs/known-gaps/README.md) before using it in production.
+> Read the [roadmap](docs/concepts/product/roadmap.md) and
+> [known gaps](docs/reference/known-gaps.md) before using it in production.
 
 ![Garden issue board with work grouped by status](docs/assets/readme/issues-board.webp)
 
@@ -47,7 +47,7 @@ migrations can own — plus a dockerized local HelixDB for the Brain graph and
 vector store.
 
 New contributors can follow the complete
-[developer onboarding guide](docs/development/onboarding.md) for setup, system
+[developer onboarding guide](docs/tutorials/get-started.md) for setup, system
 boundaries, an issue-run trace, and change verification.
 
 ### Prerequisites
@@ -195,9 +195,12 @@ Workers free plan (see above).
 `pnpm --filter @garden/db db:migrate`. For a non-Docker database, check the
 connection string and that the user can create and alter tables.
 
-**Postgres port conflict:** the local Postgres maps port 55432 specifically
-to avoid a system Postgres on 5432; if 55432 is also taken, override
-`DATABASE_URL`.
+**Postgres port conflict:** local Postgres maps host port `55432` to container
+port `5432`. If `55432` is also taken, choose an unused host port (for example,
+`55433`), change the Postgres mapping in `compose.dev.yaml` to `55433:5432`,
+and set the port in `.env`'s `DATABASE_URL` to `55433`. Keep the container port
+at `5432`, then rerun `pnpm offline:up` to apply the mapping. See
+[Fix setup problems](docs/guides/develop/fix-setup-problems.md) for related checks.
 
 **A connector is unavailable:** provider credentials are optional. Add only
 the matching variables from `.env.example`, then restart the development
@@ -313,7 +316,7 @@ source of truth for shared product data.
 | Monorepo               | pnpm workspaces and Turborepo                                      |
 
 For the deeper runtime model, read
-[`docs/core/technical.md`](docs/core/technical.md).
+[`docs/reference/architecture-map.md`](docs/reference/architecture-map.md).
 
 ## Repository map
 
@@ -359,20 +362,20 @@ Database commands:
 
 Garden is preparing for a small beta. We are focused on keeping workspaces
 separate, making failed runs recoverable, improving connections, and ensuring
-sensitive actions require the right approval. The [roadmap](docs/roadmap.md)
+sensitive actions require the right approval. The [roadmap](docs/concepts/product/roadmap.md)
 also explains the longer local-first, edge-native, cloud-optional direction.
-The [known-gaps index](docs/known-gaps/README.md) clearly separates what works
+The [known-gaps index](docs/reference/known-gaps.md) clearly separates what works
 today from what still needs to be built or researched.
 
 On-premises and fully self-hosted operation are not current capabilities. See
-[`docs/core/DEFERRED.md`](docs/core/DEFERRED.md) for deliberate non-goals and
+[`docs/concepts/product/roadmap.md`](docs/concepts/product/roadmap.md) for deliberate non-goals and
 later work.
 
 ## Contributing
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md). Connector contributions have two
 paths—Executor-hosted integrations and Garden-native adapters—described in
-[`docs/core/connectors.md`](docs/core/connectors.md).
+[`docs/concepts/architecture/connectors.md`](docs/concepts/architecture/connectors.md).
 
 Keep pull requests focused, include tests for behavior changes, and run the
 checks that CI will run before asking for review. Report vulnerabilities
@@ -380,17 +383,17 @@ privately through [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
-| Document                                                               | Covers                                      |
-| ---------------------------------------------------------------------- | ------------------------------------------- |
-| [`docs/roadmap.md`](docs/roadmap.md)                                   | Beta priorities and longer product direction |
-| [`docs/known-gaps/README.md`](docs/known-gaps/README.md)               | Current gaps and future research boundaries  |
-| [`docs/core/PRD.md`](docs/core/PRD.md)                                 | Product requirements                        |
-| [`docs/core/technical.md`](docs/core/technical.md)                     | Architecture and current implementation     |
-| [`docs/design.md`](docs/design.md)                                     | Design system and interaction principles    |
-| [`docs/core/connectors.md`](docs/core/connectors.md)                   | Connector runtime and contribution paths    |
-| [`docs/core/realtime-foundation.md`](docs/core/realtime-foundation.md) | Realtime and polling boundaries             |
-| [`docs/core/chat-runtime-model.md`](docs/core/chat-runtime-model.md)   | Chat and agent runtime model                |
-| [`docs/core/DEFERRED.md`](docs/core/DEFERRED.md)                       | Deferred features and explicit non-goals    |
+| Document | Covers |
+| --- | --- |
+| [`docs/index.mdx`](docs/index.mdx) | Handbook home: where to start and how docs are organized |
+| [`docs/concepts/product/roadmap.md`](docs/concepts/product/roadmap.md) | Beta priorities, deferred work, and non-goals |
+| [`docs/reference/known-gaps.md`](docs/reference/known-gaps.md) | Open gaps with evidence and priority |
+| [`docs/concepts/product/product.md`](docs/concepts/product/product.md) | Product requirements |
+| [`docs/reference/architecture-map.md`](docs/reference/architecture-map.md) | Architecture and current implementation |
+| [`docs/reference/design-tokens.md`](docs/reference/design-tokens.md) | Design tokens and interaction principles |
+| [`docs/concepts/architecture/connectors.md`](docs/concepts/architecture/connectors.md) | Connector runtime |
+| [`docs/concepts/architecture/realtime.md`](docs/concepts/architecture/realtime.md) | Realtime and polling boundaries |
+| [`docs/concepts/architecture/agent-runtime.md`](docs/concepts/architecture/agent-runtime.md) | Chat and agent runtime model |
 
 ## License
 

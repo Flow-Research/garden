@@ -27,10 +27,9 @@ export type PageIndexShape = {
   ) => Effect.Effect<readonly ExtractedDoc[], HelixError>
 }
 
-export class PageIndex extends Context.Service<
-  PageIndex,
-  PageIndexShape
->()('@garden/brain/PageIndex') {}
+export class PageIndex extends Context.Service<PageIndex, PageIndexShape>()(
+  '@garden/brain/PageIndex',
+) {}
 
 type Frontmatter = {
   readonly title?: string
@@ -116,7 +115,10 @@ export const PageIndexLive = Layer.effect(
         }).pipe(
           Effect.mapError(
             (cause) =>
-              new HelixError({ message: `failed to load page index ${dir}`, cause }),
+              new HelixError({
+                message: `failed to load page index ${dir}`,
+                cause,
+              }),
           ),
         ),
     })

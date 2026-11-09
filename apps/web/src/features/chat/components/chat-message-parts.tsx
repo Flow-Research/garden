@@ -10,12 +10,16 @@
  */
 
 import { buildMessageRenderModel } from './chat-message-model'
+import { DecideAnalysisCard } from './chat-decide-analysis'
 // Re-export the pure model surface so existing importers (chat-timeline,
 // chat-panel-controller, chat-tool-activity, lib/server) keep resolving these
 // from chat-message-parts after the model layer was split out.
 export * from './chat-message-model'
 import { HoverCardTrigger } from '@garden/ui/components/ui/hover-card'
-import { MessageResponse } from '@/components/ai-elements/message'
+import {
+  MessageBubble,
+  MessageResponse,
+} from '@/components/ai-elements/message'
 import {
   Source,
   Sources,
@@ -129,7 +133,15 @@ export function MessageOrderedParts({
               </Reasoning>
             )
           case 'text':
-            return <MessageResponse key={node.key}>{node.text}</MessageResponse>
+            // The bubble lives on the text node, not on the whole message:
+            // reasoning, tool activity and artifact cards are siblings here and
+            // must stay off the filled surface. `MessageBubble` is a no-op on
+            // user rows, where `MessageContent` is already the bubble.
+            return (
+              <MessageBubble key={node.key}>
+                <MessageResponse>{node.text}</MessageResponse>
+              </MessageBubble>
+            )
           case 'work':
             return (
               <PreResponseWrapper
@@ -147,6 +159,8 @@ export function MessageOrderedParts({
                 ))}
               </PreResponseWrapper>
             )
+          case 'decide':
+            return <DecideAnalysisCard key={node.key} runId={node.runId} />
           case 'artifact':
             return (
               <GardenDocDownloadBlock

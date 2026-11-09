@@ -18,6 +18,9 @@ export const PROPS = {
   indexError: 'index_error',
   origin: 'origin',
   body: 'body',
+  scopeKind: 'scope_kind',
+  scopeId: 'scope_id',
+  occurredAt: 'occurred_at',
 } as const
 
 export const MENTION_PROPS = {

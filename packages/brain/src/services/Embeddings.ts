@@ -5,14 +5,15 @@ export const EMBEDDING_DIM = 384
 export const WORKERS_AI_MODEL = '@cf/baai/bge-small-en-v1.5'
 
 export type EmbeddingsShape = {
-  readonly embed: (texts: readonly string[]) => Effect.Effect<number[][], EmbedError>
+  readonly embed: (
+    texts: readonly string[],
+  ) => Effect.Effect<number[][], EmbedError>
   readonly dim: number
 }
 
-export class Embeddings extends Context.Service<
-  Embeddings,
-  EmbeddingsShape
->()('@garden/brain/Embeddings') {}
+export class Embeddings extends Context.Service<Embeddings, EmbeddingsShape>()(
+  '@garden/brain/Embeddings',
+) {}
 
 export type WorkersAiBinding = {
   readonly run: (model: string, input: unknown) => Promise<unknown>

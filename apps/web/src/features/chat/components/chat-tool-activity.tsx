@@ -11,7 +11,6 @@
  *     waiting-approval state.
  */
 
-import { Loader2 } from 'lucide-react'
 import {
   getToolApproval,
   getToolCallId,
@@ -20,6 +19,8 @@ import {
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
+import { Shimmer } from '@/components/ai-elements/shimmer'
 import { resolveToolApproval as resolveToolApprovalRequest } from '@/lib/api'
 import {
   ChainOfThought,
@@ -108,11 +109,23 @@ export function StreamingWorkEntryRow({
   )
 }
 
+/**
+ * The "Thinking…" row between steps. Before, it drew a dot-sized custom
+ * spinner next to plain text, which read as weaker than the Decide card's
+ * running state. It now uses the same `Spinner` and shimmering label as that
+ * card, so every loading state in chat looks alike.
+ */
 export function PendingAssistantActivity({ label }: { label: string }) {
   return (
-    <div className="relative flex items-center text-sm text-muted-foreground">
-      <div className="size-1.5 shrink-0 animate-spin rounded-full border border-muted-foreground border-t-transparent" />
-      <span className="ml-2">{label}</span>
+    <div
+      role="status"
+      aria-live="polite"
+      className="flex items-center gap-3 font-sans text-sm"
+    >
+      <Spinner className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <Shimmer as="span" className="font-medium">
+        {label}
+      </Shimmer>
     </div>
   )
 }
@@ -359,9 +372,7 @@ export function MessageToolApprovals({
                 onClick={() => void onResolve(group, true)}
                 disabled={isResolving}
               >
-                {isResolving ? (
-                  <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                ) : null}
+                {isResolving ? <Spinner className="mr-1.5 size-3.5" /> : null}
                 Approve
               </ConfirmationAction>
             </ConfirmationActions>

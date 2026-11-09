@@ -10,6 +10,7 @@ function issueRecord(
   return {
     id: '00000000-0000-0000-0000-000000000001',
     workspaceId: '00000000-0000-0000-0000-000000000002',
+    teamId: null,
     number: 42,
     title: 'Test issue',
     description: null,
@@ -17,7 +18,7 @@ function issueRecord(
     priority: 'medium',
     assigneeType: null,
     assigneeId: null,
-    position: 0,
+    position: 'a0',
     dueDate: null,
     activeRunId: null,
     sourceSummary: null,

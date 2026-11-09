@@ -13,8 +13,14 @@ export function useMarkInboxRead() {
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: listKey })
       const prev = qc.getQueryData<InboxItem[]>(listKey)
+      const target = prev?.find((item) => item.id === id)
+      const issueId = target?.issue_id
       qc.setQueryData<InboxItem[]>(listKey, (old) =>
-        old?.map((item) => (item.id === id ? { ...item, read: true } : item)),
+        old?.map((item) =>
+          item.id === id || (issueId && item.issue_id === issueId)
+            ? { ...item, read: true }
+            : item,
+        ),
       )
       return { prev }
     },
@@ -25,7 +31,6 @@ export function useMarkInboxRead() {
       qc.invalidateQueries({
         queryKey: listKey,
         exact: true,
-        refetchType: 'none',
       })
     },
   })
@@ -40,7 +45,7 @@ export function useArchiveInbox() {
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: listKey })
       const prev = qc.getQueryData<InboxItem[]>(listKey)
-      // Archive all items for the same issue (same behavior as store)
+      // The server applies the same issue-thread scope after resolving this id.
       const target = prev?.find((i) => i.id === id)
       const issueId = target?.issue_id
       qc.setQueryData<InboxItem[]>(listKey, (old) =>
@@ -59,7 +64,6 @@ export function useArchiveInbox() {
       qc.invalidateQueries({
         queryKey: listKey,
         exact: true,
-        refetchType: 'none',
       })
     },
   })

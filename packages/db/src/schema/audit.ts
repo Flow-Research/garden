@@ -31,7 +31,12 @@ export const invocationLog = pgTable(
     latencyMs: integer('latency_ms'),
     tokenCount: integer('token_count'),
     costUsd: numeric('cost_usd', { precision: 10, scale: 6 }),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('invocation_log_agent_created_at_idx').on(
@@ -51,7 +56,7 @@ export const toolCallAudit = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     agentId: uuid('agent_id')
       .notNull()
       .references(() => agent.id),
@@ -62,7 +67,7 @@ export const toolCallAudit = pgTable(
     argsHash: text('args_hash').notNull(),
     resultStatus: text('result_status').notNull(),
     durationMs: integer('duration_ms').notNull(),
-    ts: timestamp('ts', { mode: 'date' })
+    ts: timestamp('ts', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
     error: text('error'),
@@ -83,14 +88,19 @@ export const activityEvent = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     subjectType: text('subject_type').notNull(),
     subjectId: uuid('subject_id').notNull(),
     actorType: text('actor_type').notNull(),
     actorId: uuid('actor_id').notNull(),
     eventType: text('event_type').notNull(),
     payload: jsonb('payload'),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('activity_event_workspace_created_at_idx').on(
@@ -122,10 +132,13 @@ export const connectorCallbackEvent = pgTable(
     errorCode: text('error_code'),
     accountLogin: text('account_login'),
     payload: jsonb('payload'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    completedAt: timestamp('completed_at', { mode: 'date' }),
+    completedAt: timestamp('completed_at', {
+      withTimezone: true,
+      mode: 'date',
+    }),
   },
   (table) => [
     index('connector_callback_event_workspace_created_at_idx').on(

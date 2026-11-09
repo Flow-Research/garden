@@ -7,14 +7,16 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
   "exports": {
     "./connectors/availability": "./src/connectors/availability.ts",
     "./automations/run-service": "./src/automations/run-service.ts",
     "./issues/server": "./src/issues/server.ts",
-    "./issues/run-service": "./src/issues/run-service.ts"
+    "./issues/run-service": "./src/issues/run-service.ts",
+    "./issues/source-binding": "./src/issues/source-binding.ts",
+    "./runtime-bindings": "./src/runtime-bindings.ts"
   },
   "dependencies": {
     "@garden/connectors": "workspace:*",
@@ -22,7 +24,8 @@
     "@garden/db": "workspace:*",
     "@garden/observability": "workspace:*",
     "better-result": "^2.9.2",
-    "drizzle-orm": "catalog:"
+    "drizzle-orm": "catalog:",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",

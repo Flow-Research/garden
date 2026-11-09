@@ -8,17 +8,15 @@ import { contrast } from '../architecture-copy'
 export function ContrastTable() {
   return (
     <div className="arch-card overflow-hidden">
-      <div className="grid grid-cols-[1fr_1fr] border-b border-[color:var(--hairline)] sm:grid-cols-[minmax(0,9rem)_1fr_1fr]">
+      <div className="grid grid-cols-[1fr_1fr] border-b border-border sm:grid-cols-[minmax(0,9rem)_1fr_1fr]">
         <div className="hidden p-4 sm:block" />
-        <div className="border-l border-[color:var(--hairline)] p-4">
-          <div className="text-[13px] font-semibold text-[color:var(--moss)]">
-            Garden
-          </div>
+        <div className="border-l border-border p-4">
+          <div className="text-[13px] font-semibold text-success">Garden</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
             Think · Workflows · DOs
           </div>
         </div>
-        <div className="border-l border-[color:var(--hairline)] p-4">
+        <div className="border-l border-border p-4">
           <div className="text-[13px] font-semibold text-foreground">
             Bare harness
           </div>
@@ -31,7 +29,7 @@ export function ContrastTable() {
       {contrast.rows.map((row, i) => (
         <div
           key={row.capability}
-          className="grid grid-cols-[1fr_1fr] border-b border-[color:var(--hairline-soft)] last:border-0 sm:grid-cols-[minmax(0,9rem)_1fr_1fr]"
+          className="grid grid-cols-[1fr_1fr] border-b border-border/60 last:border-0 sm:grid-cols-[minmax(0,9rem)_1fr_1fr]"
         >
           <div className="col-span-2 px-4 pt-3 sm:col-span-1 sm:py-4">
             <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
@@ -39,19 +37,19 @@ export function ContrastTable() {
             </span>
           </div>
           <div
-            className="border-l border-[color:var(--hairline-soft)] p-4 text-[13px] leading-6 text-foreground/90"
+            className="border-l border-border/60 p-4 text-[13px] leading-6 text-foreground/90"
             style={
               i % 2 === 0
                 ? {
                     background:
-                      'color-mix(in srgb, var(--moss) 5%, transparent)',
+                      'color-mix(in srgb, var(--success) 5%, transparent)',
                   }
                 : undefined
             }
           >
             {row.garden}
           </div>
-          <div className="border-l border-[color:var(--hairline-soft)] p-4 text-[13px] leading-6 text-muted-foreground">
+          <div className="border-l border-border/60 p-4 text-[13px] leading-6 text-muted-foreground">
             {row.bare}
           </div>
         </div>

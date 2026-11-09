@@ -5,6 +5,17 @@ const US_ASSETS_ORIGIN = 'https://us-assets.i.posthog.com'
 const EU_API_ORIGIN = 'https://eu.i.posthog.com'
 const EU_ASSETS_ORIGIN = 'https://eu-assets.i.posthog.com'
 
+const FORWARDED_HEADERS = [
+  'accept',
+  'accept-encoding',
+  'accept-language',
+  'content-encoding',
+  'content-type',
+  'origin',
+  'referer',
+  'user-agent',
+] as const
+
 function resolvePostHogOrigins(env: AppEnv) {
   const configuredOrigin = env.VITE_PUBLIC_POSTHOG_HOST ?? US_API_ORIGIN
   if (configuredOrigin === EU_API_ORIGIN) {
@@ -43,9 +54,14 @@ export async function proxyPostHogRequest(request: Request, env: AppEnv) {
   const upstreamUrl = new URL(upstreamPath, upstreamOrigin)
   upstreamUrl.search = requestUrl.search
 
-  const headers = new Headers(request.headers)
-  headers.delete('host')
-  headers.delete('x-forwarded-for')
+  // Allowlist, never copy: the browser attaches Garden's session cookie (and
+  // possibly Authorization) to this same-origin request, and neither may reach
+  // a third party.
+  const headers = new Headers()
+  for (const name of FORWARDED_HEADERS) {
+    const value = request.headers.get(name)
+    if (value) headers.set(name, value)
+  }
   const clientIp = request.headers.get('cf-connecting-ip')
   if (clientIp) headers.set('x-forwarded-for', clientIp)
 

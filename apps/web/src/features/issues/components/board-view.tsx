@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -15,8 +16,11 @@ import {
 import { arrayMove } from '@dnd-kit/sortable'
 import { Eye, MoreHorizontal } from 'lucide-react'
 import type { Issue, IssueStatus } from '@garden/core/types'
+import { FIRST_ORDER_KEY, orderKeyBetween } from '@garden/core/issues/order-key'
 import { Button } from '@garden/ui/components/ui/button'
 import { useLoadMoreDoneIssues } from '@/lib/issues/mutations'
+import { useWorkspaceId } from '@garden/app-state/hooks'
+import { projectListOptions } from '@/lib/projects/queries'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -79,14 +83,26 @@ function computePosition(
   ids: string[],
   activeId: string,
   issueMap: Map<string, Issue>,
-): number {
+): string {
+  const keyOf = (id: string | undefined) =>
+    id === undefined ? null : (issueMap.get(id)?.position ?? null)
   const idx = ids.indexOf(activeId)
-  if (idx === -1) return 0
-  const getPos = (id: string) => issueMap.get(id)?.position ?? 0
-  if (ids.length === 1) return issueMap.get(activeId)?.position ?? 0
-  if (idx === 0) return getPos(ids[1]!) - 1
-  if (idx === ids.length - 1) return getPos(ids[idx - 1]!) + 1
-  return (getPos(ids[idx - 1]!) + getPos(ids[idx + 1]!)) / 2
+  if (idx === -1) return keyOf(activeId) ?? FIRST_ORDER_KEY
+  // An order key between the card's new neighbours. This used to average two
+  // integer positions, and the API rejected the fraction (3.5) whenever the
+  // neighbours were adjacent, so the drop failed and the card snapped back.
+  const before = idx > 0 ? keyOf(ids[idx - 1]) : null
+  // Skip neighbours that tie with `before` (two clients raced into the same
+  // gap): no key fits between equal keys, so the card goes after the tie.
+  let after: string | null = null
+  for (let next = idx + 1; next < ids.length; next++) {
+    const key = keyOf(ids[next])
+    if (key !== null && (before === null || key > before)) {
+      after = key
+      break
+    }
+  }
+  return orderKeyBetween(before, after)
 }
 
 /** Find which column (status) contains a given ID (issue or column droppable). */
@@ -113,6 +129,7 @@ export function BoardView({
   childProgressMap = EMPTY_PROGRESS_MAP,
   doneTotal: doneTotalOverride,
   onCreateIssue,
+  teamChips,
 }: {
   issues: Issue[]
   allIssues: Issue[]
@@ -121,12 +138,15 @@ export function BoardView({
   onMoveIssue: (
     issueId: string,
     newStatus: IssueStatus,
-    newPosition?: number,
+    newPosition?: string,
   ) => void
   childProgressMap?: Map<string, ChildProgress>
   /** Override the done-column count (e.g. with a server-filtered total). */
   doneTotal?: number
-  onCreateIssue: (data?: Record<string, unknown> | null) => void
+  /** When omitted, create affordances are hidden (read-only cross-team views). */
+  onCreateIssue?: (data?: Record<string, unknown> | null) => void
+  /** Team chip lookup for cross-team boards (Teams › Tasks). */
+  teamChips?: Map<string, { name: string; color: string }>
 }) {
   const sortBy = useViewStore((s) => s.sortBy)
   const sortDirection = useViewStore((s) => s.sortDirection)
@@ -134,10 +154,20 @@ export function BoardView({
     loadMore,
     hasMore,
     isLoading: loadingMore,
+    failed: loadMoreFailed,
     doneTotal: hookDoneTotal,
   } = useLoadMoreDoneIssues()
   const displayDoneTotal = doneTotalOverride ?? hookDoneTotal
   const canLoadMoreDone = doneTotalOverride === undefined && hasMore
+
+  // Project titles for the card's project chip, resolved once here (shared
+  // query cache) and threaded to each card as a plain string.
+  const workspaceId = useWorkspaceId()
+  const { data: projectList } = useQuery(projectListOptions(workspaceId))
+  const projectTitleById = useMemo(
+    () => new Map((projectList ?? []).map((p) => [p.id, p.title] as const)),
+    [projectList],
+  )
 
   // --- Drag state ---
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null)
@@ -220,14 +250,29 @@ export function BoardView({
     [visibleStatuses],
   )
 
+  // Rebuild from the latest issues. Needed after any drag that does not
+  // move a card: the sync effect skipped updates that landed mid-drag and
+  // will not run again until the issues change once more.
+  const resetColumns = useCallback(
+    () =>
+      setColumns(buildColumns(issues, visibleStatuses, sortBy, sortDirection)),
+    [issues, visibleStatuses, sortBy, sortDirection],
+  )
+
+  // Esc, a hidden tab or a resize cancels a drag without firing onDragEnd.
+  // Unhandled, the board stayed in drag mode (frozen to query updates) with
+  // the card shown in whatever column it was over.
+  const handleDragCancel = useCallback(() => {
+    isDraggingRef.current = false
+    setActiveIssue(null)
+    resetColumns()
+  }, [resetColumns])
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
       isDraggingRef.current = false
       setActiveIssue(null)
-
-      const resetColumns = () =>
-        setColumns(buildColumns(issues, visibleStatuses, sortBy, sortDirection))
 
       if (!over) {
         resetColumns()
@@ -274,12 +319,13 @@ export function BoardView({
         currentIssue.status === finalCol &&
         currentIssue.position === newPosition
       ) {
+        resetColumns()
         return
       }
 
       onMoveIssue(activeId, finalCol, newPosition)
     },
-    [issues, visibleStatuses, sortBy, sortDirection, onMoveIssue],
+    [visibleStatuses, resetColumns, onMoveIssue],
   )
 
   return (
@@ -289,6 +335,7 @@ export function BoardView({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex flex-1 min-h-0 gap-4 overflow-x-auto p-4">
         {visibleStatuses.map((status) => (
@@ -300,11 +347,14 @@ export function BoardView({
             childProgressMap={childProgressMap}
             totalCount={status === 'done' ? displayDoneTotal : undefined}
             onCreateIssue={onCreateIssue}
+            projectTitleById={projectTitleById}
+            teamChips={teamChips}
             footer={
               status === 'done' && canLoadMoreDone ? (
                 <InfiniteScrollSentinel
                   onVisible={loadMore}
                   loading={loadingMore}
+                  failed={loadMoreFailed}
                 />
               ) : undefined
             }
@@ -319,12 +369,19 @@ export function BoardView({
         )}
       </div>
 
+      {/* DragOverlay sizes its wrapper to the picked-up card; fill it. */}
       <DragOverlay dropAnimation={null}>
         {activeIssue ? (
-          <div className="w-[280px] rotate-2 scale-105 cursor-grabbing opacity-90 shadow-lg shadow-black/10">
+          <div className="w-full rotate-2 scale-105 cursor-grabbing opacity-90 shadow-lg shadow-black/10">
             <BoardCardContent
               issue={activeIssue}
               childProgress={childProgressMap.get(activeIssue.id)}
+              projectTitle={
+                activeIssue.project_id
+                  ? projectTitleById.get(activeIssue.project_id)
+                  : undefined
+              }
+              team={teamChips?.get(activeIssue.id)}
             />
           </div>
         ) : null}
@@ -358,7 +415,7 @@ function HiddenColumnsPanel({
               className="flex items-center justify-between rounded-lg px-2.5 py-2 hover:bg-muted/50"
             >
               <div className="flex items-center gap-2">
-                <StatusIcon status={status} className="h-3.5 w-3.5" />
+                <StatusIcon status={status} className="size-3.5" />
                 <span className="text-sm">{cfg.label}</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -367,6 +424,7 @@ function HiddenColumnsPanel({
                   <DropdownMenuTrigger
                     render={
                       <Button
+                        aria-label="Column options"
                         variant="ghost"
                         size="icon-sm"
                         className="rounded-full text-muted-foreground"

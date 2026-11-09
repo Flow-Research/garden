@@ -4,26 +4,27 @@ import { cn } from '@garden/ui/lib/utils'
 /**
  * Preview swatches mirror the token system's semantic surfaces — light content
  * is background.main.default (white.1000), dark content is gray.900, sidebars
- * are main.secondary, bars are neutral fills. Literal hexes are intentional:
- * CSS vars can't dual-preview light and dark in one page (they scope at root),
- * so keep these in sync with tokens.json if the palette changes.
+ * are main.secondary, bars are neutral fills. They reference the primitive
+ * ramps rather than semantic tokens on purpose: semantic vars flip with the
+ * root theme class, so they can't show light and dark side by side, while
+ * primitives never flip.
  */
 const LIGHT_COLORS = {
-  titleBar: '#f5f5f5', // gray.100
-  content: '#ffffff', // background.main.default
-  sidebar: '#f5f5f5', // background.main.secondary
-  bar: '#d9d9d9', // gray.300
-  barMuted: '#e6e6e6', // gray.200
-  accent: '#012f1d', // brand.800 — primary CTA
+  titleBar: 'var(--gray-100)',
+  content: 'var(--white-1000)', // background.main.default
+  sidebar: 'var(--gray-100)', // background.main.secondary
+  bar: 'var(--gray-300)',
+  barMuted: 'var(--gray-200)',
+  accent: 'var(--brand-800)', // primary CTA
 }
 
 const DARK_COLORS = {
-  titleBar: '#2c2c2c', // gray.800
-  content: '#1e1e1e', // background.main.default (dark)
-  sidebar: '#2c2c2c', // background.main.secondary (dark)
-  bar: '#444444', // gray.600
-  barMuted: '#383838', // gray.700
-  accent: '#8efed3', // brand.200 — accent on dark
+  titleBar: 'var(--gray-800)',
+  content: 'var(--gray-900)', // background.main.default (dark)
+  sidebar: 'var(--gray-800)', // background.main.secondary (dark)
+  bar: 'var(--gray-600)',
+  barMuted: 'var(--gray-700)',
+  accent: 'var(--brand-200)', // accent on dark
 }
 
 function WindowMockup({

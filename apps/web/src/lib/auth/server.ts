@@ -19,3 +19,19 @@ export async function createAuth(env: AuthEnv, request?: Request) {
     request,
   })
 }
+
+/**
+ * Builds the auth instance used before an agent WebSocket enters its Durable
+ * Object. Before this boundary, agent authorization constructed optional
+ * Google and connector providers, so a bad provider configuration returned a
+ * 500 before Garden could verify the session. Session mode keeps the shared
+ * session database, cookie, and origin configuration without optional provider
+ * plugins. Reference: issue #122 and `authorizeAgentRequest` in `server.ts`.
+ */
+export async function createSessionAuth(env: AuthEnv, request?: Request) {
+  return createBetterAuth(await getDb(env), {
+    ...env,
+    request,
+    authMode: 'session',
+  })
+}

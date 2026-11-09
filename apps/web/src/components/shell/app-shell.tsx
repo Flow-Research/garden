@@ -1,5 +1,16 @@
-import { useCallback, useMemo, useState } from 'react'
-import { Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
+import {
+  Outlet,
+  useNavigate,
+  useRouter,
+  useRouterState,
+} from '@tanstack/react-router'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { toast } from 'sonner'
@@ -7,9 +18,12 @@ import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
 import { AppTopBar } from '@garden/ui/components/shell/app-topbar'
 import { Button } from '@garden/ui/components/ui/button'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { useIsMobile } from '@garden/ui/hooks/use-mobile'
+import { cn } from '@garden/ui/lib/utils'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { deduplicateInboxItems, inboxListOptions } from '@/lib/inbox/queries'
+import { subscribeInboxToasts } from '@/features/inbox/inbox-toast'
 import { workspaceListOptions } from '@/lib/workspace/queries'
 import {
   agentListOptions,
@@ -27,7 +41,12 @@ import {
   useSurfaceTabsStore,
   withActiveTab,
 } from '@garden/app-state/surface-tabs'
-import { NAV_ITEMS, navItemForPathname } from '@/features/navigation/nav-items'
+import {
+  NAV_ITEMS,
+  TEAM_NAV_CHILDREN,
+  navItemForPathname,
+  teamNavChildForPathname,
+} from '@/features/navigation/nav-items'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
 import { ChatTabsStrip } from './chat-tabs'
 import { TaskTabsStrip } from './task-tabs'
@@ -90,6 +109,8 @@ function WorkspaceSetupState({ onCreate }: { onCreate: () => void }) {
   )
 }
 
+const getInboxToastSnapshot = () => 0
+
 /**
  * The redesigned app shell: flat labeled sidebar + 40px top bar + routed
  * content pane (Penpot "Garden" file, 2026-09). Replaces the icon rail +
@@ -101,6 +122,7 @@ export function AppShell() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const queryClient = useQueryClient()
+  const router = useRouter()
 
   const user = useAuthStore((state) => state.user)
   const logout = useAuthStore((state) => state.logout)
@@ -111,7 +133,24 @@ export function AppShell() {
 
   const { openIssue, openChatSession } = useSurfaceNavigation()
   const [collapsed, setCollapsed] = useState(false)
+  // Below md the sidebar is a drawer over the content: a fixed 240px column
+  // left a phone almost no room for the page.
+  const isMobile = useIsMobile()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const sidebarCollapsed = isMobile ? false : collapsed
+  const drawerOpen = isMobile && mobileNavOpen
+  useEffect(() => {
+    if (!drawerOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileNavOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [drawerOpen])
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
+  const [expandedNavIds, setExpandedNavIds] = useState<string[]>(() =>
+    pathname.startsWith('/teams/') ? ['teams'] : [],
+  )
 
   const workspaceId = workspace?.id ?? ''
   const workspaceListQuery = useQuery(workspaceListOptions())
@@ -130,10 +169,26 @@ export function AppShell() {
     [memberListQuery.data, user?.id],
   )
 
-  const unreadCount = useMemo(
-    () =>
-      deduplicateInboxItems(rawInboxItems).filter((item) => !item.read).length,
+  const unreadInboxItems = useMemo(
+    () => deduplicateInboxItems(rawInboxItems).filter((item) => !item.read),
     [rawInboxItems],
+  )
+  const unreadCount = unreadInboxItems.length
+
+  const openInbox = useCallback(() => navigate({ to: '/inbox' }), [navigate])
+  const subscribeInbox = useCallback(
+    () =>
+      subscribeInboxToasts({
+        queryClient,
+        workspaceId,
+        onOpen: openInbox,
+      }),
+    [queryClient, workspaceId, openInbox],
+  )
+  useSyncExternalStore(
+    subscribeInbox,
+    getInboxToastSnapshot,
+    getInboxToastSnapshot,
   )
 
   const activeNavId = navItemForPathname(pathname)?.id ?? null
@@ -175,22 +230,46 @@ export function AppShell() {
     [tabbedNav, surfaceTabs, tabStep.current, openChatSession, openIssue],
   )
 
+  const canManageTeams =
+    currentMemberRole === 'owner' || currentMemberRole === 'admin'
+  const activeTeamChildId = teamNavChildForPathname(pathname)?.id ?? null
+
   const navItems = useMemo(
     () =>
       NAV_ITEMS.map((item) => ({
         ...item,
+        // Real links, so a nav item can be opened in a new tab.
+        href: item.to,
         badge: item.id === 'inbox' && unreadCount > 0 ? unreadCount : undefined,
+        children:
+          item.id === 'teams' && canManageTeams
+            ? TEAM_NAV_CHILDREN.map((child) => ({ ...child, href: child.to }))
+            : undefined,
       })),
-    [unreadCount],
+    [unreadCount, canManageTeams],
   )
 
   const handleSelectNav = useCallback(
     (id: string) => {
+      setMobileNavOpen(false)
+      const child = TEAM_NAV_CHILDREN.find((entry) => entry.id === id)
+      if (child) {
+        void navigate({ to: child.to })
+        return
+      }
       const item = NAV_ITEMS.find((entry) => entry.id === id)
       if (item) void navigate({ to: item.to })
     },
     [navigate],
   )
+
+  const handleToggleNav = useCallback((id: string) => {
+    setExpandedNavIds((previous) =>
+      previous.includes(id)
+        ? previous.filter((entry) => entry !== id)
+        : [...previous, id],
+    )
+  }, [])
 
   const handleSwitchWorkspace = useCallback(
     (nextWorkspace: NonNullable<typeof workspace>) => {
@@ -203,6 +282,7 @@ export function AppShell() {
           result.tapBoth({
             ok: () => {
               queryClient.invalidateQueries()
+              void router.invalidate()
               toast.success(`Switched to ${nextWorkspace.name}`)
             },
             err: (error) => {
@@ -215,7 +295,7 @@ export function AppShell() {
           }),
       )
     },
-    [navigate, queryClient, switchWorkspace, workspace?.id],
+    [navigate, queryClient, router, switchWorkspace, workspace?.id],
   )
 
   const handleLogout = useCallback(async () => {
@@ -229,10 +309,11 @@ export function AppShell() {
       return
     }
     queryClient.clear()
+    router.clearCache()
     clearWorkspace()
     toast.success('Signed out')
     void navigate({ to: '/login', search: { redirect: undefined } })
-  }, [clearWorkspace, logout, queryClient, navigate])
+  }, [clearWorkspace, logout, queryClient, navigate, router])
 
   const hasSession = Boolean(user)
   const activeWorkspaceId = workspace?.id ?? null
@@ -246,42 +327,70 @@ export function AppShell() {
         <>
           <WorkspaceWarmCaches wsId={activeWorkspaceId} />
           <ChatRuntimeProvider>
-            <AppSidebar
-              header={
-                <WorkspaceMenu
-                  collapsed={collapsed}
-                  onInviteMembers={() => openSettingsDialog('members')}
-                  onOpenSettings={() => openSettingsDialog()}
-                  onOpenMembers={() => openSettingsDialog('members')}
-                />
+            <div
+              className={
+                isMobile
+                  ? cn(
+                      'fixed inset-y-0 left-0 z-40 shadow-lg transition-transform duration-150',
+                      mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+                    )
+                  : 'contents'
               }
-              items={navItems}
-              activeId={activeNavId}
-              onSelect={handleSelectNav}
-              collapsed={collapsed}
-              userCard={
-                <UserCard
-                  user={{
-                    id: user?.id ?? '',
-                    name: user?.name ?? 'Account',
-                    email: user?.email ?? 'Signed out',
-                    avatar: user?.avatar_url ?? null,
-                  }}
-                  role={currentMemberRole}
-                  workspaces={workspaceListQuery.data ?? []}
-                  currentWorkspaceId={workspace?.id ?? null}
-                  collapsed={collapsed}
-                  onAccount={() => openSettingsDialog()}
-                  onInviteMembers={() => openSettingsDialog('members')}
-                  onLogout={() => void handleLogout()}
-                  onSwitchWorkspace={handleSwitchWorkspace}
-                  onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
-                />
-              }
-            />
+              inert={isMobile && !mobileNavOpen ? true : undefined}
+            >
+              <AppSidebar
+                header={
+                  <WorkspaceMenu
+                    collapsed={sidebarCollapsed}
+                    onInviteMembers={() => openSettingsDialog('members')}
+                    // "Workspace settings" used to land on the Profile tab.
+                    onOpenSettings={() => openSettingsDialog('workspace')}
+                    onOpenMembers={() => openSettingsDialog('members')}
+                  />
+                }
+                items={navItems}
+                activeId={activeNavId}
+                activeChildId={activeTeamChildId}
+                expandedIds={expandedNavIds}
+                onToggleExpand={handleToggleNav}
+                onSelect={handleSelectNav}
+                collapsed={sidebarCollapsed}
+                userCard={
+                  <UserCard
+                    user={{
+                      id: user?.id ?? '',
+                      name: user?.name ?? 'Account',
+                      email: user?.email ?? 'Signed out',
+                      avatar: user?.avatar_url ?? null,
+                    }}
+                    role={currentMemberRole}
+                    workspaces={workspaceListQuery.data ?? []}
+                    currentWorkspaceId={workspace?.id ?? null}
+                    collapsed={sidebarCollapsed}
+                    onAccount={() => openSettingsDialog()}
+                    onInviteMembers={() => openSettingsDialog('members')}
+                    onLogout={() => void handleLogout()}
+                    onSwitchWorkspace={handleSwitchWorkspace}
+                    onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
+                  />
+                }
+              />
+            </div>
+            {isMobile && mobileNavOpen ? (
+              <button
+                type="button"
+                aria-label="Close navigation"
+                className="fixed inset-0 z-30 bg-black/40"
+                onClick={() => setMobileNavOpen(false)}
+              />
+            ) : null}
             <div className="flex min-w-0 flex-1 flex-col">
               <AppTopBar
-                onToggleSidebar={() => setCollapsed((value) => !value)}
+                onToggleSidebar={() =>
+                  isMobile
+                    ? setMobileNavOpen((value) => !value)
+                    : setCollapsed((value) => !value)
+                }
                 onPrevious={() => stepTab(-1)}
                 onNext={() => stepTab(1)}
                 canGoPrevious={tabStep.current > 0}

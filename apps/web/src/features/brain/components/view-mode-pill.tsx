@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ListDashes, SquaresFour } from '@phosphor-icons/react'
+import { List, LayoutGrid } from 'lucide-react'
 
 /** Section layout driven by the design's squares-four/list-dashes toggles. */
 export type ViewMode = 'grid' | 'list'
@@ -42,8 +42,8 @@ export function ViewModePill({
       aria-label={`${label} view mode`}
       className="flex h-10 items-center gap-1 rounded-lg bg-background-main-secondary p-1"
     >
-      {segment('grid', <SquaresFour className="size-4" weight="regular" />)}
-      {segment('list', <ListDashes className="size-4" weight="regular" />)}
+      {segment('grid', <LayoutGrid className="size-4" />)}
+      {segment('list', <List className="size-4" />)}
     </div>
   )
 }

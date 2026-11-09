@@ -33,9 +33,77 @@ export type AgentPermissions = z.infer<typeof AgentPermissionsSchema>
 
 export const DEFAULT_AGENT_PERMISSIONS = AgentPermissionsSchema.parse({})
 
+/**
+ * Used when stored permissions exist but cannot be parsed. Corrupt settings
+ * must not grant more than the admin chose, so they lose full access (and with
+ * it every skill) instead of silently falling back to the full-access default.
+ */
+const UNPARSEABLE_PERMISSIONS_FALLBACK: AgentPermissions = {
+  full_access: false,
+  allowed_skills: [],
+  allowed_connectors: [],
+  allowed_tools: [],
+  approval_overrides: {},
+}
+
 function parsePermissions(value: unknown) {
+  // No stored value means the agent was never restricted.
+  if (value === null || value === undefined) return DEFAULT_AGENT_PERMISSIONS
   const parsed = AgentPermissionsSchema.safeParse(value)
-  return parsed.success ? parsed.data : DEFAULT_AGENT_PERMISSIONS
+  return parsed.success ? parsed.data : UNPARSEABLE_PERMISSIONS_FALLBACK
+}
+
+export type ToolPermissionDecision =
+  | { allowed: true }
+  | { allowed: false; reason: string }
+
+/**
+ * The single tool gate for chat, issue runs and automation runs.
+ *
+ * With full access off, `allowed_tools` and `allowed_connectors` restrict only
+ * when they have entries: an empty list means "no limit". The agent settings UI
+ * restricts skills and never writes these two lists, so reading empty as "deny
+ * everything" would strip every tool from any skill-restricted agent.
+ * (`allowed_skills` is different: the UI fills it, and empty means no skills.)
+ */
+export function evaluateToolPermission(
+  permissions: AgentPermissions | null,
+  tool: {
+    /** Name without any connector prefix, e.g. `add_issue_comment`. */
+    toolName: string
+    /** Name as registered with the runtime, e.g. `tool_github_add_issue_comment`. */
+    runtimeToolName: string
+    /** Owning connector for connector tools, otherwise null. */
+    connectorId: string | null
+  },
+): ToolPermissionDecision {
+  if (!permissions || permissions.full_access) return { allowed: true }
+
+  const { allowed_tools: allowedTools, allowed_connectors: allowedConnectors } =
+    permissions
+  if (
+    allowedTools.length > 0 &&
+    !allowedTools.includes(tool.toolName) &&
+    !allowedTools.includes(tool.runtimeToolName)
+  ) {
+    return {
+      allowed: false,
+      reason: `Tool ${tool.toolName} is not allowed for this agent.`,
+    }
+  }
+
+  if (
+    tool.connectorId &&
+    allowedConnectors.length > 0 &&
+    !allowedConnectors.includes(tool.connectorId)
+  ) {
+    return {
+      allowed: false,
+      reason: `Connector ${tool.connectorId} is not allowed for this agent.`,
+    }
+  }
+
+  return { allowed: true }
 }
 
 export function derivePermissions(input: {

@@ -2,8 +2,10 @@ export { AgentDO, ChatSubAgent } from './agent-do'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
 export { AutomationRunSubAgent } from './automation-run-sub-agent'
 export { BrainAuditSubAgent } from './brain-audit-sub-agent'
+export { BrainWriteBackSubAgent } from './brain-write-back-sub-agent'
 export type { BrainAuditRunInput } from './brain-audit'
 export { AutomationTriggerDO } from './automation-trigger-do'
+export { WorkspaceRealtimeDO } from './workspace-realtime-do'
 export {
   RunWorkflow,
   RUN_WORKFLOW_CONTROL_EVENT_TYPE,
@@ -13,6 +15,20 @@ export {
   type RunWorkflowBinding,
   type RunWorkflowParams,
 } from './run-workflow'
+export type {
+  DecideAnalysisProgress,
+  DecideAnalysisSnapshot,
+  DecideAnalysisStartOutcome,
+  DecideAnalysisStatus,
+  DecideAnalysisWorkflowBinding,
+  DecideAnalysisWorkflowParams,
+} from './decide-analysis-types'
+export { DECIDE_ANALYSIS_STATUSES } from './decide-analysis-types'
+export {
+  decideGeneratedFiles,
+  decideSessionIdFromResult,
+  type DecideGeneratedFile,
+} from './decide-analysis-result'
 export { createAgentModel } from './model'
 export {
   buildContentDisposition,

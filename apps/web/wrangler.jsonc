@@ -89,6 +89,10 @@
         "name": "EXECUTOR_MCP_EXECUTION_OWNER",
         "class_name": "ExecutorMcpExecutionOwnerDirectory",
       },
+      {
+        "name": "WORKSPACE_REALTIME",
+        "class_name": "WorkspaceRealtimeDO",
+      },
     ],
   },
   "workflows": [
@@ -96,6 +100,16 @@
       "name": "garden-run-workflow-local",
       "binding": "RUN_WORKFLOW",
       "class_name": "RunWorkflow",
+    },
+    {
+      "name": "garden-decide-analysis-workflow-local",
+      "binding": "DECIDE_ANALYSIS_WORKFLOW",
+      "class_name": "DecideAnalysisWorkflow",
+    },
+    {
+      "name": "garden-github-repo-import-workflow-local",
+      "binding": "GITHUB_REPO_IMPORT_WORKFLOW",
+      "class_name": "GitHubRepoImportWorkflow",
     },
   ],
   "r2_buckets": [
@@ -214,6 +228,10 @@
         "HarnessyMcpSession",
         "HarnessyExecutionOwnerDirectory",
       ],
+    },
+    {
+      "tag": "v11",
+      "new_sqlite_classes": ["WorkspaceRealtimeDO"],
     },
   ],
 }

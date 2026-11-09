@@ -1,17 +1,19 @@
 {
   "name": "@garden/brain",
   "version": "0.0.0",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
   "exports": {
     ".": "./src/index.ts",
     "./domain": "./src/domain/items.ts",
+    "./domain/scope": "./src/domain/scope.ts",
     "./errors": "./src/errors.ts",
     "./helix": "./src/helix/constants.ts",
     "./services/helix-client": "./src/services/HelixClient.ts",
@@ -22,6 +24,9 @@
     "./services/chunker": "./src/services/Chunker.ts",
     "./services/extractor": "./src/services/Extractor.ts",
     "./services/raw-file-store": "./src/services/RawFileStore.ts",
+    "./services/selection": "./src/services/selection.ts",
+    "./services/freshness": "./src/services/freshness.ts",
+    "./services/write-back": "./src/services/write-back.ts",
     "./services/page-index": "./src/services/PageIndex.ts",
     "./services/brain": "./src/services/Brain.ts",
     "./layers": "./src/layers.ts"
@@ -36,11 +41,12 @@
     "unpdf": "catalog:"
   },
   "devDependencies": {
-    "@effect/platform-node": "4.0.0-beta.102",
+    "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@garden/tsconfig": "workspace:*",
     "@types/node": "catalog:",
     "@typescript/native": "catalog:",
+    "@vitest/coverage-v8": "4.1.4",
     "vitest": "catalog:"
   }
 }

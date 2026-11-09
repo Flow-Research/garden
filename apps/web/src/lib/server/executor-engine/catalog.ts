@@ -192,7 +192,7 @@ const providerFromEntries = (
     CatalogProvider.make({
       providerId: providerId.value,
       installSlug: first.slug,
-      name: seed.name,
+      name: seed.name.trim(),
       description: seed.description,
       icon: decodeOptionalUrl(seed.icon),
       domain: domain.value,
@@ -296,7 +296,7 @@ const presetProviders = (): readonly CatalogProvider[] => {
       CatalogProvider.make({
         providerId: ExecutorProviderId.make(`executor:${slug}`),
         installSlug: ExecutorIntegrationSlug.make(slug),
-        name: seed.name,
+        name: seed.name.trim(),
         description: seed.summary,
         icon: decodeOptionalStringUrl(seed.icon),
         domain: presetDomain(seed),
@@ -547,13 +547,13 @@ export const providerSourceInstallSlug = (
 
 const publicRegistryEntry = (
   provider: CatalogProvider,
-): ExecutorRegistryEntryType => {
+): Option.Option<ExecutorRegistryEntryType> => {
   const firstSource = catalogCandidateSource(provider.candidates[0])
   const remainingSources = provider.candidates
     .slice(1)
     .map(catalogCandidateSource)
     .filter((source) => source !== firstSource)
-  return ExecutorRegistryEntry.make({
+  return ExecutorRegistryEntry.makeOption({
     providerId: provider.providerId,
     name: provider.name,
     description: provider.description,
@@ -567,7 +567,75 @@ const publicRegistryEntry = (
 const providerNameOrder = (
   provider: CatalogProvider,
   comparison: CatalogProvider,
-): number => provider.name.localeCompare(comparison.name)
+): number => {
+  const name = provider.name
+  const other = comparison.name
+  return name < other ? -1 : name > other ? 1 : 0
+}
+
+/** Precomputed search fields for one projected provider. Keystroke ranking
+ * must not re-run toLowerCase/replace across the full catalog. */
+interface ExecutorSearchDoc {
+  readonly provider: CatalogProvider
+  readonly name: string
+  readonly id: string
+  readonly domain: string
+  readonly description: string
+  readonly categories: readonly string[]
+}
+
+const normalizeCategory = (value: string): string =>
+  value.toLowerCase().replace(/_/g, '-')
+
+const executorSearchDoc = (provider: CatalogProvider): ExecutorSearchDoc => ({
+  provider,
+  name: provider.name.toLowerCase(),
+  id: String(provider.providerId).toLowerCase(),
+  domain: String(provider.domain).toLowerCase(),
+  description: provider.description.toLowerCase(),
+  categories: provider.categories.map(normalizeCategory),
+})
+
+/** Projected catalog + search docs memoized on the entries identity. Effect
+ * Cache returns a stable catalog array while its TTL is warm, so re-projecting
+ * (group ~5k entries + Schema.make + server-owned merge) on every search was
+ * pure waste. Empty failure path reuses one frozen array so it also hits. */
+interface ExecutorSearchCatalog {
+  readonly entries: readonly IntegrationsShCatalogEntry[]
+  readonly providers: readonly CatalogProvider[]
+  readonly docs: readonly ExecutorSearchDoc[]
+}
+
+const emptyCatalogEntries: readonly IntegrationsShCatalogEntry[] = []
+
+let searchCatalogCache: ExecutorSearchCatalog | undefined
+
+const loadSearchCatalog = (
+  entries: readonly IntegrationsShCatalogEntry[],
+): ExecutorSearchCatalog => {
+  const key = entries.length === 0 ? emptyCatalogEntries : entries
+  if (searchCatalogCache !== undefined && searchCatalogCache.entries === key) {
+    return searchCatalogCache
+  }
+  const providers = projectExecutorProviders(key)
+  const catalog: ExecutorSearchCatalog = {
+    entries: key,
+    providers,
+    docs: providers.map(executorSearchDoc),
+  }
+  searchCatalogCache = catalog
+  return catalog
+}
+
+const queryRank = (query: string, doc: ExecutorSearchDoc): number => {
+  if (query.length === 0) return 0
+  if (doc.name === query) return 0
+  if (doc.name.startsWith(query)) return 1
+  if (doc.name.includes(query)) return 2
+  if (doc.id.includes(query) || doc.domain.includes(query)) return 3
+  if (doc.description.includes(query)) return 4
+  return -1
+}
 
 const withHttpClient = <A, E>(
   effect: Effect.Effect<A, E, HttpClient.HttpClient>,
@@ -584,7 +652,7 @@ export const listExecutorProviders = Effect.fn('ExecutorCatalog.list')(
       })
       return serverOwnedProviders
     }
-    return projectExecutorProviders(catalog.success.data)
+    return loadSearchCatalog(catalog.success.data).providers
   },
 )
 
@@ -641,34 +709,48 @@ export const searchExecutorCatalog = Effect.fn('ExecutorCatalog.search')(
     readonly limit: number
     readonly offset: number
   }) {
-    const catalog = yield* withHttpClient(integrations.catalog())
-    const providers = projectExecutorProviders(catalog.data)
-    const matches = providers
-      .filter((provider) => {
-        if (input.category.length === 0) return true
-        return provider.categories.includes(input.category)
-      })
-      .filter((provider) => {
-        if (input.query.length === 0) return true
-        const values = [
-          provider.name,
-          String(provider.providerId),
-          String(provider.domain),
-          provider.description,
-        ]
-        return values.some((value) => value.toLowerCase().includes(input.query))
-      })
-    matches.sort(providerNameOrder)
+    const catalogResult = yield* Effect.result(
+      withHttpClient(integrations.catalog()),
+    )
+    const entries = Result.isSuccess(catalogResult)
+      ? catalogResult.success.data
+      : emptyCatalogEntries
+    const category =
+      input.category.length === 0 ? '' : normalizeCategory(input.category)
+    const { docs } = loadSearchCatalog(entries)
+    const matches: {
+      readonly provider: CatalogProvider
+      readonly rank: number
+    }[] = []
+    for (const doc of docs) {
+      if (category !== '' && !doc.categories.includes(category)) continue
+      const rank = queryRank(input.query, doc)
+      if (rank < 0) continue
+      matches.push({ provider: doc.provider, rank })
+    }
+    matches.sort(
+      (a, b) => a.rank - b.rank || providerNameOrder(a.provider, b.provider),
+    )
 
-    const page = matches.slice(input.offset, input.offset + input.limit)
+    const page = matches
+      .slice(input.offset, input.offset + input.limit)
+      .map(({ provider }) => provider)
     const next = input.offset + page.length
     let nextOffset = Option.none<number>()
     if (next < matches.length) nextOffset = Option.some(next)
     return ExecutorRegistrySearchResponse.make({
-      entries: page.map(publicRegistryEntry),
+      entries: page.flatMap((provider) =>
+        Option.toArray(publicRegistryEntry(provider)),
+      ),
       total: matches.length,
-      catalogSize: Option.some(catalog.data.length),
-      fetchedAt: catalog.generatedAt,
+      catalogSize: Option.some(
+        Result.isSuccess(catalogResult)
+          ? catalogResult.success.data.length
+          : serverOwnedProviders.length,
+      ),
+      fetchedAt: Result.isSuccess(catalogResult)
+        ? catalogResult.success.generatedAt
+        : new Date().toISOString(),
       nextOffset,
     })
   },
@@ -682,7 +764,9 @@ export const getFeaturedExecutorCatalog = Effect.fn('ExecutorCatalog.featured')(
     )
     featured.sort(providerNameOrder)
     return ExecutorRegistrySearchResponse.make({
-      entries: featured.map(publicRegistryEntry),
+      entries: featured.flatMap((provider) =>
+        Option.toArray(publicRegistryEntry(provider)),
+      ),
       total: featured.length,
       catalogSize: Option.none(),
       fetchedAt: new Date(now).toISOString(),

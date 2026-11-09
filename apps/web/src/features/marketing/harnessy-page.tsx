@@ -36,7 +36,7 @@ const tocEntries: { id: string; title: string }[] = [
 export function HarnessyPage() {
   return (
     <div className="harnessy-root flex h-dvh text-foreground">
-      <aside className="hidden h-dvh w-56 shrink-0 overflow-y-auto border-r border-[color:var(--hairline-soft)] bg-[color:var(--parchment-deep)] lg:block">
+      <aside className="hidden h-dvh w-56 shrink-0 overflow-y-auto border-r border-border/60 bg-muted lg:block">
         <div className="space-y-6 px-4 py-6">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <BrandIcon className="size-4" noSpin bordered size="sm" />
@@ -47,7 +47,7 @@ export function HarnessyPage() {
               <a
                 key={entry.id}
                 href={`#${entry.id}`}
-                className="block text-xs font-medium leading-snug text-foreground hover:text-[color:var(--moss)]"
+                className="block text-xs font-medium leading-snug text-foreground hover:text-success"
               >
                 {entry.title}
               </a>
@@ -84,7 +84,7 @@ export function HarnessyPage() {
               <a
                 key={entry.id}
                 href={`#${entry.id}`}
-                className="shrink-0 rounded-full border border-[color:var(--hairline-soft)] px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
+                className="shrink-0 rounded-full border border-border/60 px-3 py-1 text-xs text-muted-foreground hover:text-foreground"
               >
                 {entry.title}
               </a>
@@ -102,7 +102,7 @@ export function HarnessyPage() {
             <PointsSection section={whereWeAreGoing} />
           </div>
 
-          <p className="mt-16 border-t border-[color:var(--hairline-soft)] pt-6 text-xs text-muted-foreground">
+          <p className="mt-16 border-t border-border/60 pt-6 text-xs text-muted-foreground">
             Source: Garden’s direct Executor implementation and the independent
             Harnessy direction. Architecture and product direction only —
             commercial, legal, identity-provider, and org-structure decisions
@@ -127,10 +127,7 @@ function SectionHeading({
   status?: HarnessySection['status']
 }) {
   return (
-    <header
-      id={id}
-      className="mb-6 scroll-mt-6 border-b border-[color:var(--hairline-soft)] pb-4"
-    >
+    <header id={id} className="mb-6 scroll-mt-6 border-b border-border/60 pb-4">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         {status && <StatusBadge status={status} />}
@@ -151,7 +148,7 @@ function PointList({ points }: { points: string[] }) {
         >
           <span
             aria-hidden
-            className="mt-2 size-1.5 shrink-0 rounded-full bg-[color:var(--moss)]"
+            className="mt-2 size-1.5 shrink-0 rounded-full bg-success"
           />
           <span>{point}</span>
         </li>
@@ -172,7 +169,7 @@ function StackSection() {
       <div className="overflow-x-auto">
         <table className="w-full min-w-[28rem] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-[color:var(--hairline-soft)] text-left">
+            <tr className="border-b border-border/60 text-left">
               <th className="pb-2 pr-4 font-medium text-muted-foreground">
                 System
               </th>
@@ -200,7 +197,7 @@ function StackSection() {
 
 function SystemRow({ system }: { system: StackSystem }) {
   return (
-    <tr className="border-b border-[color:var(--hairline-soft)] align-top last:border-0">
+    <tr className="border-b border-border/60 align-top last:border-0">
       <td className="py-2.5 pr-4 font-medium">{system.name}</td>
       <td className="hidden py-2.5 pr-4 text-muted-foreground sm:table-cell">
         {system.role}
@@ -228,7 +225,7 @@ function OwnershipSection() {
         {[ownership.harnessy, ownership.garden].map((side) => (
           <div
             key={side.owner}
-            className="rounded-lg border border-[color:var(--hairline-soft)] p-5"
+            className="rounded-lg border border-border/60 p-5"
           >
             <h3 className="text-sm font-semibold">{side.owner}</h3>
             <p className="mt-1 text-xs text-muted-foreground">{side.lead}</p>
@@ -240,7 +237,7 @@ function OwnershipSection() {
                 >
                   <span
                     aria-hidden
-                    className="mt-2 size-1.5 shrink-0 rounded-full bg-[color:var(--moss)]"
+                    className="mt-2 size-1.5 shrink-0 rounded-full bg-success"
                   />
                   <span>{item}</span>
                 </li>
@@ -266,13 +263,11 @@ function RunFlowSection() {
       <ol className="space-y-4">
         {runFlow.steps.map((step, index) => (
           <li key={step.text} className="flex gap-4">
-            <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-[color:var(--hairline-soft)] text-xs font-medium text-muted-foreground">
+            <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border/60 text-xs font-medium text-muted-foreground">
               {index + 1}
             </span>
             <div className="min-w-0 text-sm leading-6">
-              <span className="font-medium text-[color:var(--moss)]">
-                {step.actor}
-              </span>
+              <span className="font-medium text-success">{step.actor}</span>
               <span className="text-foreground/90"> — {step.text}</span>
             </div>
           </li>
@@ -295,7 +290,7 @@ function PackagingSection() {
       <div className="mb-6 overflow-x-auto">
         <table className="w-full min-w-[28rem] border-collapse text-sm">
           <thead>
-            <tr className="border-b border-[color:var(--hairline-soft)] text-left">
+            <tr className="border-b border-border/60 text-left">
               <th className="pb-2 pr-4 font-medium text-muted-foreground">
                 Pack family
               </th>
@@ -308,7 +303,7 @@ function PackagingSection() {
             {packaging.kinds.map((kind) => (
               <tr
                 key={kind.name}
-                className="border-b border-[color:var(--hairline-soft)] align-top last:border-0"
+                className="border-b border-border/60 align-top last:border-0"
               >
                 <td className="whitespace-nowrap py-2.5 pr-4 font-medium">
                   {kind.name}
@@ -335,7 +330,7 @@ function JarvisSection() {
         status={jarvis.status}
       />
       <div className="grid gap-5 sm:grid-cols-2">
-        <div className="rounded-lg border border-[color:var(--hairline-soft)] p-5">
+        <div className="rounded-lg border border-border/60 p-5">
           <h3 className="text-sm font-semibold">Jarvis owns</h3>
           <ul className="mt-4 space-y-2.5">
             {jarvis.owns.map((item) => (
@@ -345,14 +340,14 @@ function JarvisSection() {
               >
                 <span
                   aria-hidden
-                  className="mt-2 size-1.5 shrink-0 rounded-full bg-[color:var(--moss)]"
+                  className="mt-2 size-1.5 shrink-0 rounded-full bg-success"
                 />
                 <span>{item}</span>
               </li>
             ))}
           </ul>
         </div>
-        <div className="rounded-lg border border-[color:var(--hairline-soft)] p-5">
+        <div className="rounded-lg border border-border/60 p-5">
           <h3 className="text-sm font-semibold">The host owns (not Jarvis)</h3>
           <ul className="mt-4 space-y-2.5">
             {jarvis.notOwns.map((item) => (
@@ -393,8 +388,8 @@ function PointsSection({ section }: { section: HarnessySection }) {
 /** A labelled emphasis box for a boundary rule or direction note. */
 function Callout({ label, body }: { label: string; body: string }) {
   return (
-    <div className="mt-6 rounded-lg border-l-2 border-[color:var(--moss)] bg-[color-mix(in_srgb,var(--moss)_8%,transparent)] px-5 py-4">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-[color:var(--moss)]">
+    <div className="mt-6 rounded-lg border-l-2 border-success bg-[color-mix(in_srgb,var(--success)_8%,transparent)] px-5 py-4">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-success">
         {label}
       </p>
       <p className="mt-1 text-sm leading-6 text-foreground/90">{body}</p>

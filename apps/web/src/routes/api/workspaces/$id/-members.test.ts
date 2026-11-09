@@ -1,6 +1,7 @@
 import type { AppRequestContext } from '@/lib/server/context'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route } from './members'
+import { invokeRouteHandler } from '@/test/route-handler'
 
 const mocks = vi.hoisted(() => ({
   requireSession: vi.fn(),
@@ -37,17 +38,6 @@ const invitation = {
   role: 'member',
   status: 'pending',
   expiresAt: originalExpiry,
-}
-
-function getPostHandler() {
-  const handlers = Route.options.server?.handlers
-  if (!handlers || typeof handlers === 'function') {
-    throw new Error('Expected workspace member route handlers')
-  }
-  if (typeof handlers.POST !== 'function') {
-    throw new Error('Expected workspace member POST handler')
-  }
-  return handlers.POST
 }
 
 function resendRequest() {
@@ -105,7 +95,7 @@ function createDb(options: {
 
 async function postResend(db: ReturnType<typeof createDb>['db']) {
   const request = resendRequest()
-  const response = await getPostHandler()({
+  const response = await invokeRouteHandler(Route, 'POST', {
     context: {
       db: async () => db,
       env: {},
@@ -113,8 +103,6 @@ async function postResend(db: ReturnType<typeof createDb>['db']) {
     } as unknown as AppRequestContext,
     request,
     params: { id: workspaceId },
-    pathname: '/api/workspaces/$id/members',
-    next: () => ({ isNext: true, context: undefined }),
   })
   return { request, response }
 }

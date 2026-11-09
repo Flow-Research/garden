@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { isMcpConnector, isNativeConnector } from './sdk.ts'
-import {
-  connectorRegistry,
-  getConnectorByExecutorSlug,
-} from './registry.ts'
+import { connectorRegistry, getConnectorByExecutorSlug } from './registry.ts'
 
 describe('connectorRegistry', () => {
   it('keeps every tool classified with a valid risk class', () => {
@@ -73,9 +70,7 @@ describe('connectorRegistry', () => {
 
   it('maps executor slugs back to garden connectors', () => {
     expect(getConnectorByExecutorSlug('google_gmail')?.id).toBe('gmail')
-    expect(getConnectorByExecutorSlug('google_drive')?.id).toBe(
-      'google-drive',
-    )
+    expect(getConnectorByExecutorSlug('google_drive')?.id).toBe('google-drive')
     expect(getConnectorByExecutorSlug('slack')?.id).toBe('slack')
     expect(getConnectorByExecutorSlug('custom_openapi')).toBeUndefined()
   })

@@ -52,7 +52,10 @@ export const LocalRawFileStoreLive: Layer.Layer<
           Effect.map((bytes) => slice(bytes, range)),
           Effect.mapError(
             (cause) =>
-              new HelixError({ message: `failed to read raw file ${key}`, cause }),
+              new HelixError({
+                message: `failed to read raw file ${key}`,
+                cause,
+              }),
           ),
         ),
     })
@@ -62,11 +65,15 @@ export const LocalRawFileStoreLive: Layer.Layer<
 export type R2BucketLike = {
   readonly get: (
     key: string,
-    options?: { readonly range?: { readonly offset: number; readonly length: number } },
+    options?: {
+      readonly range?: { readonly offset: number; readonly length: number }
+    },
   ) => Promise<{ readonly arrayBuffer: () => Promise<ArrayBuffer> } | null>
 }
 
-export function makeR2RawFileStoreLive(bucket: R2BucketLike): Layer.Layer<RawFileStore> {
+export function makeR2RawFileStoreLive(
+  bucket: R2BucketLike,
+): Layer.Layer<RawFileStore> {
   return Layer.succeed(
     RawFileStore,
     RawFileStore.of({
@@ -92,7 +99,10 @@ export function makeR2RawFileStoreLive(bucket: R2BucketLike): Layer.Layer<RawFil
             return new Uint8Array(await object.arrayBuffer())
           },
           catch: (cause) =>
-            new HelixError({ message: `failed to read raw file ${key}`, cause }),
+            new HelixError({
+              message: `failed to read raw file ${key}`,
+              cause,
+            }),
         }),
     }),
   )

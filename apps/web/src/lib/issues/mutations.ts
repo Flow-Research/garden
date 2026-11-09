@@ -5,7 +5,9 @@ import {
   type QueryClient,
 } from '@tanstack/react-query'
 import { Result } from 'better-result'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { inboxKeys } from '@/lib/inbox/queries'
 import { issueKeys, CLOSED_PAGE_SIZE } from './queries'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { Issue, IssueReaction } from '@garden/core/types'
@@ -21,6 +23,10 @@ import type {
 } from '@garden/core/types'
 
 /** Keeps auxiliary filtered collections coherent with a confirmed issue write. */
+export function teamIssueCachePrefix(wsId: string) {
+  return ['issues', wsId, 'team'] as const
+}
+
 export function syncFilteredIssueCaches(
   qc: QueryClient,
   wsId: string,
@@ -34,6 +40,9 @@ export function syncFilteredIssueCaches(
       : withoutIssue
   })
   qc.setQueriesData<Issue[]>({ queryKey: issueKeys.searches(wsId) }, (old) =>
+    old?.map((issue) => (issue.id === updatedIssue.id ? updatedIssue : issue)),
+  )
+  qc.setQueriesData<Issue[]>({ queryKey: teamIssueCachePrefix(wsId) }, (old) =>
     old?.map((issue) => (issue.id === updatedIssue.id ? updatedIssue : issue)),
   )
 }
@@ -50,12 +59,16 @@ export function removeFromFilteredIssueCaches(
   qc.setQueriesData<Issue[]>({ queryKey: issueKeys.searches(wsId) }, (old) =>
     old?.filter((issue) => !deletedIds.has(issue.id)),
   )
+  qc.setQueriesData<Issue[]>({ queryKey: teamIssueCachePrefix(wsId) }, (old) =>
+    old?.filter((issue) => !deletedIds.has(issue.id)),
+  )
 }
 
 /** Refetches active authoritative filters after mutations can change membership. */
 export function invalidateFilteredIssueCaches(qc: QueryClient, wsId: string) {
   qc.invalidateQueries({ queryKey: issueKeys.allDone(wsId), exact: true })
   qc.invalidateQueries({ queryKey: issueKeys.searches(wsId) })
+  qc.invalidateQueries({ queryKey: teamIssueCachePrefix(wsId) })
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +95,8 @@ export function useLoadMoreDoneIssues() {
   const qc = useQueryClient()
   const wsId = useWorkspaceId()
   const [isLoading, setIsLoading] = useState(false)
+  // A failed page used to throw out of loadMore, which nothing caught.
+  const [failed, setFailed] = useState(false)
 
   const queryKey = issueKeys.list(wsId)
   const cache = qc.getQueryData<ListIssuesResponse>(queryKey)
@@ -94,6 +109,7 @@ export function useLoadMoreDoneIssues() {
   const loadMore = useCallback(async () => {
     if (isLoading || !hasMore) return
     setIsLoading(true)
+    setFailed(false)
     const result = await Result.tryPromise(() =>
       api.listIssues({
         status: 'done',
@@ -103,7 +119,8 @@ export function useLoadMoreDoneIssues() {
     )
     setIsLoading(false)
     if (Result.isError(result)) {
-      throw result.error
+      setFailed(true)
+      return
     }
 
     const res = result.value
@@ -119,7 +136,7 @@ export function useLoadMoreDoneIssues() {
     })
   }, [qc, queryKey, doneLoaded, hasMore, isLoading])
 
-  return { loadMore, hasMore, isLoading, doneTotal }
+  return { loadMore, hasMore, isLoading, failed, doneTotal }
 }
 
 // ---------------------------------------------------------------------------
@@ -144,6 +161,14 @@ export function useCreateIssue() {
             }
           : old,
       )
+      qc.setQueriesData<Issue[]>(
+        { queryKey: teamIssueCachePrefix(wsId) },
+        (old) =>
+          old && !old.some((i) => i.id === newIssue.id)
+            ? [...old, newIssue]
+            : old,
+      )
+      qc.invalidateQueries({ queryKey: teamIssueCachePrefix(wsId) })
       qc.invalidateQueries({
         queryKey: listKey,
         exact: true,
@@ -183,6 +208,12 @@ export function useUpdateIssue() {
       qc.cancelQueries({ queryKey: listKey })
       const prevList = qc.getQueryData<ListIssuesResponse>(listKey)
       const prevDetail = qc.getQueryData<Issue>(issueKeys.detail(wsId, id))
+      // Team boards read their own caches. Without these, a card dragged on a
+      // Team board snapped back until the refetch, and after a failure it
+      // stayed in the wrong column.
+      const teamCaches = { queryKey: teamIssueCachePrefix(wsId) }
+      qc.cancelQueries(teamCaches)
+      const prevTeamIssues = qc.getQueriesData<Issue[]>(teamCaches)
 
       // Resolve parent_issue_id from the freshest source so we can keep the
       // parent's children cache in sync (used by the parent issue's
@@ -213,9 +244,22 @@ export function useUpdateIssue() {
           old?.map((c) => (c.id === id ? { ...c, ...data } : c)),
         )
       }
-      return { prevList, prevDetail, prevChildren, parentId, id }
+      qc.setQueriesData<Issue[]>(teamCaches, (old) =>
+        old?.map((issue) => (issue.id === id ? { ...issue, ...data } : issue)),
+      )
+      return {
+        prevList,
+        prevDetail,
+        prevChildren,
+        prevTeamIssues,
+        parentId,
+        id,
+      }
     },
     onError: (_err, _vars, ctx) => {
+      for (const [queryKey, issues] of ctx?.prevTeamIssues ?? []) {
+        qc.setQueryData(queryKey, issues)
+      }
       if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
       if (ctx?.prevDetail)
         qc.setQueryData(issueKeys.detail(wsId, ctx.id), ctx.prevDetail)
@@ -306,13 +350,22 @@ export function useDeleteIssue() {
           doneTotal: (old.doneTotal ?? 0) - (d?.status === 'done' ? 1 : 0),
         }
       })
-      qc.removeQueries({ queryKey: issueKeys.detail(wsId, id) })
+      // The detail entry is not removed here. The issue page is still
+      // mounted and observing it, so removing it fired a GET for the issue
+      // being deleted, and on failure left nothing to roll back to.
       return { prevList, parentIssueId: deleted?.parent_issue_id }
     },
     onError: (_err, _id, ctx) => {
       if (ctx?.prevList) qc.setQueryData(listKey, ctx.prevList)
     },
     onSuccess: (_data, deletedId, ctx) => {
+      // Stale without a refetch: the caller navigates away, and a later
+      // visit to this issue fetches it again (and finds it gone).
+      qc.invalidateQueries({
+        queryKey: issueKeys.detail(wsId, deletedId),
+        exact: true,
+        refetchType: 'none',
+      })
       removeFromFilteredIssueCaches(qc, wsId, new Set([deletedId]))
       invalidateFilteredIssueCaches(qc, wsId)
       qc.invalidateQueries({
@@ -463,6 +516,7 @@ export function useCreateComment(issueId: string) {
           id: comment.id,
           actor_type: comment.author_type,
           actor_id: comment.author_id,
+          actor_label: comment.author_display ?? null,
           content: comment.content,
           parent_id: comment.parent_id,
           comment_type: comment.type,
@@ -477,6 +531,7 @@ export function useCreateComment(issueId: string) {
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.timeline(issueId) })
+      qc.invalidateQueries({ queryKey: issueKeys.activeRun(issueId) })
     },
   })
 }
@@ -564,6 +619,8 @@ export function useToggleCommentReaction(issueId: string) {
       }
       return api.addReaction(commentId, emoji)
     },
+    // The optimistic reaction disappears on failure; say why.
+    onError: () => toast.error('Failed to update the reaction'),
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.timeline(issueId) })
     },
@@ -576,6 +633,7 @@ export function useToggleCommentReaction(issueId: string) {
 
 export function useToggleIssueReaction(issueId: string) {
   const qc = useQueryClient()
+  const wsId = useWorkspaceId()
   return useMutation({
     mutationKey: ['toggleIssueReaction', issueId] as const,
     mutationFn: async ({ emoji, existing }: ToggleIssueReactionVars) => {
@@ -585,8 +643,13 @@ export function useToggleIssueReaction(issueId: string) {
       }
       return api.addIssueReaction(issueId, emoji)
     },
+    // The optimistic reaction disappears on failure; say why.
+    onError: () => toast.error('Failed to update the reaction'),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: issueKeys.reactions(issueId) })
+      qc.invalidateQueries({
+        queryKey: issueKeys.detail(wsId, issueId),
+        exact: true,
+      })
     },
   })
 }
@@ -650,9 +713,67 @@ export function useToggleIssueSubscriber(issueId: string) {
     },
     onError: (_err, _vars, ctx) => {
       if (ctx?.prev) qc.setQueryData(issueKeys.subscribers(issueId), ctx.prev)
+      // The rollback alone looked like the click had been ignored.
+      toast.error('Failed to update the subscription')
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: issueKeys.subscribers(issueId) })
     },
+  })
+}
+
+/**
+ * Refreshes everything an action on an issue's run can change: its work
+ * products, active run, pending approval, detail and timeline, plus the
+ * inbox. The issue page and the inbox used to keep separate copies with
+ * different sets, so acting from one left the other stale.
+ */
+export function useIssueActionInvalidation(issueId: string | null) {
+  const queryClient = useQueryClient()
+  const wsId = useWorkspaceId()
+  return useCallback(() => {
+    void queryClient.invalidateQueries({
+      queryKey: inboxKeys.list(wsId),
+      exact: true,
+    })
+    void queryClient.invalidateQueries({
+      queryKey: issueKeys.list(wsId),
+      exact: true,
+      refetchType: 'none',
+    })
+    if (!issueId) return
+    for (const queryKey of [
+      issueKeys.activeRun(issueId),
+      issueKeys.detail(wsId, issueId),
+      issueKeys.timeline(issueId),
+      issueKeys.workProducts(issueId),
+      issueKeys.pendingApproval(issueId),
+    ]) {
+      void queryClient.invalidateQueries({ queryKey, exact: true })
+    }
+  }, [issueId, queryClient, wsId])
+}
+
+export type WorkProductReviewAction = 'approve' | 'request_changes' | 'apply'
+
+/** Approve, request changes on, or apply a work product. */
+export function useReviewWorkProduct(issueId: string | null) {
+  const invalidate = useIssueActionInvalidation(issueId)
+  return useMutation({
+    mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
+      api.reviewWorkProduct(vars.id, { action: vars.action }),
+    onSuccess: invalidate,
+    onError: () => toast.error('Failed to update work product'),
+  })
+}
+
+/** Approve or deny a run's pending permission request. */
+export function useResolvePermissionRequest(issueId: string | null) {
+  const invalidate = useIssueActionInvalidation(issueId)
+  return useMutation({
+    mutationFn: (vars: { id: string; approved: boolean }) =>
+      api.resolvePermissionRequest(vars),
+    onSuccess: invalidate,
+    onError: () => toast.error('Failed to resolve approval'),
   })
 }

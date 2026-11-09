@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { DocumentSnapshot } from '@garden/agent-runtime/src/documents/document-artifact-model'
 import workspaceDocsClientSource from '../../../../../third_party/cloudflare-os/workspace-docs/client.js?raw'
 import {
@@ -97,6 +97,12 @@ export function WorkspaceDocsEditor({
 }) {
   const adapterRef = useRef<WorkspaceDocsAdapter | null>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
+  // The snapshot only seeds the editor; after that the adapter's
+  // subscription keeps it current. Depending on the prop rebuilt the frame
+  // callback whenever the snapshot query refetched, which reloaded the
+  // iframe mid-edit and lost the cursor and undo history. The caller keys
+  // this component by document, so a different document still remounts.
+  const [snapshot] = useState(initialSnapshot)
 
   /** Sends one authoritative collaboration event into the isolated editor. */
   const pushEvent = useCallback(
@@ -120,7 +126,7 @@ export function WorkspaceDocsEditor({
 
       const adapter = new WorkspaceDocsAdapter({
         documentId,
-        initialSnapshot,
+        initialSnapshot: snapshot,
       })
       adapterRef.current = adapter
 
@@ -189,7 +195,7 @@ export function WorkspaceDocsEditor({
         adapter.dispose()
       }
     },
-    [documentId, initialSnapshot, pushEvent],
+    [documentId, snapshot, pushEvent],
   )
 
   return (

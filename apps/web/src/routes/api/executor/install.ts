@@ -1,7 +1,9 @@
+import { Result } from 'better-result'
 import { Effect, Option, Schema } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   ExecutorInstallAuthorizationRedirect,
+  ExecutorConnectionOwner,
   ExecutorInstallRequest,
   ExecutorInstallResponse,
   ExecutorIntegrationSlug,
@@ -149,13 +151,26 @@ export const Route = createFileRoute('/api/executor/install')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
 
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: workspaceContext.workspaceId,
-          permissions: workspacePermissions.connectionManage,
+        const payloadResult = await Result.tryPromise({
+          try: () => request.clone().json(),
+          catch: () => null,
         })
-        if (permission) return permission
+        const owner = payloadResult.match({
+          ok: (payload) =>
+            Schema.decodeUnknownOption(
+              Schema.Struct({ owner: ExecutorConnectionOwner }),
+            )(payload),
+          err: () => Option.none(),
+        })
+        if (Option.isSome(owner) && owner.value.owner === 'org') {
+          const permission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: workspaceContext.workspaceId,
+            permissions: workspacePermissions.connectionManage,
+          })
+          if (permission) return permission
+        }
 
         const outcome = await runExecutorRouteEffect({
           effect: installResponse(request, {

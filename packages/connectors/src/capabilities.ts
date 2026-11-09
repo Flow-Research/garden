@@ -43,7 +43,9 @@ export type EffectiveTrust = {
  * granted-visible so the access view, the runtime gate, and the connection
  * surface can never disagree about what an agent may use.
  */
-export function resolveEffectiveTrust(input: EffectiveTrustInput): EffectiveTrust {
+export function resolveEffectiveTrust(
+  input: EffectiveTrustInput,
+): EffectiveTrust {
   const trust =
     (input.toolTrust as PermissionTrustLevel | undefined) ??
     (input.connectionTrust as PermissionTrustLevel | undefined) ??

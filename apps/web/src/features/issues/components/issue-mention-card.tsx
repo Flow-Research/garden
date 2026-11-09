@@ -1,7 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { issueListOptions, issueDetailOptions } from '@/lib/issues/queries'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
+import {
+  issuePath,
+  useSurfaceNavigation,
+} from '@/features/navigation/use-surface-navigation'
 import { Badge } from '@garden/ui/components/ui/badge'
 import type { IssueStatus } from '@garden/core/types'
 import { StatusIcon } from './status-icon'
@@ -38,8 +41,15 @@ export function IssueMentionCard({
   issue: providedIssue,
 }: IssueMentionCardProps) {
   const wsId = useWorkspaceId()
-  const { data: issues = [] } = useQuery(issueListOptions(wsId))
-  const listIssue = issues.find((i) => i.id === issueId)
+  // Only this issue from the list cache, and only if the list is already
+  // loaded: subscribing to the whole list re-rendered every mention on any
+  // issue change, and could fetch the full list just to show one title.
+  // The detail query below covers an issue the cache does not have.
+  const { data: listIssue } = useQuery({
+    ...issueListOptions(wsId),
+    enabled: false,
+    select: (data) => data.issues.find((i) => i.id === issueId),
+  })
   const { openIssue } = useSurfaceNavigation()
 
   // Fetch individual issue when not found in the list (e.g. done issues beyond
@@ -77,11 +87,11 @@ export function IssueMentionCard({
     <Badge
       variant="outline"
       className="issue-mention mx-0.5 max-w-72 cursor-pointer rounded-md text-xs hover:bg-accent"
-      render={<a href={`/issues/${issueId}`} onClick={handleOpen} />}
+      render={<a href={issuePath(issueId)} onClick={handleOpen} />}
     >
       <StatusIcon
         status={normalizeIssueStatus(issue.status)}
-        className="h-3.5 w-3.5 shrink-0"
+        className="size-3.5 shrink-0"
       />
       <span className="font-medium text-muted-foreground shrink-0">
         {issue.identifier}

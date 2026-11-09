@@ -70,7 +70,10 @@ export function AgentSkillsTab({
     fullAccess ? [] : (agentPermissions?.allowed_skills ?? []),
   )
 
+  // Each save sends the whole list, so saves run one at a time (a shared
+  // scope); overlapping ones could land out of order and undo each other.
   const setSkillsMutation = useMutation({
+    scope: { id: `agent-skills:${agentId}` },
     mutationFn: (skills: AgentSkillAssignment[]) =>
       api.setAgentSkills(agentId, { skills }),
     onSuccess: () => {
@@ -100,13 +103,19 @@ export function AgentSkillsTab({
   const handleDetach = async (skillId: string) => {
     const next = attached.filter((s) => s.id !== skillId)
     qc.setQueryData<AgentSkill[]>(assignmentKey, next)
-    await commit(next).catch(() => {
-      qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
-    })
-    toast.success('Skill detached')
+    // The mutation's onError already shows the failure toast.
+    const detached = await commit(next).then(
+      () => true,
+      () => {
+        qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
+        return false
+      },
+    )
+    if (detached) toast.success('Skill detached')
   }
 
   const permissionsMutation = useMutation({
+    scope: { id: `agent-permissions:${agentId}` },
     mutationFn: (permissions: AgentPermissions) =>
       api.updateAgentPermissions(agentId, permissions),
     onSuccess: () => {
@@ -176,9 +185,16 @@ export function AgentSkillsTab({
     if (additions.length === 0) return
     const next = [...attached, ...additions]
     qc.setQueryData<AgentSkill[]>(assignmentKey, next)
-    await commit(next).catch(() => {
-      qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
-    })
+    // The mutation's onError already shows the failure toast; this used to
+    // say "Skill attached" next to it.
+    const saved = await commit(next).then(
+      () => true,
+      () => {
+        qc.setQueryData<AgentSkill[]>(assignmentKey, attached)
+        return false
+      },
+    )
+    if (!saved) return
     toast.success(
       additions.length === 1
         ? 'Skill attached'

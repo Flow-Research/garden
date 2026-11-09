@@ -27,6 +27,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useMemo,
   useRef,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
@@ -38,6 +39,7 @@ import { createEditorExtensions } from './extensions'
 import { uploadAndInsertFile } from './extensions/file-upload'
 import { preprocessMarkdown } from './utils/preprocess'
 import { openLink, isMentionHref } from './utils/link-handler'
+import { useNavigationActions } from '../navigation'
 import { EditorBubbleMenu } from './bubble-menu'
 import { useLinkHover, LinkHoverCard } from './link-hover-card'
 import './content-editor.css'
@@ -105,19 +107,64 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
     ref,
   ) {
     const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined)
+    // Reads the markdown of an edit whose debounced onUpdate has not fired.
+    const pendingReadRef = useRef<(() => string) | null>(null)
     const onUpdateRef = useRef(onUpdate)
     const onSubmitRef = useRef(onSubmit)
     const onBlurRef = useRef(onBlur)
     const onUploadFileRef = useRef(onUploadFile)
     const prevContentRef = useRef(defaultValue)
 
+    const { push } = useNavigationActions()
+    const pushRef = useRef(push)
+
     // Keep refs in sync without recreating editor
+    pushRef.current = push
     onUpdateRef.current = onUpdate
     onSubmitRef.current = onSubmit
     onBlurRef.current = onBlur
     onUploadFileRef.current = onUploadFile
 
+    /** Runs a debounced onUpdate now, if one is pending. */
+    function flushPendingUpdate() {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = undefined
+      const read = pendingReadRef.current
+      pendingReadRef.current = null
+      if (read) onUpdateRef.current?.(read())
+    }
+
     const queryClient = useQueryClient()
+
+    /**
+     * Built once per real config change, not once per render.
+     *
+     * Before: this array was constructed inline in the `useEditor` call below.
+     * `useEditor` is called with no dependency list, so on every render
+     * `EditorInstanceManager.onRender` (checked against the installed
+     * `@tiptap/react` 3.22.4) compared the incoming extensions element by
+     * element by identity, always missed, and called `editor.setOptions()` —
+     * which in `@tiptap/core` 3.22.4 runs `view.setProps(editorProps)` plus
+     * `view.updateState(state)`. So a full ProseMirror view update rode along
+     * with every render of every consumer, including the per-keystroke ones.
+     *
+     * After: a stable array identity lets that comparison pass, so the view is
+     * only rebuilt when something in the config genuinely changed. The deps
+     * are the whole option set; the three refs are stable by construction and
+     * are deliberately not listed.
+     */
+    const extensions = useMemo(
+      () =>
+        createEditorExtensions({
+          editable,
+          placeholder: placeholderText,
+          queryClient,
+          onSubmitRef,
+          onUploadFileRef,
+          submitOnEnter,
+        }),
+      [editable, placeholderText, queryClient, submitOnEnter],
+    )
 
     const editor = useEditor({
       immediatelyRender: false,
@@ -127,22 +174,15 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       editable,
       content: defaultValue ? preprocessMarkdown(defaultValue) : '',
       contentType: defaultValue ? 'markdown' : undefined,
-      extensions: createEditorExtensions({
-        editable,
-        placeholder: placeholderText,
-        queryClient,
-        onSubmitRef,
-        onUploadFileRef,
-        submitOnEnter,
-      }),
+      extensions,
       onUpdate: ({ editor: ed }) => {
         if (!onUpdateRef.current) return
         if (debounceRef.current) clearTimeout(debounceRef.current)
-        debounceRef.current = setTimeout(() => {
-          onUpdateRef.current?.(stripBlobUrls(ed.getMarkdown()))
-        }, debounceMs)
+        pendingReadRef.current = () => stripBlobUrls(ed.getMarkdown())
+        debounceRef.current = setTimeout(flushPendingUpdate, debounceMs)
       },
       onBlur: () => {
+        flushPendingUpdate()
         onBlurRef.current?.()
       },
       editorProps: {
@@ -157,7 +197,7 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
             if (!href || isMentionHref(href)) return false
 
             event.preventDefault()
-            openLink(href)
+            openLink(href, (path) => pushRef.current(path))
             return true
           },
         },
@@ -171,12 +211,11 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       },
     })
 
-    // Cleanup debounce on unmount
-    useEffect(() => {
-      return () => {
-        if (debounceRef.current) clearTimeout(debounceRef.current)
-      }
-    }, [])
+    // Save a pending edit on unmount instead of dropping it: switching issue
+    // (the editor is keyed by id) or leaving the page inside the debounce
+    // window used to lose the last edits. Tiptap destroys the editor a tick
+    // after unmount, so it can still be read here.
+    useEffect(() => flushPendingUpdate, [])
 
     // Readonly content update: when defaultValue changes and editor is readonly,
     // re-set the content (e.g. after editing a comment, the readonly view updates)
@@ -216,9 +255,10 @@ const ContentEditor = forwardRef<ContentEditorRef, ContentEditorProps>(
       },
     }))
 
-    // Link hover card — disabled when BubbleMenu is active (has selection)
-    const hoverDisabled = !editor?.state.selection.empty
-    const hover = useLinkHover(hoverDisabled)
+    // Link hover card — disabled while the BubbleMenu is up (a selection)
+    const hover = useLinkHover(() =>
+      Boolean(editor && !editor.state.selection.empty),
+    )
 
     const handleContainerMouseDown = (
       event: ReactMouseEvent<HTMLDivElement>,

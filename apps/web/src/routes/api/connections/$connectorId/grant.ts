@@ -34,7 +34,10 @@ export const Route = createFileRoute('/api/connections/$connectorId/grant')({
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) {
           return notFound('Workspace not found')
         }
@@ -161,7 +164,10 @@ export const Route = createFileRoute('/api/connections/$connectorId/grant')({
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) {
           return notFound('Workspace not found')
         }

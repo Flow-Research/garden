@@ -28,3 +28,194 @@ index 543cd8944014ec37a765d4827f9ecb32c167676a..016b05383438cee6e5935a2065011b07
    "McpOAuthError",
    {
      message: Schema.String
+diff --git a/dist/chunk-MMILW7SS.js b/dist/chunk-MMILW7SS.js
+index a45735cfe7adccf769b734cf0a09aacaeb55ed5a..4129ffa60aae56b684bc2cd3728d5a55cf8fb7a9 100644
+--- a/dist/chunk-MMILW7SS.js
++++ b/dist/chunk-MMILW7SS.js
+@@ -326,7 +326,7 @@ var createMcpConnector = (input) => {
+   const headers = input.headers ?? {};
+   const remoteTransport = input.remoteTransport ?? "auto";
+   const requestInit = Object.keys(headers).length > 0 ? { headers } : void 0;
+-  const fetch = input.httpClientLayer ? fetchFromHttpClientLayer(input.httpClientLayer) : void 0;
++  const fetch = input.fetch ?? (input.httpClientLayer ? fetchFromHttpClientLayer(input.httpClientLayer) : void 0);
+   const endpoint = buildEndpointUrl(input.endpoint, input.queryParams ?? {});
+   const connectStreamableHttp = connectClient({
+     transport: "streamable-http",
+@@ -595,11 +595,37 @@ var installToolListChangedHandler = (client, onToolListChanged) => {
+     onToolListChanged();
+   });
+ };
+-var useConnection = (connection, toolName, args, elicit, onToolListChanged) => Effect4.gen(function* () {
++var mcpProtocolFailureFromCause = (cause) => {
++  if (cause instanceof McpError) {
++    return { message: cause.message, code: cause.code };
++  }
++  if (!Predicate4.isObject(cause)) return void 0;
++  const message = typeof cause.message === "string" ? cause.message.trim() : "";
++  const code = cause.code;
++  return message.length > 0 && typeof code === "number" && Number.isInteger(code) && code < 0 ? { message, code } : void 0;
++};
++var mcpTransportKindFromCause = (cause, status) => {
++  const message = Predicate4.isObject(cause) && typeof cause.message === "string" ? cause.message.toLowerCase() : "";
++  if (message.includes("timeout") || message.includes("timed out") || message.includes("deadline") || message.includes("abort")) return "timeout";
++  if (message.includes("enotfound") || message.includes("dns") || message.includes("getaddrinfo")) return "dns";
++  if (message.includes("certificate") || message.includes("tls") || message.includes("ssl")) return "tls";
++  if (status !== void 0) return "http";
++  if (message.includes("fetch failed") || message.includes("connection") || message.includes("econn") || message.includes("socket")) return "connection";
++  return "unknown";
++};
++var safeMcpTransportMessage = (status, transportKind) => {
++  if (status !== void 0) return `MCP transport returned HTTP ${status}.`;
++  if (transportKind === "timeout") return "MCP transport timed out.";
++  if (transportKind === "dns") return "MCP transport could not resolve the server.";
++  if (transportKind === "tls") return "MCP transport TLS negotiation failed.";
++  if (transportKind === "connection") return "MCP transport connection failed.";
++  return "MCP transport failed before a response was received.";
++};
++var useConnection = (connection, toolName, args, elicit, onProgress, onToolListChanged) => Effect4.gen(function* () {
+   installElicitationHandler(connection.client, elicit);
+   installToolListChangedHandler(connection.client, onToolListChanged);
+   return yield* Effect4.tryPromise({
+-    try: () => connection.client.callTool({ name: toolName, arguments: args }),
++    try: () => connection.client.callTool({ name: toolName, arguments: args }, onProgress ? { onprogress: onProgress } : undefined),
+     catch: (cause) => {
+       if (Predicate4.isTagged(cause, "McpOAuthReauthorizationRequired")) {
+         return new McpOAuthReauthorizationRequired({
+@@ -616,10 +642,14 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+         });
+       }
+       const status = httpStatusFromCause(cause);
+-      const protocolFailure = cause instanceof McpError;
++      const protocolFailure = mcpProtocolFailureFromCause(cause);
++      const transportKind = protocolFailure ? void 0 : mcpTransportKindFromCause(cause, status);
+       return new McpInvocationError({
+         toolName,
+-        message: `MCP tool call failed for ${toolName}`,
++        message: protocolFailure?.message ?? `MCP tool call failed for ${toolName}`,
++        ...protocolFailure ? { mcpCode: protocolFailure.code } : {},
++        ...transportKind ? { transportKind } : {},
++        ...transportKind ? { transportMessage: safeMcpTransportMessage(status, transportKind) } : {},
+         ...status === void 0 ? {} : { status },
+         ...!protocolFailure ? { transportFailure: true } : {},
+         ...isUnknownToolCause(cause, toolName) ? { unknownTool: true } : {},
+@@ -634,7 +664,7 @@ var useConnection = (connection, toolName, args, elicit, onToolListChanged) => E
+ });
+ var invokeMcpTool = (input) => Effect4.gen(function* () {
+   const args = argsRecord(input.args);
+-  const use = (connection2) => useConnection(connection2, input.toolName, args, input.elicit, input.onToolListChanged);
++  const use = (connection2) => useConnection(connection2, input.toolName, args, input.elicit, input.onProgress, input.onToolListChanged);
+   if (input.connectionPool && input.connectionPoolKey) {
+     return yield* input.connectionPool.withConnection(
+       input.connectionPoolKey,
+@@ -1316,7 +1346,8 @@ var mcpPlugin = definePlugin((options) => {
+           endpoint: trimmed,
+           headers: probeHeaders,
+           queryParams: probeQueryParams,
+-          httpClientLayer
++          httpClientLayer,
++          fetch: options?.fetch
+         });
+         const result = yield* discoverTools(connector).pipe(
+           Effect6.map((m) => ({ ok: true, manifest: m })),
+@@ -1632,7 +1663,7 @@ var mcpPlugin = definePlugin((options) => {
+         allowStdio,
+         httpClientLayer
+       ).pipe(
+-        Effect6.map((ci) => createMcpConnector(ci)),
++        Effect6.map((ci) => createMcpConnector({ ...ci, fetch: options?.fetch })),
+         Effect6.result
+       );
+       const manifest = Result.isSuccess(built) ? yield* discoverTools(built.success).pipe(
+@@ -1690,7 +1721,7 @@ var mcpPlugin = definePlugin((options) => {
+         allowStdio,
+         options?.httpClientLayer ?? ctx.httpClientLayer
+       );
+-      const connector = createMcpConnector(connectorInput);
++      const connector = createMcpConnector({ ...connectorInput, fetch: options?.fetch });
+       const poolKey = connectorInput.transport === "remote" ? connectionPoolKey(connectorInput, String(credential.template), credential.values) : void 0;
+       const connectionRef = {
+         owner: credential.owner,
+@@ -1706,6 +1737,7 @@ var mcpPlugin = definePlugin((options) => {
+         connector,
+         ...poolKey === void 0 ? {} : { connectionPool, connectionPoolKey: poolKey },
+         elicit,
++        onProgress: options?.onProgress,
+         onToolListChanged: () => {
+           toolListChanged = true;
+         }
+@@ -1798,7 +1830,8 @@ var mcpPlugin = definePlugin((options) => {
+       const connector = createMcpConnector({
+         transport: "remote",
+         endpoint: trimmed,
+-        httpClientLayer
++        httpClientLayer,
++        fetch: options?.fetch
+       });
+       const connected = yield* discoverTools(connector).pipe(
+         Effect6.map(() => true),
+@@ -1876,7 +1909,7 @@ var mcpPlugin = definePlugin((options) => {
+         credential.template === null ? null : String(credential.template),
+         allowStdio,
+         options?.httpClientLayer ?? ctx.httpClientLayer
+-      ).pipe(Effect6.map((ci) => createMcpConnector(ci)));
++      ).pipe(Effect6.map((ci) => createMcpConnector({ ...ci, fetch: options?.fetch })));
+       return yield* discoverTools(connector).pipe(
+         Effect6.map(
+           () => ({ status: "healthy", checkedAt: Date.now() })
+diff --git a/dist/sdk/errors.d.ts b/dist/sdk/errors.d.ts
+index a55202f332264f62f2fca60f1d276007bb71bded..729109bced9b7ce10794bea61540372ce50f4fe5 100644
+--- a/dist/sdk/errors.d.ts
++++ b/dist/sdk/errors.d.ts
+@@ -28,6 +28,12 @@ export declare class McpInvocationError extends McpInvocationError_base<{
+     readonly toolName: string;
+     readonly message: string;
+     readonly status?: number;
++    /** JSON-RPC error code returned by the MCP server, when present. */
++    readonly mcpCode?: number;
++    /** Safe classification of a non-protocol MCP transport failure. */
++    readonly transportKind?: "timeout" | "dns" | "tls" | "http" | "connection" | "unknown";
++    /** Safe transport message generated from status and transport kind. */
++    readonly transportMessage?: string;
+     /** The SDK failure came from the HTTP/SSE transport rather than a JSON-RPC
+      *  protocol response. Used only to decide whether a leased session is safe
+      *  to return to the idle pool. */
+diff --git a/dist/sdk/invoke.d.ts b/dist/sdk/invoke.d.ts
+index 4152343095ec46f6c8103d45f4baba848748c644..3e8b8e0fdce6320f9cadd8e22ad207528606f2ff 100644
+--- a/dist/sdk/invoke.d.ts
++++ b/dist/sdk/invoke.d.ts
+@@ -17,6 +17,12 @@ export interface InvokeMcpToolInput {
+     readonly connectionPool?: McpConnectionPool;
+     readonly connectionPoolKey?: string;
+     readonly elicit: Elicit;
++    /** Receives public MCP progress notifications from the remote server. */
++    readonly onProgress?: (progress: {
++        readonly progress?: number;
++        readonly total?: number;
++        readonly message?: string;
++    }) => void;
+     /** Fired when the server sends `notifications/tools/list_changed` during
+      *  the call window. Synchronous and non-throwing by contract; the caller
+      *  uses it to mark the persisted catalog stale. */
+diff --git a/dist/sdk/plugin.d.ts b/dist/sdk/plugin.d.ts
+index 18ccddc2c2481b07768dfaf91dc4db2e9cd734aa..cc691cf6c62d920f05311a17d21e70fc812f2f5f 100644
+--- a/dist/sdk/plugin.d.ts
++++ b/dist/sdk/plugin.d.ts
+@@ -190,6 +190,18 @@ export interface McpPluginOptions {
+      */
+     readonly dangerouslyAllowStdioMCP?: boolean;
+     readonly httpClientLayer?: Layer.Layer<HttpClient.HttpClient>;
++    /**
++     * Fetch implementation for MCP transports. Pass a guarded native fetch to
++     * keep streaming semantics intact when the host has an SSRF/redirect guard.
++     * Falls back to an Effect HTTP client adapter when omitted.
++     */
++    readonly fetch?: typeof globalThis.fetch;
++    /** Receives public MCP progress notifications without exposing tool input. */
++    readonly onProgress?: (progress: {
++        readonly progress?: number;
++        readonly total?: number;
++        readonly message?: string;
++    }) => void;
+ }
+ export declare const mcpPlugin: import("@executor-js/sdk/core").ConfiguredPlugin<"mcp", {
+     probeEndpoint: (input: string | McpProbeEndpointInput) => Effect.Effect<{

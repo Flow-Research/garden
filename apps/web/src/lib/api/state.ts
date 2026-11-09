@@ -17,6 +17,14 @@ export function getApiTransport() {
   return transport
 }
 
+/**
+ * Lets route prefetchers avoid touching the API before `CoreProvider` has
+ * configured its transport during the first client render.
+ */
+export function isApiConfigured() {
+  return transport !== null
+}
+
 export function getBaseUrl() {
   return getApiTransport().getBaseUrl()
 }

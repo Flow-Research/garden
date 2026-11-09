@@ -4,9 +4,9 @@ import { featuresPageCopy } from './feature-copy'
 
 const statusStyles: Record<FeatureStatus, string> = {
   shipped:
-    'bg-[color-mix(in_srgb,var(--moss)_12%,transparent)] text-[color:var(--moss)]',
+    'bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-success',
   building:
-    'bg-[color-mix(in_srgb,var(--amber)_14%,transparent)] text-[color:var(--amber)]',
+    'bg-[color-mix(in_srgb,var(--text-warning-tertiary)_14%,transparent)] text-text-warning-tertiary',
   planned: 'bg-muted text-muted-foreground',
   later: 'bg-muted/60 text-muted-foreground',
 }
@@ -32,7 +32,7 @@ export function StatusBadge({ status }: { status: FeatureStatus }) {
  */
 export function UpdatedBadge() {
   return (
-    <span className="inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-inset ring-[color:var(--hairline-soft)]">
+    <span className="inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium text-muted-foreground ring-1 ring-inset ring-border/60">
       Updated
     </span>
   )

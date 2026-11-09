@@ -1,5 +1,5 @@
 import { and, count, desc, eq, inArray, or } from 'drizzle-orm'
-import { getDb, schema } from '@/lib/server/db'
+import { getDb, requireReturnedRow, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 /**
@@ -113,7 +113,7 @@ export async function createBrainFolder(args: {
   privacy: 'private' | 'shared'
 }): Promise<{ id: string }> {
   const db = await getDb(args.env)
-  const [row] = await db
+  const rows = await db
     .insert(schema.brainFolder)
     .values({
       workspaceId: args.workspaceId,
@@ -122,7 +122,7 @@ export async function createBrainFolder(args: {
       createdBy: args.userId,
     })
     .returning({ id: schema.brainFolder.id })
-  return row
+  return requireReturnedRow(rows, 'brain folder')
 }
 
 /** Applies a rename/privacy change. The visibility predicate rides the WHERE clause, so non-creators of private folders get false → 404 without a pre-read. */
@@ -244,19 +244,17 @@ export async function deleteBrainFolderMembershipsByFileId(args: {
   fileId: string
 }): Promise<void> {
   const db = await getDb(args.env)
-  await db
-    .delete(schema.brainFolderFile)
-      .where(
-        and(
-          eq(schema.brainFolderFile.fileId, args.fileId),
-          // Scope via the parent folder row in case ids ever collide across tenants.
-          inArray(
-          schema.brainFolderFile.folderId,
-          db
-            .select({ id: schema.brainFolder.id })
-            .from(schema.brainFolder)
-            .where(eq(schema.brainFolder.workspaceId, args.workspaceId)),
-        ),
+  await db.delete(schema.brainFolderFile).where(
+    and(
+      eq(schema.brainFolderFile.fileId, args.fileId),
+      // Scope via the parent folder row in case ids ever collide across tenants.
+      inArray(
+        schema.brainFolderFile.folderId,
+        db
+          .select({ id: schema.brainFolder.id })
+          .from(schema.brainFolder)
+          .where(eq(schema.brainFolder.workspaceId, args.workspaceId)),
       ),
-    )
+    ),
+  )
 }

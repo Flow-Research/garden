@@ -27,7 +27,7 @@ import { toHtml } from 'hast-util-to-html'
 import { Maximize2, Download, Link as LinkIcon, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@garden/ui/lib/utils'
-import { useNavigation } from '../navigation'
+import { useNavigationActions } from '../navigation'
 import { IssueMentionCard } from '../issues/components/issue-mention-card'
 import { MemberMentionTag } from '../common/member-mention-tag'
 import { ImageLightbox } from './extensions/image-view'
@@ -35,6 +35,7 @@ import { useLinkHover, LinkHoverCard } from './link-hover-card'
 import { openLink, isMentionHref } from './utils/link-handler'
 import { preprocessMarkdown } from './utils/preprocess'
 import './content-editor.css'
+import { issuePath } from '@/features/navigation/use-surface-navigation'
 
 // ---------------------------------------------------------------------------
 // Lowlight — same engine + language set as Tiptap's CodeBlockLowlight
@@ -89,8 +90,8 @@ function IssueMentionLink({
   issueId: string
   label?: string
 }) {
-  const { push, openInNewTab } = useNavigation()
-  const path = `/issues/${issueId}`
+  const { push, openInNewTab } = useNavigationActions()
+  const path = issuePath(issueId)
   return (
     <span
       className="inline align-middle"
@@ -108,6 +109,27 @@ function IssueMentionLink({
     >
       <IssueMentionCard issueId={issueId} fallbackLabel={label} />
     </span>
+  )
+}
+
+function MarkdownLink({
+  href,
+  children,
+}: {
+  href: string | undefined
+  children: React.ReactNode
+}) {
+  const { push } = useNavigationActions()
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault()
+        if (href) openLink(href, push)
+      }}
+    >
+      {children}
+    </a>
   )
 }
 
@@ -150,17 +172,7 @@ const components: Partial<Components> = {
     }
 
     // Regular links — open directly on click
-    return (
-      <a
-        href={href}
-        onClick={(e) => {
-          e.preventDefault()
-          if (href) openLink(href)
-        }}
-      >
-        {children}
-      </a>
-    )
+    return <MarkdownLink href={href}>{children}</MarkdownLink>
   },
 
   // Images — centered with toolbar + lightbox (matches Tiptap ImageView NodeView)
@@ -231,13 +243,16 @@ const components: Partial<Components> = {
             <p className="truncate text-sm">{filename}</p>
           </div>
           {href && (
-            <button
-              type="button"
+            <a
+              href={href}
+              download={filename || true}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={filename ? `Download ${filename}` : 'Download file'}
               className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              onClick={() => window.open(href, '_blank', 'noopener,noreferrer')}
             >
-              <Download className="size-3.5" />
-            </button>
+              <Download className="size-3.5" aria-hidden />
+            </a>
           )}
         </div>
       )

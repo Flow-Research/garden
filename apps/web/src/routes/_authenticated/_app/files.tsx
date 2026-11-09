@@ -1,7 +1,17 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { BrainFilesPage } from '@/features/brain'
+import {
+  brainFileListOptions,
+  brainFolderListOptions,
+} from '@/features/brain/queries'
+import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
 
 export const Route = createFileRoute('/_authenticated/_app/files')({
+  loader: ({ context }) =>
+    prefetchActiveWorkspace(context.queryClient, (workspaceId) => [
+      brainFileListOptions(workspaceId),
+      brainFolderListOptions(workspaceId),
+    ]),
   component: FilesRoute,
 })
 

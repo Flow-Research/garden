@@ -9,10 +9,13 @@ import {
 import {
   badRequest,
   requireSession,
+  requireWorkspaceAccess,
   resolveWorkspaceId,
   toIssue,
   unauthorized,
 } from '@/lib/server/control-plane'
+import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
+import { isWorkspaceManager } from '@/lib/server/team-access'
 
 export const Route = createFileRoute('/api/issues/search')({
   server: {
@@ -22,8 +25,21 @@ export const Route = createFileRoute('/api/issues/search')({
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) return Response.json({ issues: [], total: 0 })
+
+        const workspaceAccess = await requireWorkspaceAccess(
+          appContext,
+          workspaceId,
+        )
+        if (workspaceAccess instanceof Response) return workspaceAccess
+        const visibility = teamIssueVisibilityCondition({
+          viewerId: session.user.id,
+          manager: isWorkspaceManager(workspaceAccess.membership.role),
+        })
 
         const searchResult = parseSearchParams(
           request,
@@ -49,14 +65,19 @@ export const Route = createFileRoute('/api/issues/search')({
           .where(eq(schema.organization.id, workspaceId))
           .limit(1)
         const issuePrefix = workspace?.issuePrefix ?? 'ISS'
+        // The prefix arrives as a bound parameter, so Postgres cannot infer a
+        // type for it inside concat() and rejects the whole statement with
+        // 42P18 (indeterminate datatype). Casting the parameter keeps the
+        // identifier search working without inlining user-controlled text.
         const issueWhere = and(
           eq(schema.issue.workspaceId, workspaceId),
+          visibility,
           includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,
           ...searchTerms.map((term) =>
             or(
               ilike(schema.issue.title, `%${term}%`),
               ilike(schema.issue.description, `%${term}%`),
-              sql`concat(${issuePrefix}, '-', ${schema.issue.number}::text) ilike ${`%${term}%`}`,
+              sql`concat(${issuePrefix}::text, '-', ${schema.issue.number}::text) ilike ${`%${term}%`}`,
             ),
           ),
         )
@@ -71,6 +92,7 @@ export const Route = createFileRoute('/api/issues/search')({
           .where(
             and(
               eq(schema.issue.workspaceId, workspaceId),
+              visibility,
               includeClosed ? undefined : sql`${schema.issue.status} <> 'done'`,
               ...searchTerms.map((term) =>
                 ilike(schema.issueComment.body, `%${term}%`),

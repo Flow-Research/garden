@@ -23,12 +23,15 @@ class AgentAccessRouteError extends TaggedError('AgentAccessRouteError')<{
 export const Route = createFileRoute('/api/agents/$id/access')({
   server: {
     handlers: {
-      GET: async ({ context, request, params }) => {
+      GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const session = await requireSession(appContext)
         if (!session) return unauthorized()
 
-        const workspaceId = await resolveWorkspaceId(request, session.user.id)
+        const workspaceId = await resolveWorkspaceId(
+          appContext,
+          session.user.id,
+        )
         if (!workspaceId) {
           return notFound('Workspace not found')
         }
@@ -112,7 +115,10 @@ export const Route = createFileRoute('/api/agents/$id/access')({
           toolGrants.map((grant) => [grant.capabilityId, grant.trustLevel]),
         )
         const connectionGrantByConnector = new Map(
-          connectionGrants.map((grant) => [grant.connectorId, grant.trustLevel]),
+          connectionGrants.map((grant) => [
+            grant.connectorId,
+            grant.trustLevel,
+          ]),
         )
         const capabilityIdByKey = new Map(
           capabilities.map((capability) => [
@@ -127,14 +133,12 @@ export const Route = createFileRoute('/api/agents/$id/access')({
               `${capability.connectorType}:${capability.name}`,
             ) ?? ''
           const { trust, visible } = resolveEffectiveTrust({
-            toolTrust:
-              toolGrantByCapability.get(capabilityId) as
-                | PermissionTrustLevel
-                | undefined,
-            connectionTrust:
-              connectionGrantByConnector.get(capability.connectorType) as
-                | PermissionTrustLevel
-                | undefined,
+            toolTrust: toolGrantByCapability.get(capabilityId) as
+              | PermissionTrustLevel
+              | undefined,
+            connectionTrust: connectionGrantByConnector.get(
+              capability.connectorType,
+            ) as PermissionTrustLevel | undefined,
             riskClass: capability.riskClass,
           })
           return {

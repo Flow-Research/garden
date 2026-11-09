@@ -6,6 +6,7 @@ export const FileFormat = {
   Pdf: 'pdf',
   Docx: 'docx',
   Xlsx: 'xlsx',
+  Csv: 'csv',
   Text: 'text',
 } as const
 export type FileFormat = (typeof FileFormat)[keyof typeof FileFormat]
@@ -25,10 +26,9 @@ export type ExtractorShape = {
   ) => Effect.Effect<ExtractedDoc, ExtractError>
 }
 
-export class Extractor extends Context.Service<
-  Extractor,
-  ExtractorShape
->()('@garden/brain/Extractor') {}
+export class Extractor extends Context.Service<Extractor, ExtractorShape>()(
+  '@garden/brain/Extractor',
+) {}
 
 const extensionOf = (path: string): string => {
   const base = path.split('/').pop() ?? path
@@ -46,6 +46,8 @@ export const formatOf = (path: string): FileFormat | null => {
       return FileFormat.Docx
     case 'xlsx':
       return FileFormat.Xlsx
+    case 'csv':
+      return FileFormat.Csv
     case 'txt':
       return FileFormat.Text
     default:

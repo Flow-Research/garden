@@ -11,7 +11,7 @@ import {
   capturePostHogHandledError,
 } from '@/lib/posthog-server'
 import { schema, type Db } from '@/lib/server/db'
-import { json, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import { json } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
 import { resolveConnectorWritePermissionRequests } from '@/lib/server/permission-request'
 import {
@@ -19,7 +19,7 @@ import {
   resolveAgentProposalRequest,
 } from '@/lib/server/agent-proposal-request'
 import {
-  requireWorkspacePermission,
+  requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 
@@ -99,18 +99,12 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
 
         const proposalRequest = proposalRequestResult.value
         if (proposalRequest) {
-          const access = await requireWorkspaceAccess(
+          const access = await requireWorkspaceMember(
             appContext,
             proposalRequest.workspaceId,
+            workspacePermissions.permissionManage,
           )
           if (access instanceof Response) return access
-          const permission = await requireWorkspacePermission({
-            appContext,
-            request,
-            workspaceId: proposalRequest.workspaceId,
-            permissions: workspacePermissions.permissionManage,
-          })
-          if (permission) return permission
 
           const proposalResult = await resolveAgentProposalRequest({
             actorUserId: access.session.user.id,
@@ -178,18 +172,12 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
         }
 
         const connectorRequest = connectorRequestResult.value
-        const access = await requireWorkspaceAccess(
+        const access = await requireWorkspaceMember(
           appContext,
           connectorRequest.workspaceId,
+          workspacePermissions.permissionManage,
         )
         if (access instanceof Response) return access
-        const permission = await requireWorkspacePermission({
-          appContext,
-          request,
-          workspaceId: connectorRequest.workspaceId,
-          permissions: workspacePermissions.permissionManage,
-        })
-        if (permission) return permission
 
         const resolutionResult = await resolveConnectorWritePermissionRequests({
           approved: bodyResult.value.approved,

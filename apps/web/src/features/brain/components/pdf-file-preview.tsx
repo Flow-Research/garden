@@ -1,8 +1,8 @@
 import { useCallback, useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
-import { Loader2 } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { brainFilePdfOptions } from '../queries'
 
 function PdfLoading() {
@@ -11,7 +11,7 @@ function PdfLoading() {
       role="status"
       className="flex min-h-[65vh] items-center justify-center gap-2 text-sm text-muted-foreground"
     >
-      <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+      <Spinner aria-hidden="true" />
       Loading preview...
     </div>
   )
@@ -87,10 +87,7 @@ function PdfPageCanvas({
             : 'flex min-h-96 w-full items-center justify-center bg-white'
         }
       >
-        <Loader2
-          className="size-4 animate-spin text-muted-foreground"
-          aria-hidden="true"
-        />
+        <Spinner className="text-muted-foreground" aria-hidden="true" />
         <span className="sr-only">Loading page {pageNumber}</span>
       </div>
     )

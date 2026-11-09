@@ -1,11 +1,11 @@
-import { and, desc, eq, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import {
   cancelAutomationRun,
   startAutomationRun,
 } from '@garden/server/automations/run-service'
-import { getDb, schema } from '@/lib/server/db'
+import { getDb, requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
 type AutomationRow = typeof schema.automation.$inferSelect
@@ -222,7 +222,7 @@ export function toAutomationTrigger(row: AutomationTriggerRow) {
 }
 
 export function toAutomationRun(
-  row: AutomationRunRow,
+  row: AutomationRunRow & { decideAnalysisRunIds?: readonly string[] },
   options: { debug?: boolean } = {},
 ) {
   const resultJson = objectOrNull(row.resultJson)
@@ -239,6 +239,7 @@ export function toAutomationRun(
     trigger_payload: row.triggerPayload,
     created_at: dateToIso(row.createdAt),
     result_json: resultJson,
+    decide_analysis_run_ids: [...(row.decideAnalysisRunIds ?? [])],
   }
 
   if (!options.debug) return run
@@ -373,6 +374,42 @@ export async function installScheduleTrigger({
   return Result.ok(nextRunAtResult.value)
 }
 
+type AutomationTx = Parameters<Parameters<Db['transaction']>[0]>[0]
+
+/** Thrown inside a transaction to roll it back with the sync's error. */
+class ScheduleSyncAbort extends Error {
+  constructor(readonly error: AutomationApiError) {
+    super(error.message)
+  }
+}
+
+/**
+ * Runs a database write and the matching Durable Object schedule change as
+ * one unit: `sync` runs inside the write's transaction, and a failed sync
+ * rolls the write back. Committing first used to leave triggers stored as
+ * active, with no schedule installed, whenever the install failed. If the
+ * commit itself fails after a successful sync, the schedule corrects itself
+ * at its next fire, which reloads the trigger and uninstalls when it is gone.
+ */
+export async function writeWithScheduleSync<T>(
+  db: Db,
+  write: (tx: AutomationTx) => Promise<T>,
+  sync: (written: T) => Promise<ResultValue<unknown, AutomationApiError>>,
+): Promise<ResultValue<T, AutomationApiError>> {
+  try {
+    const written = await db.transaction(async (tx) => {
+      const value = await write(tx)
+      const syncResult = await sync(value)
+      if (syncResult.isErr()) throw new ScheduleSyncAbort(syncResult.error)
+      return value
+    })
+    return Result.ok(written)
+  } catch (cause) {
+    if (cause instanceof ScheduleSyncAbort) return Result.err(cause.error)
+    throw cause
+  }
+}
+
 export async function uninstallScheduleTrigger(
   env: AppEnv,
   triggerId: string,
@@ -408,10 +445,11 @@ export async function uninstallAutomationSchedules(
   })
   if (rowsResult.isErr()) return Result.err(rowsResult.error)
 
-  for (const row of rowsResult.value) {
-    const uninstallResult = await uninstallScheduleTrigger(env, row.id)
-    if (uninstallResult.isErr()) return Result.err(uninstallResult.error)
-  }
+  const uninstallResults = await Promise.all(
+    rowsResult.value.map((row) => uninstallScheduleTrigger(env, row.id)),
+  )
+  const failedUninstall = uninstallResults.find((result) => result.isErr())
+  if (failedUninstall) return Result.err(failedUninstall.error)
   const clearResult = await Result.tryPromise({
     try: async () => {
       await db
@@ -450,15 +488,17 @@ export async function syncAutomationSchedules(
   })
   if (rowsResult.isErr()) return Result.err(rowsResult.error)
 
-  for (const trigger of rowsResult.value) {
-    const installResult = await installScheduleTrigger({
-      env,
-      trigger,
-      automation,
-    })
-    if (installResult.isErr()) return Result.err(installResult.error)
-    if (installResult.value) {
-      const updateResult = await Result.tryPromise({
+  // Each trigger lives in its own Durable Object, so install them together.
+  const syncResults = await Promise.all(
+    rowsResult.value.map(async (trigger) => {
+      const installResult = await installScheduleTrigger({
+        env,
+        trigger,
+        automation,
+      })
+      if (installResult.isErr()) return Result.err(installResult.error)
+      if (!installResult.value) return Result.ok()
+      return await Result.tryPromise({
         try: async () => {
           await db
             .update(schema.automationTrigger)
@@ -467,9 +507,10 @@ export async function syncAutomationSchedules(
         },
         catch: (cause) => dbError('touch automation trigger', cause),
       })
-      if (updateResult.isErr()) return Result.err(updateResult.error)
-    }
-  }
+    }),
+  )
+  const failedSync = syncResults.find((result) => result.isErr())
+  if (failedSync) return Result.err(failedSync.error)
   return Result.ok()
 }
 
@@ -525,23 +566,26 @@ async function applyDispatchConcurrency(args: {
   if (policyResult.value === 'skip') {
     const insertResult = await Result.tryPromise({
       try: async () => {
-        const [run] = await db
-          .insert(schema.automationRun)
-          .values({
-            id: crypto.randomUUID(),
-            workspaceId: args.automation.workspaceId,
-            automationId: args.automation.id,
-            source: args.source,
-            status: 'skipped',
-            agentId: args.automation.assigneeAgentId,
-            hostName: args.automation.assigneeAgentId,
-            triggeredAt: now,
-            completedAt: now,
-            failureReason: 'concurrency_policy_skip',
-            triggerPayload: args.payload ?? null,
-            updatedAt: now,
-          })
-          .returning()
+        const run = requireReturnedRow(
+          await db
+            .insert(schema.automationRun)
+            .values({
+              id: crypto.randomUUID(),
+              workspaceId: args.automation.workspaceId,
+              automationId: args.automation.id,
+              source: args.source,
+              status: 'skipped',
+              agentId: args.automation.assigneeAgentId,
+              hostName: args.automation.assigneeAgentId,
+              triggeredAt: now,
+              completedAt: now,
+              failureReason: 'concurrency_policy_skip',
+              triggerPayload: args.payload ?? null,
+              updatedAt: now,
+            })
+            .returning(),
+          'skipped automation run',
+        )
         await db
           .update(schema.automation)
           .set({
@@ -586,7 +630,12 @@ async function applyDispatchConcurrency(args: {
           error: 'replaced_by_automation',
           updatedAt: now,
         })
-        .where(eq(schema.automationRun.id, active.automation_run_id))
+        .where(
+          and(
+            eq(schema.automationRun.id, active.automation_run_id),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
     },
     catch: (cause) => dbError('mark replaced automation run', cause),
   })
@@ -698,7 +747,12 @@ async function markAutomationRunFailed(args: {
           error: args.message,
           updatedAt: now,
         })
-        .where(eq(schema.automationRun.id, args.runId))
+        .where(
+          and(
+            eq(schema.automationRun.id, args.runId),
+            inArray(schema.automationRun.status, LIVE_AUTOMATION_RUN_STATUSES),
+          ),
+        )
     },
     catch: (cause) => dbError('mark automation run failed', cause),
   })
@@ -712,19 +766,50 @@ export async function listAutomationRuns(args: {
   source?: string
   limit?: number
   offset?: number
-}): Promise<ResultValue<AutomationRunRow[], AutomationApiError>> {
+}): Promise<
+  ResultValue<
+    Array<AutomationRunRow & { decideAnalysisRunIds: string[] }>,
+    AutomationApiError
+  >
+> {
   const db = await getDb(args.env)
   const conditions = [eq(schema.automationRun.automationId, args.automationId)]
   if (args.source) conditions.push(eq(schema.automationRun.source, args.source))
   const result = await Result.tryPromise({
-    try: async () =>
-      await db
+    try: async () => {
+      const runs = await db
         .select()
         .from(schema.automationRun)
         .where(and(...conditions))
         .orderBy(desc(schema.automationRun.triggeredAt))
         .limit(args.limit ?? 50)
-        .offset(args.offset ?? 0),
+        .offset(args.offset ?? 0)
+      // The run page shows a Decide card per analysis a run started, so the
+      // listed runs carry their analysis IDs. One indexed lookup covers the
+      // whole page of runs.
+      const analyses =
+        runs.length === 0
+          ? []
+          : await db
+              .select({
+                id: schema.decideAnalysisRun.id,
+                automationRunId: schema.decideAnalysisRun.automationRunId,
+              })
+              .from(schema.decideAnalysisRun)
+              .where(
+                inArray(
+                  schema.decideAnalysisRun.automationRunId,
+                  runs.map((run) => run.id),
+                ),
+              )
+              .orderBy(asc(schema.decideAnalysisRun.createdAt))
+      return runs.map((run) => ({
+        ...run,
+        decideAnalysisRunIds: analyses
+          .filter((analysis) => analysis.automationRunId === run.id)
+          .map((analysis) => analysis.id),
+      }))
+    },
     catch: (cause) => dbError('list automation runs', cause),
   })
   if (result.isErr()) return Result.err(result.error)

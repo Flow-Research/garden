@@ -20,6 +20,7 @@ import * as Config from 'effect/Config'
 import * as Effect from 'effect/Effect'
 import * as Output from 'alchemy/Output'
 import * as Redacted from 'effect/Redacted'
+import { optionalCredentialPairIsConfigured } from './deploy-env.mjs'
 import { deploymentTargetFromEnv } from './deploy-targets.mjs'
 
 const rootEnvPath = fileURLToPath(new URL('./.env', import.meta.url))
@@ -79,6 +80,24 @@ const runWorkflow = Cloudflare.WorkflowResource(deployTarget.workflowId, {
   className: 'RunWorkflow',
   scriptName: deployTarget.workerName,
 })
+
+const decideAnalysisWorkflow = Cloudflare.WorkflowResource(
+  deployTarget.decideAnalysisWorkflowId,
+  {
+    workflowName: deployTarget.decideAnalysisWorkflowName,
+    className: 'DecideAnalysisWorkflow',
+    scriptName: deployTarget.workerName,
+  },
+)
+
+const githubRepoImportWorkflow = Cloudflare.WorkflowResource(
+  deployTarget.githubRepoImportWorkflowId,
+  {
+    workflowName: deployTarget.githubRepoImportWorkflowName,
+    className: 'GitHubRepoImportWorkflow',
+    scriptName: deployTarget.workerName,
+  },
+)
 
 /**
  * Owns the gateway named by the deployment target so every environment has a
@@ -199,13 +218,17 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
       'VITE_PUBLIC_POSTHOG_PROJECT_TOKEN',
     ),
     VITE_PUBLIC_POSTHOG_HOST: plainEnv('VITE_PUBLIC_POSTHOG_HOST'),
-    ...(deployTarget.bindConfiguredBetterAuthUrl
-      ? { BETTER_AUTH_URL: requiredStagingWebOrigin(deployTarget) }
-      : {}),
+    // Alchemy resolves this self-reference before Vite builds: each remote
+    // target receives its own workers.dev origin and local dev gets its URL.
+    // https://alchemy.run/cloudflare/frontend/vite/#the-sites-own-url
+    BETTER_AUTH_URL: Cloudflare.Worker.URL,
     ENVIRONMENT: deployTarget.environment,
     GOOGLE_CLIENT_ID: plainEnv('GOOGLE_CLIENT_ID'),
-    ...optionalPlainBindings([
+    ...optionalCredentialPairBindings(
       'GOOGLE_AUTH_CLIENT_ID',
+      'GOOGLE_AUTH_CLIENT_SECRET',
+    ),
+    ...optionalPlainBindings([
       'GITHUB_CLIENT_ID',
       'GITHUB_APP_ID',
       'GITHUB_APP_SLUG',
@@ -213,7 +236,6 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     ]),
     GOOGLE_CLIENT_SECRET: Config.redacted('GOOGLE_CLIENT_SECRET'),
     ...optionalSecretBindings([
-      'GOOGLE_AUTH_CLIENT_SECRET',
       'GITHUB_CLIENT_SECRET',
       'GITHUB_APP_PRIVATE_KEY',
       'GITHUB_WEBHOOK_SECRET',
@@ -262,6 +284,15 @@ export default Alchemy.Stack(
         },
       ],
     })
+    yield* deployed.bind(deployTarget.workspaceRealtimeId, {
+      bindings: [
+        {
+          type: 'durable_object_namespace',
+          name: 'WORKSPACE_REALTIME',
+          className: 'WorkspaceRealtimeDO',
+        },
+      ],
+    })
     yield* deployed.bind(deployTarget.sandboxId, {
       bindings: [
         {
@@ -285,10 +316,45 @@ export default Alchemy.Stack(
         },
       ],
     })
+    const deployedDecideAnalysisWorkflow = yield* decideAnalysisWorkflow.pipe(
+      Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+    )
+    yield* deployed.bind(deployTarget.decideAnalysisWorkflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'DECIDE_ANALYSIS_WORKFLOW',
+          workflowName: deployedDecideAnalysisWorkflow.workflowName,
+          className: 'DecideAnalysisWorkflow',
+        },
+      ],
+    })
+    const deployedGitHubRepoImportWorkflow =
+      yield* githubRepoImportWorkflow.pipe(
+        Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+      )
+    yield* deployed.bind(deployTarget.githubRepoImportWorkflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'GITHUB_REPO_IMPORT_WORKFLOW',
+          workflowName: deployedGitHubRepoImportWorkflow.workflowName,
+          className: 'GitHubRepoImportWorkflow',
+        },
+      ],
+    })
     yield* sandboxApplication.bind('Sandbox', {
       durableObjects: {
         namespaceId: deployed.durableObjectNamespaces.pipe(
-          Output.map((namespaces) => namespaces?.Sandbox),
+          Output.map((namespaces) => {
+            const namespaceId = namespaces?.Sandbox
+            if (!namespaceId) {
+              throw new Error(
+                'The Sandbox Durable Object namespace was not deployed',
+              )
+            }
+            return namespaceId
+          }),
         ),
       },
     })
@@ -299,28 +365,6 @@ export default Alchemy.Stack(
 function plainEnv(name: string, fallback?: string) {
   const value = process.env[name] ?? fallback
   if (!value) throw new Error(`Missing ${name}`)
-  return value
-}
-
-/** Requires the staging origin at deploy time and rejects localhost.
- * Workers Builds variables are build-only, so Alchemy must explicitly carry
- * this value into the uploaded Worker version rather than silently falling back
- * to a localhost host configuration. */
-function requiredStagingWebOrigin(
-  target: ReturnType<typeof deploymentTargetFromEnv>,
-) {
-  const value = plainEnv('BETTER_AUTH_URL')
-  const url = URL.parse(value)
-  if (
-    url === null ||
-    url.protocol !== 'https:' ||
-    url.hostname === 'localhost' ||
-    url.hostname === '127.0.0.1'
-  ) {
-    throw new Error(
-      `BETTER_AUTH_URL must be a deployed HTTPS origin for ${target.workerName}`,
-    )
-  }
   return value
 }
 
@@ -386,4 +430,23 @@ function optionalSecretBindings(names: string[]) {
       .filter((name) => process.env[name])
       .map((name) => [name, Config.redacted(name)]),
   )
+}
+
+/**
+ * Keeps an optional OAuth provider atomic at the deployment boundary. A
+ * Workers Builds trigger previously omitted the client id while Cloudflare
+ * retained an older secret, producing a Worker version where every agent
+ * WebSocket request failed during auth construction. Reject that version
+ * before upload; provider-specific runtime decoupling is tracked in #122.
+ */
+function optionalCredentialPairBindings(
+  clientId: string,
+  clientSecret: string,
+) {
+  return optionalCredentialPairIsConfigured(process.env, clientId, clientSecret)
+    ? {
+        [clientId]: plainEnv(clientId),
+        [clientSecret]: Config.redacted(clientSecret),
+      }
+    : {}
 }

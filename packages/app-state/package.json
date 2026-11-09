@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
   "exports": {
@@ -23,6 +23,7 @@
     "./config": "./src/config/index.ts",
     "./issues/stores/*": "./src/issues/stores/*.ts",
     "./platform/core-provider": "./src/platform/core-provider.tsx",
+    "./platform/query-client": "./src/query-client.ts",
     "./platform/storage": "./src/platform/storage.ts",
     "./platform/persist-storage": "./src/platform/persist-storage.ts",
     "./issues/stores/view-store-context": "./src/issues/stores/view-store-context.tsx"

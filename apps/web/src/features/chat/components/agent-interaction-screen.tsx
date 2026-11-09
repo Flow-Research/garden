@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Result } from 'better-result'
 import { useQuery } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -11,6 +11,9 @@ import {
 } from '../use-agent-chat-sessions'
 import { useChatRuntimeConnection } from '../chat-runtime-provider'
 import { ConnectedChatPanelInteraction } from './chat-panel-controller'
+import { chatThreadKeys } from '../queries'
+import { LoadError } from '@garden/ui/components/common/load-error'
+import { cn } from '@garden/ui/lib/utils'
 
 type ChatHeaderAttachment = {
   href?: string | null
@@ -79,7 +82,47 @@ export function AgentInteractionScreen({
   const requestedSession = sessionId
     ? sessions.find((session) => session.id === sessionId)
     : null
-  const activeSession = sessionId ? requestedSession : warmSession
+
+  /**
+   * The warm session this screen claimed, held for as long as the screen is
+   * showing `/chats` with no thread in the URL.
+   *
+   * Before: `activeSession` was `warmSession` read fresh on every render, and
+   * `warmSession` is "the first thread in the list that still looks unused".
+   * Sending is what stops a thread looking unused, so the first send moved the
+   * answer — mid-turn, `activeSession` flipped to the *next* unused thread
+   * while the reply kept streaming into the one that was dispatched to. The
+   * 2026-09-18 repro left the messages in thread a34f40b5 and sent the
+   * session-preview write to b7488dbe, and produced a run of identical "New
+   * Chat" rows created within the same second as the screen re-claimed.
+   *
+   * After: the first warm session to resolve is the one this screen keeps.
+   * Pinning by id rather than holding the object means the row still tracks
+   * its own updates (title, preview, status) through the list.
+   *
+   * A ref written during render rather than state: this is a one-way latch
+   * with no render of its own to trigger, and `useEffect` is out per the
+   * repo's rules. Re-running it is idempotent.
+   *
+   * Nothing gets stuck behind the pin. Every "new chat" entry point
+   * (`chat-tabs.tsx`, `search-command.tsx`) claims a session and then routes
+   * to `/chats/$threadId`, so a new chat always arrives with an explicit
+   * `sessionId`, which releases the latch below.
+   */
+  const claimedWarmIdRef = useRef<string | null>(null)
+  if (sessionId) {
+    claimedWarmIdRef.current = null
+  } else if (warmSession && !claimedWarmIdRef.current) {
+    claimedWarmIdRef.current = warmSession.id
+  }
+  const claimedWarmSession = claimedWarmIdRef.current
+    ? (sessions.find((session) => session.id === claimedWarmIdRef.current) ??
+      null)
+    : null
+
+  const activeSession = sessionId
+    ? requestedSession
+    : (claimedWarmSession ?? warmSession)
 
   const onSessionChangeRef = useRef(onSessionChange)
   const lastPublishedSessionRef = useRef<string | null>(null)
@@ -109,8 +152,17 @@ export function AgentInteractionScreen({
     })
   }, [activeSession?.id, activeSession?.title, activeIsWarmDraft])
 
+  // A failed claim used to leave the screen blank; it now says so, and
+  // Try again clears the flag, which runs the claim again.
+  const [claimFailed, setClaimFailed] = useState(false)
+
   useEffect(() => {
-    if (sessionId || activeSession || sessionsQuery.status !== 'success') {
+    if (
+      sessionId ||
+      activeSession ||
+      claimFailed ||
+      sessionsQuery.status !== 'success'
+    ) {
       return
     }
 
@@ -118,19 +170,52 @@ export function AgentInteractionScreen({
     void Result.tryPromise(() => claimWarmSession()).then((result) => {
       if (Result.isError(result)) {
         console.warn('[chat.screen] failed to claim warm chat', result.error)
+        setClaimFailed(true)
       }
     })
-  }, [activeSession, claimWarmSession, sessionId, sessionsQuery.status])
+  }, [
+    activeSession,
+    claimFailed,
+    claimWarmSession,
+    sessionId,
+    sessionsQuery.status,
+  ])
 
-  if (!user?.id || !workspace?.id) {
-    if (sessionId && sessionsQuery.isPending) {
-      return null
-    }
+  if (!user?.id || !workspace?.id) return null
 
-    return null
+  if (!activeSession) {
+    const retryList = () => void sessionsQuery.refetch()
+    return (
+      <div
+        className={cn(
+          'flex flex-1 items-center justify-center p-8 text-sm text-muted-foreground',
+          className,
+        )}
+      >
+        {sessionsQuery.isError && sessions.length === 0 ? (
+          <LoadError
+            message="Could not load your chats."
+            onRetry={retryList}
+            retrying={sessionsQuery.isFetching}
+          />
+        ) : sessionId &&
+          sessionsQuery.isSuccess &&
+          !sessionsQuery.isFetching ? (
+          <LoadError
+            message="This chat could not be found. It may have been deleted."
+            onRetry={retryList}
+          />
+        ) : claimFailed ? (
+          <LoadError
+            message="Could not start a new chat."
+            onRetry={() => setClaimFailed(false)}
+          />
+        ) : (
+          <p aria-busy="true">Loading chat…</p>
+        )}
+      </div>
+    )
   }
-
-  if (!activeSession) return null
 
   return (
     <ChatPanelInteraction
@@ -158,7 +243,7 @@ function ChatPanelInteraction({
   >['updateSessionPreview']
 }) {
   const documentAttachmentsQuery = useQuery({
-    queryKey: ['chat-thread-documents', activeSession.id],
+    queryKey: chatThreadKeys.documents(activeSession.id),
     queryFn: () => fetchThreadDocumentAttachments(activeSession.id),
     staleTime: 10_000,
   })
@@ -168,18 +253,16 @@ function ChatPanelInteraction({
   })
 
   return (
+    // Keyed by session so each conversation gets its own queue, in-flight
+    // flag and panel state. Sharing one instance let a drain loop still
+    // running for the previous thread clear the new thread's in-flight flag
+    // (so a send skipped the queue) or pull its queued messages.
     <ConnectedChatPanelInteraction
+      key={activeSession.id}
       {...props}
       activeSession={activeSession}
       documentAttachments={
         documentAttachmentsQuery.data ?? EMPTY_CHAT_HEADER_ATTACHMENTS
-      }
-      documentLoadState={
-        documentAttachmentsQuery.isPending
-          ? 'loading'
-          : documentAttachmentsQuery.isError
-            ? 'error'
-            : 'ready'
       }
       runtime={runtime}
     />

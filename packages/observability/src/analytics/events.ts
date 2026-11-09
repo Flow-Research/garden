@@ -74,6 +74,7 @@ export const GARDEN_ANALYTICS_EVENTS = {
   aiSpan: '$ai_span',
   aiFeedback: '$ai_feedback',
   aiMetric: '$ai_metric',
+  realtimeEventApplied: 'realtime_event_applied',
 } as const
 
 export type GardenAnalyticsEventName =

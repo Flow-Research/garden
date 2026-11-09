@@ -4,12 +4,18 @@ const gmailComposeScope = 'https://www.googleapis.com/auth/gmail.compose'
 const gmailLabelsScope = 'https://www.googleapis.com/auth/gmail.labels'
 const gmailModifyScope = 'https://www.googleapis.com/auth/gmail.modify'
 const gmailReadonlyScope = 'https://www.googleapis.com/auth/gmail.readonly'
+const gmailSendScope = 'https://www.googleapis.com/auth/gmail.send'
 
 export default defineConnector({
   id: 'gmail',
   label: 'Gmail',
   description:
     'Search threads, manage labels, and create drafts through Google Workspace’s Gmail MCP.',
+  capabilities: [
+    'search and read email',
+    'create and send email drafts',
+    'manage email labels',
+  ],
   icon: './icon.svg',
   executorSlug: 'google_gmail',
   upstream: {
@@ -26,6 +32,7 @@ export default defineConnector({
       gmailComposeScope,
       gmailLabelsScope,
       gmailModifyScope,
+      gmailSendScope,
     ],
     apiHosts: ['gmailmcp.googleapis.com', 'gmail.googleapis.com'],
   },
@@ -53,6 +60,42 @@ export default defineConnector({
     list_drafts: {
       riskClass: 'read',
       requiredScopes: [gmailComposeScope],
+    },
+    'gmail.users.drafts.list': {
+      riskClass: 'read',
+      requiredScopes: [gmailComposeScope],
+    },
+    'gmail.users.drafts.get': {
+      riskClass: 'read',
+      requiredScopes: [gmailComposeScope],
+    },
+    'gmail.users.drafts.create': {
+      riskClass: 'write',
+      requiredScopes: [gmailComposeScope],
+    },
+    'gmail.users.drafts.update': {
+      riskClass: 'write',
+      requiredScopes: [gmailComposeScope],
+    },
+    'gmail.users.drafts.delete': {
+      riskClass: 'write',
+      requiredScopes: [gmailComposeScope],
+    },
+    'gmail.users.drafts.send': {
+      riskClass: 'send_external',
+      requiredScopes: [gmailComposeScope],
+    },
+    'gmail.users.messages.list': {
+      riskClass: 'read',
+      requiredScopes: [gmailReadonlyScope],
+    },
+    'gmail.users.messages.get': {
+      riskClass: 'read',
+      requiredScopes: [gmailReadonlyScope],
+    },
+    'gmail.users.messages.send': {
+      riskClass: 'send_external',
+      requiredScopes: [gmailSendScope],
     },
     list_labels: {
       riskClass: 'read',

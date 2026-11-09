@@ -3,68 +3,45 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import { badRequest, notFound } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 import {
-  badRequest,
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
-import {
-  listIssueRuns,
-  startIssueRun,
-  type IssueRunServiceError,
-} from '@garden/server/issues/run-service'
-
-function runError(error: IssueRunServiceError) {
-  return badRequest(error.message)
-}
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import { listIssueRuns, startIssueRun } from '@garden/server/issues/run-service'
 
 export const Route = createFileRoute('/api/issues/$id/runs')({
   server: {
     handlers: {
       GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [issue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-          .limit(1)
-        if (!issue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          appContext,
-          issue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const issue = access.issue
 
         const runsResult = await listIssueRuns({
           env: appEnv,
           workspaceId: issue.workspaceId,
           issueId: params.id,
         })
-        if (runsResult.isErr()) return runError(runsResult.error)
+        if (runsResult.isErr()) return serviceErrorResponse(runsResult.error)
         return Response.json(runsResult.value)
       },
-      POST: async ({ context, params }) => {
+      POST: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [issue] = await db
-          .select({
-            id: schema.issue.id,
-            workspaceId: schema.issue.workspaceId,
-            assigneeType: schema.issue.assigneeType,
-            assigneeId: schema.issue.assigneeId,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-          .limit(1)
-        if (!issue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          appContext,
-          issue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const issue = access.issue
+        const db = access.db
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: issue.workspaceId,
+          permissions: workspacePermissions.issueManage,
+        })
+        if (permission) return permission
 
         if (issue.assigneeType !== 'agent' || !issue.assigneeId) {
           return badRequest('Issue must be assigned to an agent to start a run')
@@ -89,7 +66,7 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           source: 'manual',
           actor: { type: 'member', id: access.session.user.id },
         })
-        if (startResult.isErr()) return runError(startResult.error)
+        if (startResult.isErr()) return serviceErrorResponse(startResult.error)
         return Response.json(startResult.value, { status: 202 })
       },
     },

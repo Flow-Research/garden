@@ -6,6 +6,7 @@ import { startTestDb, type TestDb } from '@garden/db/testing'
 import { createBetterAuth } from '@/lib/auth/instance'
 import { invitationIdFromRedirect } from '@/lib/invitation-flow'
 import { acceptInvitationWithSession } from './invitation-acceptance'
+import { requireReturnedRow } from './db'
 
 // Match @garden/db's measured testcontainer lifecycle budget. Under the full
 // workspace run, concurrent container startup can exceed Vitest's 10s default.
@@ -45,14 +46,20 @@ async function signUpUser(auth: Auth, email: string): Promise<SessionContext> {
 }
 
 async function seedOrganization(testDb: TestDb, suffix: string) {
-  const [org] = await testDb.db
-    .insert(schema.organization)
-    .values({ name: 'Acme', slug: `acme-${suffix}` })
-    .returning()
-  const [inviter] = await testDb.db
-    .insert(schema.user)
-    .values({ email: `inviter-${suffix}@example.com`, name: 'Inviter' })
-    .returning()
+  const org = requireReturnedRow(
+    await testDb.db
+      .insert(schema.organization)
+      .values({ name: 'Acme', slug: `acme-${suffix}` })
+      .returning(),
+    'organization',
+  )
+  const inviter = requireReturnedRow(
+    await testDb.db
+      .insert(schema.user)
+      .values({ email: `inviter-${suffix}@example.com`, name: 'Inviter' })
+      .returning(),
+    'inviter',
+  )
 
   return { org, inviter }
 }
@@ -67,7 +74,7 @@ async function seedInvitation(
     expiresAt?: Date
   },
 ) {
-  const [invitation] = await testDb.db
+  const rows = await testDb.db
     .insert(schema.invitation)
     .values({
       organizationId: args.organizationId,
@@ -79,7 +86,7 @@ async function seedInvitation(
     })
     .returning()
 
-  return invitation
+  return requireReturnedRow(rows, 'invitation')
 }
 
 async function readInvitation(testDb: TestDb, invitationId: string) {
@@ -287,38 +294,38 @@ describe('invitation acceptance (integration)', () => {
       seed: { status: 'accepted' } as const,
       reason: 'used',
     },
-  ])('marks $name invites unavailable with a distinct reason', async ({
-    seed,
-    reason,
-  }) => {
-    const suffix = randomUUID()
-    const { org, inviter } = await seedOrganization(testDb, suffix)
-    const inviteeEmail = `invitee-${suffix}@example.com`
-    const invitation = await seedInvitation(testDb, {
-      organizationId: org.id,
-      inviterId: inviter.id,
-      email: inviteeEmail,
-      ...seed,
-    })
-    const { requestHeaders, session } = await signUpUser(auth, inviteeEmail)
-
-    const result = await acceptInvitationWithSession({
-      auth,
-      db: testDb.db,
-      requestHeaders,
-      session,
-      invitationId: invitation.id,
-    })
-
-    expect(result.status).toBe('unavailable')
-    if (result.status === 'unavailable') expect(result.reason).toBe(reason)
-    expect(
-      await readMemberships(testDb, {
+  ])(
+    'marks $name invites unavailable with a distinct reason',
+    async ({ seed, reason }) => {
+      const suffix = randomUUID()
+      const { org, inviter } = await seedOrganization(testDb, suffix)
+      const inviteeEmail = `invitee-${suffix}@example.com`
+      const invitation = await seedInvitation(testDb, {
         organizationId: org.id,
-        userId: session.user.id,
-      }),
-    ).toHaveLength(0)
-  })
+        inviterId: inviter.id,
+        email: inviteeEmail,
+        ...seed,
+      })
+      const { requestHeaders, session } = await signUpUser(auth, inviteeEmail)
+
+      const result = await acceptInvitationWithSession({
+        auth,
+        db: testDb.db,
+        requestHeaders,
+        session,
+        invitationId: invitation.id,
+      })
+
+      expect(result.status).toBe('unavailable')
+      if (result.status === 'unavailable') expect(result.reason).toBe(reason)
+      expect(
+        await readMemberships(testDb, {
+          organizationId: org.id,
+          userId: session.user.id,
+        }),
+      ).toHaveLength(0)
+    },
+  )
 
   it('reports unknown invitation ids as not found', async () => {
     const suffix = randomUUID()

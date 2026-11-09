@@ -42,11 +42,14 @@ import {
 } from '../issues/components'
 import { TodoAgentHintContent } from '../issues/components/todo-agent-hint-dialog'
 import { ProjectPicker } from '../projects/components/project-picker'
+import { TeamPicker } from '../teams/components/team-picker'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useIssueDraftStore } from '@garden/app-state/issues/stores/draft-store'
 import { useCreateIssue, useUpdateIssue } from '@/lib/issues/mutations'
-import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
-import { api } from '@/lib/api'
+import {
+  UPLOAD_IN_PROGRESS_MESSAGE,
+  useAttachmentUpload,
+} from '@/lib/hooks/use-attachment-upload'
 import { FileUploadButton } from '@garden/ui/components/common/file-upload-button'
 
 // ---------------------------------------------------------------------------
@@ -94,6 +97,23 @@ export function CreateIssueModal({
   const setDraft = useIssueDraftStore((s) => s.setDraft)
   const clearDraft = useIssueDraftStore((s) => s.clearDraft)
 
+  // Team-scoped creates carry team_id; normal Team members are locked to
+  // self-assignment (the server enforces the same rule).
+  const teamId = typeof data?.team_id === 'string' ? data.team_id : undefined
+  // Cross-team surfaces (Teams › Tasks in the All view) pass no team_id and
+  // set show_team_picker, so the creator must choose the owning Team.
+  const showTeamPicker = data?.show_team_picker === true && !teamId
+  const [pickedTeamId, setPickedTeamId] = useState<string | undefined>(
+    undefined,
+  )
+  // The API rejects team-scoped creates without an assignee ("Team issues
+  // must be assigned to a Team member"), so the Team modes require one.
+  const requiresAssignee = Boolean(teamId || pickedTeamId)
+  const lockedAssigneeUserId =
+    typeof data?.lock_assignee_user_id === 'string'
+      ? data.lock_assignee_user_id
+      : undefined
+
   const [title, setTitle] = useState(draft.title)
   const descEditorRef = useRef<ContentEditorRef>(null)
   const { isDragOver: descDragOver, dropZoneProps: descDropZoneProps } =
@@ -106,11 +126,14 @@ export function CreateIssueModal({
   )
   const [priority, setPriority] = useState<IssuePriority>(draft.priority)
   const [submitting, setSubmitting] = useState(false)
+  // Team creates must assign to a Team member, so a persisted draft assignee
+  // (which may be a non-member) is not inherited; the picker starts empty and
+  // lists only the Team's members.
   const [assigneeType, setAssigneeType] = useState<
     IssueAssigneeType | undefined
-  >(draft.assigneeType)
+  >(lockedAssigneeUserId ? 'member' : teamId ? undefined : draft.assigneeType)
   const [assigneeId, setAssigneeId] = useState<string | undefined>(
-    draft.assigneeId,
+    lockedAssigneeUserId ?? (teamId ? undefined : draft.assigneeId),
   )
   const [dueDate, setDueDate] = useState<string | null>(draft.dueDate)
   const [projectId, setProjectId] = useState<string | undefined>(
@@ -122,7 +145,7 @@ export function CreateIssueModal({
 
   // File upload — collect attachment IDs so we can link them after issue creation.
   const [attachmentIds, setAttachmentIds] = useState<string[]>([])
-  const { uploadWithToast } = useFileUpload(api)
+  const { uploadWithToast } = useAttachmentUpload()
   const handleUpload = async (file: File) => {
     const result = await uploadWithToast(file)
     if (result) {
@@ -158,6 +181,12 @@ export function CreateIssueModal({
   const updateIssueMutation = useUpdateIssue()
   const handleSubmit = async () => {
     if (!title.trim() || submitting) return
+    if (showTeamPicker && !pickedTeamId) return
+    if (requiresAssignee && !lockedAssigneeUserId && !assigneeId) return
+    if (descEditorRef.current?.hasActiveUploads()) {
+      toast.info(UPLOAD_IN_PROGRESS_MESSAGE)
+      return
+    }
     setSubmitting(true)
     try {
       const issue = await createIssueMutation.mutateAsync({
@@ -165,8 +194,9 @@ export function CreateIssueModal({
         description: descEditorRef.current?.getMarkdown()?.trim() || undefined,
         status,
         priority,
-        assignee_type: assigneeType,
-        assignee_id: assigneeId,
+        assignee_type: lockedAssigneeUserId ? 'member' : assigneeType,
+        assignee_id: lockedAssigneeUserId ?? assigneeId,
+        team_id: teamId ?? pickedTeamId,
         due_date: dueDate || undefined,
         attachment_ids: attachmentIds.length > 0 ? attachmentIds : undefined,
         auto_start: autoStart,
@@ -191,7 +221,7 @@ export function CreateIssueModal({
           (t) => (
             <div className="bg-popover text-popover-foreground border rounded-lg shadow-lg p-4 w-[360px]">
               <div className="flex items-center gap-2 mb-2">
-                <div className="flex items-center justify-center size-5 rounded-full bg-emerald-500/15 text-emerald-500">
+                <div className="flex items-center justify-center size-5 rounded-full bg-background-success-default/15 text-text-success-tertiary">
                   <Check className="size-3" />
                 </div>
                 <span className="text-sm font-medium">Issue created</span>
@@ -220,8 +250,12 @@ export function CreateIssueModal({
           { duration: 5000 },
         )
       }
-    } catch {
-      toast.error('Failed to create issue')
+    } catch (error) {
+      // Surface the server message: Team creates fail with actionable reasons
+      // ("Assignee must be a Team member", access denials, ...).
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to create issue',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -237,8 +271,9 @@ export function CreateIssueModal({
         }
       }}
     >
+      {/* Focus returns to whatever opened the dialog when it closes
+          (finalFocus was turned off, leaving keyboard users at the top). */}
       <DialogContent
-        finalFocus={false}
         showCloseButton={false}
         className={cn(
           'p-0 gap-0 flex flex-col overflow-hidden',
@@ -247,9 +282,9 @@ export function CreateIssueModal({
             ? '!max-w-[480px] !w-[calc(100vw-2rem)] !h-auto !-translate-y-1/2 !transition-none !duration-0'
             : '!transition-all !duration-300 !ease-out',
           !todoHintIssueId && isExpanded
-            ? '!max-w-4xl !w-full !h-5/6 !-translate-y-1/2'
+            ? '!max-w-4xl !w-[calc(100vw-2rem)] !h-5/6 !-translate-y-1/2'
             : !todoHintIssueId
-              ? '!max-w-2xl !w-full !h-96 !-translate-y-1/2'
+              ? '!max-w-2xl !w-[calc(100vw-2rem)] !h-96 !-translate-y-1/2'
               : '',
         )}
       >
@@ -297,6 +332,8 @@ export function CreateIssueModal({
                   <TooltipTrigger
                     render={
                       <button
+                        type="button"
+                        aria-label={isExpanded ? 'Collapse' : 'Expand'}
                         onClick={() => setIsExpanded(!isExpanded)}
                         className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
                       >
@@ -316,6 +353,7 @@ export function CreateIssueModal({
                   <TooltipTrigger
                     render={
                       <button
+                        aria-label="Close"
                         onClick={onClose}
                         className="rounded-sm p-1.5 opacity-70 hover:opacity-100 hover:bg-accent/60 transition-all cursor-pointer"
                       >
@@ -378,19 +416,46 @@ export function CreateIssueModal({
                 align="start"
               />
 
-              {/* Assignee */}
-              <AssigneePicker
-                assigneeType={assigneeType ?? null}
-                assigneeId={assigneeId ?? null}
-                onUpdate={(u) =>
-                  updateAssignee(
-                    u.assignee_type ?? undefined,
-                    u.assignee_id ?? undefined,
-                  )
-                }
-                triggerRender={<PillButton />}
-                align="start"
-              />
+              {/* Team — required only for cross-team creates (All view) */}
+              {showTeamPicker ? (
+                <TeamPicker
+                  teamId={pickedTeamId ?? null}
+                  onUpdate={(nextTeamId) => {
+                    if (nextTeamId !== pickedTeamId) {
+                      // The new Team's member set differs; drop any assignee
+                      // that may not belong to it (the API rejects those).
+                      updateAssignee(undefined, undefined)
+                    }
+                    setPickedTeamId(nextTeamId)
+                  }}
+                  triggerRender={<PillButton />}
+                  align="start"
+                />
+              ) : null}
+
+              {/* Assignee — filtered to the Team's members for Team creates */}
+              {lockedAssigneeUserId ? (
+                <span className="flex h-7 items-center rounded-full bg-muted px-3 text-xs text-muted-foreground">
+                  Assigned to you
+                </span>
+              ) : showTeamPicker && !pickedTeamId ? (
+                // The valid assignee set is unknown until a Team is chosen.
+                <PillButton disabled>Select Team first</PillButton>
+              ) : (
+                <AssigneePicker
+                  assigneeType={assigneeType ?? null}
+                  assigneeId={assigneeId ?? null}
+                  teamId={teamId ?? pickedTeamId ?? null}
+                  onUpdate={(u) =>
+                    updateAssignee(
+                      u.assignee_type ?? undefined,
+                      u.assignee_id ?? undefined,
+                    )
+                  }
+                  triggerRender={<PillButton />}
+                  align="start"
+                />
+              )}
 
               {/* Due date */}
               <DueDatePicker
@@ -415,6 +480,11 @@ export function CreateIssueModal({
                 onSelect={(file) => descEditorRef.current?.uploadFile(file)}
               />
               <div className="flex items-center gap-3">
+                {requiresAssignee && !lockedAssigneeUserId && !assigneeId ? (
+                  <span className="text-xs text-text-secondary">
+                    Team tasks need an assignee
+                  </span>
+                ) : null}
                 {assigneeType === 'agent' &&
                 assigneeId &&
                 !['todo', 'blocked', 'done', 'cancelled'].includes(status) ? (
@@ -431,7 +501,12 @@ export function CreateIssueModal({
                 <Button
                   size="sm"
                   onClick={handleSubmit}
-                  disabled={!title.trim() || submitting}
+                  disabled={
+                    !title.trim() ||
+                    submitting ||
+                    (showTeamPicker && !pickedTeamId) ||
+                    (requiresAssignee && !lockedAssigneeUserId && !assigneeId)
+                  }
                 >
                   {submitting ? 'Creating...' : 'Create Issue'}
                 </Button>

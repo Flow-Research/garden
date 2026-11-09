@@ -1,0 +1,2 @@
+ALTER TABLE "document" DROP CONSTRAINT "document_file_type_check";--> statement-breakpoint
+ALTER TABLE "document" ADD CONSTRAINT "document_file_type_check" CHECK ("document"."file_type" in ('pdf', 'doc', 'docx', 'txt', 'md', 'json', 'csv', 'xlsx', 'unknown'));

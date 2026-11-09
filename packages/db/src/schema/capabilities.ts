@@ -29,7 +29,7 @@ export const capability = pgTable(
       .notNull()
       .default(sql`'{}'::text[]`),
     riskClass: text('risk_class').notNull().default('read'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
   },
@@ -59,10 +59,10 @@ export const permissionGrant = pgTable(
     grantedBy: uuid('granted_by')
       .notNull()
       .references(() => user.id),
-    grantedAt: timestamp('granted_at', { mode: 'date' })
+    grantedAt: timestamp('granted_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    expiresAt: timestamp('expires_at', { mode: 'date' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     uniqueIndex('permission_grant_agent_capability_unique').on(
@@ -88,10 +88,10 @@ export const connectionGrant = pgTable(
     grantedBy: uuid('granted_by')
       .notNull()
       .references(() => user.id),
-    grantedAt: timestamp('granted_at', { mode: 'date' })
+    grantedAt: timestamp('granted_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    expiresAt: timestamp('expires_at', { mode: 'date' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     uniqueIndex('connection_grant_agent_connector_unique').on(
@@ -129,15 +129,16 @@ export const permissionRequest = pgTable(
     }),
     argsJson: jsonb('args_json'),
     toolCallId: text('tool_call_id').notNull().default(''),
-    requestedAt: timestamp('requested_at', { mode: 'date' })
+    requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
     status: text('status').notNull().default('pending'),
     resolvedBy: uuid('resolved_by'),
-    resolvedAt: timestamp('resolved_at', { mode: 'date' }),
-    expiresAt: timestamp('expires_at', { mode: 'date' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
+    index('permission_request_run_id_idx').on(table.runId),
     check(
       'permission_request_status_check',
       sql`${table.status} in ('pending', 'approved', 'denied')`,

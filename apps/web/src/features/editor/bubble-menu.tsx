@@ -231,6 +231,7 @@ function LinkEditBar({
         }}
       />
       <Button
+        aria-label="Apply link"
         size="icon-xs"
         variant="ghost"
         onClick={apply}
@@ -240,6 +241,7 @@ function LinkEditBar({
       </Button>
       {existingHref && (
         <Button
+          aria-label="Remove link"
           size="icon-xs"
           variant="ghost"
           onClick={remove}
@@ -249,6 +251,7 @@ function LinkEditBar({
         </Button>
       )}
       <Button
+        aria-label="Cancel"
         size="icon-xs"
         variant="ghost"
         onClick={() => {

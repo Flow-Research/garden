@@ -2,6 +2,7 @@ import { tool, type ToolSet } from 'ai'
 import { z } from 'zod'
 import { Context, Effect, Layer, Schema } from 'effect'
 import { ItemId, Kind, WorkspaceId } from '@garden/brain/domain'
+import { orgScope, userScope } from '@garden/brain/domain/scope'
 import { Brain } from '@garden/brain/services/brain'
 import type { BrainShape } from '@garden/brain/services/brain'
 import { makeWorkerBrainLive } from '@garden/brain/services/worker'
@@ -12,18 +13,25 @@ export type BrainToolContext = {
   readonly workspaceId: string
   readonly agentId: string
   readonly runId: string
+  readonly userId?: string
+  /** Shared outputs may read only org knowledge; userId still identifies the author. */
+  readonly readAudience?: 'org'
 }
 
 export type BrainToolOperations = Pick<
   BrainShape,
   | 'ensureIndexes'
   | 'search'
+  | 'read'
   | 'addText'
   | 'updateItemMetadata'
   | 'observeMention'
   | 'linkItems'
   | 'neighborhood'
->
+> & {
+  /** Optional for lightweight Brain test doubles; live Brain always provides it. */
+  readonly readFileItem?: BrainShape['readFileItem']
+}
 
 const MAX_SEARCH_K = 8
 const MAX_HIT_BODY_CHARS = 4_000
@@ -45,60 +53,78 @@ const brainSearchInputSchema = z
   })
   .strict()
 
-const createBrainItemInputSchema = z
+const addToBrainInputSchema = z
   .object({
-    label: z
-      .string()
-      .trim()
-      .min(1)
-      .describe('Short name for this brain item, e.g. a title.'),
-    content: z
-      .string()
-      .trim()
-      .min(1)
-      .describe('The knowledge to persist, in the agent’s own words.'),
-    kind: z
-      .string()
-      .trim()
-      .min(1)
-      .optional()
+    mode: z
+      .enum(['create', 'update'])
       .describe(
-        'Optional free-text kind you invent, e.g. "decision", "person", or "policy"; it is not an enum. Everything is searchable regardless of kind.',
+        'create a new note from label and content, or update an existing item kind and summary.',
       ),
-    summary: z
-      .string()
-      .trim()
-      .optional()
-      .describe('Optional one-line summary for fast triage.'),
-  })
-  .strict()
-
-const updateBrainItemInputSchema = z
-  .object({
     itemId: z
       .string()
       .trim()
       .min(1)
-      .describe('Existing brain item id whose kind and summary should change.'),
+      .optional()
+      .describe('Existing brain item id. Required when mode is "update".'),
+    label: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe('Short name for a new item. Required when mode is "create".'),
+    content: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        'The knowledge to persist, in the agent’s own words. Required when mode is "create".',
+      ),
     kind: z
       .string()
       .trim()
       .min(1)
+      .optional()
       .describe(
-        'Free-text kind you judge best for the existing item; it is not an enum.',
+        'Free-text kind you invent, e.g. "decision", "person", or "policy". Required when mode is "update".',
       ),
     summary: z
       .string()
       .trim()
       .min(1)
-      .describe('Concise source-grounded summary of the existing item.'),
+      .optional()
+      .describe(
+        'One-line summary. Optional on create, required when mode is "update".',
+      ),
+    scope: z
+      .enum(['org', 'user'])
+      .optional()
+      .describe(
+        'Who this knowledge belongs to. Use "user" for facts about a person or their preferences; everything else stays "org".',
+      ),
   })
   .strict()
-
-const addToBrainInputSchema = z.union([
-  createBrainItemInputSchema,
-  updateBrainItemInputSchema,
-])
+  .superRefine((value, ctx) => {
+    if (value.mode === 'update') {
+      for (const field of ['itemId', 'kind', 'summary'] as const) {
+        if (value[field] === undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            message: `mode "update" requires ${field}.`,
+          })
+        }
+      }
+      return
+    }
+    for (const field of ['label', 'content'] as const) {
+      if (value[field] === undefined) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `mode "create" requires ${field}.`,
+        })
+      }
+    }
+  })
 
 const brainObserveMentionInputSchema = z
   .object({
@@ -150,6 +176,16 @@ const brainNeighborhoodInputSchema = z
       .max(2)
       .optional()
       .describe('Fixed traversal depth (default 1, max 2).'),
+  })
+  .strict()
+
+const brainReadFileInputSchema = z
+  .object({
+    itemId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe('Brain file id returned by brain_search.'),
   })
   .strict()
 
@@ -227,6 +263,7 @@ export type BrainToolDependencies = {
 
 type BrainToolOutput = Record<string, unknown>
 type SearchInput = { readonly query: string; readonly k: number }
+type ReadFileInput = z.infer<typeof brainReadFileInputSchema>
 type AddInput = z.infer<typeof addToBrainInputSchema>
 type ObserveMentionInput = z.infer<typeof brainObserveMentionInputSchema>
 type LinkInput = z.infer<typeof brainLinkInputSchema>
@@ -245,8 +282,14 @@ class BrainToolsUnavailableError extends Schema.TaggedError<BrainToolsUnavailabl
   { message: Schema.String },
 ) {}
 
+class BrainToolInputError extends Schema.TaggedError<BrainToolInputError>()(
+  'BrainToolInputError',
+  { message: Schema.String },
+) {}
+
 interface BrainToolsServiceShape {
   readonly search: (input: SearchInput) => Effect.Effect<BrainToolOutput>
+  readonly readFile: (input: ReadFileInput) => Effect.Effect<BrainToolOutput>
   readonly add: (input: AddInput) => Effect.Effect<BrainToolOutput>
   readonly observeMention: (
     input: ObserveMentionInput,
@@ -285,6 +328,9 @@ const toolOutcome = <A, E>(
   Effect.match(effect, {
     onFailure: (failure) => {
       if (failure instanceof BrainToolsUnavailableError) {
+        return { ok: false, error: failure.message }
+      }
+      if (failure instanceof BrainToolInputError) {
         return { ok: false, error: failure.message }
       }
       if (
@@ -341,13 +387,105 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       query: input.query,
       k: input.k,
+      viewer: {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
     })
   })
+
+  /**
+   * Reads the complete extracted body for one visible Brain file. The chat
+   * preview route already proved that Brain stores XLSX as text, but the agent
+   * had no tool to retrieve that body. Returning the full body lets a selected
+   * Decide analysis receive the workbook rows instead of a search snippet.
+   */
+  const readFile = Effect.fn('BrainTools.readFile')(function* (
+    input: ReadFileInput,
+  ) {
+    const ctx = yield* resolveContext()
+    const service = yield* requireBrain()
+    if (service.readFileItem === undefined) {
+      return yield* new BrainToolsUnavailableError({
+        message: 'Full Brain file reads are not available in this runtime.',
+      })
+    }
+    const item = yield* service.readFileItem(
+      ItemId.make(input.itemId),
+      WorkspaceId.make(ctx.workspaceId),
+      {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
+    )
+    if (item === null) {
+      return yield* new BrainToolInputError({
+        message: 'The Brain file is unavailable for this run.',
+      })
+    }
+    if (item.body === undefined) {
+      return yield* new BrainToolInputError({
+        message: 'The Brain file has no extracted text yet.',
+      })
+    }
+    return item
+  })
+
+  /**
+   * Authorizes target visibility before a Brain mutation can reveal or change
+   * an item.
+   *
+   * Before (garden#143): mutation tools acted on any item id in the workspace.
+   * A shared issue run could probe or edit an owner-private item by id, and an
+   * error or success message confirmed that the private item existed.
+   *
+   * After: every mutation first reads the target through the same viewer the
+   * run may read with. For `readAudience: 'org'` that viewer has no user and no
+   * teams, so only org-scoped items are visible. An item the viewer cannot see
+   * returns the same generic "unavailable" error as a missing item, so the
+   * caller learns nothing about private items. No metadata or edge is changed
+   * before this check passes.
+   *
+   * Scope rules come from `canViewScope` in `packages/brain/src/domain/scope.ts`,
+   * which the Brain service read path applies; reusing the service read keeps
+   * this gate identical to search and injection visibility.
+   */
+  const requireVisibleTarget = Effect.fn('BrainTools.requireVisibleTarget')(
+    function* (
+      ctx: BrainToolContext,
+      service: BrainToolOperations,
+      itemId: string,
+    ) {
+      const item = yield* service.read(
+        ItemId.make(itemId),
+        WorkspaceId.make(ctx.workspaceId),
+        {
+          teamIds: new Set<string>(),
+          userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+        },
+      )
+      if (item === null) {
+        return yield* new BrainToolInputError({
+          message: 'The Brain item is unavailable for this run.',
+        })
+      }
+    },
+  )
 
   const add = Effect.fn('BrainTools.add')(function* (input: AddInput) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
-    if ('itemId' in input) {
+    if (input.mode === 'update') {
+      if (
+        input.itemId === undefined ||
+        input.kind === undefined ||
+        input.summary === undefined
+      ) {
+        return yield* new BrainToolInputError({
+          message: 'mode "update" needs itemId, kind, and summary.',
+        })
+      }
+      yield* requireVisibleTarget(ctx, service, input.itemId)
       return yield* service.updateItemMetadata({
         tenantId: WorkspaceId.make(ctx.workspaceId),
         itemId: ItemId.make(input.itemId),
@@ -355,6 +493,20 @@ const makeBrainToolsService = (
         summary: input.summary,
       })
     }
+    if (input.label === undefined || input.content === undefined) {
+      return yield* new BrainToolInputError({
+        message: 'mode "create" needs label and content.',
+      })
+    }
+    if (input.scope === 'user' && ctx.userId === undefined) {
+      return yield* new BrainToolInputError({
+        message: 'scope "user" needs a user context.',
+      })
+    }
+    const scope =
+      input.scope === 'user' && ctx.userId !== undefined
+        ? userScope(ctx.userId)
+        : orgScope()
     yield* service.ensureIndexes()
     return yield* service.addText({
       tenantId: WorkspaceId.make(ctx.workspaceId),
@@ -362,6 +514,7 @@ const makeBrainToolsService = (
       body: input.content,
       ...(input.kind === undefined ? {} : { kind: Kind.make(input.kind) }),
       ...(input.summary === undefined ? {} : { summary: input.summary }),
+      scope,
       actor: actorFrom(ctx),
     })
   })
@@ -371,6 +524,7 @@ const makeBrainToolsService = (
   ) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
+    yield* requireVisibleTarget(ctx, service, input.itemId)
     return yield* service.observeMention({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
@@ -383,6 +537,8 @@ const makeBrainToolsService = (
   const link = Effect.fn('BrainTools.link')(function* (input: LinkInput) {
     const ctx = yield* resolveContext()
     const service = yield* requireBrain()
+    yield* requireVisibleTarget(ctx, service, input.from)
+    yield* requireVisibleTarget(ctx, service, input.to)
     return yield* service.linkItems({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       from: ItemId.make(input.from),
@@ -401,6 +557,10 @@ const makeBrainToolsService = (
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
       ...(input.depth === undefined ? {} : { depth: input.depth }),
+      viewer: {
+        teamIds: new Set<string>(),
+        userId: ctx.readAudience === 'org' ? undefined : ctx.userId,
+      },
     })
   })
 
@@ -409,6 +569,13 @@ const makeBrainToolsService = (
       toolOutcome('brain_search_failed', search(input), (hits) => ({
         ok: true,
         hits: hits.map(toHit),
+      })),
+    readFile: (input) =>
+      toolOutcome('brain_read_file_failed', readFile(input), (item) => ({
+        ok: true,
+        id: item.id,
+        label: item.label,
+        text: item.body,
       })),
     add: (input) =>
       toolOutcome('add_to_brain_failed', add(input), (item) => ({
@@ -473,7 +640,7 @@ const makeBrainToolsLayer = (
 }
 
 /**
- * Exposes Brain as five Effect-backed structured operations. Agents receive
+ * Exposes Brain as six Effect-backed structured operations. Agents receive
  * product outcomes only; Helix DSL and infrastructure failures remain behind
  * the service layer, with Promise conversion limited to AI SDK callbacks.
  */
@@ -499,9 +666,16 @@ export function createBrainTools(deps: BrainToolDependencies): ToolSet {
         ),
     }),
 
+    brain_read_file: tool({
+      description:
+        'Read the complete extracted text of one workspace Brain file. Use the id returned by brain_search. XLSX files are returned as tab-separated sheet text. Use this before sending a Brain file to a data-analysis integration. Do not use the search result body as the analysis input because it may be truncated.',
+      inputSchema: brainReadFileInputSchema,
+      execute: (input) => runService((service) => service.readFile(input)),
+    }),
+
     add_to_brain: tool({
       description:
-        'Persist durable knowledge in the workspace’s Org Brain, or update an existing indexed item’s kind and summary by passing itemId. Kind is free text you choose—not an enum. Metadata updates preserve body content and embeddings.',
+        'Persist durable knowledge in the workspace’s Org Brain. Use mode "create" with label and content to add a note, or mode "update" with itemId, kind, and summary to restructure an existing item. Kind is free text you choose, not an enum. Updates preserve body content and embeddings. Use scope "user" for facts about a person or their preferences; everything else stays "org".',
       inputSchema: addToBrainInputSchema,
       execute: (input) => runService((service) => service.add(input)),
     }),

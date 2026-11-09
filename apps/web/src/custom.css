@@ -5,7 +5,7 @@
   font-size: 14.5px;
   line-height: 1.55;
   letter-spacing: -0.005em;
-  color: var(--ink);
+  color: var(--foreground);
 }
 
 .is-assistant code,
@@ -144,4 +144,20 @@
   .login-panel-enter {
     animation: none;
   }
+}
+
+@keyframes voice-bar {
+  0%,
+  100% {
+    height: 4px;
+  }
+  50% {
+    height: 18px;
+  }
+}
+
+.voice-bar {
+  height: 4px;
+  animation: voice-bar 0.9s ease-in-out infinite;
+  transform-origin: bottom;
 }

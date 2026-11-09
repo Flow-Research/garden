@@ -1,4 +1,11 @@
-import { Array as EffectArray, Context, DateTime, Effect, Schema } from 'effect'
+import {
+  Array as EffectArray,
+  Context,
+  DateTime,
+  Effect,
+  Option,
+  Schema,
+} from 'effect'
 import {
   BatchCondition,
   IndexSpec,
@@ -27,9 +34,18 @@ import {
   MentionSpan,
   NewBrainItem,
   Origin,
+  scopeOf,
   WorkspaceId,
 } from '../domain/items.ts'
 import type { SearchHit } from '../domain/items.ts'
+import {
+  canViewScope,
+  orgScope,
+  teamScope,
+  userScope,
+  type BrainScope,
+  type ScopeViewer,
+} from '../domain/scope.ts'
 import {
   EmbedError,
   ExtractError,
@@ -49,6 +65,7 @@ import { EMBEDDING_DIM, Embeddings } from './Embeddings.ts'
 import type { EmbeddingsShape } from './Embeddings.ts'
 import { HelixClient } from './HelixClient.ts'
 import type { HelixClientShape } from './HelixClient.ts'
+import { rerankByFreshness } from './freshness.ts'
 import { Chunker } from './Chunker.ts'
 import { Extractor } from './ExtractorService.ts'
 import { RawFileStore } from './RawFileStore.ts'
@@ -64,6 +81,7 @@ export type BrainShape = {
     body: string
     kind?: Kind
     summary?: string
+    scope?: BrainScope
     actor: Actor
   }) => Effect.Effect<BrainItem, HelixError | WriteConflict | EmbedError>
 
@@ -99,6 +117,7 @@ export type BrainShape = {
   readonly read: (
     id: ItemId,
     tenantId: WorkspaceId,
+    viewer?: ScopeViewer,
   ) => Effect.Effect<BrainItem | null, HelixError | WriteConflict>
   /**
    * Reads only a file storage node inside the specified workspace.
@@ -106,11 +125,13 @@ export type BrainShape = {
   readonly readFileItem: (
     id: ItemId,
     tenantId: WorkspaceId,
+    viewer?: ScopeViewer,
   ) => Effect.Effect<BrainItem | null, HelixError | WriteConflict>
   readonly search: (input: {
     tenantId: WorkspaceId
     query: string
     k: number
+    viewer?: ScopeViewer
   }) => Effect.Effect<
     readonly SearchHit[],
     HelixError | WriteConflict | EmbedError
@@ -118,6 +139,7 @@ export type BrainShape = {
   readonly listFiles: (input: {
     tenantId: WorkspaceId
     limit?: number
+    viewer?: ScopeViewer
   }) => Effect.Effect<readonly BrainItem[], HelixError | WriteConflict>
   readonly linkSections: (
     fileId: ItemId,
@@ -127,6 +149,7 @@ export type BrainShape = {
   readonly sectionsOf: (
     fileId: ItemId,
     tenantId: WorkspaceId,
+    viewer?: ScopeViewer,
   ) => Effect.Effect<readonly BrainItem[], HelixError | WriteConflict>
   /**
    * Appends the exact mention text observed in one source item. It deliberately
@@ -168,11 +191,13 @@ export type BrainShape = {
     tenantId: WorkspaceId
     itemId: ItemId
     depth?: number
+    viewer?: ScopeViewer
   }) => Effect.Effect<BrainNeighborhood, HelixError | WriteConflict>
   readonly readFile: (
     itemId: ItemId,
     tenantId: WorkspaceId,
     range?: { readonly start: number; readonly end: number },
+    viewer?: ScopeViewer,
   ) => Effect.Effect<Uint8Array, HelixError | WriteConflict>
 }
 
@@ -199,6 +224,9 @@ const ItemRow = Schema.Struct({
   index_error: Schema.optional(Schema.String),
   origin: Schema.String,
   body: Schema.optional(Schema.String),
+  scope_kind: Schema.optional(Schema.String),
+  scope_id: Schema.optional(Schema.String),
+  occurred_at: Schema.optional(Schema.String),
 })
 
 const EdgeRow = Schema.Struct({
@@ -257,6 +285,22 @@ const originJson = (origin: Origin): string =>
     )(Schema.decodeUnknownSync(Origin)(origin)),
   )
 
+const decodeScope = (
+  kind: unknown,
+  id: unknown,
+): Effect.Effect<BrainScope, HelixError> => {
+  if (kind === undefined || kind === null || kind === '' || kind === 'org') {
+    return Effect.succeed(orgScope())
+  }
+  if (kind === 'team' && typeof id === 'string' && id !== '') {
+    return Effect.succeed(teamScope(id))
+  }
+  if (kind === 'user' && typeof id === 'string' && id !== '') {
+    return Effect.succeed(userScope(id))
+  }
+  return Effect.fail(new HelixError({ message: 'invalid brain item scope' }))
+}
+
 const decodeRow = (row: Row): Effect.Effect<BrainItem, HelixError> =>
   Effect.gen(function* () {
     const item = yield* Schema.decodeUnknownEffect(ItemRow)(row).pipe(
@@ -266,6 +310,15 @@ const decodeRow = (row: Row): Effect.Effect<BrainItem, HelixError> =>
     )
     const id = yield* decodeItemId(row)
     const origin = yield* decodeItemOrigin(item.origin)
+    const scope = yield* decodeScope(item.scope_kind, item.scope_id)
+    const occurredAt =
+      item.occurred_at === undefined
+        ? undefined
+        : Option.getOrUndefined(
+            Schema.decodeUnknownOption(Schema.DateTimeUtcFromString)(
+              item.occurred_at,
+            ),
+          )
 
     return {
       id,
@@ -287,8 +340,15 @@ const decodeRow = (row: Row): Effect.Effect<BrainItem, HelixError> =>
           : item.index_error,
       origin,
       body: item.body,
+      scope,
+      ...(occurredAt === undefined ? {} : { occurredAt }),
     }
   })
+
+const noViewer: ScopeViewer = { teamIds: new Set(), userId: undefined }
+
+const visibleTo = (item: BrainItem, viewer: ScopeViewer): boolean =>
+  canViewScope(scopeOf(item), viewer)
 
 const storedId = (
   value: unknown,
@@ -398,6 +458,16 @@ const propsOf = (item: NewBrainItem): Record<string, PropertyValueInput> => {
     [PROPS.label]: item.label,
     [PROPS.origin]: originJson(item.origin),
   }
+  if (item.scope !== undefined) {
+    props[PROPS.scopeKind] = item.scope.kind
+    if (item.scope.kind === 'team') props[PROPS.scopeId] = item.scope.teamId
+    if (item.scope.kind === 'user') props[PROPS.scopeId] = item.scope.userId
+  }
+  if (item.occurredAt !== undefined) {
+    props[PROPS.occurredAt] = new Date(
+      DateTime.toEpochMillis(item.occurredAt),
+    ).toISOString()
+  }
   if (item.summary !== undefined) props[PROPS.summary] = item.summary
   if (item.r2Key !== undefined) props[PROPS.r2Key] = item.r2Key
   if (item.sizeBytes !== undefined) props[PROPS.sizeBytes] = item.sizeBytes
@@ -447,6 +517,9 @@ const itemProjection = () => [
   PropertyProjection.new(PROPS.indexError),
   PropertyProjection.new('origin'),
   PropertyProjection.new('body'),
+  PropertyProjection.new(PROPS.scopeKind),
+  PropertyProjection.new(PROPS.scopeId),
+  PropertyProjection.new(PROPS.occurredAt),
 ]
 
 const hitProjection = () => [
@@ -498,6 +571,8 @@ const waitForIndex = (helix: HelixClientShape, operationId: string) =>
   })
 
 const SEARCH_FETCH_K = 50
+const FRESHNESS_HALF_LIFE_DAYS = 90
+const FRESHNESS_FLOOR = 0.25
 export const RRF_K = 60
 const MAX_EMBED_CHARS = 2000
 const EMBED_BATCH_SIZE = 100
@@ -874,6 +949,7 @@ export const makeBrain = Effect.gen(function* () {
     tenantId: WorkspaceId
     itemId: ItemId
     depth?: number
+    viewer?: ScopeViewer
   }) {
     const depth = input.depth ?? 1
     if (!Number.isInteger(depth) || depth < 1 || depth > 2) {
@@ -881,6 +957,7 @@ export const makeBrain = Effect.gen(function* () {
         new HelixError({ message: 'neighborhood depth must be 1 or 2' }),
       )
     }
+    const viewer = input.viewer ?? noViewer
     let batch = readBatch()
       .varAs(
         'root',
@@ -950,12 +1027,20 @@ export const makeBrain = Effect.gen(function* () {
         new HelixError({ message: `item not found: ${input.itemId}` }),
       )
     }
+    const rootItem = yield* decodeRow(rootRow)
+    if (!visibleTo(rootItem, viewer)) {
+      return yield* Effect.fail(
+        new HelixError({ message: `item not found: ${input.itemId}` }),
+      )
+    }
     const decodedItems = yield* Effect.forEach(
       [rootRow, ...rows(result, 'hop_1_items'), ...rows(result, 'hop_2_items')],
       decodeRow,
     )
     const items = EffectArray.dedupeWith(
-      decodedItems.filter((item) => item.tenantId === input.tenantId),
+      decodedItems.filter(
+        (item) => item.tenantId === input.tenantId && visibleTo(item, viewer),
+      ),
       (left, right) => left.id === right.id,
     ).slice(0, NEIGHBORHOOD_MAX_ITEMS)
     const decodedEdges = yield* Effect.forEach(
@@ -1326,13 +1411,14 @@ export const makeBrain = Effect.gen(function* () {
           ),
         )
       }),
-    addText: ({ tenantId, label, body, kind, summary, actor }) =>
+    addText: ({ tenantId, label, body, kind, summary, scope, actor }) =>
       Effect.gen(function* () {
         const item: NewBrainItem = {
           tenantId,
           kind: kind ?? Kind.make(LABELS.Note),
           label,
           ...(summary === undefined ? {} : { summary }),
+          ...(scope === undefined ? {} : { scope }),
           body,
           origin: { actor, at: DateTime.makeUnsafe(new Date()) },
         }
@@ -1415,6 +1501,7 @@ export const makeBrain = Effect.gen(function* () {
                 label: chunk.title,
                 body: chunk.body,
                 r2Key: item.r2Key,
+                scope: scopeOf(item),
                 canonical:
                   item.canonical === undefined
                     ? undefined
@@ -1607,7 +1694,7 @@ export const makeBrain = Effect.gen(function* () {
           ),
         )
       }),
-    read: (id, tenantId) =>
+    read: (id, tenantId, viewer) =>
       Effect.gen(function* () {
         const request = readBatch()
           .varAs(
@@ -1623,11 +1710,17 @@ export const makeBrain = Effect.gen(function* () {
         const row = firstRow(result, 'item')
         if (row === undefined) return null
         if (row.workspace_id !== tenantId) return null
-        return yield* decodeRow(row)
+        const item = yield* decodeRow(row)
+        return visibleTo(item, viewer ?? noViewer) ? item : null
       }),
-    readFileItem: (id, tenantId) => readFileItem(helix, id, tenantId),
+    readFileItem: (id, tenantId, viewer) =>
+      Effect.gen(function* () {
+        const item = yield* readFileItem(helix, id, tenantId)
+        if (item === null) return null
+        return visibleTo(item, viewer ?? noViewer) ? item : null
+      }),
 
-    listFiles: ({ tenantId, limit }) =>
+    listFiles: ({ tenantId, limit, viewer }) =>
       Effect.gen(function* () {
         const request = readBatch()
           .varAs(
@@ -1650,9 +1743,12 @@ export const makeBrain = Effect.gen(function* () {
           decodeRow,
         )
 
-        return decodedFiles.filter((file) => file.tenantId === tenantId)
+        return decodedFiles.filter(
+          (file) =>
+            file.tenantId === tenantId && visibleTo(file, viewer ?? noViewer),
+        )
       }),
-    search: ({ tenantId, query, k }) =>
+    search: ({ tenantId, query, k, viewer }) =>
       Effect.gen(function* () {
         const queryVectors = yield* embedBatched(embeddings, [query])
         const queryVector = yield* embeddingAt(queryVectors, 0)
@@ -1770,7 +1866,30 @@ export const makeBrain = Effect.gen(function* () {
               concurrency: 'unbounded',
             }),
         )
-        const hits = fuse(lists, k)
+        const visibleLists = lists.map((list) =>
+          list.filter((hit) => visibleTo(hit.item, viewer ?? noViewer)),
+        )
+        const fused = fuse(visibleLists, SEARCH_FETCH_K)
+        const nowMs = DateTime.toEpochMillis(yield* DateTime.now)
+        const reranked = rerankByFreshness(
+          fused.map((hit) => ({
+            item: hit,
+            score: hit.score,
+            observedAtMs: DateTime.toEpochMillis(
+              hit.item.occurredAt ?? hit.item.origin.at,
+            ),
+          })),
+          {
+            nowMs,
+            halfLifeDays: FRESHNESS_HALF_LIFE_DAYS,
+            floor: FRESHNESS_FLOOR,
+          },
+        ).map((entry) => ({
+          ...entry.item,
+          freshness: entry.freshness,
+          rankScore: entry.rankScore,
+        }))
+        const hits = reranked.slice(0, k)
         yield* Effect.logDebug('Brain.search.completed').pipe(
           Effect.annotateLogs({
             query,
@@ -1778,6 +1897,7 @@ export const makeBrain = Effect.gen(function* () {
             topHits: hits.slice(0, 5).map((hit) => ({
               itemId: hit.item.id,
               fusedScore: hit.score,
+              rankScore: hit.rankScore,
             })),
           }),
         )
@@ -1815,7 +1935,7 @@ export const makeBrain = Effect.gen(function* () {
           .toQueryRequest({ queryName: QUERY.linkSections })
         yield* retryWriteConflict(helix.run(request, { awaitDurability: true }))
       }),
-    sectionsOf: (fileId, tenantId) =>
+    sectionsOf: (fileId, tenantId, viewer) =>
       Effect.gen(function* () {
         const request = readBatch()
           .varAs(
@@ -1829,17 +1949,18 @@ export const makeBrain = Effect.gen(function* () {
           .returning(['sections'])
           .toQueryRequest({ queryName: QUERY.sectionsOf })
         const result = yield* helix.run(request)
-        return yield* Effect.forEach(
+        const decoded = yield* Effect.forEach(
           rows(result, 'sections').filter(
             (row) => row.workspace_id === tenantId,
           ),
           (row) => decodeRow(row),
         )
+        return decoded.filter((item) => visibleTo(item, viewer ?? noViewer))
       }),
     observeMention,
     linkItems,
     neighborhood,
-    readFile: (itemId, tenantId, range) =>
+    readFile: (itemId, tenantId, range, viewer) =>
       Effect.gen(function* () {
         const item = yield* readFileItem(helix, itemId, tenantId).pipe(
           Effect.flatMap((loaded) =>
@@ -1850,6 +1971,11 @@ export const makeBrain = Effect.gen(function* () {
               : Effect.succeed(loaded),
           ),
         )
+        if (!visibleTo(item, viewer ?? noViewer)) {
+          return yield* Effect.fail(
+            new HelixError({ message: `item not found: ${itemId}` }),
+          )
+        }
         const key = item.r2Key ?? item.canonical?.value
         if (key === undefined) {
           return yield* Effect.fail(

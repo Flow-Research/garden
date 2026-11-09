@@ -1,12 +1,5 @@
 import { useMemo, useState } from 'react'
-import {
-  Database,
-  Eye,
-  Files,
-  FunnelSimple,
-  Trash,
-  UploadSimple,
-} from '@phosphor-icons/react'
+import { Database, Eye, Files, Funnel, Trash2, Upload } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { Input } from '@garden/ui/components/ui/input'
 import type { BrainFileSummary } from '../api'
@@ -154,7 +147,6 @@ export function BrainAllFilesView({
               <h2 className="flex min-w-0 items-center gap-2.5 text-2xl font-semibold tracking-[-0.04em] text-text-neutral-default">
                 <Files
                   className="size-5 shrink-0 text-text-brand-secondary"
-                  weight="fill"
                   aria-hidden="true"
                 />
                 <span className="truncate">All files</span>
@@ -170,7 +162,7 @@ export function BrainAllFilesView({
               disabled={uploading}
               onClick={onUploadFile}
             >
-              <UploadSimple className="size-4" weight="regular" />
+              <Upload className="size-4" />
               Upload file
             </Button>
           </div>
@@ -211,7 +203,7 @@ export function BrainAllFilesView({
               disabled
               title="Filtering is not available yet"
             >
-              <FunnelSimple className="size-4" weight="regular" />
+              <Funnel className="size-4" />
               Filter
             </Button>
             <Button
@@ -221,7 +213,7 @@ export function BrainAllFilesView({
               disabled={files.length === 0}
               onClick={exportCsv}
             >
-              <Database className="size-4" weight="regular" />
+              <Database className="size-4" />
               Export Data
             </Button>
 
@@ -264,7 +256,7 @@ export function BrainAllFilesView({
                     className="h-8"
                     onClick={() => onDelete(file)}
                   >
-                    <Trash className="size-3.5" weight="regular" />
+                    <Trash2 className="size-3.5" />
                     Delete
                   </Button>
                   <Button
@@ -274,7 +266,7 @@ export function BrainAllFilesView({
                     disabled={file.status !== 'ready'}
                     onClick={() => onPreview(file)}
                   >
-                    <Eye className="size-3.5" weight="regular" />
+                    <Eye className="size-3.5" />
                     View
                   </Button>
                   {renderRowMenu(file)}

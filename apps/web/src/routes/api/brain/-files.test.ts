@@ -228,11 +228,17 @@ vi.mock('@/lib/server/brain-file-summary', async () => {
   }
 })
 
+type Uuid = ReturnType<typeof crypto.randomUUID>
+
 const stubAi = {
-  run: async (model: string, input: { text: string | string[] }) => {
+  run: async (model: string, input: unknown) => {
     if (model !== '@cf/baai/bge-small-en-v1.5')
       throw new Error(`unexpected model ${model}`)
-    const texts = Array.isArray(input.text) ? input.text : [input.text ?? '']
+    const text =
+      typeof input === 'object' && input !== null && 'text' in input
+        ? input.text
+        : ''
+    const texts = Array.isArray(text) ? text.map(String) : [String(text ?? '')]
     return {
       data: texts.map((t) =>
         Array.from({ length: 384 }, (_, i) => (i + (t?.length ?? 0)) / 384),
@@ -306,7 +312,7 @@ async function upload({
 }: UploadOptions) {
   const content = bytes ?? (await readFile(resolve(FIXTURES, filename)))
   const form = new FormData()
-  form.append('file', new File([content], filename, { type }))
+  form.append('file', new File([new Uint8Array(content)], filename, { type }))
   const { objects, bucket } = files
   const id =
     workspaceId ??
@@ -640,7 +646,25 @@ describe('POST /api/brain/files', () => {
       }),
     )
     expect(hits.length).toBeGreaterThan(0)
-    expect(hits[0].item.label).toBe('helixdb.pdf')
+    expect(hits[0]?.item.label).toBe('helixdb.pdf')
+  })
+
+  it('uploads and indexes CSV files', async () => {
+    const csv = 'region,revenue\nNorth,15300\nSouth,12900\n'
+    const { response, deferred } = await upload({
+      filename: 'sales.csv',
+      type: 'text/csv',
+      bytes: new TextEncoder().encode(csv),
+    })
+
+    expect(response.status, await response.clone().text()).toBe(201)
+    await Promise.all(deferred)
+
+    const { item } = (await response.json()) as {
+      item: { name: string; status: string }
+    }
+    expect(item.name).toBe('sales.csv')
+    expect(item.status).toBe('processing')
   })
 
   it('rejects unsupported file types', async () => {
@@ -709,7 +733,7 @@ describe('POST /api/brain/files', () => {
     })
   })
 
-  it.each([
+  it.each<{ order: string; activeId: Uuid; duplicateId: Uuid }>([
     {
       order: 'before',
       activeId: '00000000-0000-4000-8000-000000000001',
@@ -993,6 +1017,15 @@ describe('GET /api/brain/files/$id/content', () => {
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     )
     expect(response.headers.get('Content-Disposition')).toContain('attachment')
+  })
+
+  it('serves CSV content inline with the CSV media type', async () => {
+    storeBrainFile({ indexed: true, label: 'sales.csv' })
+
+    const { response } = await getFileContent()
+
+    expect(response.headers.get('Content-Type')).toBe('text/csv; charset=utf-8')
+    expect(response.headers.get('Content-Disposition')).toBe('inline')
   })
 
   it('does not read content from another workspace', async () => {

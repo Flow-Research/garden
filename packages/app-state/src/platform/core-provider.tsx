@@ -48,12 +48,14 @@ export function CoreProvider({
   children,
   apiBaseUrl = '',
   onLogout,
+  queryClient: providedQueryClient,
 }: CoreProviderProps) {
-  const [queryClient] = useState(createQueryClient)
+  const [queryClient] = useState(
+    () => providedQueryClient ?? createQueryClient(),
+  )
 
   // Initialize module-owned stores on first render only. Dependencies are read-once:
   // apiBaseUrl and callbacks are set at app boot and never change at runtime.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useMemo(
     () => initCore(api, configureApi, apiBaseUrl, queryClient, onLogout),
     [],

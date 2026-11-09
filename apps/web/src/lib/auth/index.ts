@@ -1,1 +1,1 @@
-export { createAuth } from './server'
+export { createAuth, createSessionAuth } from './server'

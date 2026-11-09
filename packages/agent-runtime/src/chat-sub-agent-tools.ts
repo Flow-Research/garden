@@ -11,6 +11,7 @@ import { and, eq, inArray, isNull, or, sql, type SQLWrapper } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { z } from 'zod'
 import { connectorRegistry } from '@garden/connectors'
+import type { ExecutorCatalog } from '@garden/core/executor/catalog'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import {
@@ -43,6 +44,7 @@ import { createProposeAgentTool } from './agent-tools/propose-agent'
 import { createWebTools, type WebToolsSqlValue } from './agent-tools/web'
 import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
+import { memberGithubIdentity } from './member-github-identity'
 import { createSandboxTools } from './sandbox-tools'
 import {
   createIssue as createIssueService,
@@ -63,6 +65,13 @@ import {
   type WorkspaceMemberCandidate,
 } from './chat-member-resolution'
 import { assignIssueInputSchema } from './chat-assignment-schema'
+import { errorMessage } from './runtime-utils'
+import { createGardenLogger } from '@garden/observability/logger'
+
+const chatToolsLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'chat-sub-agent-tools',
+})
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState
@@ -72,6 +81,10 @@ type ChatSubAgentToolsInput = {
   threadId?: string
   workspace: WorkspaceFsLike
   loader: WorkerLoader
+  loadExecutorCatalog?: (input: {
+    workspaceId: string
+    userId: string
+  }) => Promise<ExecutorCatalog | null>
   getSandbox: () => SandboxDO
   issueRunEnv: IssueRunEnv
   cancelIssueRun?: (input: { issueId: string; runId: string }) => Promise<void>
@@ -80,7 +93,10 @@ type ChatSubAgentToolsInput = {
     helixApiKey?: string
     ai: Ai
     files: R2Bucket
-    getContext?: () => BrainToolContext | null | Promise<BrainToolContext | null>
+    getContext?: () =>
+      | BrainToolContext
+      | null
+      | Promise<BrainToolContext | null>
   }
 }
 
@@ -308,6 +324,13 @@ type WorkspaceInventoryToolResult = {
     name: string
     email: string
     role: string
+    /**
+     * Workspace GitHub identity for issue mirroring. linked includes stable
+     * user_id + current login; not_linked means ask a human to link first.
+     */
+    github_identity:
+      | { status: 'linked'; user_id: string; login: string }
+      | { status: 'not_linked' }
   }>
   skills: Array<{
     slug: string
@@ -328,6 +351,8 @@ type WorkspaceInventoryToolResult = {
       name: string
       risk_class: string
       current_agent_trust: string | null
+      owner?: 'org' | 'user'
+      connection?: string
     }>
   }>
 }
@@ -388,11 +413,14 @@ type ChatIssueToolContext = {
   databaseUrl: string
   threadId: string
   issueRunEnv: IssueRunEnv
+  loadExecutorCatalog?: ChatSubAgentToolsInput['loadExecutorCatalog']
 }
 
 const COMPACT_EXECUTE_DESCRIPTION =
   'Run JavaScript in the sandbox for multi-step filesystem work. ' +
   'Use state.readFile(path), state.writeFile(path, content), state.glob(pattern), state.readDir(path), state.mkdir(path), state.rm(path), state.cp(from, to), and state.mv(from, to). ' +
+  'Only state.* is available; this sandbox has no integrations or tools namespace. ' +
+  'Use the Executor MCP tools for connected services instead. ' +
   'Input is an async arrow function body as JavaScript, not TypeScript. Return the useful result.'
 
 type ChatIssueIdentity = {
@@ -438,10 +466,6 @@ type IssueWorkProductRow = {
  */
 function getReadRunDb(databaseUrl: string) {
   return getPooledDb(databaseUrl)
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function readRunErr<T>(error: string): ResultValue<T, string> {
@@ -1088,7 +1112,13 @@ async function assignIssueFromChat(
     return issueToolErr(`assign_issue: cannot assign a ${currentStatus} issue.`)
   }
 
-  if ('assignee_member' in input) {
+  if (input.target === 'member') {
+    const assigneeMember = input.assignee_member
+    if (assigneeMember === undefined) {
+      return issueToolErr(
+        'assign_issue: target member requires assignee_member.',
+      )
+    }
     const membersResult = await loadWorkspaceMemberCandidates({
       db,
       workspaceId: identity.workspaceId,
@@ -1096,7 +1126,7 @@ async function assignIssueFromChat(
     if (membersResult.isErr()) return issueToolErr(membersResult.error)
     const memberResult = resolveWorkspaceMember(
       membersResult.value,
-      input.assignee_member,
+      assigneeMember,
     )
     if (memberResult.isErr()) {
       return issueToolErr(`assign_issue: ${memberResult.error}`)
@@ -1162,11 +1192,14 @@ async function assignIssueFromChat(
       })
       subscriberStatus = subscriberResult.isErr() ? 'failed' : 'ok'
       if (subscriberResult.isErr()) {
-        console.error('assign_issue_member_subscriber_failed', {
-          issueId: issue.id,
-          memberId: member.userId,
-          error: subscriberResult.error,
-        })
+        chatToolsLogger.error(
+          'chat_tools.assign_issue_member_subscriber_failed',
+          {
+            issueId: issue.id,
+            memberId: member.userId,
+            errorMessage: subscriberResult.error,
+          },
+        )
       }
 
       const inboxResult = await Result.tryPromise<void, string>({
@@ -1183,10 +1216,10 @@ async function assignIssueFromChat(
       })
       inboxStatus = inboxResult.isErr() ? 'failed' : 'ok'
       if (inboxResult.isErr()) {
-        console.error('assign_issue_member_inbox_failed', {
+        chatToolsLogger.error('chat_tools.assign_issue_member_inbox_failed', {
           issueId: issue.id,
           memberId: member.userId,
-          error: inboxResult.error,
+          errorMessage: inboxResult.error,
         })
       }
     }
@@ -1220,11 +1253,10 @@ async function assignIssueFromChat(
     })
   }
 
-  const assigneeAgentId =
-    'assignee_agent_id' in input ? input.assignee_agent_id : null
+  const assigneeAgentId = input.assignee_agent_id ?? null
   if (!assigneeAgentId) {
     return issueToolErr(
-      'assign_issue: provide assignee_agent_id or assignee_member.',
+      'assign_issue: target agent requires assignee_agent_id.',
     )
   }
   const assigneeResult = await requireActiveWorkspaceAgent({
@@ -1439,6 +1471,7 @@ async function listWorkspaceInventoryFromChat(
         assignedSkills,
         connectorBindings,
         capabilityRows,
+        executorCatalog,
       ] = await Promise.all([
         includeAgents
           ? db
@@ -1461,6 +1494,8 @@ async function listWorkspaceInventoryFromChat(
                 name: schema.user.name,
                 email: schema.user.email,
                 role: schema.member.role,
+                githubUserId: schema.member.githubUserId,
+                githubLogin: schema.member.githubLogin,
               })
               .from(schema.member)
               .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
@@ -1527,6 +1562,12 @@ async function listWorkspaceInventoryFromChat(
                 ),
               )
           : [],
+        includeConnectors && context.loadExecutorCatalog
+          ? context.loadExecutorCatalog({
+              workspaceId: identity.workspaceId,
+              userId: identity.ownerUserId,
+            })
+          : null,
       ])
 
       const assignedSkillSlugs = new Set(
@@ -1564,12 +1605,14 @@ async function listWorkspaceInventoryFromChat(
           member.name,
           member.email,
           member.role,
+          member.githubLogin,
+          member.githubUserId,
         ),
       )
       const filteredSkills = skills.filter((skill) =>
         matchesQuery(skill.slug, skill.name, skill.description),
       )
-      const filteredConnectors = includeConnectors
+      const registryConnectors = includeConnectors
         ? connectorRegistry.flatMap((connector) => {
             const binding = connectorBindingById.get(connector.id)
             const syncedTools = capabilitiesByConnector.get(connector.id)
@@ -1590,11 +1633,12 @@ async function listWorkspaceInventoryFromChat(
                   ),
                 )
               : tools
+            const bindingStatus = binding?.status ?? null
             const connectorMatches = matchesQuery(
               connector.id,
               connector.label,
               connector.description,
-              binding ? 'connected' : null,
+              bindingStatus,
             )
             if (!connectorMatches && filteredTools.length === 0) return []
 
@@ -1604,7 +1648,7 @@ async function listWorkspaceInventoryFromChat(
                 label: connector.label,
                 description: connector.description,
                 connected: Boolean(binding),
-                status: binding ? 'connected' : null,
+                status: bindingStatus,
                 account_login: binding?.accountLogin ?? null,
                 auth_kind: binding?.authKind ?? null,
                 ...(binding?.repositorySelection
@@ -1616,6 +1660,69 @@ async function listWorkspaceInventoryFromChat(
           })
         : []
 
+      const executorConnectors = executorCatalog
+        ? executorCatalog.integrations.flatMap((integration) => {
+            const integrationConnections = executorCatalog.connections.filter(
+              (connection) => connection.integration === integration.slug,
+            )
+            const integrationTools = executorCatalog.tools.filter(
+              (tool) => tool.integration === integration.slug,
+            )
+            const connected = integrationConnections.length > 0
+            const filteredTools = normalizedQuery
+              ? integrationTools.filter((tool) =>
+                  matchesQuery(
+                    tool.name,
+                    tool.description,
+                    tool.owner,
+                    tool.connection,
+                  ),
+                )
+              : integrationTools
+            const connectorMatches = matchesQuery(
+              `executor:${integration.slug}`,
+              integration.slug,
+              integration.name,
+              integration.description,
+              connected ? 'connected' : null,
+              ...integrationConnections.flatMap((connection) => [
+                connection.name,
+                connection.identityLabel,
+                connection.owner,
+              ]),
+            )
+            if (!connectorMatches && filteredTools.length === 0) return []
+
+            return [
+              {
+                id: `executor:${integration.slug}`,
+                label: integration.name,
+                description: integration.description,
+                connected,
+                status: connected ? 'connected' : null,
+                account_login:
+                  integrationConnections
+                    .map(
+                      (connection) =>
+                        connection.identityLabel ?? connection.name,
+                    )
+                    .filter(Boolean)
+                    .join(', ') || null,
+                auth_kind: connected ? 'executor' : null,
+                tools: filteredTools.slice(0, limit).map((tool) => ({
+                  name: tool.name,
+                  risk_class: tool.requiresApproval ? 'write' : 'read',
+                  current_agent_trust: null,
+                  owner: tool.owner,
+                  connection: tool.connection,
+                })),
+              },
+            ]
+          })
+        : []
+
+      const filteredConnectors = [...registryConnectors, ...executorConnectors]
+
       return {
         current_agent_id: identity.agentId,
         sections,
@@ -1624,7 +1731,7 @@ async function listWorkspaceInventoryFromChat(
           'Use current_agent_id when the current agent is an appropriate assignee for a generic or follow-up task.',
           'Prefer assigning to an existing active agent from this inventory. Propose a new agent only when the task calls for a reusable role that is not already represented.',
           includeMembers
-            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience.'
+            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience. github_identity is linked (stable user_id + current login) or not_linked — pass linked login as issue_write.assignees when mirroring to GitHub; never invent a handle.'
             : 'Human members were not requested. Pass a named person directly to assign_issue; request members only if resolution is ambiguous or the user asks who is available.',
           includeConnectors
             ? 'Connector/MCP capabilities are included. They are separate from skills; do not require a skill slug for connector tools.'
@@ -1652,6 +1759,10 @@ async function listWorkspaceInventoryFromChat(
           name: member.name,
           email: member.email,
           role: member.role,
+          github_identity: memberGithubIdentity({
+            githubUserId: member.githubUserId,
+            githubLogin: member.githubLogin,
+          }),
         })),
         skills: filteredSkills.slice(0, limit).map((skill) => ({
           slug: skill.slug,
@@ -1741,6 +1852,7 @@ export function createChatSubAgentTools({
   threadId,
   workspace,
   loader,
+  loadExecutorCatalog,
   getSandbox,
   issueRunEnv,
   cancelIssueRun,
@@ -1759,7 +1871,12 @@ export function createChatSubAgentTools({
     databaseUrl && threadId ? { databaseUrl, threadId, issueRunEnv } : null
   const chatIssueContext = (): ChatIssueToolContext | null =>
     databaseUrl && threadId && issueRunEnv
-      ? { databaseUrl, threadId, issueRunEnv }
+      ? {
+          databaseUrl,
+          threadId,
+          issueRunEnv,
+          loadExecutorCatalog,
+        }
       : null
 
   return {
@@ -1785,19 +1902,22 @@ export function createChatSubAgentTools({
       },
       ai: brain.ai,
       files: brain.files,
-      getContext: brain.getContext ?? (async () => {
-        if (!databaseUrl || !threadId) return null
-        const threadResult = await loadChatThreadContext({
-          databaseUrl,
-          threadId,
-        })
-        if (threadResult.isErr()) return null
-        return {
-          workspaceId: threadResult.value.workspaceId,
-          agentId: threadResult.value.agentId,
-          runId: threadResult.value.threadId,
-        }
-      }),
+      getContext:
+        brain.getContext ??
+        (async () => {
+          if (!databaseUrl || !threadId) return null
+          const threadResult = await loadChatThreadContext({
+            databaseUrl,
+            threadId,
+          })
+          if (threadResult.isErr()) return null
+          return {
+            workspaceId: threadResult.value.workspaceId,
+            agentId: threadResult.value.agentId,
+            runId: threadResult.value.threadId,
+            userId: threadResult.value.ownerUserId,
+          }
+        }),
     }),
 
     // Client-side tool — no execute function. The UI renders an interactive
@@ -1886,7 +2006,7 @@ export function createChatSubAgentTools({
     list_workspace_inventory: tool({
       description:
         'List bounded current workspace inventory. Defaults to agents only; request members, skills, or connectors when needed. ' +
-        'Use when browsing possible owners, proposing an agent, resolving an ambiguous person, or checking skills/connectors. ' +
+        'Use when browsing possible owners, proposing an agent, resolving an ambiguous person, checking skills/connectors, or reading member github_identity before GitHub issue mirroring. ' +
         'Use current_agent_id for agent self-assignment; direct named human assignments do not need an inventory preflight.',
       inputSchema: listWorkspaceInventoryInputSchema,
       execute: async (input) => {
