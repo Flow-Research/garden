@@ -193,7 +193,10 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     HYPERDRIVE: database,
     HELIX_URL: plainEnv('HELIX_URL'),
     HELIX_API_KEY: Config.redacted('HELIX_API_KEY'),
-    DATABASE_URL: Config.redacted('DATABASE_URL'),
+    // Same env var as the Hyperdrive origin above, so a target's Worker secret
+    // and its Hyperdrive always point at one database (dev reads
+    // DEV_DATABASE_URL even when deploy:dev:alchemy runs without deploy-dev.mjs).
+    DATABASE_URL: Config.redacted(deployTarget.databaseUrlEnv),
     BETTER_AUTH_SECRET: Config.redacted('BETTER_AUTH_SECRET'),
     RESEND_API_KEY: Config.redacted('RESEND_API_KEY'),
     // Cloudflare does not expose existing Worker secret values. Omitting EXA
