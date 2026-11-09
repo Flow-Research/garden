@@ -53,8 +53,8 @@ The `Verify migrations` job in `.github/workflows/ci.yml` starts `postgres:16-al
 
 Integration tests also apply every migration to a fresh container. See [Run the tests](./run-tests.md).
 
-## How migrations reach staging
+## How migrations reach dev and staging
 
-The `deploy` script runs `deploy:migrate` before the Alchemy deploy. Only the `staging` target runs migrations. See [Deploy targets](../../reference/deploy-targets.md).
+The `deploy` script runs `deploy:migrate` against `DATABASE_URL` before the staging Alchemy deploy. The `deploy:dev` script runs it against `DEV_DATABASE_URL`, the dev Neon branch, before the dev deploy. A migration therefore lands on dev when it merges to `dev` and on staging when `dev` merges to `main`. Preview does not run migrations. See [Deploy targets](../../reference/deploy-targets.md).
 
 Do not use `drizzle-kit push` or `drizzle-kit introspect`. `@garden/db` does not expose them because they let the live database drive the schema.

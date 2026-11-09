@@ -33,7 +33,7 @@ For any remote deploy or verification where the user does not explicitly request
 - Do not echo secrets, write secret values to tracked files, or expose `.env` contents.
 - Garden does not bundle or deploy Harnessy. Executor runs from its declared dependencies inside the Garden app Worker; do not create a separate connector or MCP-proxy Worker.
 - Preserve unrelated dirty-tree changes. Deployment does not require a commit.
-- Dev and preview share staging’s `DATABASE_URL` by explicit user decision. Only staging runs migrations. Use a dedicated preview workspace/account and avoid destructive product actions.
+- Dev uses its own Neon branch through `DEV_DATABASE_URL` and runs migrations on it. Preview shares staging’s `DATABASE_URL` by explicit user decision and does not run migrations. Use a dedicated preview workspace/account and avoid destructive product actions.
 
 ## Validate deployment configuration
 
@@ -69,8 +69,8 @@ failure stops the command before Alchemy deploys application code.
 Cloudflare Workers Builds, configure it as a build secret on the Git trigger;
 a Worker runtime secret is not available to the build command.
 
-Dev and preview intentionally do not run migrations because they share the
-staging PostgreSQL origin. Apply schema changes through staging first.
+Preview does not run migrations because it shares the staging PostgreSQL
+origin. Dev migrates its own database.
 
 ## Dev deployment
 
@@ -80,7 +80,8 @@ Automatic on `dev` pushes, or explicitly:
 NODE_OPTIONS=--max-old-space-size=8192 pnpm run deploy:dev
 ```
 
-This typechecks and deploys the `garden-dev` stack at stage `dev`. Dev remains
+This requires `DEV_DATABASE_URL`, typechecks, applies pending migrations to the
+dev database, and deploys the `garden-dev` stack at stage `dev`. Dev remains
 running after verification. Do not run preview teardown against dev resources.
 
 ## Mandatory preview teardown
