@@ -101,7 +101,7 @@ describe('agent issue tools Team visibility (integration)', () => {
         createdBy: adminId,
       })),
     )
-    const teamIssueIds = [
+    const teamIssueIds: [string, string] = [
       await seedIssue({
         workspaceId,
         teamId,
@@ -175,11 +175,11 @@ describe('agent issue tools Team visibility (integration)', () => {
         issueIdOrIdentifier,
       })
 
-    const member = await readAs(s.memberId, s.teamIssueIds[0]!)
+    const member = await readAs(s.memberId, s.teamIssueIds[0])
     expect(member.isOk() && member.value.issue_id).toBe(s.teamIssueIds[0])
 
     // Both lookup forms: UUID and PREFIX-number.
-    for (const lookup of [s.teamIssueIds[0]!, 'ISS-1']) {
+    for (const lookup of [s.teamIssueIds[0], 'ISS-1']) {
       const outsider = await readAs(s.nonMemberId, lookup)
       expect(outsider.isErr() && outsider.error.code).toBe('issue_not_found')
     }
@@ -205,10 +205,10 @@ describe('agent issue tools Team visibility (integration)', () => {
     const outsiderComments = await testDb.db
       .select()
       .from(schema.issueComment)
-      .where(eq(schema.issueComment.issueId, s.teamIssueIds[0]!))
+      .where(eq(schema.issueComment.issueId, s.teamIssueIds[0]))
     expect(outsiderComments).toEqual([])
 
-    const member = await commentAs(s.memberId, s.teamIssueIds[0]!)
+    const member = await commentAs(s.memberId, s.teamIssueIds[0])
     expect(member.isOk()).toBe(true)
   })
 
