@@ -53,6 +53,7 @@ The rule lives in one module, `packages/db/src/team-issue-visibility.ts`. `canVi
 | Issue list, search, and child progress           | `apps/web/src/routes/api/issues.ts`, `issues/search.ts`, `issues/child-progress.ts`          |
 | Realtime issue and comment events                | `canReceiveRealtimeEvent` in `packages/agent-runtime/src/realtime-audience.ts`               |
 | The chat agent's `list_issues` tool              | `listIssues` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace |
+| The chat agent's `read_issue`, `post_issue_comment`, `assign_issue`, and `update_issue_status` tools | `readIssue` and `resolveVisibleIssue` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace. A hidden Team issue returns `Issue not found.` |
 
 The Team owner needs no separate term. Creating a Team adds its owner as a member, an ownership transfer requires an existing member, and the owner cannot be removed. Team issue counts in `GET /api/teams` and `GET /api/teams/:teamId` count the whole board, because only managers and members can open a Team.
 
