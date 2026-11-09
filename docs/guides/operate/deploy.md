@@ -55,7 +55,7 @@ Run:
 NODE_OPTIONS=--max-old-space-size=8192 pnpm run deploy:dev
 ```
 
-The script typechecks and deploys `garden-dev`. It does not run migrations. Leave dev running.
+Set `DEV_DATABASE_URL` to the dev Neon branch first. The script typechecks, applies pending migrations to that database, and then deploys `garden-dev`. If `DEV_DATABASE_URL` is unset or a migration fails, the script stops before Alchemy deploys code. Leave dev running.
 
 ## Deploy staging manually
 
@@ -67,11 +67,13 @@ NODE_OPTIONS=--max-old-space-size=8192 pnpm run deploy
 
 The script typechecks, applies pending Postgres migrations with `deploy:migrate`, and then deploys `garden-staging`. If a migration fails, the script stops before Alchemy deploys code.
 
-Apply schema changes through staging first. Dev and preview do not run migrations.
+Dev and staging each migrate their own database. Preview does not run migrations because it shares the staging database.
 
 ## Configure an automatic deploy
 
 Workers Builds reads `DATABASE_URL` and the other secrets from build secrets on each Git trigger, not from Worker runtime secrets. Set build secrets on the production trigger and the non-production trigger separately. Turning on non-production builds copies plain variables only.
+
+The `dev` branch builds on the non-production trigger and needs `DEV_DATABASE_URL`. In the Cloudflare dashboard, open Workers & Pages, select the `garden-staging` Worker, go to Settings > Build > Variables and secrets, and add `DEV_DATABASE_URL` as a secret for non-production branches, with the dev Neon branch connection string as its value.
 
 ## If the deploy fails
 

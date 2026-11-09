@@ -68,6 +68,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | Name                          | Kind   | Required             | Purpose                                                             | Read in                                                  |
 | ----------------------------- | ------ | -------------------- | ------------------------------------------------------------------- | -------------------------------------------------------- |
 | `DATABASE_URL`                | Secret | Yes                  | Postgres connection string. Must start with `postgres://` or `postgresql://`. | `packages/db/src/client.ts`, `packages/env/src/index.ts` |
+| `DEV_DATABASE_URL`            | Build secret | Dev deploys only | Dev Neon branch connection string. `scripts/deploy-dev.mjs` copies it into `DATABASE_URL` for migrations, Hyperdrive, and the Worker secret. | `deploy-targets.mjs`, `scripts/deploy-dev.mjs` |
 | `BETTER_AUTH_SECRET`          | Secret | Yes                  | Better Auth signing secret.                                         | `apps/web/src/auth.ts`                                   |
 | `BETTER_AUTH_URL`             | Var    | Yes                  | Public origin. Alchemy sets it to the Worker URL.                   | `apps/web/src/auth.ts`                                   |
 | `ENVIRONMENT`                 | Var    | Yes                  | `development`, `test`, `staging`, or `production`.                  | `packages/env/src/index.ts`, `packages/agent-runtime/src/model.ts` |
