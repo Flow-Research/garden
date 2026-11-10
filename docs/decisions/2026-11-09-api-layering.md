@@ -7,7 +7,7 @@ last_reviewed: 2026-11-10
 
 ---
 
-**Date:** 2026-11-09. **Outcome:** accepted; migration on `refactor/api-layering`. Decision doc, warn-level lint, and the `/api/issues` reference (queries + list service + thin route) are in. Domain batches next. Not fully shipped yet.
+**Date:** 2026-11-09. **Outcome:** accepted; migration on `refactor/api-layering`. Decision doc, warn-level lint, `/api/issues` reference, and the issues-children batch (issue `$id` routes, search, child-progress, comments) are in. Next domain batches remain. Not fully shipped yet.
 
 ## Context
 
@@ -57,7 +57,7 @@ Additional locks:
 
 ## Consequences
 
-New and migrated TanStack API code follows the table above. `GET /api/issues` is the reference: `listWorkspaceIssues` in `apps/web/src/lib/server/issues/list-service.ts` over `queries/issues`, mapped with `.match()`. `POST /api/issues` calls `createIssue` in `@garden/server` and uses `isTeamAssigneeMember` from `queries/issues` for the remaining Team membership check. Other flat `issue-*.ts` / domain files under `lib/server/` move into `{domain}/` folders gradually; do not mass-move them in one PR.
+New and migrated TanStack API code follows the table above. `GET /api/issues` is the reference: `listWorkspaceIssues` in `apps/web/src/lib/server/issues/list-service.ts` over `queries/issues`, mapped with `.match()`. `POST /api/issues` calls `createIssue` in `@garden/server` and uses `isTeamAssigneeMember` from `queries/issues` for the remaining Team membership check. Issue child routes under `routes/api/issues/` and `routes/api/comments/` follow the same pattern (no `drizzle-orm` / `@/lib/server/db` / `@garden/db` imports). Other flat `issue-*.ts` / domain files under `lib/server/` move into `{domain}/` folders gradually; do not mass-move them in one PR.
 
 Warn-level lint will flag remaining Drizzle imports in `routes/api/` until each domain batch moves them. Promoting the rule to error is a later phase after the backlog is gone or allowlisted down to empty.
 
