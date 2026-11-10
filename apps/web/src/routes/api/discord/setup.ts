@@ -1,11 +1,13 @@
 import { Effect, Layer, Option, Result, Schema } from 'effect'
-import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { badRequest, unauthorized } from '@/lib/server/control-plane'
+import { badRequest } from '@/lib/server/control-plane'
 import { syncCapabilities } from '@/lib/server/capability-sync'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import {
+  requireVerifiedWorkspaceActorPermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { captureApiFailure } from '@/lib/server/api-logging'
 import {
   completeDiscordBotInstallation,
@@ -82,18 +84,13 @@ export const Route = createFileRoute('/api/discord/setup')({
           return badRequest(stateResult.failure.message)
         }
         const state = stateResult.success
-        const db = await appContext.db()
-        const [membership] = await db
-          .select({ id: schema.member.id })
-          .from(schema.member)
-          .where(
-            and(
-              eq(schema.member.organizationId, state.workspaceId),
-              eq(schema.member.userId, state.userId),
-            ),
-          )
-          .limit(1)
-        if (!membership) return unauthorized()
+        const denied = await requireVerifiedWorkspaceActorPermission({
+          appContext,
+          userId: state.userId,
+          workspaceId: state.workspaceId,
+          permissions: workspacePermissions.connectionManage,
+        })
+        if (denied) return denied
         if (Option.isSome(query.error)) {
           return workspaceRedirect(request, 'error')
         }
@@ -120,6 +117,7 @@ export const Route = createFileRoute('/api/discord/setup')({
           makeDiscordHttpClientLayer(),
           makeDiscordBaseLayer({ botToken: config.botToken }),
         )
+        const db = await appContext.db()
         const installResult = await Effect.runPromise(
           Effect.result(
             Effect.provide(
