@@ -152,10 +152,13 @@ export const Route = createFileRoute('/api/issues/$id')({
         const resultingAssigneeId = assigneeFieldPresent
           ? (body.assignee_id ?? null)
           : existingIssue.assigneeId
-        if (nextTeamId !== null && (teamChanged || assigneeFieldPresent)) {
-          if (!resultingAssigneeId) {
-            return badRequest('Team issues must be assigned to a Team member')
-          }
+        // Team issues may be unassigned; an assignee, when present, must
+        // belong to the Team the issue ends up on.
+        if (
+          nextTeamId !== null &&
+          resultingAssigneeId &&
+          (teamChanged || assigneeFieldPresent)
+        ) {
           const resultingAssigneeType =
             assigneeFieldPresent && typeof body.assignee_id === 'string'
               ? body.assignee_type === 'agent'

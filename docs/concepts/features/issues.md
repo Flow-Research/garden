@@ -31,7 +31,11 @@ When you assign an issue to an agent and start it, the work passes through four 
 3. `RunWorkflow` in `packages/agent-runtime/src/run-workflow.ts` drives the turns. It owns retry, wait, resume, and cancel.
 4. Each turn runs in `IssueRunSubAgent` (`packages/agent-runtime/src/issue-run-sub-agent.ts`), a Think facet keyed by the issue ID.
 
-`cancelIssueRun` sets `issue_run.cancel_requested_at`. The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accumulates in `issue_run.usage_json`. The [run engine](../architecture/run-engine.md) page explains the Workflow loop in full.
+`cancelIssueRun` sets `issue_run.cancel_requested_at` and sends a cancel event to the run's Workflow instance, which finalizes the row. Both `POST /api/issues/:id/cancel` and an issue status or assignee change that stops live runs go through it.
+
+A run can outlive its Workflow instance: Workflows may report the instance as not found, or it may already be `complete`, `errored`, or `terminated`. No workflow step will finalize such a run, so `cancelIssueRun` does it directly. It marks the run `cancelled` with `result_json.reason` set to `workflow_instance_missing` or `workflow_instance_terminal`, clears `issue.active_run_id`, appends `issue_run:cancelled`, and returns success. Inbox items derive from live run status, so they clear too. Any other Workflow error fails the cancel and leaves the run unchanged.
+
+The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accumulates in `issue_run.usage_json`. The [run engine](../architecture/run-engine.md) page explains the Workflow loop in full.
 
 ## Agents read the source and return work products
 
@@ -41,7 +45,7 @@ The run returns its results as work products. The `create_work_product` and `rev
 
 ## Chat and issues link in both directions
 
-Chat agents can work with issues directly. `createChatSubAgentTools` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` gives a chat agent `create_issue`, `read_issue`, `list_issues`, `post_issue_comment`, `read_run`, and `propose_agent`.
+Chat agents can work with issues directly. `createChatSubAgentTools` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` gives a chat agent `create_issue`, `read_issue`, `list_issues`, `post_issue_comment`, `read_run`, and `propose_agent`. `create_issue` accepts an optional `team_id` to file the issue on a Team, and assigns either an agent (`assignee_agent_id`) or a person (`assignee_member`, resolved by name, email, or id the same way `assign_issue` resolves it), never both. The chat owner is the creator, so the issue service applies the Team create rules described in [Teams](teams.md).
 
 A chat thread can also point at one issue. `chat_thread.primary_issue_id` stores the link, `/api/chat/threads/:id/primary-issue` sets it, and the chat title bar shows the issue as a pill. From an issue's detail header you can open an agent chat about that issue. Issue mentions in chat messages render as links through `MentionAwareAnchor` in `apps/web/src/components/ai-elements/message.tsx`.
 

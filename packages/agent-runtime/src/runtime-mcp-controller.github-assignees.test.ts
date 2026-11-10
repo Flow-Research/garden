@@ -1,24 +1,30 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ToolSet } from 'ai'
-import { Pool } from 'pg'
-import { drizzle } from 'drizzle-orm/node-postgres'
-import { eq } from 'drizzle-orm'
 import * as schema from '@garden/db/schema'
+import type * as runtimeDb from '@garden/db/runtime'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
 import { Result } from 'better-result'
-import { isTestDbReachable } from './test-db'
+import { startTestDb, type TestDb } from '@garden/db/testing'
 import {
   RuntimeMcpController,
   type McpHost,
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 
-const TEST_DB_URL =
-  process.env.GARDEN_TEST_DATABASE_URL ??
-  'postgres://garden@localhost:5433/garden_test'
+const dbFactory = vi.hoisted(() => ({
+  getPooledDb: vi.fn<typeof runtimeDb.getPooledDb>(),
+}))
 
-const DB_REACHABLE = await isTestDbReachable(TEST_DB_URL)
+/**
+ * Reuses the real test DB client so runtime pools cannot outlive the container.
+ * Separate pools raised 57P01 during teardown. Follows the test pattern in
+ * packages/server/src/issues/list-issues.integration.test.ts.
+ */
+vi.mock('@garden/db/runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof runtimeDb>()),
+  getPooledDb: dbFactory.getPooledDb,
+}))
 
 const LINKED_LOGIN = 'linked-dev'
 
@@ -43,7 +49,7 @@ function hostedIssueWrite(workspaceId: string) {
   }
   const host = {
     name: 'github-assignee-probe',
-    env: { HYPERDRIVE: { connectionString: TEST_DB_URL } },
+    env: { HYPERDRIVE: { connectionString: testDb.databaseUrl } },
     ctx: { storage: { sql: {} } },
     mcp: {
       getAITools: () => ({}) as ToolSet,
@@ -71,34 +77,44 @@ function hostedIssueWrite(workspaceId: string) {
   const tool = tools[
     buildMcpAiToolKey('github-mcp', 'issue_write')
   ] as unknown as ExecutableTool
+  const nativeTool = tools[
+    buildMcpAiToolKey('github', 'issue_write')
+  ] as unknown as ExecutableTool
   return {
+    runNative: (input: unknown) =>
+      nativeTool.execute(input, { toolCallId: randomUUID(), messages: [] }),
     callTool,
     run: (input: unknown) =>
       tool.execute(input, { toolCallId: randomUUID(), messages: [] }),
   }
 }
 
-let pool: Pool
-let db: ReturnType<typeof drizzle<typeof schema>>
+let testDb: TestDb
 
-describe.skipIf(!DB_REACHABLE)('hosted github issue_write assignees', () => {
+describe('hosted github issue_write assignees', () => {
   const workspaceId = randomUUID()
   const userId = randomUUID()
 
+  /** Uses @garden/db/testing so missing Postgres fails setup instead of skipping checks. */
   beforeAll(async () => {
-    pool = new Pool({ connectionString: TEST_DB_URL })
-    db = drizzle(pool, { schema })
-    await db.insert(schema.user).values({
+    testDb = await startTestDb()
+    dbFactory.getPooledDb.mockImplementation((connectionString) => {
+      if (connectionString !== testDb.databaseUrl) {
+        throw new Error('Expected the suite-owned database connection')
+      }
+      return testDb.db
+    })
+    await testDb.db.insert(schema.user).values({
       id: userId,
       email: `${userId}@example.com`,
       name: 'Linked',
     })
-    await db.insert(schema.organization).values({
+    await testDb.db.insert(schema.organization).values({
       id: workspaceId,
       name: 'Assignee workspace',
       slug: `assignee-${workspaceId}`,
     })
-    await db.insert(schema.member).values({
+    await testDb.db.insert(schema.member).values({
       organizationId: workspaceId,
       userId,
       role: 'owner',
@@ -108,12 +124,7 @@ describe.skipIf(!DB_REACHABLE)('hosted github issue_write assignees', () => {
   })
 
   afterAll(async () => {
-    await db.delete(schema.member).where(eq(schema.member.userId, userId))
-    await db
-      .delete(schema.organization)
-      .where(eq(schema.organization.id, workspaceId))
-    await db.delete(schema.user).where(eq(schema.user.id, userId))
-    await pool.end()
+    await testDb?.cleanup()
   })
 
   it('rejects an unlinked login before calling GitHub', async () => {
@@ -130,6 +141,44 @@ describe.skipIf(!DB_REACHABLE)('hosted github issue_write assignees', () => {
       message: expect.stringContaining('stranger'),
     })
     expect(callTool).not.toHaveBeenCalled()
+  })
+
+  // #294: a present `assignees` that is not an array of strings used to skip
+  // the linked-login check entirely and reach GitHub.
+  it.each([
+    ['a bare string', 'stranger'],
+    ['an array with a non-string entry', [LINKED_LOGIN, 42]],
+    ['an object', { login: 'stranger' }],
+  ])('rejects assignees given as %s on create', async (_label, assignees) => {
+    const { run, callTool } = hostedIssueWrite(workspaceId)
+    const result = await run({
+      method: 'create',
+      owner: 'o',
+      repo: 'r',
+      title: 't',
+      assignees,
+    })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('string[]'),
+    })
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  // The native tool shares the gate; a rejection returns before its execute
+  // runs, so no GitHub request is attempted.
+  it('rejects non-array assignees on the native surface', async () => {
+    const { runNative } = hostedIssueWrite(workspaceId)
+    const result = await runNative({
+      owner: 'o',
+      repo: 'r',
+      title: 't',
+      assignees: 'stranger',
+    })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('string[]'),
+    })
   })
 
   it('refuses assignees on update so existing assignees survive', async () => {

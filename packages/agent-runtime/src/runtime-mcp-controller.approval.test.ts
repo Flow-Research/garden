@@ -1,31 +1,37 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ToolSet } from 'ai'
-import { Pool } from 'pg'
-import { drizzle } from 'drizzle-orm/node-postgres'
 import { eq } from 'drizzle-orm'
 import * as schema from '@garden/db/schema'
+import type * as runtimeDb from '@garden/db/runtime'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
 import { Result } from 'better-result'
-import { isTestDbReachable } from './test-db'
+import { startTestDb, type TestDb } from '@garden/db/testing'
 import {
   RuntimeMcpController,
   type McpHost,
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 
-const TEST_DB_URL =
-  process.env.GARDEN_TEST_DATABASE_URL ??
-  'postgres://garden@localhost:5433/garden_test'
+const dbFactory = vi.hoisted(() => ({
+  getPooledDb: vi.fn<typeof runtimeDb.getPooledDb>(),
+}))
 
-const DB_REACHABLE = await isTestDbReachable(TEST_DB_URL)
+/**
+ * Reuses the real test DB client so runtime pools cannot outlive the container.
+ * Separate pools raised 57P01 during teardown. Follows the test pattern in
+ * packages/server/src/issues/list-issues.integration.test.ts.
+ */
+vi.mock('@garden/db/runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof runtimeDb>()),
+  getPooledDb: dbFactory.getPooledDb,
+}))
 
 const TOOL_ARGS = { body: 'probe comment' }
 const TOOL_NAME = 'add_issue_comment'
 const CONNECTOR_ID = 'github'
 
-let pool: Pool
-let db: ReturnType<typeof drizzle<typeof schema>>
+let testDb: TestDb
 
 type Seeded = {
   ownerId: string
@@ -40,35 +46,35 @@ async function seedBase(): Promise<Seeded> {
   const agentId = randomUUID()
   const capabilityId = randomUUID()
 
-  await db.insert(schema.user).values({
+  await testDb.db.insert(schema.user).values({
     id: ownerId,
     email: `${ownerId}@example.com`,
     name: 'Owner',
   })
-  await db.insert(schema.organization).values({
+  await testDb.db.insert(schema.organization).values({
     id: workspaceId,
     name: 'Approval workspace',
     slug: `approval-${workspaceId}`,
   })
-  await db.insert(schema.member).values({
+  await testDb.db.insert(schema.member).values({
     organizationId: workspaceId,
     userId: ownerId,
     role: 'owner',
   })
-  await db.insert(schema.agent).values({
+  await testDb.db.insert(schema.agent).values({
     id: agentId,
     workspaceId,
     ownerUserId: ownerId,
     name: 'Garden',
     isDefault: true,
   })
-  await db.insert(schema.capability).values({
+  await testDb.db.insert(schema.capability).values({
     id: capabilityId,
     connectorType: CONNECTOR_ID,
     name: TOOL_NAME,
     riskClass: 'send_external',
   })
-  await db.insert(schema.permissionGrant).values({
+  await testDb.db.insert(schema.permissionGrant).values({
     id: randomUUID(),
     agentId,
     capabilityId,
@@ -90,7 +96,7 @@ function makeController(seeded: Seeded, agentId: string = seeded.agentId) {
   const host = {
     name: 'approval-probe',
     env: {
-      HYPERDRIVE: { connectionString: TEST_DB_URL },
+      HYPERDRIVE: { connectionString: testDb.databaseUrl },
     },
     ctx: {
       storage: {
@@ -123,7 +129,7 @@ async function insertPermissionRequest(input: {
   toolCallId: string
   status: 'pending' | 'approved' | 'denied'
 }) {
-  await db.insert(schema.permissionRequest).values({
+  await testDb.db.insert(schema.permissionRequest).values({
     id: randomUUID(),
     agentId: input.agentId ?? input.seeded.agentId,
     kind: 'connector_write',
@@ -165,158 +171,122 @@ async function needsApprovalFor(
   })
 }
 
-describe.skipIf(!DB_REACHABLE)(
-  'connector tool approval gate (integration)',
-  () => {
-    let seeded: Seeded
-    let controller: RuntimeMcpController
+describe('connector tool approval gate (integration)', () => {
+  let seeded: Seeded
+  let controller: RuntimeMcpController
+
+  /** Uses @garden/db/testing so missing Postgres fails setup instead of skipping checks. */
+  beforeAll(async () => {
+    testDb = await startTestDb()
+    dbFactory.getPooledDb.mockImplementation((connectionString) => {
+      if (connectionString !== testDb.databaseUrl) {
+        throw new Error('Expected the suite-owned database connection')
+      }
+      return testDb.db
+    })
+    seeded = await seedBase()
+    controller = makeController(seeded)
+  })
+
+  afterAll(async () => {
+    await testDb?.cleanup()
+  })
+
+  it('blocks while the permission request is pending', async () => {
+    const toolCallId = `pending-${randomUUID()}`
+    await insertPermissionRequest({
+      seeded,
+      toolCallId,
+      status: 'pending',
+    })
+
+    await expect(needsApprovalFor(controller, toolCallId)).resolves.toBe(true)
+  })
+
+  it('proceeds once the same call has been approved', async () => {
+    const toolCallId = `approved-${randomUUID()}`
+    await insertPermissionRequest({
+      seeded,
+      toolCallId,
+      status: 'approved',
+    })
+
+    await expect(needsApprovalFor(controller, toolCallId)).resolves.toBe(false)
+  })
+
+  it('fails a denied call instead of executing it', async () => {
+    const toolCallId = `denied-${randomUUID()}`
+    await insertPermissionRequest({
+      seeded,
+      toolCallId,
+      status: 'denied',
+    })
+
+    await expect(needsApprovalFor(controller, toolCallId)).rejects.toThrow(
+      /denied/i,
+    )
+  })
+
+  describe('connection grant fallback', () => {
+    let grantlessAgentId: string
+    let grantlessController: RuntimeMcpController
 
     beforeAll(async () => {
-      pool = new Pool({ connectionString: TEST_DB_URL })
-      db = drizzle(pool, { schema })
-      seeded = await seedBase()
-      controller = makeController(seeded)
+      grantlessAgentId = randomUUID()
+      await testDb.db.insert(schema.agent).values({
+        id: grantlessAgentId,
+        workspaceId: seeded.workspaceId,
+        ownerUserId: seeded.ownerId,
+        name: 'Grantless',
+        isDefault: false,
+      })
+      grantlessController = makeController(seeded, grantlessAgentId)
     })
 
-    afterAll(async () => {
-      const current = seeded as Seeded | undefined
-      if (!current) {
-        await pool.end()
-        return
-      }
-      await db
-        .delete(schema.permissionRequest)
-        .where(eq(schema.permissionRequest.agentId, current.agentId))
-      await db
-        .delete(schema.inboxItem)
-        .where(eq(schema.inboxItem.workspaceId, current.workspaceId))
-      await db
-        .delete(schema.permissionGrant)
-        .where(eq(schema.permissionGrant.agentId, current.agentId))
-      await db
-        .delete(schema.capability)
-        .where(eq(schema.capability.id, current.capabilityId))
-      await db.delete(schema.agent).where(eq(schema.agent.id, current.agentId))
-      await db
-        .delete(schema.member)
-        .where(eq(schema.member.userId, current.ownerId))
-      await db
-        .delete(schema.organization)
-        .where(eq(schema.organization.id, current.workspaceId))
-      await db.delete(schema.user).where(eq(schema.user.id, current.ownerId))
-      await pool.end()
-    }, 30_000)
-
-    it('blocks while the permission request is pending', async () => {
-      const toolCallId = `pending-${randomUUID()}`
-      await insertPermissionRequest({
-        seeded,
-        toolCallId,
-        status: 'pending',
+    it('uses the connection grant when no tool grant exists', async () => {
+      await testDb.db.insert(schema.connectionGrant).values({
+        id: randomUUID(),
+        agentId: grantlessAgentId,
+        connectorId: CONNECTOR_ID,
+        trustLevel: 'allow',
+        grantedBy: seeded.ownerId,
       })
 
-      await expect(needsApprovalFor(controller, toolCallId)).resolves.toBe(true)
+      await expect(
+        needsApprovalFor(grantlessController, `conn-${randomUUID()}`),
+      ).resolves.toBe(false)
     })
 
-    it('proceeds once the same call has been approved', async () => {
-      const toolCallId = `approved-${randomUUID()}`
-      await insertPermissionRequest({
-        seeded,
-        toolCallId,
-        status: 'approved',
+    it('asks when the connection grant is ask', async () => {
+      const agentId = randomUUID()
+      await testDb.db.insert(schema.agent).values({
+        id: agentId,
+        workspaceId: seeded.workspaceId,
+        ownerUserId: seeded.ownerId,
+        name: 'Asker',
+        isDefault: false,
       })
-
-      await expect(needsApprovalFor(controller, toolCallId)).resolves.toBe(
-        false,
-      )
-    })
-
-    it('fails a denied call instead of executing it', async () => {
-      const toolCallId = `denied-${randomUUID()}`
-      await insertPermissionRequest({
-        seeded,
-        toolCallId,
-        status: 'denied',
+      await testDb.db.insert(schema.connectionGrant).values({
+        id: randomUUID(),
+        agentId,
+        connectorId: CONNECTOR_ID,
+        trustLevel: 'ask',
+        grantedBy: seeded.ownerId,
       })
-
-      await expect(needsApprovalFor(controller, toolCallId)).rejects.toThrow(
-        /denied/i,
-      )
-    })
-
-    describe('connection grant fallback', () => {
-      let grantlessAgentId: string
-      let grantlessController: RuntimeMcpController
-
-      beforeAll(async () => {
-        grantlessAgentId = randomUUID()
-        await db.insert(schema.agent).values({
-          id: grantlessAgentId,
-          workspaceId: seeded.workspaceId,
-          ownerUserId: seeded.ownerId,
-          name: 'Grantless',
-          isDefault: false,
-        })
-        grantlessController = makeController(seeded, grantlessAgentId)
-      })
-
-      afterAll(async () => {
-        await db
-          .delete(schema.permissionRequest)
-          .where(eq(schema.permissionRequest.agentId, grantlessAgentId))
-        await db
-          .delete(schema.connectionGrant)
-          .where(eq(schema.connectionGrant.agentId, grantlessAgentId))
-        await db
-          .delete(schema.agent)
-          .where(eq(schema.agent.id, grantlessAgentId))
-      })
-
-      it('uses the connection grant when no tool grant exists', async () => {
-        await db.insert(schema.connectionGrant).values({
-          id: randomUUID(),
-          agentId: grantlessAgentId,
-          connectorId: CONNECTOR_ID,
-          trustLevel: 'allow',
-          grantedBy: seeded.ownerId,
-        })
-
+      const askController = makeController(seeded, agentId)
+      try {
         await expect(
-          needsApprovalFor(grantlessController, `conn-${randomUUID()}`),
-        ).resolves.toBe(false)
-      })
-
-      it('asks when the connection grant is ask', async () => {
-        const agentId = randomUUID()
-        await db.insert(schema.agent).values({
-          id: agentId,
-          workspaceId: seeded.workspaceId,
-          ownerUserId: seeded.ownerId,
-          name: 'Asker',
-          isDefault: false,
-        })
-        await db.insert(schema.connectionGrant).values({
-          id: randomUUID(),
-          agentId,
-          connectorId: CONNECTOR_ID,
-          trustLevel: 'ask',
-          grantedBy: seeded.ownerId,
-        })
-        const askController = makeController(seeded, agentId)
-        try {
-          await expect(
-            needsApprovalFor(askController, `conn-${randomUUID()}`),
-          ).resolves.toBe(true)
-        } finally {
-          await db
-            .delete(schema.permissionRequest)
-            .where(eq(schema.permissionRequest.agentId, agentId))
-          await db
-            .delete(schema.connectionGrant)
-            .where(eq(schema.connectionGrant.agentId, agentId))
-          await db.delete(schema.agent).where(eq(schema.agent.id, agentId))
-        }
-      })
+          needsApprovalFor(askController, `conn-${randomUUID()}`),
+        ).resolves.toBe(true)
+      } finally {
+        await testDb.db
+          .delete(schema.permissionRequest)
+          .where(eq(schema.permissionRequest.agentId, agentId))
+        await testDb.db
+          .delete(schema.connectionGrant)
+          .where(eq(schema.connectionGrant.agentId, agentId))
+        await testDb.db.delete(schema.agent).where(eq(schema.agent.id, agentId))
+      }
     })
-  },
-)
+  })
+})

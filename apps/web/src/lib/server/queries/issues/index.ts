@@ -7,7 +7,7 @@ export { isTeamAssigneeMember } from './team-assignee'
 export { agentExistsInWorkspace } from './agents'
 export { getIssueSourceBindingWorkspaceId } from './source-bindings'
 export { listIssueRunUsageJson } from './usage'
-export { loadIssuePendingApprovalRows } from './pending-approval'
+export { loadPendingApprovalRequestForRun } from './pending-approval'
 export { listChildIssueProgress } from './child-progress'
 export {
   listIssueCommentRowsWithAttachments,

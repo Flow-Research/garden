@@ -1,7 +1,7 @@
 import { Result, type Result as ResultValue } from 'better-result'
 import { IssueServiceError } from '@garden/server/issues/server'
 import type { Db } from '@/lib/server/db'
-import { loadIssuePendingApprovalRows } from '@/lib/server/queries/issues'
+import { loadPendingApprovalRequestForRun } from '@/lib/server/queries/issues'
 
 const PREVIEW_TEXT_KEYS = ['body', 'message', 'content', 'text', 'comment']
 
@@ -44,15 +44,25 @@ export type IssuePendingApproval = {
 }
 
 /**
- * Resolves the newest pending approval for an issue's active run.
+ * Maps the newest pending permission request on an issue run into the approval
+ * preview JSON the issue UI expects.
+ *
+ * Before: preview mapping lived inline in the route next to Drizzle. After:
+ * route owns Team access via `requireIssueAccess` and passes `activeRunId`;
+ * this service owns query + mapping so the route stays drizzle-free.
  */
 export async function getIssuePendingApproval(
   db: Db,
-  input: { workspaceId: string; issueId: string },
+  input: { activeRunId: string | null },
 ): Promise<ResultValue<IssuePendingApproval, IssueServiceError>> {
+  const activeRunId = input.activeRunId
+  if (activeRunId === null) {
+    return Result.ok({ approval: null })
+  }
+
   return await Result.tryPromise({
     try: async () => {
-      const { request } = await loadIssuePendingApprovalRows(db, input)
+      const request = await loadPendingApprovalRequestForRun(db, activeRunId)
       if (request === null) return { approval: null }
 
       const targetLabel = previewTarget(request.argsJson)

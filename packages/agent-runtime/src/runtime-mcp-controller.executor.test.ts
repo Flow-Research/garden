@@ -1,24 +1,31 @@
 import { randomUUID } from 'node:crypto'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type { ToolSet } from 'ai'
-import { Pool } from 'pg'
-import { drizzle } from 'drizzle-orm/node-postgres'
 import { and, eq } from 'drizzle-orm'
 import * as schema from '@garden/db/schema'
+import type * as runtimeDb from '@garden/db/runtime'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
 import { Result } from 'better-result'
-import { isTestDbReachable } from './test-db'
+import { startTestDb, type TestDb } from '@garden/db/testing'
 import {
   RuntimeMcpController,
   type McpHost,
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 
-const TEST_DB_URL =
-  process.env.GARDEN_TEST_DATABASE_URL ??
-  'postgres://garden@localhost:5433/garden_test'
+const dbFactory = vi.hoisted(() => ({
+  getPooledDb: vi.fn<typeof runtimeDb.getPooledDb>(),
+}))
 
-const DB_REACHABLE = await isTestDbReachable(TEST_DB_URL)
+/**
+ * Reuses the real test DB client so runtime pools cannot outlive the container.
+ * Separate pools raised 57P01 during teardown. Follows the test pattern in
+ * packages/server/src/issues/list-issues.integration.test.ts.
+ */
+vi.mock('@garden/db/runtime', async (importOriginal) => ({
+  ...(await importOriginal<typeof runtimeDb>()),
+  getPooledDb: dbFactory.getPooledDb,
+}))
 
 const EXECUTOR_TOOL = 'execute'
 const GMAIL_LIST_CODE =
@@ -32,8 +39,7 @@ type Seeded = {
   capabilityId: string
 }
 
-let pool: Pool
-let db: ReturnType<typeof drizzle<typeof schema>>
+let testDb: TestDb
 
 async function seedBase(trustLevel: string): Promise<Seeded> {
   const ownerId = randomUUID()
@@ -41,35 +47,35 @@ async function seedBase(trustLevel: string): Promise<Seeded> {
   const agentId = randomUUID()
   const capabilityId = randomUUID()
 
-  await db.insert(schema.user).values({
+  await testDb.db.insert(schema.user).values({
     id: ownerId,
     email: `${ownerId}@example.com`,
     name: 'Owner',
   })
-  await db.insert(schema.organization).values({
+  await testDb.db.insert(schema.organization).values({
     id: workspaceId,
     name: 'Executor gate workspace',
     slug: `executor-gate-${workspaceId}`,
   })
-  await db.insert(schema.member).values({
+  await testDb.db.insert(schema.member).values({
     organizationId: workspaceId,
     userId: ownerId,
     role: 'owner',
   })
-  await db.insert(schema.agent).values({
+  await testDb.db.insert(schema.agent).values({
     id: agentId,
     workspaceId,
     ownerUserId: ownerId,
     name: 'Garden',
     isDefault: true,
   })
-  await db.insert(schema.capability).values({
+  await testDb.db.insert(schema.capability).values({
     id: capabilityId,
     connectorType: 'gmail',
     name: 'gmail.users.messages.list',
     riskClass: 'read',
   })
-  await db.insert(schema.permissionGrant).values({
+  await testDb.db.insert(schema.permissionGrant).values({
     id: randomUUID(),
     agentId,
     capabilityId,
@@ -81,24 +87,28 @@ async function seedBase(trustLevel: string): Promise<Seeded> {
 }
 
 async function cleanupSeeded(seeded: Seeded) {
-  await db
+  await testDb.db
     .delete(schema.permissionRequest)
     .where(eq(schema.permissionRequest.agentId, seeded.agentId))
-  await db
+  await testDb.db
     .delete(schema.inboxItem)
     .where(eq(schema.inboxItem.workspaceId, seeded.workspaceId))
-  await db
+  await testDb.db
     .delete(schema.permissionGrant)
     .where(eq(schema.permissionGrant.agentId, seeded.agentId))
-  await db
+  await testDb.db
     .delete(schema.capability)
     .where(eq(schema.capability.id, seeded.capabilityId))
-  await db.delete(schema.agent).where(eq(schema.agent.id, seeded.agentId))
-  await db.delete(schema.member).where(eq(schema.member.userId, seeded.ownerId))
-  await db
+  await testDb.db
+    .delete(schema.agent)
+    .where(eq(schema.agent.id, seeded.agentId))
+  await testDb.db
+    .delete(schema.member)
+    .where(eq(schema.member.userId, seeded.ownerId))
+  await testDb.db
     .delete(schema.organization)
     .where(eq(schema.organization.id, seeded.workspaceId))
-  await db.delete(schema.user).where(eq(schema.user.id, seeded.ownerId))
+  await testDb.db.delete(schema.user).where(eq(schema.user.id, seeded.ownerId))
 }
 
 function makeController(seeded: Seeded) {
@@ -112,7 +122,7 @@ function makeController(seeded: Seeded) {
   const host = {
     name: 'executor-gate-probe',
     env: {
-      HYPERDRIVE: { connectionString: TEST_DB_URL },
+      HYPERDRIVE: { connectionString: testDb.databaseUrl },
     },
     ctx: {
       storage: {
@@ -166,74 +176,77 @@ async function needsApprovalForExecute(
   return await tool.needsApproval!({ code }, { toolCallId, messages: [] })
 }
 
-describe.skipIf(!DB_REACHABLE)(
-  'executor tool approval gate (integration)',
-  () => {
-    beforeAll(async () => {
-      pool = new Pool({ connectionString: TEST_DB_URL })
-      db = drizzle(pool, { schema })
-    })
-
-    afterAll(async () => {
-      await pool.end()
-    })
-
-    it('asks when codemode touches an ask-granted executor tool', async () => {
-      const seeded = await seedBase('ask')
-      try {
-        const controller = makeController(seeded)
-        const toolCallId = `call-${randomUUID()}`
-        const result = await needsApprovalForExecute(
-          controller,
-          GMAIL_LIST_CODE,
-          toolCallId,
-        )
-        expect(result).toBe(true)
-
-        const requests = await db
-          .select({ id: schema.permissionRequest.id })
-          .from(schema.permissionRequest)
-          .where(
-            and(
-              eq(schema.permissionRequest.agentId, seeded.agentId),
-              eq(schema.permissionRequest.capabilityId, seeded.capabilityId),
-              eq(schema.permissionRequest.toolCallId, toolCallId),
-            ),
-          )
-        expect(requests).toHaveLength(1)
-      } finally {
-        await cleanupSeeded(seeded)
+describe('executor tool approval gate (integration)', () => {
+  /** Uses @garden/db/testing so missing Postgres fails setup instead of skipping checks. */
+  beforeAll(async () => {
+    testDb = await startTestDb()
+    dbFactory.getPooledDb.mockImplementation((connectionString) => {
+      if (connectionString !== testDb.databaseUrl) {
+        throw new Error('Expected the suite-owned database connection')
       }
+      return testDb.db
     })
+  })
 
-    it('allows codemode touching an allow-granted executor tool', async () => {
-      const seeded = await seedBase('allow')
-      try {
-        const controller = makeController(seeded)
-        const result = await needsApprovalForExecute(
-          controller,
-          GMAIL_LIST_CODE,
-          `call-${randomUUID()}`,
-        )
-        expect(result).toBe(false)
-      } finally {
-        await cleanupSeeded(seeded)
-      }
-    })
+  afterAll(async () => {
+    await testDb?.cleanup()
+  })
 
-    it('ignores unmapped integrations instead of blocking', async () => {
-      const seeded = await seedBase('ask')
-      try {
-        const controller = makeController(seeded)
-        const result = await needsApprovalForExecute(
-          controller,
-          UNKNOWN_CODE,
-          `call-${randomUUID()}`,
+  it('asks when codemode touches an ask-granted executor tool', async () => {
+    const seeded = await seedBase('ask')
+    try {
+      const controller = makeController(seeded)
+      const toolCallId = `call-${randomUUID()}`
+      const result = await needsApprovalForExecute(
+        controller,
+        GMAIL_LIST_CODE,
+        toolCallId,
+      )
+      expect(result).toBe(true)
+
+      const requests = await testDb.db
+        .select({ id: schema.permissionRequest.id })
+        .from(schema.permissionRequest)
+        .where(
+          and(
+            eq(schema.permissionRequest.agentId, seeded.agentId),
+            eq(schema.permissionRequest.capabilityId, seeded.capabilityId),
+            eq(schema.permissionRequest.toolCallId, toolCallId),
+          ),
         )
-        expect(result).toBe(false)
-      } finally {
-        await cleanupSeeded(seeded)
-      }
-    })
-  },
-)
+      expect(requests).toHaveLength(1)
+    } finally {
+      await cleanupSeeded(seeded)
+    }
+  })
+
+  it('allows codemode touching an allow-granted executor tool', async () => {
+    const seeded = await seedBase('allow')
+    try {
+      const controller = makeController(seeded)
+      const result = await needsApprovalForExecute(
+        controller,
+        GMAIL_LIST_CODE,
+        `call-${randomUUID()}`,
+      )
+      expect(result).toBe(false)
+    } finally {
+      await cleanupSeeded(seeded)
+    }
+  })
+
+  it('ignores unmapped integrations instead of blocking', async () => {
+    const seeded = await seedBase('ask')
+    try {
+      const controller = makeController(seeded)
+      const result = await needsApprovalForExecute(
+        controller,
+        UNKNOWN_CODE,
+        `call-${randomUUID()}`,
+      )
+      expect(result).toBe(false)
+    } finally {
+      await cleanupSeeded(seeded)
+    }
+  })
+})
