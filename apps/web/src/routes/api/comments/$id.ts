@@ -11,6 +11,7 @@ import {
   deleteIssueCommentById,
   getIssueCommentById,
   updateIssueCommentBody,
+  upsertIssueMentionInboxItem,
 } from '@/lib/server/queries/issues'
 
 /**
@@ -81,9 +82,18 @@ export const Route = createFileRoute('/api/comments/$id')({
         const updatedComment = await updateIssueCommentBody(db, {
           commentId: params.id,
           body: body.content,
+          previousMentions: existingComment.mentions,
         })
 
         if (!updatedComment) return notFound('Comment not found')
+        await upsertIssueMentionInboxItem(db, {
+          workspaceId: access.issue.workspaceId,
+          issueId: access.issue.id,
+          content: updatedComment.body,
+          commentId: updatedComment.id,
+          actorType: 'member',
+          actorId: access.session.user.id,
+        })
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
             type: 'comment:updated',

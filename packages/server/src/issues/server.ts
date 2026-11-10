@@ -1,6 +1,11 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import {
+  explicitMemberMentionIds,
+  upsertIssueAssignmentInbox,
+  upsertIssueMentionInbox,
+} from '@garden/db/inbox'
+import {
   addIssueSubscribers,
   assigneeToSubscriberType,
   type SubscriberEntry,
@@ -453,7 +458,7 @@ async function resolveMentions(args: {
       ),
     args.db
       .select({
-        id: schema.user.id,
+        id: schema.member.userId,
         name: schema.user.name,
         email: schema.user.email,
       })
@@ -462,10 +467,17 @@ async function resolveMentions(args: {
       .where(eq(schema.member.organizationId, args.workspaceId)),
   ])
 
-  return matchMentions(args.content, {
+  const mentions = matchMentions(args.content, {
     agents: agentRows,
     members: memberRows,
   })
+  const explicitIds = new Set(explicitMemberMentionIds(args.content))
+  return {
+    agents: mentions.agents,
+    users: memberRows
+      .filter((member) => explicitIds.has(member.id))
+      .map((member) => member.id),
+  }
 }
 
 function mentionsJson(mentions: { agents: string[]; users: string[] }) {
@@ -1075,6 +1087,22 @@ export async function createIssue(
         }
         const issue = insertedIssue
 
+        await upsertIssueAssignmentInbox({
+          db: tx,
+          workspaceId: issue.workspaceId,
+          issueId: issue.id,
+          actorType: 'member',
+          actorId: parsed.data.createdBy,
+        })
+        await upsertIssueMentionInbox({
+          db: tx,
+          workspaceId: issue.workspaceId,
+          issueId: issue.id,
+          content: issue.description ?? '',
+          actorType: 'member',
+          actorId: parsed.data.createdBy,
+        })
+
         if (parsed.data.source) {
           await attachSourceBindingInTransaction(tx, {
             workspaceId: parsed.data.workspaceId,
@@ -1350,6 +1378,15 @@ export async function postIssueComment(
         })
       }
       const comment = insertedComment
+      await upsertIssueMentionInbox({
+        db,
+        workspaceId: issue.workspaceId,
+        issueId: issue.id,
+        content: comment.body,
+        commentId: comment.id,
+        actorType: 'member',
+        actorId: parsed.data.authorUserId,
+      })
       await linkIssueAttachments({
         db,
         workspaceId: parsed.data.workspaceId,

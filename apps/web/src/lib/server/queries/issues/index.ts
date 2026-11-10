@@ -38,4 +38,5 @@ export {
 export {
   archiveIssueInboxItemsByKey,
   upsertIssueAssignmentInboxItem,
+  upsertIssueMentionInboxItem,
 } from './inbox'

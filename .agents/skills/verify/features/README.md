@@ -6,6 +6,7 @@ file when a shipped user path needs repeatable proof.
 
 | Feature | User path | Status |
 | --- | --- | --- |
+| [Email notifications](./email-notifications.md) | Mention a member or create an inbox item, then verify Resend delivery and deduplication | Database proof automated; live mailbox check pending |
 | [MVP beta path](./mvp.md) | Connect a tool, chat, create an issue, run an agent, approve an action, review output | Documented; driver pending |
 | [Workspace memberships](./workspaces.md) | Create a workspace, accept an invitation, see both in the account menu without reload | Creation, router, and menu regression coverage |
 | [Workstream integration](./workstream.md) | Connect an invited personal account, refuse Workspace credentials, refresh, and isolate members | Focused registration/route coverage; live check pending |
