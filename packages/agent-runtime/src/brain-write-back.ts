@@ -275,9 +275,9 @@ export function createBrainWriteBackTools(
           ).pipe(
             Effect.provide(layer),
             Effect.match({
-              onFailure: (error) => {
+              onFailure: () => {
                 console.warn('[brain-write-back] direct write failed', {
-                  error,
+                  code: 'brain_write_failed',
                 })
                 return false
               },

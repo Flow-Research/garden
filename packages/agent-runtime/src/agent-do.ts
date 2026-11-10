@@ -1,4 +1,7 @@
-import { resolveBrainRuntimeAgentId } from './brain-run-authority'
+import {
+  BrainRunAuthorityError,
+  resolveBrainRuntimeAgentId,
+} from './brain-run-authority'
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-agent Durable Object + multi-agent data-driven personas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -945,16 +948,28 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   async validateBrainWriteBackOrigin(
     input: Pick<BrainWriteBackRunInput, 'runKind' | 'runId' | 'originObjectId'>,
   ): Promise<void> {
-    if (input.runKind === 'issue') {
-      const origin = await this.subAgent(IssueRunSubAgent, input.originObjectId)
-      await origin.validateBrainSummaryAccess(input.runId)
-    } else {
-      const origin = await this.subAgent(
-        AutomationRunSubAgent,
-        input.originObjectId,
-      )
-      await origin.validateBrainSummaryAccess(input.runId)
-    }
+    const validated = await Result.tryPromise({
+      try: async () => {
+        if (input.runKind === 'issue') {
+          const origin = await this.subAgent(
+            IssueRunSubAgent,
+            input.originObjectId,
+          )
+          await origin.validateBrainSummaryAccess(input.runId)
+        } else {
+          const origin = await this.subAgent(
+            AutomationRunSubAgent,
+            input.originObjectId,
+          )
+          await origin.validateBrainSummaryAccess(input.runId)
+        }
+      },
+      catch: () =>
+        new BrainRunAuthorityError({
+          message: 'Brain origin authority is unavailable.',
+        }),
+    })
+    if (validated.isErr()) throw validated.error
   }
 
   async startBrainWriteBack(
@@ -1308,7 +1323,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       this.env.HYPERDRIVE.connectionString,
       this.name,
     )
-    if (resolved.isErr()) throw resolved.error
+    if (resolved.isErr())
+      throw new BrainRunAuthorityError({ message: resolved.error.message })
     this.runtimeAgentIdValue = resolved.value
     return resolved.value
   }

@@ -3227,6 +3227,30 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             /Brain runtime principal is unavailable\.|brain_output_authority_denied/,
           )
         }
+        for (const method of ['verifyRunEntry', 'validateBrainSummaryAccess']) {
+          const probe = await harness!.fetch('/binding-fault', {
+            method: 'POST',
+            body: JSON.stringify({
+              ...run,
+              kind,
+              objectId,
+              method,
+              missingParent: false,
+              diagnosticProbe: true,
+              runId: 'G08_PRIVATE_DENIAL_CANARY',
+            }),
+          })
+          expect(probe.status).toBe(200)
+          const result = (await probe.json()) as {
+            denied: boolean
+            messages: string[]
+          }
+          expect(result.denied).toBe(true)
+          expect(result.messages.length).toBeGreaterThan(0)
+          expect(JSON.stringify(result)).not.toContain(
+            'G08_PRIVATE_DENIAL_CANARY',
+          )
+        }
         const positive = await harness!.fetch('/binding-fault', {
           method: 'POST',
           body: JSON.stringify({

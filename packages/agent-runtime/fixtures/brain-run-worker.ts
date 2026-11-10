@@ -239,6 +239,7 @@ export default {
         objectId: string
         method: string
         missingParent: boolean
+        diagnosticProbe?: boolean
       }>()
       const facet =
         input.kind === 'issue' ? IssueRunSubAgent : AutomationRunSubAgent
@@ -265,6 +266,19 @@ export default {
             origin,
           )
         },
+      }
+      const diagnosticMessages = (error: unknown) => {
+        const messages: string[] = []
+        let current = error
+        for (let depth=0; depth<8 && current instanceof Error; depth++) {
+          messages.push(current.message)
+          current = current.cause
+        }
+        return messages
+      }
+      if (input.method === 'verifyRunEntry') {
+        const bound = await Reflect.get(facet.prototype, 'verifyRunEntry').call(host, input.runId)
+        return Response.json({denied:bound.isErr(),messages:bound.isErr()?diagnosticMessages(bound.error):[]})
       }
       const args =
         input.method === 'beforeTurn'
@@ -298,6 +312,7 @@ export default {
       )
       return Response.json({
         denied: result.isErr(),
+        ...(input.diagnosticProbe ? { messages: result.isErr() ? diagnosticMessages(result.error) : [] } : {}),
         message: result.isErr() ? String(result.error) : undefined,
       })
     }

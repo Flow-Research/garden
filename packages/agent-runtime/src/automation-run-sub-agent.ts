@@ -234,29 +234,48 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
         this.runError({
           code: 'runtime_failed',
           message: cause.message,
-          cause,
         }),
       )
   }
 
   /** Revalidates the origin's durable exposure before a separate model sees its summary. */
   async validateBrainSummaryAccess(runId: string): Promise<void> {
-    const runtimeName = this.parentPath.at(-1)?.name ?? ''
-    const binding = await verifyBrainRunBinding(
-      this.env.HYPERDRIVE.connectionString,
-      { runKind: 'automation', runId, runtimeName, objectId: this.name },
-    )
-    if (binding.isErr()) throw binding.error
-    const access = await this.ensureBrainGrantHistory({
-      runKind: 'automation',
-      runId,
-      runtimeName,
-      objectId: this.name,
-      workspaceId: binding.value.context.workspaceId,
-      agentId: binding.value.context.agentId,
-      ownerUserId: binding.value.context.userId ?? null,
+    const validated = await Result.tryPromise({
+      try: async () => {
+        const runtimeName = this.parentPath.at(-1)?.name ?? ''
+        const binding = await verifyBrainRunBinding(
+          this.env.HYPERDRIVE.connectionString,
+          { runKind: 'automation', runId, runtimeName, objectId: this.name },
+        )
+        if (binding.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: binding.error.message,
+          })
+        const access = await this.ensureBrainGrantHistory({
+          runKind: 'automation',
+          runId,
+          runtimeName,
+          objectId: this.name,
+          workspaceId: binding.value.context.workspaceId,
+          agentId: binding.value.context.agentId,
+          ownerUserId: binding.value.context.userId ?? null,
+        })
+        if (access.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: access.error.message,
+          })
+      },
+      catch: (cause) =>
+        cause instanceof AutomationRunSubAgentError && cause.cause === undefined
+          ? cause
+          : this.runError({
+              code: 'runtime_failed',
+              message: 'Brain summary authority is unavailable.',
+            }),
     })
-    if (access.isErr()) throw access.error
+    if (validated.isErr()) throw validated.error
   }
 
   /** Checks retained context before any outward dispatch, trace or final output. */
@@ -264,11 +283,10 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     return (
       await Result.tryPromise({
         try: () => this.validateBrainSummaryAccess(runId),
-        catch: (cause) =>
+        catch: () =>
           this.runError({
             code: 'runtime_failed',
             message: 'Brain output authority is unavailable.',
-            cause,
           }),
       })
     ).tapError(() => {
@@ -406,10 +424,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     if (grant.isErr()) {
       console.info('agent_runtime.brain_summary_denied', {
         runId,
-        reason:
-          grant.error instanceof Error
-            ? grant.error.message
-            : String(grant.error),
+        reason: 'brain_summary_authority_unavailable',
       })
       return { workspaceId: null, ownerUserId: null, summary: '' }
     }

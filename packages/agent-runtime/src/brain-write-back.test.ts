@@ -73,6 +73,10 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     const values = vi.fn().mockResolvedValue([])
     const insert = vi.fn().mockReturnValue({ values })
     mockGetPooledDb.mockReturnValue({ insert })
+    const { Effect } = await import('effect')
+    mockAddText.mockReturnValue(
+      Effect.fail(new Error('G08_PRIVATE_WRITE_ERROR')),
+    )
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const tools = createBrainWriteBackTools({
       env: { HELIX_URL: 'http://localhost:6968' },
@@ -97,7 +101,10 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     expect(result).toEqual({ ok: false, error: 'Brain write failed.' })
     expect(warn).toHaveBeenCalledWith(
       '[brain-write-back] direct write failed',
-      expect.anything(),
+      { code: 'brain_write_failed' },
+    )
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(
+      'G08_PRIVATE_WRITE_ERROR',
     )
     expect(insert).not.toHaveBeenCalled()
     expect(values).not.toHaveBeenCalled()
