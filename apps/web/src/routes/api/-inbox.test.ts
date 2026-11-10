@@ -56,6 +56,7 @@ describe('GET /api/inbox brain proposals', () => {
       { id: fallbackId, email: `${fallbackId}@example.com`, name: 'Fallback' },
     ])
     await testDb.db.insert(schema.brainWriteProposal).values({
+      operationKey: crypto.randomUUID(),
       id: proposalId,
       workspaceId,
       runId: 'run-1',

@@ -94,10 +94,9 @@ type ChatSubAgentToolsInput = {
     helixApiKey?: string
     ai: Ai
     files: R2Bucket
-    getContext?: () =>
-      | BrainToolContext
-      | null
-      | Promise<BrainToolContext | null>
+    getContext?: (
+      toolName: string,
+    ) => BrainToolContext | null | Promise<BrainToolContext | null>
   }
 }
 

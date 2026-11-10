@@ -87,3 +87,11 @@ A chat agent's issue tools act for the person who owns the chat. `list_issues`, 
 - Do not hide approval-required behavior inside codemode. Expose actions that may pause for approval as direct outer tools.
 - Keep connector token injection inside Executor. Agent Durable Objects never see upstream tokens.
 - Use `better-result` for new TypeScript error handling.
+
+## Brain grants for issue and automation runs
+
+Issue and automation runs read the current agent permissions and issue override before each Brain operation. The check binds the run to its workspace, agent, owner, and originating runtime object. An exact agent ID takes precedence over a hostname. A hostname must identify one agent.
+
+The runtime stores a record of the Brain tools exposed to a run in the run facet configuration. Before it resumes retained history or sends a summary to a separate write-back model, it checks that record against current permissions. Missing or invalid records cannot authorize retained history. Permission removal can therefore block a resume even when the next action does not call a Brain tool. The runtime retains the history for review; it does not rewrite it.
+
+Automatic issue context uses organization memory. Automatic context requires `brain_search`. A write-back run requires both read and write permission from its originating run. Each later Brain operation checks its own permission again. These checks use the existing empty-list permission rule above.

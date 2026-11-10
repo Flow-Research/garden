@@ -2,8 +2,8 @@
 title: Brain keeps HelixDB private behind a gateway and Garden's server
 description: How Garden's Brain reaches HelixDB through an authenticated Caddy gateway, and why workspace isolation lives in Garden's server code rather than the gateway.
 status: current
-owner: "@Flow-Research/security"
-last_reviewed: 2026-11-03
+owner: '@Flow-Research/security'
+last_reviewed: 2026-11-10
 ---
 
 Brain is Garden's graph and vector memory. It stores workspace knowledge in HelixDB. HelixDB accepts query payloads that the caller builds, so whoever can reach it can read or write any record. The whole design follows from that fact: HelixDB is never public, and only Garden's server builds queries.
@@ -58,3 +58,11 @@ The rules this layer follows:
 ## Storage is local for now
 
 HelixDB stores data in the `helix-data` volume through `HELIX_DATA_DIR`. HelixDB can use S3-compatible storage such as R2 instead, but not both at once. Switching does not copy existing data. The [deploy Brain guide](../../guides/operate/deploy-brain.md) has the steps.
+
+## Run authority and repeated write-back
+
+`brain-run-authority.ts` validates the originating issue or automation run and reads its current permissions. The shared run lifecycle remains in `RunSubAgentBase`; each run facet checks authority through its existing preparation and summary hooks. The parent passes the exact origin object to a separate write-back facet. That facet checks the origin again before it uses the summary.
+
+Write-back uses a stable operation key and a scope-aware claim hash. Database indexes prevent duplicate operations and duplicate claims within a workspace. A repeated delivery can return the existing result. Brain node creation also uses a stable canonical identity, so a repeated request does not create another node after an uncertain response.
+
+The migration preserves existing proposal rows and review fields. It stops when legacy hashes are ambiguous. An operator must review those rows before the migration can continue. Migration completion is not evidence of a live deployment.
