@@ -13,11 +13,15 @@ import {
   updateIssueCommentBody,
 } from '@/lib/server/queries/issues'
 
+/**
+ * Maps an issue_comment row to the public comment DTO.
+ * `authorId` is null for connector comments (schema check constraint).
+ */
 function toComment(row: {
   id: string
   issueId: string
   authorType: string
-  authorId: string
+  authorId: string | null
   body: string
   createdAt: Date | null
 }) {
