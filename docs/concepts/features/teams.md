@@ -59,6 +59,8 @@ The Team owner needs no separate term. Creating a Team adds its owner as a membe
 
 Write access follows read access, with limits on assignment and Team moves. A member can update any issue on their Team's board and comment on it, so they can move cards across the board and pick up work. A Team issue may be unassigned. When it has an assignee, that assignee must be a member of the Team or an agent on the Team, and `POST /api/issues` and `PUT /api/issues/:id` reject any other assignee with `Assignee must be a Team member`, including when an issue moves onto a Team. A member can assign a Team issue only to themselves. Through the API a member may create a Team issue unassigned or assigned to themselves; the create modal on a Team page locks the assignee to that member. Assigning a Team issue to someone else, clearing an assignee, and moving an issue between Teams stay with the Team owner and workspace owners and admins, whose assignee picker offers **Unassigned** on Team issues. Deleting an issue needs the workspace `issue:update` permission, which normal members do not have. The `PUT` and `DELETE` handlers in `apps/web/src/routes/api/issues/$id.ts` enforce these limits.
 
+The create rules live in the issue service, not in a route. `createIssue` in `packages/server/src/issues/server.ts` calls `authorizeTeamIssueCreate` whenever a `teamId` is set. The creator must be on the Team unless they are a workspace owner or admin, a normal member may assign only themselves, and any assignee must be on the Team. `POST /api/issues` and the chat agent's `create_issue` tool both go through it, so an agent filing a Team issue for its chat owner gets the same answer the web UI would.
+
 ## Teams live at `/teams`
 
 Teams has one home in the app:
