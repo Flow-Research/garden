@@ -2830,7 +2830,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         .from(schema.issueRun)
         .where(eq(schema.issueRun.id, input.runId))
       expect(run?.status).toBe('failed')
-      expect(run?.error).toContain('unverified Brain audience')
+      expect(run?.error).toBe('brain_output_authority_denied')
+      const outward = JSON.stringify({ run, logs: harness!.getLogs() })
+      expect(outward).not.toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+      expect(outward).not.toContain('unverified Brain audience')
       expect(modelRequests.slice(start)).toHaveLength(0)
       expect(
         await database!.db
