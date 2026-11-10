@@ -84,6 +84,7 @@ const readIssueInputSchema = z
   .object({
     databaseUrl: z.string().trim().min(1),
     workspaceId: issueInsertSchema.shape.workspaceId,
+    viewerUserId: issueInsertSchema.shape.createdBy,
     issueIdOrIdentifier: z.string().trim().min(1),
     commentsPage: z.enum(['head', 'tail']).optional(),
     commentsLimit: z.number().int().positive().max(100).optional(),
@@ -556,33 +557,68 @@ function parseIssueIdentifier(value: string) {
   return Number.isSafeInteger(issueNumber) ? issueNumber : null
 }
 
-async function resolveIssue(
+/**
+ * Builds the Team visibility condition for `viewerUserId` in a workspace.
+ * Shared by every service entry point that acts for a human (`listIssues`,
+ * `readIssue`, `resolveVisibleIssue`) so agent tools apply the same rule as
+ * `requireIssueAccess` and `GET /api/issues`. Before, only `listIssues` did;
+ * the others reached any Team issue by number.
+ */
+async function issueVisibilityFor(
   db: IssueDb,
   workspaceId: string,
-  issueIdOrIdentifier: string,
+  viewerUserId: string,
 ) {
+  const [viewer] = await db
+    .select({ role: schema.member.role })
+    .from(schema.member)
+    .where(
+      and(
+        eq(schema.member.organizationId, workspaceId),
+        eq(schema.member.userId, viewerUserId),
+      ),
+    )
+    .limit(1)
+  return teamIssueVisibilityCondition({
+    viewerId: viewerUserId,
+    manager: isWorkspaceManagerRole(viewer?.role),
+  })
+}
+
+/** Matches an issue by `PREFIX-123` identifier or UUID; null when neither. */
+function issueLookupCondition(issueIdOrIdentifier: string) {
   const issueNumber = parseIssueIdentifier(issueIdOrIdentifier)
-  const trimmed = issueIdOrIdentifier.trim()
-  const issueUuid = z.string().uuid().safeParse(trimmed)
+  if (issueNumber !== null) return eq(schema.issue.number, issueNumber)
+  const issueUuid = z.string().uuid().safeParse(issueIdOrIdentifier.trim())
+  return issueUuid.success ? eq(schema.issue.id, issueUuid.data) : null
+}
 
-  const conditions =
-    issueNumber !== null
-      ? and(
-          eq(schema.issue.workspaceId, workspaceId),
-          eq(schema.issue.number, issueNumber),
-        )
-      : issueUuid.success
-        ? and(
-            eq(schema.issue.workspaceId, workspaceId),
-            eq(schema.issue.id, issueUuid.data),
-          )
-        : undefined
-
-  if (!conditions) return null
+/**
+ * Finds a workspace issue the viewer may see. A Team issue outside the
+ * viewer's reach resolves to null, so callers report `issue_not_found` and do
+ * not confirm that the issue exists. Used by `postIssueComment` and the chat
+ * `assign_issue` / `update_issue_status` tools.
+ */
+export async function resolveVisibleIssue(
+  db: IssueDb,
+  args: {
+    workspaceId: string
+    viewerUserId: string
+    issueIdOrIdentifier: string
+  },
+) {
+  const lookup = issueLookupCondition(args.issueIdOrIdentifier)
+  if (!lookup) return null
   const [issue] = await db
     .select()
     .from(schema.issue)
-    .where(conditions)
+    .where(
+      and(
+        eq(schema.issue.workspaceId, args.workspaceId),
+        lookup,
+        await issueVisibilityFor(db, args.workspaceId, args.viewerUserId),
+      ),
+    )
     .limit(1)
   return issue ?? null
 }
@@ -923,6 +959,11 @@ export async function createIssue(
   return Result.ok(toIssue(result.value, { issuePrefix: prefixResult.value }))
 }
 
+/**
+ * Reads one issue with a bounded comment page for the chat `read_issue` tool,
+ * as `viewerUserId` sees it. A Team issue the viewer cannot open returns
+ * `issue_not_found`, matching `list_issues` and `requireIssueAccess`.
+ */
 export async function readIssue(
   input: ReadIssueInput,
 ): Promise<ResultValue<IssueSummary, IssueServiceError>> {
@@ -938,17 +979,9 @@ export async function readIssue(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const issueNumber = parseIssueIdentifier(parsed.data.issueIdOrIdentifier)
-      const issueUuid = z
-        .string()
-        .uuid()
-        .safeParse(parsed.data.issueIdOrIdentifier.trim())
-      const issueCondition =
-        issueNumber !== null
-          ? eq(schema.issue.number, issueNumber)
-          : issueUuid.success
-            ? eq(schema.issue.id, issueUuid.data)
-            : undefined
+      const issueCondition = issueLookupCondition(
+        parsed.data.issueIdOrIdentifier,
+      )
       if (!issueCondition) return null
 
       const [issue] = await db
@@ -965,6 +998,11 @@ export async function readIssue(
           and(
             eq(schema.issue.workspaceId, parsed.data.workspaceId),
             issueCondition,
+            await issueVisibilityFor(
+              db,
+              parsed.data.workspaceId,
+              parsed.data.viewerUserId,
+            ),
           ),
         )
         .limit(1)
@@ -1030,22 +1068,13 @@ export async function listIssues(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const [viewer] = await db
-        .select({ role: schema.member.role })
-        .from(schema.member)
-        .where(
-          and(
-            eq(schema.member.organizationId, parsed.data.workspaceId),
-            eq(schema.member.userId, parsed.data.ownerUserId),
-          ),
-        )
-        .limit(1)
       const conditions = [
         eq(schema.issue.workspaceId, parsed.data.workspaceId),
-        teamIssueVisibilityCondition({
-          viewerId: parsed.data.ownerUserId,
-          manager: isWorkspaceManagerRole(viewer?.role),
-        }),
+        await issueVisibilityFor(
+          db,
+          parsed.data.workspaceId,
+          parsed.data.ownerUserId,
+        ),
       ]
       if (parsed.data.status) {
         conditions.push(eq(schema.issue.status, parsed.data.status))
@@ -1086,6 +1115,12 @@ export async function listIssues(
   return Result.ok(result.value)
 }
 
+/**
+ * Posts a member comment and wakes issue agents. The author must be able to
+ * see the issue under the Team rule; the web route checks this first through
+ * `requireIssueAccess`, and the chat `post_issue_comment` tool relies on it
+ * here, so a Team issue outside the author's reach returns `issue_not_found`.
+ */
 export async function postIssueComment(
   input: PostIssueCommentInput,
 ): Promise<
@@ -1104,11 +1139,11 @@ export async function postIssueComment(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const issue = await resolveIssue(
-        db,
-        parsed.data.workspaceId,
-        parsed.data.issueIdOrIdentifier,
-      )
+      const issue = await resolveVisibleIssue(db, {
+        workspaceId: parsed.data.workspaceId,
+        viewerUserId: parsed.data.authorUserId,
+        issueIdOrIdentifier: parsed.data.issueIdOrIdentifier,
+      })
       if (!issue) return { kind: 'missing' as const }
 
       const mentions = await resolveMentions({

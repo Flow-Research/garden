@@ -18,6 +18,7 @@ export type RunWorkflowBinding = {
       type: typeof RUN_WORKFLOW_CONTROL_EVENT_TYPE
       payload: RunWorkflowControlEvent
     }) => Promise<void>
+    status: () => Promise<{ status: string }>
   }>
 }
 
