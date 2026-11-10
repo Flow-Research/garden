@@ -181,22 +181,23 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   private brainInjectionAllowed = false
 
-  /** Validates exact originating identity before shared completion can mutate a ledger. */
-  override async completeWorkflowTurn(input: {
-    runId: string
-    submissionId: string
-  }) {
-    const binding = await verifyBrainRunBinding(
-      this.env.HYPERDRIVE.connectionString,
-      {
+  protected override async verifyRunEntry(runId: string) {
+    return (
+      await verifyBrainRunBinding(this.env.HYPERDRIVE.connectionString, {
         runKind: 'issue',
-        runId: input.runId,
+        runId,
         runtimeName: this.parentPath.at(-1)?.name ?? '',
         objectId: this.name,
-      },
+      })
     )
-    if (binding.isErr()) throw binding.error
-    return super.completeWorkflowTurn(input)
+      .map(() => undefined)
+      .mapError((cause) =>
+        this.runError({
+          code: 'runtime_failed',
+          message: cause.message,
+          cause,
+        }),
+      )
   }
 
   /** Revalidates the origin's durable exposure before a separate model sees its summary. */

@@ -784,6 +784,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         rolesByScenario[
           `guards automation assistant-only output revoked=${revoked}`
         ] = ['AutomationRunSubAgent.completeWorkflowTurn']
+      for (const kind of ['issue', 'automation'])
+        rolesByScenario[`guards ${kind} failure and cancellation entry`] = []
+      rolesByScenario[
+        'rejects automation cancellation substitution without ledger mutations'
+      ] = ['AutomationRunSubAgent.executeWorkflowTurn']
       for (const mode of ['denied', 'allowed'])
         rolesByScenario[`guards failure records mode=${mode}`] = []
       for (const kind of ['issue', 'automation'])
@@ -1249,6 +1254,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           'inspection',
           'inspection-read',
           'event',
+          'status',
         ]) {
           const response = await harness!.fetch('/failure-observation', {
             method: 'POST',
@@ -1256,9 +1262,13 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           })
           expect(response.status).toBe(200)
           const record = await response.text()
-          if (mode === 'denied') {
+          if (mode === 'denied' || path === 'status') {
             expect(record).not.toContain('G08_PRIVATE_FAILURE_CANARY')
-            expect(record).toContain('brain_output_authority_denied')
+            expect(record).toContain(
+              path === 'status'
+                ? 'Cannot inspect submitted run status.'
+                : 'brain_output_authority_denied',
+            )
           } else expect(record).toContain('G08_PRIVATE_FAILURE_CANARY')
         }
       }, 90000)
@@ -2062,6 +2072,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         agentId: otherAgent,
         hostName: agentId,
       })
+      // The old base cancellation shortcut ran before loadTurnContext.
+      for (const foreignId of [otherIssue.runId, otherRun])
+        await database!.db
+          .update(schema.issueRun)
+          .set({ cancelRequestedAt: new Date() })
+          .where(eq(schema.issueRun.id, foreignId))
       const initialReads = brainRequests.length
       for (const target of [otherIssue.runId, otherRun, crypto.randomUUID()]) {
         const response = await harness!.fetch('/issue-turn', {
@@ -2126,6 +2142,102 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           )[0]?.status,
         ).toBe('queued')
     }, 90_000)
+
+    for (const kind of ['issue', 'automation'] as const)
+      it(`guards ${kind} failure and cancellation entry`, async () => {
+        const origin =
+          kind === 'issue'
+            ? await seedIssue('Originating issue')
+            : await seedAutomation()
+        const originId =
+          'issueId' in origin && typeof origin.issueId === 'string'
+            ? origin.issueId
+            : origin.runId
+        for (const method of ['fail', 'cancel']) {
+          const target =
+            kind === 'issue'
+              ? await seedIssue('Foreign issue run')
+              : await seedAutomation()
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          const before = await database!.db
+            .select()
+            .from(table)
+            .where(eq(table.id, target.runId))
+          const call = (objectId: string) =>
+            harness!.fetch('/entry-mutation', {
+              method: 'POST',
+              body: JSON.stringify({
+                kind,
+                agentId,
+                objectId,
+                runId: target.runId,
+                method,
+              }),
+            })
+          expect(await (await call(originId)).json()).toEqual({ ok: false })
+          expect(
+            await database!.db
+              .select()
+              .from(table)
+              .where(eq(table.id, target.runId)),
+          ).toEqual(before)
+          const targetId =
+            'issueId' in target && typeof target.issueId === 'string'
+              ? target.issueId
+              : target.runId
+          expect(await (await call(targetId)).json()).toEqual({ ok: true })
+          const [after] = await database!.db
+            .select()
+            .from(table)
+            .where(eq(table.id, target.runId))
+          if (method === 'fail') expect(after?.status).toBe('failed')
+          else expect(after?.cancelRequestedAt).toBeInstanceOf(Date)
+        }
+        expect(modelRequests).toHaveLength(0)
+      }, 90000)
+
+    it('rejects automation cancellation substitution without ledger mutations', async () => {
+      const input = await seedAutomation()
+      const otherAgent = crypto.randomUUID()
+      await database!.db.insert(schema.agent).values({
+        id: otherAgent,
+        workspaceId,
+        ownerUserId: ownerId,
+        name: 'Other cancellation principal',
+        hostName: otherAgent,
+        permissions: { full_access: true },
+      })
+      await database!.db
+        .update(schema.automationRun)
+        .set({ agentId: otherAgent, cancelRequestedAt: new Date() })
+        .where(eq(schema.automationRun.id, input.runId))
+      const initialReads = brainRequests.length
+      for (const [principal, allowed] of [
+        [agentId, false],
+        [otherAgent, true],
+      ] as const) {
+        const response = await harness!.fetch('/automation-turn', {
+          method: 'POST',
+          body: JSON.stringify({
+            ...input,
+            agentId: principal,
+            mode: 'start',
+            turn: 0,
+            expectCompletion: false,
+          }),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({ ok: allowed })
+        const [run] = await database!.db
+          .select()
+          .from(schema.automationRun)
+          .where(eq(schema.automationRun.id, input.runId))
+        expect(run?.status).toBe(allowed ? 'cancelled' : 'queued')
+      }
+      expect(modelRequests).toHaveLength(0)
+      expect(brainRequests.length).toBe(initialReads)
+    }, 90000)
 
     for (const kind of ['issue', 'automation'] as const)
       for (const state of kind === 'automation'

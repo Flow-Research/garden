@@ -344,6 +344,13 @@ export abstract class RunSubAgentBase<
     return Result.ok(undefined)
   }
 
+  /** Validates the exact originating run before a mutating Workflow RPC. */
+  protected async verifyRunEntry(
+    _runId: string,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
   /** Run facets can refuse the final analytics copy of retained context. */
   protected async authorizeFinalObservation(
     _runId: string,
@@ -726,6 +733,9 @@ export abstract class RunSubAgentBase<
     mode: RunTurnMode,
     input: TInput,
   ): Promise<RunWorkflowTurnStartResult> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const table = this.runTable()
     const [runRow] = await this.getDb()
       .select({
@@ -784,6 +794,9 @@ export abstract class RunSubAgentBase<
     summary: string
     waitingOn?: RunWorkflowWait
   }> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const kind = this.runConfig().kind
     const inspectionResult = await Result.tryPromise({
       try: async () => await this.inspectSubmission(input.submissionId),
@@ -891,6 +904,9 @@ export abstract class RunSubAgentBase<
     runId: string
     reason: string
   }): Promise<{ status: string }> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const failedResult = await this.closeFailedRun(input.runId, input.reason)
     if (failedResult.isErr())
       throw await this.errorForOutput(input.runId, failedResult.error)
@@ -903,6 +919,9 @@ export abstract class RunSubAgentBase<
   }
 
   async requestCancel(input: { runId: string }): Promise<void> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
       this.logRunWarning('cancel_request_failed', {

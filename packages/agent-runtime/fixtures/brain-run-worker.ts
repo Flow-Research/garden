@@ -201,6 +201,7 @@ export default {
         '/failure-observation',
         '/grant-fault',
         '/binding-fault',
+        '/entry-mutation',
         '/summary-probe',
         '/start',
         '/automation-start',
@@ -215,6 +216,17 @@ export default {
       ].includes(url.pathname)
     )
       return new Response('Not found', { status: 404 })
+    if (url.pathname === '/entry-mutation') {
+      const input = await request.json<{kind:'issue'|'automation';agentId:string;objectId:string;runId:string;method:'fail'|'cancel'}>()
+      const parent = await getAgentByName(env.AgentDO,input.agentId)
+      const facet = input.kind === 'issue'
+        ? await getSubAgentByName(parent,IssueRunSubAgent,input.objectId)
+        : await getSubAgentByName(parent,AutomationRunSubAgent,input.objectId)
+      const result = await Result.tryPromise(() => input.method === 'fail'
+        ? facet.failWorkflowTurn({runId:input.runId,reason:'synthetic-requested-failure'})
+        : facet.requestCancel({runId:input.runId}))
+      return Response.json({ok:result.isOk()})
+    }
     if (url.pathname === '/binding-fault') {
       console.info(
         'G08_BINDING_PHASE',
@@ -238,6 +250,15 @@ export default {
         getConfig: () => ({}),
         configure: () => undefined,
         session: { getHistory: async () => [] },
+        verifyRunEntry(runId: string) { return Reflect.get(facet.prototype, 'verifyRunEntry').call(this, runId) },
+        runConfig() { return Reflect.get(facet.prototype, 'runConfig').call(this) },
+        runError(fields: unknown) { return Reflect.get(facet.prototype, 'runError').call(this, fields) },
+        loadTurnContext(runId: string) { return Reflect.get(facet.prototype, 'loadTurnContext').call(this, runId) },
+        errorForOutput(runId: string, error: unknown) { return Reflect.get(RunSubAgentBase.prototype, 'errorForOutput').call(this, runId, error) },
+        authorizeFinalObservation(runId: string) { return Reflect.get(facet.prototype, 'authorizeFinalObservation').call(this, runId) },
+        ensureBrainOutputAuthority(runId: string) { return Reflect.get(facet.prototype, 'ensureBrainOutputAuthority').call(this, runId) },
+        validateBrainSummaryAccess(runId: string) { return Reflect.get(facet.prototype, 'validateBrainSummaryAccess').call(this, runId) },
+        aiObservation: { discardTurn: () => {} },
         ensureBrainGrantHistory(origin: unknown) {
           return Reflect.get(facet.prototype, 'ensureBrainGrantHistory').call(
             this,
@@ -264,6 +285,7 @@ export default {
       const result = await Result.tryPromise(() =>
         Reflect.get(facet.prototype, input.method).apply(host, args),
       )
+      if (result.isErr() && result.error instanceof TypeError) throw result.error
       console.info(
         'G08_BINDING_PHASE',
         JSON.stringify({
@@ -362,12 +384,13 @@ export default {
       })
     }
     if (url.pathname === '/failure-observation') {
-      const input = await request.json<{ mode: 'denied' | 'allowed'; path: 'response' | 'inspection' | 'inspection-read' | 'event' }>()
+      const input = await request.json<{ mode: 'denied' | 'allowed'; path: 'response' | 'inspection' | 'inspection-read' | 'event' | 'status' }>()
       const reasons: string[] = []
       const events: unknown[] = []
       let discarded = 0
       const base = RunSubAgentBase.prototype
       const host = {
+        verifyRunEntry: async () => Result.ok(undefined),
         currentRunId: 'fixture-failure-run', aggUsage: null,
         env: { RUN_WORKFLOW: { get: async () => ({ sendEvent: async (event: unknown) => { events.push(event) } }) } },
         runConfig: () => ({ kind: 'fixture', logger: {} }), runLogFields: () => null,
@@ -376,7 +399,7 @@ export default {
         closeFailedRun(runId: string, reason: string) { return Reflect.get(base, 'closeFailedRun').call(this, runId, reason) },
         failureReasonForOutput(runId: string, reason: string) { return Reflect.get(base, 'failureReasonForOutput').call(this, runId, reason) },
         inspectSubmission: async () => {
-          if (input.path === 'inspection-read') throw new Error('G08_PRIVATE_FAILURE_CANARY')
+          if (input.path === 'inspection-read' || input.path === 'status') throw new Error('G08_PRIVATE_FAILURE_CANARY')
           return { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY' }
         },
         runtimeFailure: (cause: unknown) => new Error(String(cause)),
@@ -389,6 +412,8 @@ export default {
       const invoked = await Result.tryPromise({
         try: async () => input.path === 'response'
           ? await Reflect.get(base, 'onChatResponse').call(host, { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY' })
+          : input.path === 'status'
+            ? await Reflect.get(base, 'readWorkflowTurnStatus').call(host, { submissionId: 'submission' })
           : input.path === 'event'
             ? await Reflect.get(base, 'onSubmissionStatus').call(host, { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY', submissionId: 'submission', metadata: { runId: 'fixture-failure-run' } })
             : await Reflect.get(base, 'completeWorkflowTurn').call(host, { runId: 'fixture-failure-run', submissionId: 'submission' }),
@@ -443,6 +468,7 @@ export default {
         initializeEmpty: boolean,
       ) => Promise<{ isErr(): boolean; error?: { code: string } }>
       const host = {
+        errorForOutput: async (_runId: string, error: unknown) => error,
         getConfig: () => null,
         getMessages: async () => {
           cacheReads++

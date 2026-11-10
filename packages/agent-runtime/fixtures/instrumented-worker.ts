@@ -256,7 +256,7 @@ export async function startInstrumentedHarness(
       file === 'run-sub-agent-base.ts'
         ? lifecycleMethods
         : isRunFacet && hasGrantGuard
-          ? ['completeWorkflowTurn', 'validateBrainSummaryAccess']
+          ? ['validateBrainSummaryAccess']
           : file === 'brain-write-back-sub-agent.ts'
             ? ['runWriteBack']
             : []

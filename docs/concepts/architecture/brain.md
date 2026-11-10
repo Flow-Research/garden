@@ -61,7 +61,7 @@ HelixDB stores data in the `helix-data` volume through `HELIX_DATA_DIR`. HelixDB
 
 ## Run authority and repeated write-back
 
-`brain-run-authority.ts` validates the originating issue or automation run and reads its current permissions. The shared run lifecycle remains in `RunSubAgentBase`; each run facet checks authority through its existing preparation and summary hooks. The parent passes the exact origin object to a separate write-back facet. That facet checks the origin again before it uses the summary.
+`brain-run-authority.ts` validates the originating issue or automation run and reads its current permissions. The shared run lifecycle remains in `RunSubAgentBase`. The base checks originating identity before execution, completion, failure and cancellation RPCs can change a run. Each run facet supplies that identity check and checks Brain access through preparation and summary hooks. The parent passes the exact origin object to a separate write-back facet. That facet checks the origin again before it uses the summary.
 
 Write-back uses a stable operation key and a scope-aware claim hash. Database indexes prevent duplicate operations and duplicate claims within a workspace. A repeated delivery can return the existing result. Brain node creation also uses a stable canonical identity, so a repeated request does not create another node after an uncertain response.
 
