@@ -470,6 +470,13 @@
       "when": 1794060980219,
       "tag": "0066_warm_king_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1794320928672,
+      "tag": "0067_invitation_teams",
+      "breakpoints": true
     }
   ]
 }

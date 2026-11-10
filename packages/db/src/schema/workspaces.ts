@@ -1,14 +1,17 @@
 import { sql } from 'drizzle-orm'
 import {
+  boolean,
   check,
   index,
   jsonb,
   pgTable,
   text,
+  type AnyPgColumn,
   timestamp,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { team } from './teams.js'
 import { user } from './users.js'
 
 export const organization = pgTable(
@@ -29,6 +32,24 @@ export const organization = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     plan: text('plan').default('free'),
+    /**
+     * Lets a Team owner who is a plain workspace member invite people into
+     * the Teams they own. Owners and admins can always invite.
+     */
+    teamOwnersCanInvite: boolean('team_owners_can_invite')
+      .notNull()
+      .default(true),
+    /**
+     * Team that an invitation joins when the inviter names no Team. A plain
+     * FK with SET NULL: a composite `(default_team_id, id)` FK would try to
+     * null `organization.id` on Team delete, and Drizzle cannot emit the
+     * Postgres 15 `SET NULL (column)` form. The workspace settings service
+     * checks the Team belongs to this workspace before writing it.
+     */
+    defaultTeamId: uuid('default_team_id').references(
+      (): AnyPgColumn => team.id,
+      { onDelete: 'set null' },
+    ),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
