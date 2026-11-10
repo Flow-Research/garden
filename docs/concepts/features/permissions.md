@@ -19,6 +19,12 @@ An agent can act through direct tools, through codemode, and through connector t
 
 `evaluateToolPermission` is the single tool gate for chat, issue runs, and automation runs. `derivePermissions` merges an issue's `permissions_override` over the agent's permissions. If stored permissions cannot be parsed, the agent loses full access and every skill. Corrupt settings never grant more than an admin chose.
 
+## Connector installation requires current workspace authority
+
+GitHub App and Discord bot callbacks verify signed state, then read the current membership of the actor in that state. The actor must still have connection-management permission in the workspace in that state. The callbacks use the same role policy as Garden's organization permission checks. A request header cannot select a different workspace for this check. Garden checks this authority before it calls the provider or writes the installation, callback record, capabilities, or grants.
+
+GitHub keeps its session check outside the development environment. Discord uses verified signed state and does not require a browser cookie. These callbacks do not give authority to an agent or to task content.
+
 ## Default-agent recovery requires current creation authority
 
 Workspace creation normally supplies the default Garden agent. Chat listing reads existing records and does not create agents or grants. Chat creation validates a selected issue or agent before it can request default-agent recovery. A selected existing agent does not require a new default.
