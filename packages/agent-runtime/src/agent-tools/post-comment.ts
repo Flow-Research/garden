@@ -11,7 +11,11 @@ import {
   type IssueRunToolContext,
 } from './issue-run-tool-context'
 import * as schema from '@garden/db/schema'
-import { upsertAgentCommentInbox } from '@garden/db/inbox'
+import {
+  upsertAgentCommentInbox,
+  upsertIssueMentionInbox,
+  explicitMemberMentionIds,
+} from '@garden/db/inbox'
 
 export const postCommentInputSchema = z
   .object({
@@ -40,7 +44,7 @@ export function createPostCommentTool(context: IssueRunToolContext) {
             authorType: 'agent',
             authorId: run.agentId,
             body,
-            mentions: null,
+            mentions: { users: explicitMemberMentionIds(body), agents: [] },
             createdAt,
           })
           await upsertAgentCommentInbox({
@@ -51,6 +55,15 @@ export function createPostCommentTool(context: IssueRunToolContext) {
             agentId: run.agentId,
             body,
             createdAt,
+          })
+          await upsertIssueMentionInbox({
+            db,
+            workspaceId: run.workspaceId,
+            issueId: run.issueId,
+            content: body,
+            commentId,
+            actorType: 'agent',
+            actorId: run.agentId,
           })
         },
         catch: (cause) => dbError('post issue comment', cause),

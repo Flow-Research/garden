@@ -173,7 +173,7 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
   // The reconciler performs ledger cleanup without a durable deadline, so a
   // 12-hour cadence avoids unnecessary database wakeups while still repairing
   // stale product state.
-  crons: ['0 */12 * * *'],
+  crons: ['0 */12 * * *', '* * * * *'],
   // Use the stable script name here. Passing the Worker declaration can
   // resolve to `undefined` while Alchemy plans another direct resource.
   tailConsumers: [deployTarget.tailWorkerName],

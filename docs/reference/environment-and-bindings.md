@@ -92,7 +92,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | `DISCORD_BOT_TOKEN`           | Secret | No                   | Discord bot token for connector calls.                              | `packages/connectors/src/discord/services.ts`            |
 | `DISCORD_PUBLIC_KEY`          | Var    | No                   | Discord interaction signature key.                                  | `apps/web/src/lib/server/env.ts`                         |
 | `DISCORD_BOT_PERMISSIONS`     | Var    | No                   | Permission integer for the Discord install link.                    | `apps/web/src/lib/server/discord-install.ts`             |
-| `RESEND_API_KEY`              | Secret | Yes in deployed Workers | Sends email, such as issue-assignment mail.                     | `apps/web/src/lib/server/email/issue-assignment.ts`      |
+| `RESEND_API_KEY`              | Secret | Yes in deployed Workers | Sends invitations and new inbox notification emails.           | `apps/web/src/lib/server/email/notifications.ts`         |
 | `EXA_API_KEY`                 | Secret | No                   | Web search for agent web tools. Without it, the tools report an unconfigured error. | `packages/agent-runtime/src/agent-tools/web.ts` |
 | `AI_GATEWAY_ID`               | Var    | Yes in deployed Workers | AI Gateway that routes Workers AI calls. Set from `aiGatewayId` in `deploy-targets.mjs`. | `packages/agent-runtime/src/run-sub-agent-base.ts` |
 | `SANDBOX_TRANSPORT`           | Var    | Yes                  | Sandbox transport. Default `rpc`.                                   | `apps/web/src/lib/server/env.ts`                         |

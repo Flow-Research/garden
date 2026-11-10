@@ -2,8 +2,10 @@ import { and, eq } from 'drizzle-orm'
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { sendIssueAssignmentEmail } from '@/lib/server/email/issue-assignment'
-import { upsertIssueAssignmentInbox } from '@garden/db/inbox'
+import {
+  upsertIssueAssignmentInbox,
+  upsertIssueMentionInbox,
+} from '@garden/db/inbox'
 import {
   addIssueSubscribers,
   assigneeToSubscriberType,
@@ -271,7 +273,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           // Best-effort per the note above: the assignment write is the source of
           // truth, so a participants-join failure (e.g. a not-yet-applied
           // issue_subscriber migration) must not 500 the assignment or skip the
-          // downstream inbox + assignment email.
+          // downstream inbox notification.
           const assigneeId = issue.assigneeId
           const subscriberResult = await Result.tryPromise({
             try: () =>
@@ -308,48 +310,16 @@ export const Route = createFileRoute('/api/issues/$id')({
             actorType: 'member',
             actorId: session.user.id,
           })
-
-          // Out-of-app nudge for the new assignee. Skip self-assignment (no
-          // point emailing yourself) and keep it best-effort so a Resend failure
-          // never fails the assignment write.
-          if (issue.assigneeId !== session.user.id) {
-            const [assignee] = await db
-              .select({ email: schema.user.email })
-              .from(schema.user)
-              .where(eq(schema.user.id, issue.assigneeId))
-            const [workspace] = await db
-              .select({ name: schema.organization.name })
-              .from(schema.organization)
-              .where(eq(schema.organization.id, existingIssue.workspaceId))
-
-            if (assignee?.email) {
-              const assignerName =
-                session.user.name?.trim() || session.user.email
-              const emailResult = await Result.tryPromise({
-                try: () =>
-                  sendIssueAssignmentEmail({
-                    baseURL:
-                      appEnv.BETTER_AUTH_URL ?? new URL(request.url).origin,
-                    data: {
-                      issue: { id: issue.id, title: issue.title },
-                      workspace: {
-                        id: existingIssue.workspaceId,
-                        name: workspace?.name ?? 'your workspace',
-                      },
-                      assignee: { email: assignee.email },
-                      assignerName,
-                    },
-                    env: appEnv,
-                  }),
-                catch: (cause) => cause,
-              })
-              if (emailResult.isErr())
-                logger.error(
-                  'issue.assignment_email_failed',
-                  errorFields(emailResult.error),
-                )
-            }
-          }
+        }
+        if (issue.description !== existingIssue.description) {
+          await upsertIssueMentionInbox({
+            db,
+            workspaceId: issue.workspaceId,
+            issueId: issue.id,
+            content: issue.description ?? '',
+            actorType: 'member',
+            actorId: session.user.id,
+          })
         }
         const updatedIssue = await applyIssueMutationSideEffects({
           db,

@@ -21,6 +21,8 @@ import { bindAppEnv } from '@/lib/server/env'
 import { requireAgentAccess } from '@/lib/server/agent-do-router'
 import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
+import { dispatchNotificationEmails } from '@/lib/server/email/notifications'
+import { createRuntimeDbClient } from '@garden/db/runtime'
 import {
   createGardenLogger,
   errorFields,
@@ -298,11 +300,34 @@ async function logReturnedErrorResponse(input: {
 
 export default {
   async scheduled(
-    _controller: ScheduledController,
+    controller: ScheduledController,
     env: ServerEnv,
     ctx: ExecutionContext,
   ) {
     bindAppEnv(env)
+
+    // Cloudflare passes the matching cron to the shared scheduled handler.
+    // Keep approval expiry on its original schedule, independent of email.
+    if (controller.cron === '* * * * *') {
+      const dispatched = await Result.tryPromise(async () => {
+        const client = await createRuntimeDbClient(env.HYPERDRIVE)
+        const result = await dispatchNotificationEmails({ db: client.db, env })
+        await client.close()
+        return result
+      })
+      dispatched.match({
+        ok: (result) =>
+          result.match({
+            ok: (report) =>
+              webLogger.info('notification_email.dispatch', report),
+            err: (error) =>
+              webLogger.error('notification_email.failed', errorFields(error)),
+          }),
+        err: (error) =>
+          webLogger.error('notification_email.failed', errorFields(error)),
+      })
+      return
+    }
 
     ctx.waitUntil(
       reconcile(env).then((result) => {
