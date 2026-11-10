@@ -17,11 +17,17 @@ type IssueRow = {
   createdAt: Date | null
 }
 
+/**
+ * Maps a DB comment row into the timeline comment shape.
+ *
+ * `authorId` is nullable for connector comments (see issue_comment check
+ * constraint); keep that on `actor_id` rather than inventing a sentinel string.
+ */
 function toTimelineComment(
   row: {
     id: string
     authorType: string
-    authorId: string
+    authorId: string | null
     body: string
     metadata: unknown
     createdAt: Date | null
