@@ -36,11 +36,6 @@ export const Route = createFileRoute('/api/chat/threads')({
         if (!workspaceId) return Response.json([])
 
         const db = await appContext.db()
-        await ensureAgentRow({
-          db,
-          workspaceId,
-          ownerUserId: session.user.id,
-        })
         const rows = await db
           .select({
             thread: schema.chatThread,
@@ -129,12 +124,6 @@ export const Route = createFileRoute('/api/chat/threads')({
         const now = new Date()
         const db = await appContext.db()
 
-        const defaultAgentRow = await ensureAgentRow({
-          db,
-          workspaceId,
-          ownerUserId: session.user.id,
-        })
-
         let primaryIssue: {
           id: string
           number: number
@@ -179,22 +168,32 @@ export const Route = createFileRoute('/api/chat/threads')({
           issueRuntimeAgentId = run?.agentId ?? null
         }
 
-        const requestedAgentId =
-          issueRuntimeAgentId ?? body.agent_id ?? defaultAgentRow.id
-
-        const agentRow =
-          requestedAgentId === defaultAgentRow.id
-            ? defaultAgentRow
-            : (
-                await db
-                  .select()
-                  .from(schema.agent)
-                  .where(eq(schema.agent.id, requestedAgentId))
-                  .limit(1)
-              )[0]
-
-        if (!agentRow || agentRow.workspaceId !== workspaceId) {
-          return forbidden('Agent access denied')
+        const requestedAgentId = issueRuntimeAgentId ?? body.agent_id
+        let agentRow: typeof schema.agent.$inferSelect | undefined
+        if (requestedAgentId) {
+          ;[agentRow] = await db
+            .select()
+            .from(schema.agent)
+            .where(
+              and(
+                eq(schema.agent.id, requestedAgentId),
+                eq(schema.agent.workspaceId, workspaceId),
+              ),
+            )
+            .limit(1)
+          if (!agentRow) return forbidden('Agent access denied')
+        } else {
+          const defaultResult = await ensureAgentRow({
+            db,
+            workspaceId,
+            ownerUserId: session.user.id,
+          })
+          if (defaultResult.isErr())
+            return Response.json(
+              { error: defaultResult.error.message },
+              { status: defaultResult.error.status },
+            )
+          agentRow = defaultResult.value
         }
 
         const agentRuntimeName = agentRow.hostName ?? agentRow.id
