@@ -3,8 +3,11 @@ import { getAgentByName, getSubAgentByName } from 'agents'
 import { IssueRunSubAgent } from '../src/issue-run-sub-agent'
 import { AgentDO } from '../src/agent-do'
 import { RunWorkflow } from '../src/run-workflow'
+import { RunSubAgentBase } from '../src/run-sub-agent-base'
 import { Effect } from 'effect'
 import { Result } from 'better-result'
+import { tool } from 'ai'
+import { z } from 'zod'
 import { Brain } from '@garden/brain/services/brain'
 import { makeWorkerBrainLive } from '@garden/brain/services/worker'
 import { createBrainTools } from '../src/agent-tools/brain'
@@ -13,6 +16,8 @@ import type { BrainScope } from '@garden/brain/domain/scope'
 
 export { AgentDO, RunWorkflow }
 export { IssueRunSubAgent }
+import { AutomationRunSubAgent } from '../src/automation-run-sub-agent'
+export { AutomationRunSubAgent }
 export { ChatSubAgent } from '../src/agent-do'
 import { BrainWriteBackSubAgent } from '../src/brain-write-back-sub-agent'
 export { BrainWriteBackSubAgent }
@@ -22,6 +27,116 @@ export {
   ExecutorMcpSession,
   ExecutorMcpExecutionOwnerDirectory,
 } from '../../../apps/web/src/lib/server/executor-engine/mcp'
+
+// A deterministic local-only barrier between completed-origin handoff and the
+// actual writeback call. It never replaces the production implementation.
+const startBrainWriteBack = AgentDO.prototype.startBrainWriteBack
+AgentDO.prototype.startBrainWriteBack = async function (input) {
+  const env = (this as unknown as { env: { GARDEN_MODEL_BASE_URL: string } })
+    .env
+  const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/handoff`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  if (!response.ok) throw new Error('Fixture writeback handoff barrier failed')
+  return await startBrainWriteBack.call(this, input)
+}
+
+// Deliberate application-facet storage-failure simulation. The SDK prototypes
+// and production code remain unchanged; all healthy writes use their real method.
+for (const [kind, facet] of [
+  ['issue', IssueRunSubAgent],
+  ['automation', AutomationRunSubAgent],
+] as const) {
+  const configure = facet.prototype.configure
+  const writes = new WeakMap<object, number>()
+  const failed = new WeakSet<object>()
+  const dispatching = new WeakSet<object>()
+  const beforeToolCall = facet.prototype.beforeToolCall
+  facet.prototype.beforeToolCall = async function (ctx) {
+    dispatching.add(this)
+    return await beforeToolCall.call(this as never, ctx).finally(() => dispatching.delete(this))
+  }
+  facet.prototype.configure = function (config) {
+    const host = this as unknown as {
+      env: { G08_GRANT_FAULT_KIND?: string; G08_GRANT_FAULT_PHASE?: string }
+      getConfig(): { brainGrantHistory?: unknown } | null
+    }
+    const targeted =
+      host.env.G08_GRANT_FAULT_KIND === kind &&
+      config !== null &&
+      typeof config === 'object' &&
+      Object.hasOwn(config, 'brainGrantHistory')
+    if (!targeted) return configure.call(this, config)
+    const ordinal = (writes.get(this) ?? 0) + 1
+    writes.set(this, ordinal)
+    const provenance = Reflect.get(config, 'brainGrantHistory') as { tools: string[] }
+    const phase = dispatching.has(this) ? 'tool' : provenance.tools.length === 0 ? 'before-turn' : 'injection'
+    if (phase === host.env.G08_GRANT_FAULT_PHASE && !failed.has(this)) {
+      failed.add(this)
+      console.info(
+        'G08_CONFIG_FAULT',
+        JSON.stringify({
+          kind,
+          phase,
+          ordinal,
+          provenance: Reflect.get(config, 'brainGrantHistory'),
+        }),
+      )
+      throw new Error(
+        `Deliberate ${kind} provenance persistence failure at ${ordinal}`,
+      )
+    }
+    const result = configure.call(this, config)
+    console.info(
+      'G08_CONFIG_PERSISTED',
+      JSON.stringify({
+        kind,
+        ordinal,
+        provenance: host.getConfig()?.brainGrantHistory,
+      }),
+    )
+    return result
+  }
+}
+
+// Deliberate application-hook failure after real injection. The local test
+// service removes the grant before returning a raw diagnostic canary.
+for (const [kind, facet] of [['issue', IssueRunSubAgent], ['automation', AutomationRunSubAgent]] as const) {
+  const beforeTurn = facet.prototype.beforeTurn
+  facet.prototype.beforeTurn = async function (ctx) {
+    const config = await beforeTurn.call(this as never, ctx)
+    const env = (this as unknown as {env:{ G08_ERROR_CANARY_KIND?:string; GARDEN_MODEL_BASE_URL:string }}).env
+    if (env.G08_ERROR_CANARY_KIND !== kind) return config
+    const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/run-error`, {
+      method:'POST',body:JSON.stringify({system:config?.system}),
+    })
+    throw new Error(await response.text())
+  }
+}
+
+// An actual outward tool in the native dispatch pipeline. It has no production
+// counterpart and publishes only to this suite's local synthetic endpoint.
+for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
+  const getTools = facet.prototype.getTools
+  facet.prototype.getTools = function () {
+    const env = (this as unknown as { env: { GARDEN_MODEL_BASE_URL: string } }).env
+    return {
+      ...getTools.call(this as never),
+      g08_external_publish: tool({
+        description: 'Publish one synthetic test result to the local fixture.',
+        inputSchema: z.object({ body: z.string() }),
+        execute: async (input) => {
+          const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/external`, {
+            method: 'POST', body: input.body,
+          })
+          if (!response.ok) throw new Error('Synthetic external publish failed')
+          return { ok: true }
+        },
+      }),
+    }
+  }
+}
 
 /**
  * Replaces only the external embedding provider in the disposable runtime.
@@ -35,6 +150,16 @@ export class FixtureEmbeddings extends WorkerEntrypoint {
         Array.from({ length: 384 }, () => 1 / Math.sqrt(384)),
       ),
     }
+  }
+}
+
+/** Disabled automation browser capability must never reach the external provider. */
+export class FixtureBrowser extends WorkerEntrypoint {
+  async fetch() {
+    console.error('G08_UNEXPECTED_BROWSER_CALL')
+    return new Response('Browser provider is forbidden in this fixture', {
+      status: 503,
+    })
   }
 }
 
@@ -72,7 +197,18 @@ export default {
         '/brain-tool',
         '/inspect',
         '/audience-fault',
+        '/final-observation',
+        '/failure-observation',
+        '/grant-fault',
+        '/binding-fault',
+        '/entry-mutation',
+        '/summary-probe',
         '/start',
+        '/automation-start',
+        '/automation-turn',
+        '/issue-turn',
+        '/writeback-origin',
+        '/automation-resume',
         '/history',
         '/chat',
         '/resume',
@@ -80,9 +216,256 @@ export default {
       ].includes(url.pathname)
     )
       return new Response('Not found', { status: 404 })
+    if (url.pathname === '/entry-mutation') {
+      const input = await request.json<{kind:'issue'|'automation';agentId:string;objectId:string;runId:string;method:'fail'|'cancel'}>()
+      const parent = await getAgentByName(env.AgentDO,input.agentId)
+      const facet = input.kind === 'issue'
+        ? await getSubAgentByName(parent,IssueRunSubAgent,input.objectId)
+        : await getSubAgentByName(parent,AutomationRunSubAgent,input.objectId)
+      const result = await Result.tryPromise(() => input.method === 'fail'
+        ? facet.failWorkflowTurn({runId:input.runId,reason:'synthetic-requested-failure'})
+        : facet.requestCancel({runId:input.runId}))
+      return Response.json({ok:result.isOk()})
+    }
+    if (url.pathname === '/binding-fault') {
+      console.info(
+        'G08_BINDING_PHASE',
+        JSON.stringify({ phase: 'handler-enter', time: Date.now() }),
+      )
+      const input = await request.json<{
+        kind: 'issue' | 'automation'
+        agentId: string
+        runId: string
+        objectId: string
+        method: string
+        missingParent: boolean
+        diagnosticProbe?: boolean
+      }>()
+      const facet =
+        input.kind === 'issue' ? IssueRunSubAgent : AutomationRunSubAgent
+      const host = {
+        env,
+        parentPath: input.missingParent ? [] : [{ name: input.agentId }],
+        name: input.objectId,
+        currentRunId: input.runId,
+        getConfig: () => ({}),
+        configure: () => undefined,
+        session: { getHistory: async () => [] },
+        verifyRunEntry(runId: string) { return Reflect.get(facet.prototype, 'verifyRunEntry').call(this, runId) },
+        runConfig() { return Reflect.get(facet.prototype, 'runConfig').call(this) },
+        runError(fields: unknown) { return Reflect.get(facet.prototype, 'runError').call(this, fields) },
+        loadTurnContext(runId: string) { return Reflect.get(facet.prototype, 'loadTurnContext').call(this, runId) },
+        errorForOutput(runId: string, error: unknown) { return Reflect.get(RunSubAgentBase.prototype, 'errorForOutput').call(this, runId, error) },
+        authorizeFinalObservation(runId: string) { return Reflect.get(facet.prototype, 'authorizeFinalObservation').call(this, runId) },
+        ensureBrainOutputAuthority(runId: string) { return Reflect.get(facet.prototype, 'ensureBrainOutputAuthority').call(this, runId) },
+        validateBrainSummaryAccess(runId: string) { return Reflect.get(facet.prototype, 'validateBrainSummaryAccess').call(this, runId) },
+        aiObservation: { discardTurn: () => {} },
+        ensureBrainGrantHistory(origin: unknown) {
+          return Reflect.get(facet.prototype, 'ensureBrainGrantHistory').call(
+            this,
+            origin,
+          )
+        },
+      }
+      const diagnosticMessages = (error: unknown) => {
+        const messages: string[] = []
+        let current = error
+        for (let depth=0; depth<8 && current instanceof Error; depth++) {
+          messages.push(current.message)
+          current = current.cause
+        }
+        return messages
+      }
+      if (input.method === 'verifyRunEntry') {
+        const bound = await Reflect.get(facet.prototype, 'verifyRunEntry').call(host, input.runId)
+        return Response.json({denied:bound.isErr(),messages:bound.isErr()?diagnosticMessages(bound.error):[]})
+      }
+      const args =
+        input.method === 'beforeTurn'
+          ? [{ body: { run_id: input.runId }, messages: [] }]
+          : input.method === 'executeWorkflowTurn'
+            ? ['start', { runId: input.runId, turn: 0 }]
+            : input.method === 'completeWorkflowTurn'
+              ? [{ runId: input.runId, submissionId: 'unrelated' }]
+              : [input.runId]
+      console.info(
+        'G08_BINDING_PHASE',
+        JSON.stringify({
+          phase: 'method-start',
+          method: input.method,
+          time: Date.now(),
+        }),
+      )
+      const result = await Result.tryPromise(() =>
+        Reflect.get(facet.prototype, input.method).apply(host, args),
+      )
+      if (result.isErr() && (result.error instanceof TypeError || result.error instanceof Error && result.error.cause instanceof TypeError)) throw result.error
+      console.info(
+        'G08_BINDING_PHASE',
+        JSON.stringify({
+          phase: 'method-end',
+          method: input.method,
+          time: Date.now(),
+          denied: result.isErr(),
+          error: result.isErr() ? String(result.error) : undefined,
+        }),
+      )
+      return Response.json({
+        denied: result.isErr(),
+        ...(input.diagnosticProbe ? { messages: result.isErr() ? diagnosticMessages(result.error) : [] } : {}),
+        message: result.isErr() ? String(result.error) : undefined,
+      })
+    }
+    if (url.pathname === '/summary-probe') {
+      const input = await request.json<{
+        agentId: string
+        issueId: string
+        runId: string
+        count: number
+      }>()
+      const parent = await getAgentByName(env.AgentDO, input.agentId)
+      const facet = await getSubAgentByName(
+        parent,
+        IssueRunSubAgent,
+        input.issueId,
+      )
+      const outcomes: boolean[] = []
+      for (let i = 0; i < input.count; i++) {
+        const result = await Result.tryPromise(() =>
+          facet.validateBrainSummaryAccess(input.runId),
+        )
+        outcomes.push(result.isOk())
+      }
+      return Response.json({ outcomes })
+    }
+    if (url.pathname === '/grant-fault') {
+      const input = await request.json<{
+        kind: 'issue' | 'automation'
+        runId: string
+        objectId: string
+        agentId: string
+        workspaceId: string
+        ownerUserId: string | null
+        marker?: unknown
+        failRead?: boolean
+        failPersist?: boolean
+        retained?: boolean
+        exposeTool?: string
+      }>()
+      let reads = 0
+      const persisted: unknown[] = []
+      const host = {
+        env,
+        getConfig: () => ({ brainGrantHistory: input.marker }),
+        configure: (value: unknown) => {
+          if (input.failPersist)
+            throw new Error('Injected grant provenance persistence failure')
+          persisted.push(value)
+        },
+        session: {
+          getHistory: async () => {
+            reads++
+            if (input.failRead)
+              throw new Error('Injected grant provenance history failure')
+            return input.retained
+              ? [{ role: 'assistant', content: 'G08_UNPROVEN_HISTORY' }]
+              : []
+          },
+        },
+      }
+      const facet =
+        input.kind === 'issue' ? IssueRunSubAgent : AutomationRunSubAgent
+      const result = await Reflect.get(
+        facet.prototype,
+        'ensureBrainGrantHistory',
+      ).call(
+        host,
+        {
+          runKind: input.kind,
+          runId: input.runId,
+          objectId: input.objectId,
+          runtimeName: input.agentId,
+          workspaceId: input.workspaceId,
+          agentId: input.agentId,
+          ownerUserId: input.ownerUserId,
+        },
+        input.exposeTool,
+      )
+      return Response.json({
+        denied: result.isErr(),
+        message: result.error?.message,
+        reads,
+        persisted,
+      })
+    }
+    if (url.pathname === '/failure-observation') {
+      const input = await request.json<{ mode: 'denied' | 'allowed'; path: 'response' | 'inspection' | 'inspection-read' | 'event' | 'status' }>()
+      const reasons: string[] = []
+      const events: unknown[] = []
+      let discarded = 0
+      const base = RunSubAgentBase.prototype
+      const host = {
+        verifyRunEntry: async () => Result.ok(undefined),
+        currentRunId: 'fixture-failure-run', aggUsage: null,
+        env: { RUN_WORKFLOW: { get: async () => ({ sendEvent: async (event: unknown) => { events.push(event) } }) } },
+        runConfig: () => ({ kind: 'fixture', logger: {} }), runLogFields: () => null,
+        authorizeFinalObservation: async () => input.mode === 'allowed' ? Result.ok(undefined) : Result.err(new Error('Denied')),
+        forceCloseFailed: async (_runId: string, reason: string) => { reasons.push(reason); return Result.ok(undefined) },
+        closeFailedRun(runId: string, reason: string) { return Reflect.get(base, 'closeFailedRun').call(this, runId, reason) },
+        failureReasonForOutput(runId: string, reason: string) { return Reflect.get(base, 'failureReasonForOutput').call(this, runId, reason) },
+        inspectSubmission: async () => {
+          if (input.path === 'inspection-read' || input.path === 'status') throw new Error('G08_PRIVATE_FAILURE_CANARY')
+          return { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY' }
+        },
+        runtimeFailure: (cause: unknown) => new Error(String(cause)),
+        readRunStatus: async () => Result.ok('failed'),
+        readWorkflowTurnSummary: async () => ({ workspaceId: null, ownerUserId: null, summary: '' }),
+        readWorkflowWait: async () => null,
+        aiObservation: { finishTurn: () => {}, discardTurn: () => { discarded++ } },
+        clearTurnState: () => {},
+      }
+      const invoked = await Result.tryPromise({
+        try: async () => input.path === 'response'
+          ? await Reflect.get(base, 'onChatResponse').call(host, { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY' })
+          : input.path === 'status'
+            ? await Reflect.get(base, 'readWorkflowTurnStatus').call(host, { submissionId: 'submission' })
+          : input.path === 'event'
+            ? await Reflect.get(base, 'onSubmissionStatus').call(host, { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY', submissionId: 'submission', metadata: { runId: 'fixture-failure-run' } })
+            : await Reflect.get(base, 'completeWorkflowTurn').call(host, { runId: 'fixture-failure-run', submissionId: 'submission' }),
+        catch: (cause) => cause instanceof Error ? cause.message : String(cause),
+      })
+      return Response.json({ reasons, events, discarded, rpcError: invoked.isErr() ? invoked.error : null })
+    }
+    if (url.pathname === '/final-observation') {
+      const input = await request.json<{ mode: 'denied' | 'allowed' | 'default' }>()
+      let finished = 0
+      let discarded = 0
+      let cleared = false
+      let settled = false
+      const host = {
+        currentRunId: 'fixture-observation-run', aggUsage: null,
+        runConfig: () => ({ kind: 'fixture', logger: {} }),
+        runLogFields: () => null,
+        finishSettledTurn: async () => { settled = true },
+        authorizeFinalObservation: input.mode === 'default'
+          ? Reflect.get(RunSubAgentBase.prototype, 'authorizeFinalObservation')
+          : async () => input.mode === 'allowed' ? Result.ok(undefined) : Result.err(new Error('Denied retained context')),
+        aiObservation: {
+          finishTurn: () => { finished++ }, discardTurn: () => { discarded++ },
+        },
+        clearTurnState: () => { cleared = true },
+      }
+      await Reflect.get(RunSubAgentBase.prototype, 'onChatResponse').call(host, {
+        status: 'completed', message: { parts: [{ type: 'text', text: 'RETAINED_PRIVATE_RESULT' }] },
+      })
+      return Response.json({ finished, discarded, cleared, settled })
+    }
     if (url.pathname === '/audience-fault') {
       const input = await request.json<{
         workspaceId: string
+        agentId: string
+        issueId: string
+        runId: string
         failRead: boolean
         failPersist?: boolean
         beforeTurn?: boolean
@@ -100,6 +483,7 @@ export default {
         initializeEmpty: boolean,
       ) => Promise<{ isErr(): boolean; error?: { code: string } }>
       const host = {
+        errorForOutput: async (_runId: string, error: unknown) => error,
         getConfig: () => null,
         getMessages: async () => {
           cacheReads++
@@ -134,8 +518,11 @@ export default {
               Reflect.get(IssueRunSubAgent.prototype, 'beforeTurn').call(
                 {
                   ...host,
-                  currentRunId: 'fault-run',
+                  currentRunId: input.runId,
                   runConfig: () => ({ agentClass: 'IssueRunSubAgent' }),
+                  parentPath: [{ name: input.agentId }],
+                  name: input.issueId,
+                  env,
                   loadTurnContext: async () => Result.ok(loaded),
                   applyRunBoundaryGuards: async () => Result.ok('continue'),
                   prepareRun: (
@@ -143,7 +530,7 @@ export default {
                     initializeEmpty: boolean,
                   ) => guard.call(host, turnLoaded, initializeEmpty),
                 },
-                { body: { run_id: 'fault-run' } },
+                { body: { run_id: input.runId } },
               ),
             catch: (error) => error as { code: string },
           })
@@ -288,6 +675,8 @@ export default {
                 // injection floor; authorization alone selects visible items.
                 body: [
                   input.label,
+                  'Start this automation run using the injected automation context. Complete the task directly, then call complete_automation. Respect the injected closure controls: do not create issues, update GitHub, draft PRs, update QA artifacts, or mutate source unless the run payload explicitly enables that closure action.',
+                  'Resume this automation run using the injected automation context. Complete required work, then call complete_automation with the final result.',
                   'Start this issue run using the injected issue context. Produce a useful work product, ask one focused question, mark blocked, or decompose into child issues.',
                   'Resume this issue run using the latest issue context. If the user answered a pending question, use that answer now.',
                 ].join('\n'),
@@ -309,6 +698,61 @@ export default {
       )
       return Response.json(item)
     }
+    if (url.pathname === '/writeback-origin') {
+      const input = await request.json<{
+        agentId: string
+        claimedAgentId: string
+        runKind: 'issue' | 'automation'
+        runId: string
+        originObjectId: string
+        workspaceId: string
+        ownerUserId: string
+      }>()
+      const agent = await getAgentByName(env.AgentDO, input.agentId)
+      const facet = await getSubAgentByName(
+        agent,
+        BrainWriteBackSubAgent,
+        `probe:${crypto.randomUUID()}`,
+      )
+      const result = await Result.tryPromise({
+        try: () =>
+          facet.runWriteBack({
+            ...input,
+            agentId: input.claimedAgentId,
+            summary: 'Origin binding probe.',
+          }),
+        catch: (cause) => String(cause),
+      })
+      return Response.json(
+        result.match({
+          ok: (value) => ({ ok: true, value }),
+          err: (error) => ({ ok: false, error }),
+        }),
+      )
+    }
+    if (url.pathname === '/automation-turn' || url.pathname === '/issue-turn') {
+      const input = await request.json<{
+        agentId: string
+        issueId: string
+        runId: string
+        mode: 'start' | 'resume'
+        turn: number
+      }>()
+      const agent = await getAgentByName(env.AgentDO, input.agentId)
+      const result = await Result.tryPromise({
+        try: () =>
+          url.pathname === '/automation-turn'
+            ? agent.executeAutomationRunTurn(input)
+            : agent.executeRunTurn(input),
+        catch: (cause) => String(cause),
+      })
+      return Response.json(
+        result.match({
+          ok: (value) => ({ ok: true, value }),
+          err: (error) => ({ ok: false, error }),
+        }),
+      )
+    }
     if (url.pathname === '/writeback') {
       const input = await request.json<{
         agentId: string
@@ -326,6 +770,7 @@ export default {
         await facet.runWriteBack({
           ...input,
           runKind: 'automation',
+          originObjectId: input.runId,
           summary: 'Inspect G06 knowledge. No new durable claim is present.',
         }),
       )
@@ -359,13 +804,17 @@ export default {
         }),
       )
     }
-    if (url.pathname === '/resume') {
+    if (url.pathname === '/resume' || url.pathname === '/automation-resume') {
       const workflow = await env.RUN_WORKFLOW.get(input.runId)
       await workflow.sendEvent({
         type: 'run-control',
         payload: { kind: 'resume' },
       })
       return Response.json({ resumed: input.runId })
+    }
+    if (url.pathname === '/automation-start') {
+      await agent.startAutomationRunWorkflow({ runId: input.runId })
+      return Response.json({ started: input.runId })
     }
     await agent.startIssueRunWorkflow({
       issueId: input.issueId,

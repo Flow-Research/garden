@@ -1,3 +1,10 @@
+import {
+  verifyBrainRunBinding,
+  authorizeBrainRunTool,
+  ensureBrainRunHistory,
+  loadBrainRunAuthority,
+  type BrainRunOrigin,
+} from './brain-run-authority'
 import type {
   ChatResponseResult,
   StepContext,
@@ -210,6 +217,87 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   private currentLogContext: GardenLogFields | null = null
   private currentTrace: AutomationTraceEvent[] = []
 
+  private brainInjectionAllowed = false
+  private currentBrainOrigin: BrainRunOrigin | null = null
+
+  protected override async verifyRunEntry(runId: string) {
+    return (
+      await verifyBrainRunBinding(this.env.HYPERDRIVE.connectionString, {
+        runKind: 'automation',
+        runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      })
+    )
+      .map(() => undefined)
+      .mapError((cause) =>
+        this.runError({
+          code: 'runtime_failed',
+          message: cause.message,
+        }),
+      )
+  }
+
+  /** Revalidates the origin's durable exposure before a separate model sees its summary. */
+  async validateBrainSummaryAccess(runId: string): Promise<void> {
+    const validated = await Result.tryPromise({
+      try: async () => {
+        const runtimeName = this.parentPath.at(-1)?.name ?? ''
+        const binding = await verifyBrainRunBinding(
+          this.env.HYPERDRIVE.connectionString,
+          { runKind: 'automation', runId, runtimeName, objectId: this.name },
+        )
+        if (binding.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: binding.error.message,
+          })
+        const access = await this.ensureBrainGrantHistory({
+          runKind: 'automation',
+          runId,
+          runtimeName,
+          objectId: this.name,
+          workspaceId: binding.value.context.workspaceId,
+          agentId: binding.value.context.agentId,
+          ownerUserId: binding.value.context.userId ?? null,
+        })
+        if (access.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: access.error.message,
+          })
+      },
+      catch: (cause) =>
+        cause instanceof AutomationRunSubAgentError && cause.cause === undefined
+          ? cause
+          : this.runError({
+              code: 'runtime_failed',
+              message: 'Brain summary authority is unavailable.',
+            }),
+    })
+    if (validated.isErr()) throw validated.error
+  }
+
+  /** Checks retained context before any outward dispatch, trace or final output. */
+  private async ensureBrainOutputAuthority(runId: string) {
+    return (
+      await Result.tryPromise({
+        try: () => this.validateBrainSummaryAccess(runId),
+        catch: () =>
+          this.runError({
+            code: 'runtime_failed',
+            message: 'Brain output authority is unavailable.',
+          }),
+      })
+    ).tapError(() => {
+      console.info('agent_runtime.brain_output_denied', { runId })
+    })
+  }
+
+  protected override async authorizeFinalObservation(runId: string) {
+    return this.ensureBrainOutputAuthority(runId)
+  }
+
   protected runConfig() {
     return AUTOMATION_RUN_CONFIG
   }
@@ -243,6 +331,15 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   }
 
   protected activateRun(loaded: LoadedAutomationRunContext) {
+    this.currentBrainOrigin = {
+      runKind: 'automation',
+      runId: loaded.run.id,
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      workspaceId: loaded.run.workspaceId,
+      agentId: loaded.run.agentId,
+      ownerUserId: loaded.agent.ownerUserId,
+    }
     this.currentBrowserAllowed = automationAllowsBrowser(loaded.automation)
     this.applyClosureControls(loaded)
   }
@@ -274,7 +371,37 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     }
   }
 
+  /** Reuses shared prepare hook to deny revoked retained Brain context before every turn. */
+  protected override async prepareRun(
+    loaded: LoadedAutomationRunContext,
+    _initializeEmpty: boolean,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    this.brainInjectionAllowed = false
+    const origin: BrainRunOrigin = {
+      runKind: 'automation',
+      runId: loaded.run.id,
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      workspaceId: loaded.run.workspaceId,
+      agentId: loaded.run.agentId,
+      ownerUserId: loaded.agent.ownerUserId,
+    }
+    const history = await this.ensureBrainGrantHistory(origin)
+    if (history.isErr()) return history
+    const read = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      origin,
+      'brain_search',
+    )
+    if (read.isErr()) return Result.ok(undefined)
+    const exposed = await this.ensureBrainGrantHistory(origin, 'brain_search')
+    if (exposed.isErr()) return exposed
+    this.brainInjectionAllowed = true
+    return Result.ok(undefined)
+  }
+
   protected brainInjectionIdentity(loaded: LoadedAutomationRunContext) {
+    if (!this.brainInjectionAllowed) return null
     return {
       workspaceId: loaded.run.workspaceId,
       userId: loaded.agent.ownerUserId,
@@ -290,6 +417,17 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ownerUserId: string | null
     summary: string
   }> {
+    const grant = await Result.tryPromise({
+      try: () => this.validateBrainSummaryAccess(runId),
+      catch: (cause) => cause,
+    })
+    if (grant.isErr()) {
+      console.info('agent_runtime.brain_summary_denied', {
+        runId,
+        reason: 'brain_summary_authority_unavailable',
+      })
+      return { workspaceId: null, ownerUserId: null, summary: '' }
+    }
     const result = await Result.tryPromise({
       try: async () => {
         const [row] = await this.getDb()
@@ -345,6 +483,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ctx: StepContext,
     usage: RunUsageSnapshot,
   ) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return
+
     await this.recordTrace(runId, {
       ts: new Date().toISOString(),
       kind: 'step_finished',
@@ -537,22 +678,17 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
         },
         ai: this.env.AI,
         files: this.env.BRAIN_FILES,
-        getContext: () => {
-          const ctx = this.currentLogContext
-          if (ctx === null) return null
-          const { workspaceId, agentId, runId } = ctx
-          if (
-            typeof workspaceId !== 'string' ||
-            typeof agentId !== 'string' ||
-            typeof runId !== 'string'
-          ) {
-            return null
-          }
-          return {
-            workspaceId,
-            agentId,
-            runId,
-          }
+        getContext: async (toolName) => {
+          const origin = this.currentBrainOrigin
+          if (origin === null) return null
+          const allowed = await authorizeBrainRunTool(
+            this.env.HYPERDRIVE.connectionString,
+            origin,
+            toolName,
+          )
+          if (allowed.isErr()) return null
+          const history = await this.ensureBrainGrantHistory(origin, toolName)
+          return history.isOk() ? allowed.value : null
         },
       }),
       ...createBrowserTools({
@@ -565,6 +701,11 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   override async beforeToolCall(ctx: ToolCallContext) {
     const activeResult = await this.assertRunActiveForTool()
     if (activeResult.isErr()) throw activeResult.error
+
+    const outputAuthority = await this.ensureBrainOutputAuthority(
+      this.currentRunId ?? '',
+    )
+    if (outputAuthority.isErr()) throw outputAuthority.error
 
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
@@ -592,6 +733,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   override async afterToolCall(ctx: ToolCallResultContext) {
     const runId = this.currentRunId
     if (!runId) return
+
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return
 
     automationRunLogger[ctx.success ? 'info' : 'warn'](
       'automation_run.tool.finished',
@@ -625,6 +769,20 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
    * failed when there is none.
    */
   protected async finishSettledTurn(runId: string, result: ChatResponseResult) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) {
+      const closed = await this.forceCloseFailed(
+        runId,
+        'brain_output_authority_denied',
+      )
+      if (closed.isErr())
+        this.logRunWarning('close_failed', {
+          runId,
+          ...errorFields(closed.error),
+        })
+      return
+    }
+
     const statusResult = await this.readRunStatus(runId)
     if (
       statusResult.isOk() &&
@@ -786,6 +944,23 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   protected async loadTurnContext(
     runId: string,
   ): Promise<ResultValue<LoadedAutomationRunContext, RunSubAgentError>> {
+    const binding = await verifyBrainRunBinding(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'automation',
+        runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      },
+    )
+    if (binding.isErr())
+      return Result.err(
+        this.runError({
+          code: 'runtime_failed',
+          message: binding.error.message,
+          cause: binding.error,
+        }),
+      )
     const db = this.getDb()
     const result = await Result.tryPromise({
       try: async () => {
@@ -888,6 +1063,47 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
         availableAgents: row.availableAgents,
       }),
     })
+  }
+
+  /** Rejects revoked retained context before submission and before model use. */
+  private async ensureBrainGrantHistory(
+    origin: BrainRunOrigin,
+    exposeTool?: string,
+  ) {
+    const authority = await loadBrainRunAuthority(
+      this.env.HYPERDRIVE.connectionString,
+      origin,
+    )
+    if (authority.isErr())
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message: authority.error.message,
+          cause: authority.error,
+        }),
+      )
+    return (
+      await ensureBrainRunHistory({
+        identity: `${origin.runKind}:${origin.workspaceId}:${origin.agentId}:${origin.ownerUserId}`,
+        permissions: authority.value.permissions,
+        exposeTool,
+        marker: this.getConfig<{ brainGrantHistory?: unknown }>()
+          ?.brainGrantHistory,
+        readDurableHistory: () => this.session.getHistory(),
+        persist: (brainGrantHistory) =>
+          this.configure({
+            ...this.getConfig<Record<string, unknown>>(),
+            brainGrantHistory,
+          }),
+      })
+    ).mapError(
+      (error) =>
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message: error.message,
+          cause: error,
+        }),
+    )
   }
 
   private renderContextBlock(input: {
@@ -1201,6 +1417,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       source: 'assistant' | 'complete_automation'
     },
   ): Promise<ResultValue<void, RunSubAgentError>> {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return outputAuthority
+
     const db = this.getDb()
     const now = new Date()
     const output = completion.output.trim()
@@ -1420,6 +1639,8 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     super.clearTurnState()
     this.currentBrowserAllowed = false
     this.currentLogContext = null
+    this.currentBrainOrigin = null
+    this.brainInjectionAllowed = false
     this.currentTrace = []
   }
 

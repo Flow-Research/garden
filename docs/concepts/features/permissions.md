@@ -87,3 +87,17 @@ A chat agent's issue tools act for the person who owns the chat. `list_issues`, 
 - Do not hide approval-required behavior inside codemode. Expose actions that may pause for approval as direct outer tools.
 - Keep connector token injection inside Executor. Agent Durable Objects never see upstream tokens.
 - Use `better-result` for new TypeScript error handling.
+
+## Brain grants for issue and automation runs
+
+Issue and automation runs read the current agent permissions and issue override before each Brain operation. The check binds the run to its workspace, agent, owner, and originating runtime object. An exact agent ID takes precedence over a hostname. A hostname must identify one agent.
+
+The runtime stores a record of the Brain tools exposed to a run in the run facet configuration. Before it resumes retained history or sends a summary to a separate write-back model, it checks that record against current permissions. Missing or invalid records cannot authorize retained history. Permission removal can therefore block a resume even when the next action does not call a Brain tool. The runtime retains the history for review; it does not rewrite it.
+
+Automatic issue context uses organization memory. Automatic context requires `brain_search`. A write-back run requires both read and write permission from its originating run. Each later Brain operation checks its own permission again. These checks use the existing empty-list permission rule above.
+
+An active issue or automation turn also checks its retained Brain grants before it dispatches any tool, records tool observations, or stores final output. This prevents a later action from copying context whose read grant was removed. A denial retains the transcript for review and stops the affected output. Workflow still owns run recovery.
+
+Final analytics observations require the same fresh authority. Denied observations are discarded. Model-generation analytics for issue and automation runs contain metadata rather than prompts or results, because a provider callback can complete after a permission change. These rules do not recall requests already sent to a model provider or remove output published before the change.
+
+Failure output uses the same authority check. If current retained-context authority is unavailable, Garden stores and sends a fixed failure reason rather than the raw runtime error. This covers run failure records, Workflow error events, and error responses from run RPCs. The status-only inspection RPC returns a fixed error message. Model-generation analytics use an explicit metadata list, fixed error text, and no exception autocapture for issue and automation runs.

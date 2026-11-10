@@ -32,6 +32,11 @@ const candidateProductionFiles = [
   'run-sub-agent-base.ts',
   'issue-run-sub-agent.ts',
   'issue-brain-audience.ts',
+  'automation-run-sub-agent.ts',
+  'brain-run-authority.ts',
+  'brain-write-back.ts',
+  'chat-sub-agent-tools.ts',
+  'agent-do.ts',
 ]
 const lifecycleMethods = [
   'executeWorkflowTurn',
@@ -61,7 +66,7 @@ ${className}.prototype.${method} = async function(...args) {
   const target = ${JSON.stringify(counters[method] ?? null)};
   const before = target ? globalThis.__coverage__[target.path].f[target.key] : null;
   return await Promise.resolve(__g06Original${index}.apply(this, args)).finally(() => {
-    const snapshot = __g06Snapshot('${className}.${method}', args[0]?.runId ?? args[1]?.runId ?? args[0]?.metadata?.runId ?? this.currentRunId ?? this.getConfig()?.runId ?? this.name);
+    const snapshot = __g06Snapshot('${className}.${method}', ('${method}' === 'validateBrainSummaryAccess' ? args[0] : undefined) ?? args[0]?.runId ?? args[1]?.runId ?? args[0]?.metadata?.runId ?? this.currentRunId ?? this.getConfig()?.runId ?? this.name);
     snapshot.target = target ? {...target, before, after: globalThis.__coverage__[target.path].f[target.key]} : null;
     snapshot.identityKind = '${className}' === 'ChatSubAgent' ? 'thread' : 'run';
     snapshot.invocation = '${method}' === 'executeWorkflowTurn' ? String(args[1]?.turn) + ':' + args[0] : '${method}' === 'completeWorkflowTurn' ? args[0]?.submissionId : '${method}';
@@ -145,6 +150,12 @@ export async function startInstrumentedHarness(
     }
   }
   const isBaseline = process.env.G06_NATIVE_BASELINE === '1'
+  const isG08Baseline = process.env.G08_NATIVE_BASELINE === '1'
+  if (
+    isG08Baseline &&
+    existsSync(join(root, 'packages/agent-runtime/src/brain-run-authority.ts'))
+  )
+    throw new Error('G08 baseline must not include candidate grant helper')
   if (
     isBaseline &&
     existsSync(join(root, 'packages/agent-runtime/src/issue-brain-audience.ts'))
@@ -153,7 +164,9 @@ export async function startInstrumentedHarness(
       'Native baseline requires original source without the new audience helper',
     )
   const productionFiles = candidateProductionFiles.filter(
-    (file) => !isBaseline || file !== 'issue-brain-audience.ts',
+    (file) =>
+      (!isBaseline || file !== 'issue-brain-audience.ts') &&
+      (!isG08Baseline || file !== 'brain-run-authority.ts'),
   )
   const directory = await mkdtemp(join(tmpdir(), 'garden-g06-instrumented-'))
   await cp(
@@ -231,25 +244,30 @@ export async function startInstrumentedHarness(
     }
     code += `\nglobalThis.__g06Metadata ??= {}; globalThis.__g06Metadata[${JSON.stringify(path)}] = ${JSON.stringify(metadata[path])};\n`
     const className =
-      file === 'issue-run-sub-agent.ts'
-        ? 'IssueRunSubAgent'
-        : 'BrainWriteBackSubAgent'
-    // Counters are located where each method is declared; the wrapper is
-    // installed on the class that owns the scenario boundary.
+      file === 'automation-run-sub-agent.ts'
+        ? 'AutomationRunSubAgent'
+        : file === 'issue-run-sub-agent.ts'
+          ? 'IssueRunSubAgent'
+          : 'BrainWriteBackSubAgent'
+    // Locate inherited lifecycle counters in the base and new origin guards in each facet.
+    const hasGrantGuard = !isBaseline && !isG08Baseline
+    const isRunFacet = file === 'issue-run-sub-agent.ts' || file === 'automation-run-sub-agent.ts'
     const counterMethods =
       file === 'run-sub-agent-base.ts'
         ? lifecycleMethods
-        : file === 'brain-write-back-sub-agent.ts'
-          ? ['runWriteBack']
-          : []
+        : isRunFacet && hasGrantGuard
+          ? ['validateBrainSummaryAccess']
+          : file === 'brain-write-back-sub-agent.ts'
+            ? ['runWriteBack']
+            : []
     const methods =
-      file === 'issue-run-sub-agent.ts'
-        ? lifecycleMethods
+      isRunFacet
+        ? [...lifecycleMethods, ...(hasGrantGuard ? ['validateBrainSummaryAccess'] : [])]
         : file === 'brain-write-back-sub-agent.ts'
           ? ['runWriteBack']
           : []
     const targetCounters: Record<string, { path: string; key: string }> =
-      file === 'issue-run-sub-agent.ts' ? lifecycleCounters : {}
+      isRunFacet ? { ...lifecycleCounters } : {}
     for (const method of counterMethods) {
       const lines = compiled.code.split('\n')
       const matching = lines.flatMap((line, index) =>
@@ -301,7 +319,12 @@ export async function startInstrumentedHarness(
         scenario,
         expectedRoles,
         isBaseline,
-        absentBaselineFiles: isBaseline ? ['issue-brain-audience.ts'] : [],
+        isG08Baseline,
+        absentBaselineFiles: isBaseline
+          ? ['issue-brain-audience.ts']
+          : isG08Baseline
+            ? ['brain-run-authority.ts']
+            : [],
         metadata,
         templates,
       },
@@ -333,7 +356,15 @@ export async function startInstrumentedHarness(
     role: string,
     runId: string,
     invocation = role.split('.').at(-1)!,
+    distinctRequest = false,
   ) => {
+    const existing = expectedBoundaries.find(
+      (item) =>
+        item.role === role &&
+        item.runId === runId &&
+        item.invocation === invocation,
+    )
+    if (distinctRequest && existing) existing.count += 1
     if (
       !expectedBoundaries.some(
         (item) =>
@@ -428,33 +459,96 @@ export async function startInstrumentedHarness(
       )
     },
     fetch: (path: string, init?: Parameters<typeof harness.fetch>[1]) => {
-      if (['/start', '/resume', '/chat', '/writeback'].includes(path)) {
+      if (
+        [
+          '/start',
+          '/resume',
+          '/automation-start',
+          '/automation-resume',
+          '/automation-turn',
+          '/issue-turn',
+          '/writeback-origin',
+          '/summary-probe',
+          '/chat',
+          '/writeback',
+        ].includes(path)
+      ) {
         if (typeof init?.body !== 'string')
           throw new Error('Native boundary input must declare its identity')
         const input = JSON.parse(init.body) as {
           runId: string
           threadId: string
+          runKind?: 'issue' | 'automation'
+          mode?: 'start' | 'resume'
+          turn?: number
+          expectCompletion?: boolean
+          expectOriginValidation?: boolean
+          count?: number
         }
-        if (path === '/chat')
+        if (path === '/summary-probe') {
+          for (let index = 0; index < (input.count ?? 0); index++)
+            requireBoundary(
+              'IssueRunSubAgent.validateBrainSummaryAccess',
+              input.runId,
+              'validateBrainSummaryAccess',
+              true,
+            )
+        } else if (path === '/chat')
           requireBoundary('ChatSubAgent.onChatResponse', input.threadId)
-        else if (path === '/writeback')
-          requireBoundary('BrainWriteBackSubAgent.runWriteBack', input.runId)
-        else {
-          const turn = path === '/start' ? 0 : (turns.get(input.runId) ?? 0) + 1
-          turns.set(input.runId, turn)
-          const mode = path === '/start' ? 'start' : 'resume'
+        else if (path === '/writeback' || path === '/writeback-origin') {
           requireBoundary(
-            'IssueRunSubAgent.executeWorkflowTurn',
+            'BrainWriteBackSubAgent.runWriteBack',
+            input.runId,
+            'runWriteBack',
+            true,
+          )
+          const validationRole = `${input.runKind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.validateBrainSummaryAccess`
+          if (
+            input.expectOriginValidation !== false &&
+            expectedRoles.includes(validationRole)
+          )
+            requireBoundary(
+              validationRole,
+              input.runId,
+              'validateBrainSummaryAccess',
+              true,
+            )
+        } else {
+          const start = input.mode === 'start' || path.endsWith('start')
+          const runClass = path.startsWith('/automation-')
+            ? 'AutomationRunSubAgent'
+            : 'IssueRunSubAgent'
+          const kind = path.startsWith('/automation-') ? 'automation' : 'issue'
+          const turn =
+            input.turn ?? (start ? 0 : (turns.get(input.runId) ?? 0) + 1)
+          turns.set(input.runId, turn)
+          const mode = start ? 'start' : 'resume'
+          requireBoundary(
+            `${runClass}.executeWorkflowTurn`,
             input.runId,
             `${turn}:${mode}`,
           )
-          if (expectedRoles.includes('IssueRunSubAgent.completeWorkflowTurn')) {
+          if (
+            input.expectCompletion !== false &&
+            expectedRoles.includes(`${runClass}.completeWorkflowTurn`)
+          ) {
             requireBoundary(
-              'IssueRunSubAgent.completeWorkflowTurn',
+              `${runClass}.completeWorkflowTurn`,
               input.runId,
-              `issue-run:${input.runId}:${turn}:${mode}`,
+              `${kind}-run:${input.runId}:${turn}:${mode}`,
             )
-            requireBoundary('BrainWriteBackSubAgent.runWriteBack', input.runId)
+            if (
+              expectedRoles.includes(`${runClass}.validateBrainSummaryAccess`)
+            )
+              requireBoundary(
+                `${runClass}.validateBrainSummaryAccess`,
+                input.runId,
+              )
+            if (expectedRoles.includes('BrainWriteBackSubAgent.runWriteBack'))
+              requireBoundary(
+                'BrainWriteBackSubAgent.runWriteBack',
+                input.runId,
+              )
           }
         }
       }
@@ -526,7 +620,11 @@ export async function startInstrumentedHarness(
               `Missing native role/run receipts: ${JSON.stringify(missing)}`,
             )
           const response = await harness.fetch('/coverage')
-          if (!response.ok) throw new Error('Root coverage snapshot failed')
+          if (!response.ok) {
+            const failure = { status: response.status, body: await response.text(), logs: harness.getLogs() }
+            await writeFile(join(directory, 'coverage-snapshot-failure.json'), JSON.stringify(failure, null, 2))
+            throw new Error(`Root coverage snapshot failed (${failure.status}): ${failure.body.slice(0, 1000)}`)
+          }
           const snapshots: Snapshot[] = [
             ...receipts,
             (await response.json()) as Snapshot,
