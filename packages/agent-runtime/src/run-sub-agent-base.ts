@@ -344,6 +344,13 @@ export abstract class RunSubAgentBase<
     return Result.ok(undefined)
   }
 
+  /** Run facets can refuse the final analytics copy of retained context. */
+  protected async authorizeFinalObservation(
+    _runId: string,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
   /**
    * Returns the run's workspace/owner and a short product summary for post-turn
    * Brain write-back. Defaults keep run kinds that do not write back on the
@@ -694,7 +701,9 @@ export abstract class RunSubAgentBase<
       await this.finishSettledTurn(runId, result)
     }
 
-    this.aiObservation.finishTurn(result)
+    const observationAuthority = await this.authorizeFinalObservation(runId)
+    if (observationAuthority.isOk()) this.aiObservation.finishTurn(result)
+    else this.aiObservation.discardTurn()
     this.clearTurnState()
   }
 

@@ -219,6 +219,27 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     if (access.isErr()) throw access.error
   }
 
+  /** Checks retained context before any outward dispatch, trace or final output. */
+  private async ensureBrainOutputAuthority(runId: string) {
+    return (
+      await Result.tryPromise({
+        try: () => this.validateBrainSummaryAccess(runId),
+        catch: (cause) =>
+          this.runError({
+            code: 'runtime_failed',
+            message: 'Brain output authority is unavailable.',
+            cause,
+          }),
+      })
+    ).tapError(() => {
+      console.info('agent_runtime.brain_output_denied', { runId })
+    })
+  }
+
+  protected override async authorizeFinalObservation(runId: string) {
+    return this.ensureBrainOutputAuthority(runId)
+  }
+
   protected runConfig() {
     return ISSUE_RUN_CONFIG
   }
@@ -530,7 +551,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   override async beforeToolCall(ctx: ToolCallContext) {
     const run = this.currentRunState
-    if (!run) return undefined
+    if (!run)
+      throw this.runError({
+        code: 'invalid_state',
+        message: 'No active issue run.',
+      })
 
     if (this.hasTerminalResolutionAction()) {
       return {
@@ -546,6 +571,9 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
     const activeResult = await this.assertRunActiveForTool(run.runId)
     if (activeResult.isErr()) throw activeResult.error
+
+    const outputAuthority = await this.ensureBrainOutputAuthority(run.runId)
+    if (outputAuthority.isErr()) throw outputAuthority.error
 
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
@@ -590,6 +618,9 @@ export class IssueRunSubAgent extends RunSubAgentBase<
   override async afterToolCall(ctx: ToolCallResultContext) {
     const run = this.currentRunState
     if (!run) return
+
+    const outputAuthority = await this.ensureBrainOutputAuthority(run.runId)
+    if (outputAuthority.isErr()) return
 
     const output = ctx.success ? objectOrNull(ctx.output) : null
     const ok = ctx.success && output?.ok !== false
@@ -644,6 +675,20 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     runId: string,
     _result: ChatResponseResult,
   ) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) {
+      const closed = await this.forceCloseFailed(
+        runId,
+        'brain_output_authority_denied',
+      )
+      if (closed.isErr())
+        this.logRunWarning('close_failed', {
+          runId,
+          ...errorFields(closed.error),
+        })
+      return
+    }
+
     const guardResult = await this.enforceResolutionGuard(runId)
     if (guardResult.isErr()) {
       this.logRunWarning('resolution_guard_failed', {

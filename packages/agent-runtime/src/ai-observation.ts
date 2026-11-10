@@ -121,6 +121,8 @@ export class AiObservation {
     if (!state) return undefined
 
     return {
+      // Grant-bearing runs cannot authorize a later provider callback to copy retained content.
+      privacyMode: state.runtimeKind !== 'chat',
       distinctId: state.distinctId,
       traceId: state.traceId,
       workspaceId: state.workspaceId,
@@ -202,6 +204,11 @@ export class AiObservation {
 
   stepFinished(_ctx: StepContext) {
     if (this.state) this.state.counts.steps += 1
+  }
+
+  /** Drops retained inputs and tool spans without an analytics emission. */
+  discardTurn() {
+    this.state = null
   }
 
   finishTurn(result: ChatResponseResult) {

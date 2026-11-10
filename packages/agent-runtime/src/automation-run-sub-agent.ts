@@ -258,6 +258,27 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     if (access.isErr()) throw access.error
   }
 
+  /** Checks retained context before any outward dispatch, trace or final output. */
+  private async ensureBrainOutputAuthority(runId: string) {
+    return (
+      await Result.tryPromise({
+        try: () => this.validateBrainSummaryAccess(runId),
+        catch: (cause) =>
+          this.runError({
+            code: 'runtime_failed',
+            message: 'Brain output authority is unavailable.',
+            cause,
+          }),
+      })
+    ).tapError(() => {
+      console.info('agent_runtime.brain_output_denied', { runId })
+    })
+  }
+
+  protected override async authorizeFinalObservation(runId: string) {
+    return this.ensureBrainOutputAuthority(runId)
+  }
+
   protected runConfig() {
     return AUTOMATION_RUN_CONFIG
   }
@@ -446,6 +467,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ctx: StepContext,
     usage: RunUsageSnapshot,
   ) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return
+
     await this.recordTrace(runId, {
       ts: new Date().toISOString(),
       kind: 'step_finished',
@@ -662,6 +686,11 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     const activeResult = await this.assertRunActiveForTool()
     if (activeResult.isErr()) throw activeResult.error
 
+    const outputAuthority = await this.ensureBrainOutputAuthority(
+      this.currentRunId ?? '',
+    )
+    if (outputAuthority.isErr()) throw outputAuthority.error
+
     const gateResult = this.assertToolAllowed(ctx.toolName)
     if (gateResult.isErr()) throw gateResult.error
 
@@ -688,6 +717,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   override async afterToolCall(ctx: ToolCallResultContext) {
     const runId = this.currentRunId
     if (!runId) return
+
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return
 
     automationRunLogger[ctx.success ? 'info' : 'warn'](
       'automation_run.tool.finished',
@@ -721,6 +753,20 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
    * failed when there is none.
    */
   protected async finishSettledTurn(runId: string, result: ChatResponseResult) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) {
+      const closed = await this.forceCloseFailed(
+        runId,
+        'brain_output_authority_denied',
+      )
+      if (closed.isErr())
+        this.logRunWarning('close_failed', {
+          runId,
+          ...errorFields(closed.error),
+        })
+      return
+    }
+
     const statusResult = await this.readRunStatus(runId)
     if (
       statusResult.isOk() &&
@@ -1355,6 +1401,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       source: 'assistant' | 'complete_automation'
     },
   ): Promise<ResultValue<void, RunSubAgentError>> {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return outputAuthority
+
     const db = this.getDb()
     const now = new Date()
     const output = completion.output.trim()

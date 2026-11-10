@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { createWorkersAISpy, createOpenAICompatibleSpy } = vi.hoisted(() => ({
-  createWorkersAISpy: vi.fn(),
-  createOpenAICompatibleSpy: vi.fn(),
-}))
+const { createWorkersAISpy, createOpenAICompatibleSpy, withTracingSpy } =
+  vi.hoisted(() => ({
+    withTracingSpy: vi.fn(),
+    createWorkersAISpy: vi.fn(),
+    createOpenAICompatibleSpy: vi.fn(),
+  }))
+
+vi.mock('@posthog/ai/vercel', () => ({ withTracing: withTracingSpy }))
+vi.mock('posthog-node', () => ({ PostHog: class {} }))
 
 vi.mock('workers-ai-provider', () => ({
   createWorkersAI: createWorkersAISpy,
@@ -21,11 +26,36 @@ import {
 
 describe('createAgentModel', () => {
   beforeEach(() => {
+    withTracingSpy.mockReset()
+    withTracingSpy.mockReturnValue({ id: 'traced' })
     createWorkersAISpy.mockReset()
     createWorkersAISpy.mockReturnValue(vi.fn(() => ({ id: 'model' })))
     createOpenAICompatibleSpy.mockReset()
     createOpenAICompatibleSpy.mockReturnValue(vi.fn(() => ({ id: 'local' })))
   })
+
+  it.each([true, false, undefined])(
+    'passes content privacy to the generation adapter: %s',
+    (privacyMode) => {
+      createAgentModel({
+        ai: {} as Ai,
+        env: { VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: 'synthetic-test-token' },
+        tracing: {
+          distinctId: 'owner',
+          traceId: 'trace',
+          workspaceId: 'workspace',
+          properties: {},
+          waitUntil: () => {},
+          privacyMode,
+        },
+      })
+      expect(withTracingSpy).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        expect.objectContaining({ posthogPrivacyMode: privacyMode ?? false }),
+      )
+    },
+  )
 
   it('uses Workers AI directly when no gateway is configured', () => {
     const ai = {} as Ai

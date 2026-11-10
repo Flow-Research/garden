@@ -12,6 +12,7 @@ import {
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import * as schema from '@garden/db/schema'
 import { eq, sql } from 'drizzle-orm'
+import { Result } from 'better-result'
 
 const ownerId = crypto.randomUUID()
 const initiatorId = crypto.randomUUID()
@@ -33,6 +34,7 @@ let grantScenario:
   | {
       kind: 'issue' | 'automation'
       read: boolean
+      outward?: 'external' | 'assistant'
       revoke?: 'tool' | 'completion'
       retainWrite?: boolean
       neighborhood?: boolean
@@ -54,6 +56,7 @@ let revokedAtBrainRequest: number | undefined
 let dedupeRevocationRequest: string | undefined
 const modelBrainCounts: number[] = []
 let handoffCount = 0
+const externalEffects: string[] = []
 let mutationArmed = false
 let mutationBoundary: string | undefined
 const seededIds: string[] = []
@@ -61,6 +64,13 @@ const modelRequests: Array<{
   messages: Array<{ role: string; content?: unknown }>
   tools?: Array<{ function: { name: string } }>
 }> = []
+
+function fixtureToolResult(content: unknown): unknown {
+  return Result.try(() => JSON.parse(String(content))).match({
+    ok: (value: unknown) => value,
+    err: () => ({ ok: false, error: String(content) }),
+  })
+}
 
 /** Proves automatic injection independently of later explicit tool retrieval. */
 function readInjection(request: (typeof modelRequests)[number]) {
@@ -169,6 +179,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       modelMode = 'issue'
       grantScenario = undefined
       handoffCount = 0
+      externalEffects.length = 0
       mutationArmed = false
       mutationBoundary = undefined
       brainRequests = []
@@ -269,6 +280,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       model = createServer(async (request, response) => {
         let raw = ''
         for await (const chunk of request) raw += String(chunk)
+        if (request.url?.endsWith('/external')) {
+          externalEffects.push(raw)
+          response.writeHead(200).end('recorded')
+          return
+        }
         if (request.url?.endsWith('/handoff')) {
           handoffCount += 1
           if (grantScenario?.handoffRevoke) {
@@ -310,7 +326,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             const content =
               typeof message.content === 'string' ? message.content : ''
             if (message.role === 'tool') {
-              const result = JSON.parse(content) as {
+              // SDK-denied tools return a plain error string, not a JSON tool value.
+              const decoded = Result.try(() => JSON.parse(content))
+              if (decoded.isErr()) return []
+              const result = decoded.value as {
                 hits?: Array<{ id: string }>
                 items?: Array<{ id: string }>
               }
@@ -431,6 +450,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                       title: 'G08 grant evidence',
                       body: JSON.stringify(observations),
                     }
+            if (!readStep && grantScenario.outward === 'external' && n === 1) {
+              toolName = 'g08_external_publish'
+              args = { body: JSON.stringify(observations) }
+            }
+            if (!readStep && grantScenario.outward === 'assistant')
+              finished = true
             if (
               (grantScenario.revoke === 'tool' && readStep) ||
               (grantScenario.revoke === 'completion' && !readStep)
@@ -444,6 +469,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                       'create_work_product',
                       'complete_automation',
                       'ask_question',
+                      'g08_external_publish',
                       ...(grantScenario.retainWrite ? ['add_to_brain'] : []),
                       ...(grantScenario.neighborhood
                         ? ['brain_search', 'add_to_brain']
@@ -489,6 +515,18 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                       edge: 'G06_MUTATION_EDGE',
                     }
         }
+        // A synthetic agent stops after the runtime denies revoked context.
+        // The final text still exercises the independent settled-output guard.
+        if (
+          !writeback &&
+          revokedAtBrainRequest !== undefined &&
+          toolResults.some((message) =>
+            String(message.content).includes(
+              'Brain output authority is unavailable.',
+            ),
+          )
+        )
+          finished = true
         const chunk = {
           id: crypto.randomUUID(),
           object: 'chat.completion.chunk',
@@ -647,11 +685,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           ...(persistenceFault
             ? {
                 G08_GRANT_FAULT_KIND: persistenceFault[1]!,
-                G08_GRANT_FAULT_AT: String(
-                  { 'before-turn': 2, injection: 3, tool: 4 }[
-                    persistenceFault[2] as 'before-turn' | 'injection' | 'tool'
-                  ],
-                ),
+                G08_GRANT_FAULT_PHASE: persistenceFault[2]!,
               }
             : {}),
           EXECUTOR_SECRET_KEY: 'g06-synthetic-encryption-key-only',
@@ -706,11 +740,24 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           rolesByScenario[
             `simulates ${kind} ${phase} provenance persistence failure`
           ] = [
-            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.${phase === 'tool' ? 'completeWorkflowTurn' : 'executeWorkflowTurn'}`,
             ...(phase === 'tool'
               ? ['BrainWriteBackSubAgent.runWriteBack']
               : []),
           ]
+      for (const kind of ['issue', 'automation'])
+        for (const revoked of [false, true])
+          rolesByScenario[
+            `guards ${kind} external effects revoked=${revoked}`
+          ] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+          ]
+      for (const revoked of [false, true])
+        rolesByScenario[
+          `guards automation assistant-only output revoked=${revoked}`
+        ] = ['AutomationRunSubAgent.completeWorkflowTurn']
+      for (const mode of ['denied', 'allowed', 'default'])
+        rolesByScenario[`guards final observation mode=${mode}`] = []
       for (const form of ['legacy', 'uuid'])
         rolesByScenario[
           `resolves ${form} runtime aliases without accepting missing principals`
@@ -1070,7 +1117,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .from(resultTable)
             .where(eq(resultTable.id, input.runId))
           expect(result?.status, result?.error ?? 'Missing run').toBe(
-            kind === 'issue' ? 'succeeded' : 'completed',
+            policy.startsWith('revoked')
+              ? 'failed'
+              : kind === 'issue'
+                ? 'succeeded'
+                : 'completed',
           )
           if (!read) expect(brainRequests.length).toBe(baselineReads)
           if (policy.startsWith('revoked'))
@@ -1078,7 +1129,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
               .poll(() => JSON.stringify(harness!.getLogs()), {
                 timeout: 60_000,
               })
-              .toContain('agent_runtime.brain_summary_denied')
+              .toContain('agent_runtime.brain_output_denied')
           else
             await expect
               .poll(() => JSON.stringify(harness!.getLogs()), {
@@ -1100,10 +1151,19 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           if (policy.startsWith('revoked')) {
             expect(revokedAtBrainRequest).toBeTypeOf('number')
             expect(brainRequests.length).toBe(revokedAtBrainRequest)
-            if (policy === 'revoked-tool')
-              expect(JSON.stringify(modelRequests)).toContain(
-                'No active run context',
-              )
+            expect(
+              await database!.db.select().from(schema.issueWorkProduct),
+            ).toHaveLength(0)
+            const outward = await database!.db
+              .select()
+              .from(schema.automationRun)
+            expect(
+              JSON.stringify(outward.map((row) => row.resultJson)),
+            ).not.toContain(allowedMarker)
+            expect(
+              JSON.stringify(outward.map((row) => row.resultJson)),
+            ).not.toContain(deniedMarkers[0])
+            expect(externalEffects).toHaveLength(0)
           }
           if (!read) {
             expect(brainRequests.length).toBe(baselineReads)
@@ -1147,6 +1207,152 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       }
     }
 
+    for (const mode of ['denied', 'allowed', 'default'] as const)
+      it(`guards final observation mode=${mode}`, async () => {
+        const response = await harness!.fetch('/final-observation', {
+          method: 'POST',
+          body: JSON.stringify({ mode }),
+        })
+        expect(response.status).toBe(200)
+        expect(await response.json()).toEqual({
+          finished: mode === 'denied' ? 0 : 1,
+          discarded: mode === 'denied' ? 1 : 0,
+          cleared: true,
+          settled: true,
+        })
+      }, 90000)
+
+    for (const kind of ['issue', 'automation'] as const)
+      for (const revoked of [false, true])
+        it(`guards ${kind} external effects revoked=${revoked}`, async () => {
+          grantScenario = {
+            kind,
+            read: true,
+            outward: 'external',
+            ...(revoked ? { revoke: 'completion' as const } : {}),
+          }
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions: {
+                full_access: false,
+                allowed_tools: [
+                  'brain_search',
+                  'g08_external_publish',
+                  'create_work_product',
+                  'complete_automation',
+                ],
+              },
+            })
+            .where(eq(schema.agent.id, agentId))
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 external effect')
+              : await seedAutomation()
+          expect(
+            (
+              await harness!.fetch(
+                kind === 'issue' ? '/start' : '/automation-start',
+                {
+                  method: 'POST',
+                  body: JSON.stringify(input),
+                },
+              )
+            ).status,
+          ).toBe(200)
+          await expect
+            .poll(() => externalEffects.length, { timeout: 60000 })
+            .toBe(revoked ? 0 : 1)
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database!.db
+                    .select({ status: table.status })
+                    .from(table)
+                    .where(eq(table.id, input.runId))
+                )[0]?.status,
+              { timeout: 60000 },
+            )
+            .toMatch(/^(succeeded|completed|failed|blocked)$/)
+          expect(JSON.stringify(modelRequests)).toContain(allowedMarker)
+          expect(externalEffects).toHaveLength(revoked ? 0 : 1)
+          if (revoked) {
+            expect(JSON.stringify(harness!.getLogs())).toContain(
+              'agent_runtime.brain_output_denied',
+            )
+            expect(
+              await database!.db.select().from(schema.issueWorkProduct),
+            ).toHaveLength(0)
+            const records = await database!.db
+              .select()
+              .from(schema.automationRun)
+            expect(
+              JSON.stringify(records.map((row) => row.resultJson)),
+            ).not.toContain(allowedMarker)
+          } else expect(externalEffects[0]).toContain(allowedMarker)
+        }, 90000)
+
+    for (const revoked of [false, true])
+      it(`guards automation assistant-only output revoked=${revoked}`, async () => {
+        grantScenario = {
+          kind: 'automation',
+          read: true,
+          outward: 'assistant',
+          ...(revoked ? { revoke: 'completion' as const } : {}),
+        }
+        await database!.db
+          .update(schema.agent)
+          .set({
+            permissions: {
+              full_access: false,
+              allowed_tools: ['brain_search', 'complete_automation'],
+            },
+          })
+          .where(eq(schema.agent.id, agentId))
+        const input = await seedAutomation()
+        expect(
+          (
+            await harness!.fetch('/automation-start', {
+              method: 'POST',
+              body: JSON.stringify(input),
+            })
+          ).status,
+        ).toBe(200)
+        await expect
+          .poll(
+            async () =>
+              (
+                await database!.db
+                  .select()
+                  .from(schema.automationRun)
+                  .where(eq(schema.automationRun.id, input.runId))
+              )[0]?.status,
+            { timeout: 60000 },
+          )
+          .toBe(revoked ? 'failed' : 'completed')
+        const [record] = await database!.db
+          .select()
+          .from(schema.automationRun)
+          .where(eq(schema.automationRun.id, input.runId))
+        expect(JSON.stringify(modelRequests)).toContain(allowedMarker)
+        if (revoked) {
+          expect(JSON.stringify(record!.resultJson)).not.toContain(
+            allowedMarker,
+          )
+          expect(JSON.stringify(record!.resultJson)).not.toContain(
+            deniedMarkers[0],
+          )
+          expect(JSON.stringify(harness!.getLogs())).toContain(
+            'agent_runtime.brain_output_denied',
+          )
+        } else
+          expect(JSON.stringify(record!.resultJson)).toContain(allowedMarker)
+        expect(externalEffects).toHaveLength(0)
+      }, 90000)
+
     for (const kind of ['issue', 'automation'] as const)
       for (const revoked of [false, true]) {
         it(`protects neighborhood-only ${kind} completion revoked=${revoked}`, async () => {
@@ -1186,7 +1392,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60_000 })
             .toContain(
               revoked
-                ? 'agent_runtime.brain_summary_denied'
+                ? 'agent_runtime.brain_output_denied'
                 : 'agent_do.brain_write_back.trigger_failed',
             )
           expect(JSON.stringify(modelRequests[0])).not.toContain(allowedMarker)
@@ -1209,7 +1415,20 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 .from(table)
                 .where(eq(table.id, input.runId))
             )[0]?.status,
-          ).toBe(kind === 'issue' ? 'succeeded' : 'completed')
+          ).toBe(
+            revoked ? 'failed' : kind === 'issue' ? 'succeeded' : 'completed',
+          )
+          if (revoked) {
+            expect(
+              await database!.db.select().from(schema.issueWorkProduct),
+            ).toHaveLength(0)
+            const outward = await database!.db
+              .select()
+              .from(schema.automationRun)
+            expect(
+              JSON.stringify(outward.map((row) => row.resultJson)),
+            ).not.toContain(allowedMarker)
+          }
           expect(
             await database!.db.select().from(schema.brainWriteProposal),
           ).toHaveLength(0)
@@ -1253,7 +1472,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .filter((message) => message.role === 'tool')
             .map(
               (message) =>
-                JSON.parse(String(message.content)) as {
+                fixtureToolResult(message.content) as {
                   ok?: boolean
                   items?: Array<{ id: string }>
                 },
@@ -1389,7 +1608,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           .filter((message) => message.role === 'tool')
           .map(
             (message) =>
-              JSON.parse(String(message.content)) as Record<string, unknown>,
+              fixtureToolResult(message.content) as Record<string, unknown>,
           )
         const duplicate = label === 'issue-org' || label === 'automation-owner'
         expect(toolResults).toContainEqual(
@@ -1412,7 +1631,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .slice(before)
             .flatMap((request) => request.messages)
             .filter((message) => message.role === 'tool')
-            .map((message) => JSON.parse(String(message.content)))
+            .map((message) => fixtureToolResult(message.content))
           expect(secondResults).toContainEqual({
             ok: true,
             action: 'submitted',
@@ -1437,7 +1656,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .slice(thirdStart)
             .flatMap((request) => request.messages)
             .filter((message) => message.role === 'tool')
-            .map((message) => JSON.parse(String(message.content)))
+            .map((message) => fixtureToolResult(message.content))
           expect(thirdResults).toContainEqual({ ok: true, action: 'submitted' })
           expect(JSON.stringify(thirdResults)).not.toContain('duplicate')
           expect(JSON.stringify(thirdResults)).not.toContain(rows[0]!.id)
@@ -1541,8 +1760,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 : 'failed',
             )
           const logs = JSON.stringify(harness!.getLogs())
-          const ordinal = { 'before-turn': 2, injection: 3, tool: 4 }[phase]
-          expect(logs).toContain('G08_CONFIG_PERSISTED')
+          if (phase !== 'before-turn')
+            expect(logs).toContain('G08_CONFIG_PERSISTED')
           expect(logs).toContain('G08_CONFIG_FAULT')
           const faults = harness!
             .getLogs()
@@ -1554,9 +1773,9 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 .slice('G08_CONFIG_FAULT'.length)
                 .trim(),
             ),
-          ).toEqual({
+          ).toMatchObject({
             kind,
-            ordinal,
+            phase,
             provenance: {
               identity: `${kind}:${workspaceId}:${agentId}:${ownerId}`,
               tools: phase === 'before-turn' ? [] : ['brain_search'],
@@ -1572,14 +1791,16 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 String(log.message).slice('G08_CONFIG_PERSISTED'.length).trim(),
               ),
             )
-          expect(persisted).toContainEqual({
-            kind,
-            ordinal: 1,
-            provenance: {
-              identity: `${kind}:${workspaceId}:${agentId}:${ownerId}`,
-              tools: [],
-            },
-          })
+          if (phase === 'before-turn') expect(persisted).toHaveLength(0)
+          else
+            expect(persisted).toContainEqual({
+              kind,
+              ordinal: 1,
+              provenance: {
+                identity: `${kind}:${workspaceId}:${agentId}:${ownerId}`,
+                tools: [],
+              },
+            })
           if (phase === 'tool') {
             if (kind === 'issue') {
               assertOrgInjection(modelRequests[0]!, [allowedMarker])
@@ -1594,11 +1815,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             }
             const result = modelRequests[1]!.messages
               .filter((m) => m.role === 'tool')
-              .map((m) => JSON.parse(String(m.content)))
+              .map((m) => fixtureToolResult(m.content))
             expect(result).toContainEqual({
               ok: false,
-              error:
-                'No active run context; the brain tools need a workspace and agent.',
+              error: 'Brain output authority is unavailable.',
             })
             expect(modelBrainCounts[1]).toBe(modelBrainCounts[0])
             await expect
@@ -2047,12 +2267,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 )[0]?.status,
               { timeout: 60000 },
             )
-            .toBe('succeeded')
+            .toBe(revoked ? 'failed' : 'succeeded')
           await expect
             .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60000 })
             .toContain(
               revoked
-                ? 'agent_runtime.brain_summary_denied'
+                ? 'agent_runtime.brain_output_denied'
                 : 'agent_do.brain_write_back.completed',
             )
           const results = modelRequests
@@ -2060,7 +2280,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .filter((m) => m.role === 'tool')
             .map(
               (m) =>
-                JSON.parse(String(m.content)) as {
+                fixtureToolResult(m.content) as {
                   ok: boolean
                   error?: string
                 },

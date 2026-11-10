@@ -66,3 +66,5 @@ HelixDB stores data in the `helix-data` volume through `HELIX_DATA_DIR`. HelixDB
 Write-back uses a stable operation key and a scope-aware claim hash. Database indexes prevent duplicate operations and duplicate claims within a workspace. A repeated delivery can return the existing result. Brain node creation also uses a stable canonical identity, so a repeated request does not create another node after an uncertain response.
 
 The migration preserves existing proposal rows and review fields. It stops when legacy hashes are ambiguous. An operator must review those rows before the migration can continue. Migration completion is not evidence of a live deployment.
+
+The run facets enforce current retained-context authority before outward tools, step and tool observations, and final product output. The shared base owns the final observation gate and state discard. Other base consumers retain the default observation behavior. The model tracing adapter uses content privacy for issue and automation runs; chat keeps its existing behavior. An in-flight provider request cannot be recalled by a later grant removal.

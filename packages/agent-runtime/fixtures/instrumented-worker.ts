@@ -620,7 +620,11 @@ export async function startInstrumentedHarness(
               `Missing native role/run receipts: ${JSON.stringify(missing)}`,
             )
           const response = await harness.fetch('/coverage')
-          if (!response.ok) throw new Error('Root coverage snapshot failed')
+          if (!response.ok) {
+            const failure = { status: response.status, body: await response.text(), logs: harness.getLogs() }
+            await writeFile(join(directory, 'coverage-snapshot-failure.json'), JSON.stringify(failure, null, 2))
+            throw new Error(`Root coverage snapshot failed (${failure.status}): ${failure.body.slice(0, 1000)}`)
+          }
           const snapshots: Snapshot[] = [
             ...receipts,
             (await response.json()) as Snapshot,

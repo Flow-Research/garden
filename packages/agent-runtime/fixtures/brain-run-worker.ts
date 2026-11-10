@@ -3,8 +3,11 @@ import { getAgentByName, getSubAgentByName } from 'agents'
 import { IssueRunSubAgent } from '../src/issue-run-sub-agent'
 import { AgentDO } from '../src/agent-do'
 import { RunWorkflow } from '../src/run-workflow'
+import { RunSubAgentBase } from '../src/run-sub-agent-base'
 import { Effect } from 'effect'
 import { Result } from 'better-result'
+import { tool } from 'ai'
+import { z } from 'zod'
 import { Brain } from '@garden/brain/services/brain'
 import { makeWorkerBrainLive } from '@garden/brain/services/worker'
 import { createBrainTools } from '../src/agent-tools/brain'
@@ -47,9 +50,16 @@ for (const [kind, facet] of [
 ] as const) {
   const configure = facet.prototype.configure
   const writes = new WeakMap<object, number>()
+  const failed = new WeakSet<object>()
+  const dispatching = new WeakSet<object>()
+  const beforeToolCall = facet.prototype.beforeToolCall
+  facet.prototype.beforeToolCall = async function (ctx) {
+    dispatching.add(this)
+    return await beforeToolCall.call(this as never, ctx).finally(() => dispatching.delete(this))
+  }
   facet.prototype.configure = function (config) {
     const host = this as unknown as {
-      env: { G08_GRANT_FAULT_KIND?: string; G08_GRANT_FAULT_AT?: string }
+      env: { G08_GRANT_FAULT_KIND?: string; G08_GRANT_FAULT_PHASE?: string }
       getConfig(): { brainGrantHistory?: unknown } | null
     }
     const targeted =
@@ -60,11 +70,15 @@ for (const [kind, facet] of [
     if (!targeted) return configure.call(this, config)
     const ordinal = (writes.get(this) ?? 0) + 1
     writes.set(this, ordinal)
-    if (ordinal === Number(host.env.G08_GRANT_FAULT_AT)) {
+    const provenance = Reflect.get(config, 'brainGrantHistory') as { tools: string[] }
+    const phase = dispatching.has(this) ? 'tool' : provenance.tools.length === 0 ? 'before-turn' : 'injection'
+    if (phase === host.env.G08_GRANT_FAULT_PHASE && !failed.has(this)) {
+      failed.add(this)
       console.info(
         'G08_CONFIG_FAULT',
         JSON.stringify({
           kind,
+          phase,
           ordinal,
           provenance: Reflect.get(config, 'brainGrantHistory'),
         }),
@@ -83,6 +97,29 @@ for (const [kind, facet] of [
       }),
     )
     return result
+  }
+}
+
+// An actual outward tool in the native dispatch pipeline. It has no production
+// counterpart and publishes only to this suite's local synthetic endpoint.
+for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
+  const getTools = facet.prototype.getTools
+  facet.prototype.getTools = function () {
+    const env = (this as unknown as { env: { GARDEN_MODEL_BASE_URL: string } }).env
+    return {
+      ...getTools.call(this as never),
+      g08_external_publish: tool({
+        description: 'Publish one synthetic test result to the local fixture.',
+        inputSchema: z.object({ body: z.string() }),
+        execute: async (input) => {
+          const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/external`, {
+            method: 'POST', body: input.body,
+          })
+          if (!response.ok) throw new Error('Synthetic external publish failed')
+          return { ok: true }
+        },
+      }),
+    }
   }
 }
 
@@ -145,6 +182,7 @@ export default {
         '/brain-tool',
         '/inspect',
         '/audience-fault',
+        '/final-observation',
         '/grant-fault',
         '/binding-fault',
         '/summary-probe',
@@ -306,6 +344,30 @@ export default {
         reads,
         persisted,
       })
+    }
+    if (url.pathname === '/final-observation') {
+      const input = await request.json<{ mode: 'denied' | 'allowed' | 'default' }>()
+      let finished = 0
+      let discarded = 0
+      let cleared = false
+      let settled = false
+      const host = {
+        currentRunId: 'fixture-observation-run', aggUsage: null,
+        runConfig: () => ({ kind: 'fixture', logger: {} }),
+        runLogFields: () => null,
+        finishSettledTurn: async () => { settled = true },
+        authorizeFinalObservation: input.mode === 'default'
+          ? Reflect.get(RunSubAgentBase.prototype, 'authorizeFinalObservation')
+          : async () => input.mode === 'allowed' ? Result.ok(undefined) : Result.err(new Error('Denied retained context')),
+        aiObservation: {
+          finishTurn: () => { finished++ }, discardTurn: () => { discarded++ },
+        },
+        clearTurnState: () => { cleared = true },
+      }
+      await Reflect.get(RunSubAgentBase.prototype, 'onChatResponse').call(host, {
+        status: 'completed', message: { parts: [{ type: 'text', text: 'RETAINED_PRIVATE_RESULT' }] },
+      })
+      return Response.json({ finished, discarded, cleared, settled })
     }
     if (url.pathname === '/audience-fault') {
       const input = await request.json<{

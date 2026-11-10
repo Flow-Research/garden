@@ -49,6 +49,7 @@ export type AgentModelProfile = {
 }
 
 export type AgentModelTracing = {
+  privacyMode?: boolean
   distinctId: string
   traceId: string
   workspaceId: string
@@ -210,7 +211,7 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
       workspace_id: config.tracing.workspaceId,
       ...config.tracing.properties,
     },
-    posthogPrivacyMode: false,
+    posthogPrivacyMode: config.tracing.privacyMode ?? false,
     posthogCaptureImmediate: false,
     posthogModelOverride: profile.id,
     posthogProviderOverride:
