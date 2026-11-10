@@ -19,10 +19,7 @@ export const Route = createFileRoute('/api/issues/$id/subscribers')({
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
 
-        const subscribers = await listIssueSubscriberRows(
-          access.db,
-          params.id,
-        )
+        const subscribers = await listIssueSubscriberRows(access.db, params.id)
 
         return Response.json(
           subscribers.map((subscriber) => ({

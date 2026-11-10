@@ -1,7 +1,5 @@
 import { Result, type Result as ResultValue } from 'better-result'
-import {
-  IssueServiceError,
-} from '@garden/server/issues/server'
+import { IssueServiceError } from '@garden/server/issues/server'
 import type { Db } from '@/lib/server/db'
 import { listIssueRunUsageJson } from '@/lib/server/queries/issues'
 

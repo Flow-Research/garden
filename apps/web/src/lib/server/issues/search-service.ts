@@ -1,9 +1,6 @@
 import { Result, type Result as ResultValue } from 'better-result'
 import type { Issue } from '@garden/core/types/issue'
-import {
-  IssueServiceError,
-  toIssue,
-} from '@garden/server/issues/server'
+import { IssueServiceError, toIssue } from '@garden/server/issues/server'
 import type { Db } from '@/lib/server/db'
 import {
   searchWorkspaceIssuesQuery,
