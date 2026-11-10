@@ -19,6 +19,14 @@ import {
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import { githubIdentityByMemberId } from '@/lib/server/workspace-members'
+import {
+  attachInvitationTeams,
+  cancelCreatedInvitation,
+  createTeamOwnerInvitation,
+  INVITATION_EXPIRES_IN_MS,
+  InvitationTeamError,
+  planInvitationTeams,
+} from '@/lib/server/invitation-teams'
 
 const logger = createLogger('workspace-members-api')
 
@@ -227,8 +235,31 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
               )
             }
 
-            // Mirrors Better Auth's invitationExpiresIn default (48h).
-            const refreshedExpiry = new Date(Date.now() + 48 * 3600 * 1000)
+            // A resend that names Teams adds them to the invite; one that
+            // names none keeps the invite's current Teams.
+            if (body.team_ids?.length) {
+              const plan = yield* Result.await(
+                planInvitationTeams({
+                  db,
+                  workspaceId: params.id,
+                  inviterId: session.user.id,
+                  role: existing.role,
+                  requestedTeamIds: body.team_ids,
+                }),
+              )
+              yield* Result.await(
+                attachInvitationTeams({
+                  db,
+                  invitationId: existing.id,
+                  workspaceId: params.id,
+                  teamIds: plan.teamIds,
+                }),
+              )
+            }
+
+            const refreshedExpiry = new Date(
+              Date.now() + INVITATION_EXPIRES_IN_MS,
+            )
             const [updated] = await db
               .update(schema.invitation)
               .set({ expiresAt: refreshedExpiry })
@@ -277,30 +308,82 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             return Result.ok(toInvitation(refreshed))
           }
 
-          const invitation = yield* Result.await(
-            Result.tryPromise({
-              try: async () =>
-                (await auth.api.createInvitation({
-                  headers: request.headers,
-                  body: {
-                    email: body.email,
-                    role: body.role ?? 'member',
-                    organizationId: params.id,
-                  },
-                })) as AuthInvitation,
-              catch: (cause) =>
-                new WorkspaceInvitationRequestError({
-                  message:
-                    cause instanceof Error
-                      ? cause.message
-                      : 'Failed to create invitation',
-                  status: 400,
-                }),
+          const role = body.role ?? 'member'
+          const plan = yield* Result.await(
+            planInvitationTeams({
+              db,
+              workspaceId: params.id,
+              inviterId: session.user.id,
+              role,
+              requestedTeamIds: body.team_ids,
             }),
           )
+          const invitation: AuthInvitation =
+            plan.inviter === 'team_owner'
+              ? yield* Result.await(
+                  createTeamOwnerInvitation({
+                    db,
+                    workspaceId: params.id,
+                    inviterId: session.user.id,
+                    email: body.email,
+                  }),
+                )
+              : yield* Result.await(
+                  Result.tryPromise({
+                    try: async () =>
+                      (await auth.api.createInvitation({
+                        headers: request.headers,
+                        body: {
+                          email: body.email,
+                          role,
+                          organizationId: params.id,
+                        },
+                      })) as AuthInvitation,
+                    catch: (cause) =>
+                      new WorkspaceInvitationRequestError({
+                        message:
+                          cause instanceof Error
+                            ? cause.message
+                            : 'Failed to create invitation',
+                        status: 400,
+                      }),
+                  }),
+                )
+
+          // Cancel only invites this request created. The resend path
+          // returned above before reaching here, so every invitation at this
+          // point is newly created.
+          const cancelCreated = async () => {
+            const cancelResult = await cancelCreatedInvitation({
+              db,
+              invitationId: invitation.id,
+            })
+            if (cancelResult.isErr()) {
+              logger.error('workspace.invitation_cancel_after_failure_failed', {
+                invitationId: invitation.id,
+                workspaceId: params.id,
+                error:
+                  cancelResult.error instanceof Error
+                    ? cancelResult.error.message
+                    : String(cancelResult.error),
+              })
+            }
+          }
+
+          const attachResult = await attachInvitationTeams({
+            db,
+            invitationId: invitation.id,
+            workspaceId: params.id,
+            teamIds: plan.teamIds,
+          })
+          if (attachResult.isErr()) {
+            await cancelCreated()
+            return Result.err(attachResult.error)
+          }
+
           const emailResult = await sendInvitationForRoute({
             baseURL: new URL(request.url).origin,
-            db: await appContext.db(),
+            db,
             env: appContext.env,
             invitation,
             inviter: {
@@ -308,34 +391,8 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
               name: session.user.name,
             },
           })
-
           if (emailResult.isErr()) {
-            // Cancel only invites this request created. The resend path
-            // returned above before reaching here, so every invitation at
-            // this point is newly created.
-            const cancelResult = await Result.tryPromise({
-              try: async () => {
-                await auth.api.cancelInvitation({
-                  headers: request.headers,
-                  body: { invitationId: invitation.id },
-                })
-              },
-              catch: (cause) => cause,
-            })
-            if (cancelResult.isErr()) {
-              logger.error(
-                'workspace.invitation_cancel_after_email_failure_failed',
-                {
-                  invitationId: invitation.id,
-                  workspaceId: params.id,
-                  error:
-                    cancelResult.error instanceof Error
-                      ? cancelResult.error.message
-                      : String(cancelResult.error),
-                },
-              )
-            }
-
+            await cancelCreated()
             return Result.err(emailResult.error)
           }
 
@@ -345,15 +402,12 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
         return result.match({
           ok: (invitation) => Response.json(invitation),
           err: (error) =>
-            error instanceof WorkspaceInvitationRequestError
-              ? Response.json(
-                  { error: error.message },
-                  { status: error.status },
-                )
-              : Response.json(
-                  { error: error.message },
-                  { status: error.status },
-                ),
+            Response.json(
+              error instanceof InvitationTeamError
+                ? { error: error.message, code: error.code }
+                : { error: error.message },
+              { status: error.status },
+            ),
         })
       },
     },

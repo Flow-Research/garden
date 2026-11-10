@@ -1,6 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { and, eq } from 'drizzle-orm'
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import * as schema from '@garden/db/schema'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import { createBetterAuth } from '@/lib/auth/instance'
@@ -111,7 +119,11 @@ describe('invitation Teams (integration)', () => {
       .values({ organizationId: workspaceId, userId: user.id, role })
   }
 
-  async function seedTeam(workspaceId: string, owner: SignedInUser, name: string) {
+  async function seedTeam(
+    workspaceId: string,
+    owner: SignedInUser,
+    name: string,
+  ) {
     const teamId = randomUUID()
     await testDb.db.insert(schema.team).values({
       id: teamId,

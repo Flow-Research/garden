@@ -92,6 +92,7 @@ import { Route as AuthenticatedAppTeamsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedAppTasksIndexRouteImport } from './routes/_authenticated/_app/tasks.index'
 import { Route as AuthenticatedAppChatsIndexRouteImport } from './routes/_authenticated/_app/chats.index'
 import { Route as AuthenticatedAppAgentsIndexRouteImport } from './routes/_authenticated/_app/agents.index'
+import { Route as ApiWorkspacesIdTeamSettingsRouteImport } from './routes/api/workspaces/$id/team-settings'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
 import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-products/$id/review'
@@ -589,6 +590,12 @@ const AuthenticatedAppAgentsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedAppAgentsRoute,
+  } as any)
+const ApiWorkspacesIdTeamSettingsRoute =
+  ApiWorkspacesIdTeamSettingsRouteImport.update({
+    id: '/team-settings',
+    path: '/team-settings',
+    getParentRoute: () => ApiWorkspacesIdRoute,
   } as any)
 const ApiWorkspacesIdMembersRoute = ApiWorkspacesIdMembersRouteImport.update({
   id: '/members',
@@ -1089,6 +1096,7 @@ export interface FileRoutesByFullPath {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/chats/': typeof AuthenticatedAppChatsIndexRoute
   '/tasks/': typeof AuthenticatedAppTasksIndexRoute
@@ -1235,6 +1243,7 @@ export interface FileRoutesByTo {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/agents': typeof AuthenticatedAppAgentsIndexRoute
   '/chats': typeof AuthenticatedAppChatsIndexRoute
   '/tasks': typeof AuthenticatedAppTasksIndexRoute
@@ -1389,6 +1398,7 @@ export interface FileRoutesById {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/_authenticated/_app/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/_authenticated/_app/chats/': typeof AuthenticatedAppChatsIndexRoute
   '/_authenticated/_app/tasks/': typeof AuthenticatedAppTasksIndexRoute
@@ -1542,6 +1552,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/workspaces/$id/team-settings'
     | '/agents/'
     | '/chats/'
     | '/tasks/'
@@ -1688,6 +1699,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/workspaces/$id/team-settings'
     | '/agents'
     | '/chats'
     | '/tasks'
@@ -1841,6 +1853,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/workspaces/$id/team-settings'
     | '/_authenticated/_app/agents/'
     | '/_authenticated/_app/chats/'
     | '/_authenticated/_app/tasks/'
@@ -2508,6 +2521,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/agents/'
       preLoaderRoute: typeof AuthenticatedAppAgentsIndexRouteImport
       parentRoute: typeof AuthenticatedAppAgentsRoute
+    }
+    '/api/workspaces/$id/team-settings': {
+      id: '/api/workspaces/$id/team-settings'
+      path: '/team-settings'
+      fullPath: '/api/workspaces/$id/team-settings'
+      preLoaderRoute: typeof ApiWorkspacesIdTeamSettingsRouteImport
+      parentRoute: typeof ApiWorkspacesIdRoute
     }
     '/api/workspaces/$id/members': {
       id: '/api/workspaces/$id/members'
@@ -3438,11 +3458,13 @@ const ApiWorkspacesIdMembersRouteWithChildren =
 interface ApiWorkspacesIdRouteChildren {
   ApiWorkspacesIdInvitationsRoute: typeof ApiWorkspacesIdInvitationsRouteWithChildren
   ApiWorkspacesIdMembersRoute: typeof ApiWorkspacesIdMembersRouteWithChildren
+  ApiWorkspacesIdTeamSettingsRoute: typeof ApiWorkspacesIdTeamSettingsRoute
 }
 
 const ApiWorkspacesIdRouteChildren: ApiWorkspacesIdRouteChildren = {
   ApiWorkspacesIdInvitationsRoute: ApiWorkspacesIdInvitationsRouteWithChildren,
   ApiWorkspacesIdMembersRoute: ApiWorkspacesIdMembersRouteWithChildren,
+  ApiWorkspacesIdTeamSettingsRoute: ApiWorkspacesIdTeamSettingsRoute,
 }
 
 const ApiWorkspacesIdRouteWithChildren = ApiWorkspacesIdRoute._addFileChildren(
