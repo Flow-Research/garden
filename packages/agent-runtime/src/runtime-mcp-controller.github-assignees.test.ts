@@ -77,7 +77,12 @@ function hostedIssueWrite(workspaceId: string) {
   const tool = tools[
     buildMcpAiToolKey('github-mcp', 'issue_write')
   ] as unknown as ExecutableTool
+  const nativeTool = tools[
+    buildMcpAiToolKey('github', 'issue_write')
+  ] as unknown as ExecutableTool
   return {
+    runNative: (input: unknown) =>
+      nativeTool.execute(input, { toolCallId: randomUUID(), messages: [] }),
     callTool,
     run: (input: unknown) =>
       tool.execute(input, { toolCallId: randomUUID(), messages: [] }),
@@ -153,8 +158,27 @@ describe('hosted github issue_write assignees', () => {
       title: 't',
       assignees,
     })
-    expect(result).toMatchObject({ error: true })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('string[]'),
+    })
     expect(callTool).not.toHaveBeenCalled()
+  })
+
+  // The native tool shares the gate; a rejection returns before its execute
+  // runs, so no GitHub request is attempted.
+  it('rejects non-array assignees on the native surface', async () => {
+    const { runNative } = hostedIssueWrite(workspaceId)
+    const result = await runNative({
+      owner: 'o',
+      repo: 'r',
+      title: 't',
+      assignees: 'stranger',
+    })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('string[]'),
+    })
   })
 
   it('refuses assignees on update so existing assignees survive', async () => {
