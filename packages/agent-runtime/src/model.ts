@@ -5,6 +5,38 @@ import { PostHog } from 'posthog-node'
 import { createWorkersAI } from 'workers-ai-provider'
 import { resolveGardenAnalyticsEnvironment } from '@garden/observability/analytics/events'
 
+// Grant-bearing generation telemetry has a fixed metadata boundary. New SDK
+// content/error fields remain excluded until they receive an explicit review.
+const generationMetadataKeys = new Set([
+  '$ai_model',
+  '$ai_provider',
+  '$ai_trace_id',
+  '$ai_session_id',
+  '$ai_span_id',
+  '$ai_parent_id',
+  '$ai_span_name',
+  '$ai_latency',
+  '$ai_input_tokens',
+  '$ai_output_tokens',
+  '$ai_total_tokens',
+  '$ai_input_cost_usd',
+  '$ai_output_cost_usd',
+  '$ai_total_cost_usd',
+  '$ai_cache_read_input_tokens',
+  '$ai_cache_creation_input_tokens',
+  '$ai_is_error',
+  '$ai_http_status',
+  '$groups',
+  'environment',
+  'workspace_id',
+  'garden_runtime_kind',
+  'agent_id',
+  'thread_id',
+  'issue_id',
+  'run_id',
+  'automation_id',
+])
+
 const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com'
 
 export type AgentModelProvider = 'workers-ai' | 'openai-compatible'
@@ -194,6 +226,27 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
 
   const posthog = new PostHog(token, {
     host: config.env?.VITE_PUBLIC_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST,
+    ...(config.tracing.privacyMode
+      ? {
+          enableExceptionAutocapture: false,
+          before_send: (event) => {
+            if (!event || event.event === '$exception') return null
+            return {
+              ...event,
+              properties: {
+                ...Object.fromEntries(
+                  Object.entries(event.properties ?? {}).filter(([key]) =>
+                    generationMetadataKeys.has(key),
+                  ),
+                ),
+                $ai_error: event.properties?.$ai_is_error
+                  ? 'Agent model request failed.'
+                  : undefined,
+              },
+            }
+          },
+        }
+      : {}),
     flushAt: 1,
     flushInterval: 0,
     waitUntil: config.tracing.waitUntil,

@@ -1,14 +1,45 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { captureAiGeneration } from '@posthog/ai'
 
-const { createWorkersAISpy, createOpenAICompatibleSpy, withTracingSpy } =
-  vi.hoisted(() => ({
-    withTracingSpy: vi.fn(),
-    createWorkersAISpy: vi.fn(),
-    createOpenAICompatibleSpy: vi.fn(),
-  }))
+const {
+  createWorkersAISpy,
+  createOpenAICompatibleSpy,
+  withTracingSpy,
+  telemetryEvents,
+  capturedExceptions,
+} = vi.hoisted(() => ({
+  telemetryEvents: [] as unknown[],
+  capturedExceptions: [] as unknown[],
+  withTracingSpy: vi.fn(),
+  createWorkersAISpy: vi.fn(),
+  createOpenAICompatibleSpy: vi.fn(),
+}))
 
 vi.mock('@posthog/ai/vercel', () => ({ withTracing: withTracingSpy }))
-vi.mock('posthog-node', () => ({ PostHog: class {} }))
+vi.mock('posthog-node', () => ({
+  PostHog: class {
+    privacy_mode = false
+    constructor(
+      _token: string,
+      readonly options: {
+        enableExceptionAutocapture?: boolean
+        before_send?: (event: {
+          event: string
+          properties?: Record<string, unknown>
+        }) => unknown
+      },
+    ) {}
+    capture(event: { event: string; properties?: Record<string, unknown> }) {
+      const outgoing = this.options.before_send
+        ? this.options.before_send(event)
+        : event
+      if (outgoing) telemetryEvents.push(outgoing)
+    }
+    captureException(error: unknown) {
+      capturedExceptions.push(error)
+    }
+  },
+}))
 
 vi.mock('workers-ai-provider', () => ({
   createWorkersAI: createWorkersAISpy,
@@ -26,6 +57,8 @@ import {
 
 describe('createAgentModel', () => {
   beforeEach(() => {
+    telemetryEvents.length = 0
+    capturedExceptions.length = 0
     withTracingSpy.mockReset()
     withTracingSpy.mockReturnValue({ id: 'traced' })
     createWorkersAISpy.mockReset()
@@ -54,6 +87,59 @@ describe('createAgentModel', () => {
         expect.anything(),
         expect.objectContaining({ posthogPrivacyMode: privacyMode ?? false }),
       )
+    },
+  )
+
+  it.each([true, false])(
+    'keeps generation error content private=%s through the real SDK capture primitive',
+    async (privacyMode) => {
+      createAgentModel({
+        ai: {} as Ai,
+        env: { VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: 'synthetic-test-token' },
+        tracing: {
+          distinctId: 'owner',
+          traceId: 'trace',
+          workspaceId: 'workspace',
+          properties: {},
+          waitUntil: () => {},
+          privacyMode,
+        },
+      })
+      const client = withTracingSpy.mock.calls[0]?.[1] as Parameters<
+        typeof captureAiGeneration
+      >[0]
+      if (!client) throw new Error('Tracing client was not configured')
+      await captureAiGeneration(client, {
+        distinctId: 'owner',
+        model: 'fixture',
+        provider: 'fixture',
+        privacyMode,
+        input: 'PRIVATE_GENERATION_INPUT',
+        output: [],
+        latency: 0,
+        error: new Error('PRIVATE_GENERATION_ERROR'),
+        providerMetadata: { diagnostic: 'PRIVATE_PROVIDER_METADATA' },
+        properties: {
+          run_id: 'owned-run',
+          diagnostic: 'PRIVATE_CUSTOM_PROPERTY',
+        },
+        usage: { inputTokens: 7, outputTokens: 2 },
+      })
+      expect(telemetryEvents).toHaveLength(1)
+      const serialized = JSON.stringify(telemetryEvents)
+      if (privacyMode) {
+        expect(serialized).not.toContain('PRIVATE_')
+        expect(serialized).toContain('Agent model request failed.')
+        expect(capturedExceptions).toHaveLength(0)
+        client.capture({
+          distinctId: 'owner',
+          event: '$exception',
+          properties: { $exception_list: ['PRIVATE_EXCEPTION'] },
+        })
+        expect(telemetryEvents).toHaveLength(1)
+      } else expect(serialized).toContain('PRIVATE_GENERATION_ERROR')
+      expect(serialized).toContain('owned-run')
+      expect(serialized).toContain('fixture')
     },
   )
 

@@ -100,6 +100,21 @@ for (const [kind, facet] of [
   }
 }
 
+// Deliberate application-hook failure after real injection. The local test
+// service removes the grant before returning a raw diagnostic canary.
+for (const [kind, facet] of [['issue', IssueRunSubAgent], ['automation', AutomationRunSubAgent]] as const) {
+  const beforeTurn = facet.prototype.beforeTurn
+  facet.prototype.beforeTurn = async function (ctx) {
+    const config = await beforeTurn.call(this as never, ctx)
+    const env = (this as unknown as {env:{ G08_ERROR_CANARY_KIND?:string; GARDEN_MODEL_BASE_URL:string }}).env
+    if (env.G08_ERROR_CANARY_KIND !== kind) return config
+    const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/run-error`, {
+      method:'POST',body:JSON.stringify({system:config?.system}),
+    })
+    throw new Error(await response.text())
+  }
+}
+
 // An actual outward tool in the native dispatch pipeline. It has no production
 // counterpart and publishes only to this suite's local synthetic endpoint.
 for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
@@ -183,6 +198,7 @@ export default {
         '/inspect',
         '/audience-fault',
         '/final-observation',
+        '/failure-observation',
         '/grant-fault',
         '/binding-fault',
         '/summary-probe',
@@ -344,6 +360,41 @@ export default {
         reads,
         persisted,
       })
+    }
+    if (url.pathname === '/failure-observation') {
+      const input = await request.json<{ mode: 'denied' | 'allowed'; path: 'response' | 'inspection' | 'inspection-read' | 'event' }>()
+      const reasons: string[] = []
+      const events: unknown[] = []
+      let discarded = 0
+      const base = RunSubAgentBase.prototype
+      const host = {
+        currentRunId: 'fixture-failure-run', aggUsage: null,
+        env: { RUN_WORKFLOW: { get: async () => ({ sendEvent: async (event: unknown) => { events.push(event) } }) } },
+        runConfig: () => ({ kind: 'fixture', logger: {} }), runLogFields: () => null,
+        authorizeFinalObservation: async () => input.mode === 'allowed' ? Result.ok(undefined) : Result.err(new Error('Denied')),
+        forceCloseFailed: async (_runId: string, reason: string) => { reasons.push(reason); return Result.ok(undefined) },
+        closeFailedRun(runId: string, reason: string) { return Reflect.get(base, 'closeFailedRun').call(this, runId, reason) },
+        failureReasonForOutput(runId: string, reason: string) { return Reflect.get(base, 'failureReasonForOutput').call(this, runId, reason) },
+        inspectSubmission: async () => {
+          if (input.path === 'inspection-read') throw new Error('G08_PRIVATE_FAILURE_CANARY')
+          return { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY' }
+        },
+        runtimeFailure: (cause: unknown) => new Error(String(cause)),
+        readRunStatus: async () => Result.ok('failed'),
+        readWorkflowTurnSummary: async () => ({ workspaceId: null, ownerUserId: null, summary: '' }),
+        readWorkflowWait: async () => null,
+        aiObservation: { finishTurn: () => {}, discardTurn: () => { discarded++ } },
+        clearTurnState: () => {},
+      }
+      const invoked = await Result.tryPromise({
+        try: async () => input.path === 'response'
+          ? await Reflect.get(base, 'onChatResponse').call(host, { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY' })
+          : input.path === 'event'
+            ? await Reflect.get(base, 'onSubmissionStatus').call(host, { status: 'error', error: 'G08_PRIVATE_FAILURE_CANARY', submissionId: 'submission', metadata: { runId: 'fixture-failure-run' } })
+            : await Reflect.get(base, 'completeWorkflowTurn').call(host, { runId: 'fixture-failure-run', submissionId: 'submission' }),
+        catch: (cause) => cause instanceof Error ? cause.message : String(cause),
+      })
+      return Response.json({ reasons, events, discarded, rpcError: invoked.isErr() ? invoked.error : null })
     }
     if (url.pathname === '/final-observation') {
       const input = await request.json<{ mode: 'denied' | 'allowed' | 'default' }>()

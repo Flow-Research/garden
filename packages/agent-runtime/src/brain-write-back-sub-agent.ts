@@ -218,7 +218,7 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
           return Effect.fail(
             new BrainWriteBackTurnError({
               operation: 'complete write-back turn',
-              message: `Brain write-back turn ${result.status}${result.error ? `: ${result.error}` : ''}`,
+              message: `Brain write-back turn ${result.status}`,
             }),
           )
         }),

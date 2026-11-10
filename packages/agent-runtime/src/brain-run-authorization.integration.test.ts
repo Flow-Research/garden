@@ -55,6 +55,7 @@ let brainAuthorizationHeaders: Array<string | undefined> = []
 let revokedAtBrainRequest: number | undefined
 let dedupeRevocationRequest: string | undefined
 const modelBrainCounts: number[] = []
+const runErrorRequests: string[] = []
 let handoffCount = 0
 const externalEffects: string[] = []
 let mutationArmed = false
@@ -178,6 +179,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       seededIds.length = 0
       modelMode = 'issue'
       grantScenario = undefined
+      runErrorRequests.length = 0
       handoffCount = 0
       externalEffects.length = 0
       mutationArmed = false
@@ -280,6 +282,23 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       model = createServer(async (request, response) => {
         let raw = ''
         for await (const chunk of request) raw += String(chunk)
+        if (request.url?.endsWith('/run-error')) {
+          runErrorRequests.push(raw)
+          if (grantScenario?.revoke === 'completion') {
+            await database!.db
+              .update(schema.agent)
+              .set({
+                permissions: {
+                  full_access: false,
+                  allowed_tools: ['create_work_product', 'complete_automation'],
+                },
+              })
+              .where(eq(schema.agent.id, agentId))
+            revokedAtBrainRequest = brainRequests.length
+          }
+          response.writeHead(200).end(`G08_PRIVATE_FAILURE_CANARY:${raw}`)
+          return
+        }
         if (request.url?.endsWith('/external')) {
           externalEffects.push(raw)
           response.writeHead(200).end('recorded')
@@ -682,6 +701,15 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           },
         ],
         vars: {
+          ...(context.task.name.match(/^guards (issue|automation) run error/)
+            ? {
+                G08_ERROR_CANARY_KIND: context.task.name.includes(
+                  'issue run error',
+                )
+                  ? 'issue'
+                  : 'automation',
+              }
+            : {}),
           ...(persistenceFault
             ? {
                 G08_GRANT_FAULT_KIND: persistenceFault[1]!,
@@ -756,6 +784,13 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         rolesByScenario[
           `guards automation assistant-only output revoked=${revoked}`
         ] = ['AutomationRunSubAgent.completeWorkflowTurn']
+      for (const mode of ['denied', 'allowed'])
+        rolesByScenario[`guards failure records mode=${mode}`] = []
+      for (const kind of ['issue', 'automation'])
+        for (const revoked of [false, true])
+          rolesByScenario[`guards ${kind} run error revoked=${revoked}`] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+          ]
       for (const mode of ['denied', 'allowed', 'default'])
         rolesByScenario[`guards final observation mode=${mode}`] = []
       for (const form of ['legacy', 'uuid'])
@@ -1206,6 +1241,93 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         }, 90_000)
       }
     }
+
+    for (const mode of ['denied', 'allowed'] as const)
+      it(`guards failure records mode=${mode}`, async () => {
+        for (const path of [
+          'response',
+          'inspection',
+          'inspection-read',
+          'event',
+        ]) {
+          const response = await harness!.fetch('/failure-observation', {
+            method: 'POST',
+            body: JSON.stringify({ mode, path }),
+          })
+          expect(response.status).toBe(200)
+          const record = await response.text()
+          if (mode === 'denied') {
+            expect(record).not.toContain('G08_PRIVATE_FAILURE_CANARY')
+            expect(record).toContain('brain_output_authority_denied')
+          } else expect(record).toContain('G08_PRIVATE_FAILURE_CANARY')
+        }
+      }, 90000)
+
+    for (const kind of ['issue', 'automation'] as const)
+      for (const revoked of [false, true])
+        it(`guards ${kind} run error revoked=${revoked}`, async () => {
+          grantScenario = {
+            kind,
+            read: true,
+            ...(revoked ? { revoke: 'completion' as const } : {}),
+          }
+          await database!.db
+            .update(schema.agent)
+            .set({
+              permissions: {
+                full_access: false,
+                allowed_tools: [
+                  'brain_search',
+                  'create_work_product',
+                  'complete_automation',
+                ],
+              },
+            })
+            .where(eq(schema.agent.id, agentId))
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 provider error')
+              : await seedAutomation()
+          expect(
+            (
+              await harness!.fetch(
+                kind === 'issue' ? '/start' : '/automation-start',
+                { method: 'POST', body: JSON.stringify(input) },
+              )
+            ).status,
+          ).toBe(200)
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database!.db
+                    .select({ status: table.status })
+                    .from(table)
+                    .where(eq(table.id, input.runId))
+                )[0]?.status,
+              { timeout: 60000 },
+            )
+            .toBe('failed')
+          const records = await database!.db
+            .select()
+            .from(table)
+            .where(eq(table.id, input.runId))
+          const events = await database!.db.select().from(schema.issueRunEvent)
+          const outward = JSON.stringify({ records, events })
+          expect(JSON.stringify(runErrorRequests)).toContain(allowedMarker)
+          if (revoked) {
+            expect(outward).not.toContain('G08_PRIVATE_FAILURE_CANARY')
+            expect(JSON.stringify(harness!.getLogs())).not.toContain(
+              'G08_PRIVATE_FAILURE_CANARY',
+            )
+            expect(outward).toContain('brain_output_authority_denied')
+            expect(
+              await database!.db.select().from(schema.issueWorkProduct),
+            ).toHaveLength(0)
+          } else expect(outward).toContain('G08_PRIVATE_FAILURE_CANARY')
+        }, 90000)
 
     for (const mode of ['denied', 'allowed', 'default'] as const)
       it(`guards final observation mode=${mode}`, async () => {
@@ -1791,7 +1913,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 String(log.message).slice('G08_CONFIG_PERSISTED'.length).trim(),
               ),
             )
-          if (phase === 'before-turn') expect(persisted).toHaveLength(0)
+          if (phase === 'before-turn')
+            expect(
+              persisted.every((record) => record.provenance.tools.length === 0),
+            ).toBe(true)
           else
             expect(persisted).toContainEqual({
               kind,

@@ -68,3 +68,5 @@ Write-back uses a stable operation key and a scope-aware claim hash. Database in
 The migration preserves existing proposal rows and review fields. It stops when legacy hashes are ambiguous. An operator must review those rows before the migration can continue. Migration completion is not evidence of a live deployment.
 
 The run facets enforce current retained-context authority before outward tools, step and tool observations, and final product output. The shared base owns the final observation gate and state discard. Other base consumers retain the default observation behavior. The model tracing adapter uses content privacy for issue and automation runs; chat keeps its existing behavior. An in-flight provider request cannot be recalled by a later grant removal.
+
+The base checks failure authority before it copies SDK errors into product records, Workflow events or RPC errors. The generation client applies a fixed metadata list through PostHog's supported `before_send` option and disables exception autocapture. The SDK privacy flag alone does not remove error text. Write-back failure messages also omit raw model error text.
