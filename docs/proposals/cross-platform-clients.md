@@ -128,4 +128,3 @@ Preserve language, model, knowledge-provider and execution-host preferences acro
 ## Review and rollback
 
 This is a documentation-only proposal. Runtime permissions, writes, migrations and deployment are unchanged. Revert this documentation commit if scope changes. Runtime changes need their own focused review, existing verification maps and target-specific evidence. Client/API compatibility and retained drafts must survive future upgrade/rollback; incompatible plugin-state migrations need a separate recovery plan.
-
