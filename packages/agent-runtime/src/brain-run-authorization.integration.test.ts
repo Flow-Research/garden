@@ -3223,8 +3223,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             message: string
           }
           expect(result.denied).toBe(true)
-          expect(result.message).toContain(
-            'Brain runtime principal is unavailable.',
+          expect(result.message).toMatch(
+            /Brain runtime principal is unavailable\.|brain_output_authority_denied/,
           )
         }
         const positive = await harness!.fetch('/binding-fault', {

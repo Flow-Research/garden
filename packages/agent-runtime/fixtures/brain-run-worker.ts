@@ -285,7 +285,7 @@ export default {
       const result = await Result.tryPromise(() =>
         Reflect.get(facet.prototype, input.method).apply(host, args),
       )
-      if (result.isErr() && result.error instanceof TypeError) throw result.error
+      if (result.isErr() && (result.error instanceof TypeError || result.error instanceof Error && result.error.cause instanceof TypeError)) throw result.error
       console.info(
         'G08_BINDING_PHASE',
         JSON.stringify({
