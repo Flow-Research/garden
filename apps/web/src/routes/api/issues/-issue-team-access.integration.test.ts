@@ -5,6 +5,7 @@ import { startTestDb, type TestDb } from '@garden/db/testing'
 import { Route as IssuesRoute } from '../issues'
 import { Route as IssueRoute } from './$id'
 import { Route as IssueCommentsRoute } from './$id/comments'
+import { Route as IssuePendingApprovalRoute } from './$id/pending-approval'
 import { Route as IssueSearchRoute } from './search'
 import {
   TEST_DB_HOOK_TIMEOUT_MS,
@@ -278,6 +279,17 @@ describe('team issue access (integration)', () => {
       params: { id: otherTeamIssueId },
     })
     expect(comments.status).toBe(403)
+
+    // #297: the pending-approval preview must apply the same Team check.
+    const pendingApproval = await callAs({
+      route: IssuePendingApprovalRoute,
+      url: `/api/issues/${otherTeamIssueId}/pending-approval`,
+      workspaceId: fixture.workspaceId,
+      userId: fixture.otherId,
+      role: 'member',
+      params: { id: otherTeamIssueId },
+    })
+    expect(pendingApproval.status).toBe(403)
   })
 
   it('searches the whole Team board for members and none of it for non-members', async () => {

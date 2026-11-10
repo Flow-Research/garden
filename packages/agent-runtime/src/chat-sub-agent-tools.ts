@@ -51,6 +51,7 @@ import {
   listIssues as listIssuesService,
   postIssueComment as postIssueCommentService,
   readIssue as readIssueService,
+  resolveVisibleIssue,
   type IssueSummary,
 } from '@garden/server/issues/server'
 import {
@@ -643,60 +644,28 @@ async function loadWorkspaceMemberCandidates(args: {
   return result.isErr() ? issueToolErr(result.error) : Result.ok(result.value)
 }
 
+/**
+ * Resolves the issue for chat `assign_issue` and `update_issue_status` as the
+ * chat owner sees it. Before, it matched any issue in the workspace, so an
+ * owner outside a Team could reassign or close that Team's issues by number;
+ * it now delegates to `resolveVisibleIssue`, which applies the Team rule and
+ * reports a hidden issue as not found.
+ */
 async function resolveChatIssue(args: {
   db: ReadRunDb
   workspaceId: string
+  viewerUserId: string
   issueIdOrIdentifier: string
-}): Promise<
-  ResultValue<
-    {
-      id: string
-      status: string | null
-      activeRunId: string | null
-      assigneeType: string | null
-      assigneeId: string | null
-    },
-    string
-  >
-> {
-  const issueNumber = parseIssueIdentifier(args.issueIdOrIdentifier)
-  const issueUuid = z.string().uuid().safeParse(args.issueIdOrIdentifier.trim())
-  const issueCondition =
-    issueNumber !== null
-      ? eq(schema.issue.number, issueNumber)
-      : issueUuid.success
-        ? eq(schema.issue.id, issueUuid.data)
-        : null
-  if (!issueCondition) {
+}): Promise<ResultValue<typeof schema.issue.$inferSelect, string>> {
+  if (
+    parseIssueIdentifier(args.issueIdOrIdentifier) === null &&
+    !z.string().uuid().safeParse(args.issueIdOrIdentifier.trim()).success
+  ) {
     return issueToolErr('assign_issue: issue must be an identifier or UUID.')
   }
 
-  const result = await Result.tryPromise<
-    {
-      id: string
-      status: string | null
-      activeRunId: string | null
-      assigneeType: string | null
-      assigneeId: string | null
-    } | null,
-    string
-  >({
-    try: async () => {
-      const [issue] = await args.db
-        .select({
-          id: schema.issue.id,
-          status: schema.issue.status,
-          activeRunId: schema.issue.activeRunId,
-          assigneeType: schema.issue.assigneeType,
-          assigneeId: schema.issue.assigneeId,
-        })
-        .from(schema.issue)
-        .where(
-          and(eq(schema.issue.workspaceId, args.workspaceId), issueCondition),
-        )
-        .limit(1)
-      return issue ?? null
-    },
+  const result = await Result.tryPromise({
+    try: () => resolveVisibleIssue(args.db, args),
     catch: errorMessage,
   })
   if (result.isErr()) return issueToolErr(result.error)
@@ -1103,6 +1072,7 @@ async function assignIssueFromChat(
   const issueResult = await resolveChatIssue({
     db,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: input.issue_id_or_identifier,
   })
   if (issueResult.isErr()) return issueToolErr(issueResult.error)
@@ -1227,6 +1197,7 @@ async function assignIssueFromChat(
     const summaryResult = await readIssueService({
       databaseUrl: context.databaseUrl,
       workspaceId: identity.workspaceId,
+      viewerUserId: identity.ownerUserId,
       issueIdOrIdentifier: issue.id,
     })
     if (summaryResult.isErr()) return issueToolErr(summaryResult.error.message)
@@ -1307,6 +1278,7 @@ async function assignIssueFromChat(
   const summaryResult = await readIssueService({
     databaseUrl: context.databaseUrl,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: issue.id,
   })
   if (summaryResult.isErr()) return issueToolErr(summaryResult.error.message)
@@ -1333,6 +1305,7 @@ async function updateIssueStatusFromChat(
   const issueResult = await resolveChatIssue({
     db,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: input.issue_id_or_identifier,
   })
   if (issueResult.isErr()) return issueToolErr(issueResult.error)
@@ -1426,6 +1399,7 @@ async function updateIssueStatusFromChat(
   const summaryResult = await readIssueService({
     databaseUrl: context.databaseUrl,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: issue.id,
   })
   if (summaryResult.isErr()) return issueToolErr(summaryResult.error.message)
@@ -1789,6 +1763,7 @@ async function readIssueFromChat(
   const issueResult = await readIssueService({
     databaseUrl: context.databaseUrl,
     workspaceId: identityResult.value.workspaceId,
+    viewerUserId: identityResult.value.ownerUserId,
     issueIdOrIdentifier: input.issue_id_or_identifier,
     commentsPage: input.comments_page,
     commentsLimit: input.comments_limit,
