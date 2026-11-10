@@ -2293,6 +2293,30 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
               { timeout: 60_000 },
             )
             .toBe(kind === 'issue' ? 'waiting_for_input' : 'completed')
+          // The waiting row is written before final observation and summary
+          // checks finish. Revoke only after turn zero actually closes, so this
+          // case proves the resumed entry instead of racing initial completion.
+          await expect
+            .poll(
+              () =>
+                harness!.getLogs().some((log) => {
+                  const encoded = JSON.stringify(log).match(
+                    /__G06_COV__:([A-Za-z0-9+/=]+)/,
+                  )?.[1]
+                  if (!encoded) return false
+                  const receipt = JSON.parse(
+                    Buffer.from(encoded, 'base64').toString('utf8'),
+                  )
+                  return (
+                    receipt.role ===
+                      `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn` &&
+                    receipt.runId === input.runId &&
+                    receipt.invocation === `${kind}-run:${input.runId}:0:start`
+                  )
+                }),
+              { timeout: 60_000 },
+            )
+            .toBe(true)
           if (kind === 'automation') {
             await expect
               .poll(() => JSON.stringify(harness!.getLogs()), {
