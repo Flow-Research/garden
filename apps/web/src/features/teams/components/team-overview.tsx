@@ -21,6 +21,7 @@ import { CreateTeamDialog } from './create-team-dialog'
 import { TeamMembersLoadError } from './team-route-error'
 import { TeamMemberView } from './team-member-view'
 import { TeamSummaryCard } from './team-summary-card'
+import { TeamInviteSettings } from './team-invite-settings'
 import {
   DeleteTeamDialog,
   EditTeamDialog,
@@ -269,6 +270,7 @@ export function TeamOverview() {
               </>
             )}
           </div>
+          <TeamInviteSettings teams={teams} />
         </div>
       </div>
 
