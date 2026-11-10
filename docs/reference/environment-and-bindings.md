@@ -37,7 +37,7 @@ Deployed Workflow names come from `workflowName`, `decideAnalysisWorkflowName`, 
 
 | Binding          | Type       | Local resource                   | Purpose                                     | Read in                                                     |
 | ---------------- | ---------- | -------------------------------- | ------------------------------------------- | ----------------------------------------------------------- |
-| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database.   | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
+| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database. Query caching is disabled in `alchemy.run.ts` so reads see the Worker's own writes. | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
 | `EXECUTOR_DB`    | D1         | `garden-executor-local`          | Executor connector state.                   | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `EXECUTOR_BLOBS` | R2         | `garden-executor-blobs-local`    | Executor blob storage.                      | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `FILES`          | R2         | `garden-files-local`             | Uploads, attachments, and run files.        | `packages/agent-runtime/src/agent-tools/read-attachment.ts`  |
