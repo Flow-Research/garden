@@ -25,6 +25,14 @@ GitHub App and Discord bot callbacks verify signed state, then read the current 
 
 GitHub keeps its session check outside the development environment. Discord uses verified signed state and does not require a browser cookie. These callbacks do not give authority to an agent or to task content.
 
+## Default-agent recovery requires current creation authority
+
+Workspace creation normally supplies the default Garden agent. Chat listing reads existing records and does not create agents or grants. Chat creation validates a selected issue or agent before it can request default-agent recovery. A selected existing agent does not require a new default.
+
+When the default is missing, only a current workspace member with agent-management permission can repair it. The new default belongs to that authorized person. Members can use an existing default without changing its owner, settings or grants. The same rule applies when Brain file indexing needs a default agent for its audit. If recovery is denied, the indexed file remains, and Garden records the audit failure.
+
+Recovery serializes concurrent attempts for the workspace. It writes the default and its initial grants in one database transaction. A failed grant write rolls back the new agent. Workspace creation uses the same lock and preserves a default that an authorized recovery already created. This repairs a missing default agent; it does not repeat all workspace setup or skill seeding.
+
 ## Capabilities carry a risk class and a trust level
 
 Every connector tool is a row in the `capability` table (`packages/db/src/schema/capabilities.ts`). Its `risk_class` is one of `read`, `write`, `send_external`, or `destructive`. `packages/connectors/src/capabilities.ts` holds the shared trust rules. Its `defaultTrustLevelForRisk` gives `read` the default `auto`, `write` the default `allow`, and every other risk class the default `ask`.
