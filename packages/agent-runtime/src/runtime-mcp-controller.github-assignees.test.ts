@@ -138,6 +138,25 @@ describe('hosted github issue_write assignees', () => {
     expect(callTool).not.toHaveBeenCalled()
   })
 
+  // #294: a present `assignees` that is not an array of strings used to skip
+  // the linked-login check entirely and reach GitHub.
+  it.each([
+    ['a bare string', 'stranger'],
+    ['an array with a non-string entry', [LINKED_LOGIN, 42]],
+    ['an object', { login: 'stranger' }],
+  ])('rejects assignees given as %s on create', async (_label, assignees) => {
+    const { run, callTool } = hostedIssueWrite(workspaceId)
+    const result = await run({
+      method: 'create',
+      owner: 'o',
+      repo: 'r',
+      title: 't',
+      assignees,
+    })
+    expect(result).toMatchObject({ error: true })
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
   it('refuses assignees on update so existing assignees survive', async () => {
     const { run, callTool } = hostedIssueWrite(workspaceId)
     const result = await run({
