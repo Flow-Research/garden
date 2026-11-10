@@ -4,9 +4,10 @@ description: Decision record for layering Garden's TanStack Start `/api` routes 
 status: decision
 owner: "@Umoren"
 last_reviewed: 2026-11-10
+
 ---
 
-**Date:** 2026-11-09. **Outcome:** accepted; migration on `refactor/api-layering`. Decision doc and warn-level lint for `routes/api` Drizzle/db imports are in. `/api/issues` reference extract is next. Not fully shipped yet.
+**Date:** 2026-11-09. **Outcome:** accepted; migration on `refactor/api-layering`. Decision doc, warn-level lint, and the `/api/issues` reference (queries + list service + thin route) are in. Domain batches next. Not fully shipped yet.
 
 ## Context
 
@@ -16,7 +17,7 @@ About fifty TanStack API route files still import `drizzle-orm` or open the data
 
 - Zod request schemas already live in `apps/web/src/lib/server/validation/`.
 - Issue and automation orchestration already lives in `@garden/server` (`packages/server`) and returns `better-result` `Result` values.
-- `GET /api/issues` still builds its list query inline, while `POST /api/issues` already calls `createIssue` in `@garden/server`.
+- `GET /api/issues` is the reference extract; `POST /api/issues` already calls `createIssue` in `@garden/server`.
 
 Garden needs one layering rule for the remaining TanStack routes so later domain batches copy a template instead of inventing a third style.
 
@@ -41,7 +42,7 @@ Locked rules:
 | Router | `apps/web/src/routes/api/**` | Auth, parse Zod, call service, map `Result` to `Response`. No `drizzle-orm` and no `db` imports. |
 | Validation | `apps/web/src/lib/server/validation/` | Request/search/body Zod schemas shared by routes. |
 | Queries | `apps/web/src/lib/server/queries/{domain}/` | Pure Drizzle reads/writes and optional transactions. No HTTP types. |
-| Services | Prefer `packages/server/src/{domain}/` | Domain orchestration and product outcomes as `Result.ok` / `Result.err`. |
+| Services | Prefer `packages/server/src/{domain}/`; web-boundary helpers in `apps/web/src/lib/server/{domain}/` | Domain orchestration and product outcomes as `Result.ok` / `Result.err`. Group by domain folder; leave shared infra flat (`db.ts`, `context.ts`, `control-plane.ts`, …). |
 | Side effects | Called from the route after success | Realtime publish, email, analytics, `waitUntil` run starts. |
 
 Additional locks:
@@ -56,7 +57,7 @@ Additional locks:
 
 ## Consequences
 
-New and migrated TanStack API code follows the table above. `GET /api/issues` becomes the first query extract; `POST /api/issues` already shows the service call path through `createIssue`.
+New and migrated TanStack API code follows the table above. `GET /api/issues` is the reference: `listWorkspaceIssues` in `apps/web/src/lib/server/issues/list-service.ts` over `queries/issues`, mapped with `.match()`. `POST /api/issues` calls `createIssue` in `@garden/server` and uses `isTeamAssigneeMember` from `queries/issues` for the remaining Team membership check. Other flat `issue-*.ts` / domain files under `lib/server/` move into `{domain}/` folders gradually; do not mass-move them in one PR.
 
 Warn-level lint will flag remaining Drizzle imports in `routes/api/` until each domain batch moves them. Promoting the rule to error is a later phase after the backlog is gone or allowlisted down to empty.
 

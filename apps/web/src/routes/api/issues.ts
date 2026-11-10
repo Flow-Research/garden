@@ -1,7 +1,5 @@
-import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { createIssue } from '@garden/server/issues/server'
 import { startIssueRun } from '@garden/server/issues/run-service'
@@ -13,10 +11,8 @@ import {
 } from '@/lib/server/validation/issues'
 import {
   badRequest,
-  getWorkspaceIssuePrefix,
   requireWorkspaceAccess,
   requireWorkspaceContext,
-  toIssue,
 } from '@/lib/server/control-plane'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
 import {
@@ -33,7 +29,8 @@ import {
   requireTeamAccess,
   teamError,
 } from '@/lib/server/team-access'
-import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
+import { listWorkspaceIssues } from '@/lib/server/issues/list-service'
+import { isTeamAssigneeMember } from '@/lib/server/queries/issues'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
@@ -43,6 +40,11 @@ const logger = createGardenLogger({
   component: 'issues-api',
 })
 
+/**
+ * `/api/issues` reference route for API layering: auth + Zod here, list/create
+ * through services/queries, no `drizzle-orm` / `@/lib/server/db` imports.
+ * See `docs/decisions/2026-11-09-api-layering.md`.
+ */
 export const Route = createFileRoute('/api/issues')({
   server: {
     handlers: {
@@ -79,60 +81,24 @@ export const Route = createFileRoute('/api/issues')({
           team_id: teamId,
         } = searchResult.value
         const db = await appContext.db()
-
-        const conditions = [
-          eq(schema.issue.workspaceId, workspaceId),
-          teamIssueVisibilityCondition({
-            viewerId: session.user.id,
-            manager: isWorkspaceManager(workspaceAccess.membership.role),
-          }),
-        ]
-        if (teamId) conditions.push(eq(schema.issue.teamId, teamId))
-        // has_team filters team-assigned vs workspace-only issues in SQL so
-        // cross-team lists never scan/return the full workspace issue set.
-        if (hasTeam === true) conditions.push(isNotNull(schema.issue.teamId))
-        if (hasTeam === false) conditions.push(isNull(schema.issue.teamId))
-        if (status) conditions.push(eq(schema.issue.status, status))
-        if (priority) conditions.push(eq(schema.issue.priority, priority))
-        if (assigneeId) conditions.push(eq(schema.issue.assigneeId, assigneeId))
-        if (assigneeIds && assigneeIds.length > 0) {
-          conditions.push(inArray(schema.issue.assigneeId, assigneeIds))
-        }
-        if (creatorId) conditions.push(eq(schema.issue.createdBy, creatorId))
-        if (openOnly) conditions.push(sql`${schema.issue.status} <> 'done'`)
-
-        const whereClause = and(...conditions)
-        const [countRow] = await db
-          .select({ count: sql<number>`cast(count(*) as int)` })
-          .from(schema.issue)
-          .where(whereClause)
-        const count = countRow?.count ?? 0
-
-        const query = db
-          .select()
-          .from(schema.issue)
-          .where(whereClause)
-          .orderBy(
-            desc(schema.issue.updatedAt),
-            desc(schema.issue.createdAt),
-            desc(schema.issue.number),
-          )
-
-        const limitValue = typeof limit === 'number' ? limit : null
-        const offsetValue = typeof offset === 'number' ? offset : 0
-        const safeLimit =
-          limitValue !== null && Number.isFinite(limitValue) && limitValue > 0
-            ? limitValue
-            : null
-        const safeOffset =
-          Number.isFinite(offsetValue) && offsetValue > 0 ? offsetValue : 0
-        const rows = await (safeLimit !== null
-          ? query.limit(safeLimit).offset(safeOffset)
-          : query.offset(safeOffset))
-        const issuePrefix = await getWorkspaceIssuePrefix(db, workspaceId)
-        return Response.json({
-          issues: rows.map((row) => toIssue(row, { issuePrefix })),
-          total: count,
+        const listResult = await listWorkspaceIssues(db, {
+          workspaceId,
+          viewerId: session.user.id,
+          manager: isWorkspaceManager(workspaceAccess.membership.role),
+          teamId,
+          hasTeam,
+          status,
+          priority,
+          assigneeId,
+          assigneeIds,
+          creatorId,
+          openOnly,
+          limit,
+          offset,
+        })
+        return listResult.match({
+          ok: (page) => Response.json(page),
+          err: (error) => serviceErrorResponse(error),
         })
       },
       POST: async ({ context, request }) => {
@@ -182,21 +148,12 @@ export const Route = createFileRoute('/api/issues')({
               'Team members can only assign issues to themselves',
             )
           }
-          const assigneeCondition =
-            body.assignee_type === 'agent'
-              ? and(
-                  eq(schema.teamMember.teamId, body.team_id),
-                  eq(schema.teamMember.agentId, body.assignee_id),
-                )
-              : and(
-                  eq(schema.teamMember.teamId, body.team_id),
-                  eq(schema.teamMember.userId, body.assignee_id),
-                )
-          const [assigneeMembership] = await db
-            .select({ id: schema.teamMember.id })
-            .from(schema.teamMember)
-            .where(assigneeCondition)
-          if (!assigneeMembership) {
+          const assigneeIsTeamMember = await isTeamAssigneeMember(db, {
+            teamId: body.team_id,
+            assigneeId: body.assignee_id,
+            assigneeType: body.assignee_type,
+          })
+          if (!assigneeIsTeamMember) {
             return badRequest('Assignee must be a Team member')
           }
         } else {
