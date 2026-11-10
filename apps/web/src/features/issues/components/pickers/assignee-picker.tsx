@@ -75,8 +75,8 @@ export function AssigneePicker({
   align?: 'start' | 'center' | 'end'
   /**
    * Team scope for the assignee list. When set, only that Team's members are
-   * offered (the API rejects non-members) and "Unassigned" is hidden (Team
-   * issues must always carry a Team member assignee).
+   * offered (the API rejects non-member assignees). Team issues may be
+   * unassigned, so "Unassigned" stays available.
    */
   teamId?: string | null
 }) {
@@ -220,13 +220,11 @@ export function AssigneePicker({
             </span>
           </>
         ) : (
-          <span className="text-muted-foreground">
-            {teamScoped ? 'Select assignee' : 'Unassigned'}
-          </span>
+          <span className="text-muted-foreground">Unassigned</span>
         ))
       }
     >
-      {!normalizedQuery && !teamScoped ? (
+      {!normalizedQuery ? (
         <PickerItem selected={!assigneeId} onClick={() => choose(null)}>
           <UserMinus className="size-3.5 text-muted-foreground" />
           <span className="text-muted-foreground">Unassigned</span>
