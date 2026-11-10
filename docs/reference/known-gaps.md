@@ -3,7 +3,7 @@ title: Known gaps
 description: The register of open Garden gaps, with the tracking issue, priority, and code evidence for each one.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-10
 ---
 
 This register lists gaps that are open in the code today. Each row names the code that shows the gap. Ideas that are not scheduled are on the [roadmap](../concepts/product/roadmap.md), not here.
@@ -22,7 +22,7 @@ FLO ids are Linear issues. The GitHub issues that tracked some of these gaps (#2
 | Teams | None | A normal Team member sees only Team issues assigned to them, so a Team board filled from a linked GitHub repository shows most members almost nothing. Owners, admins, and the Team owner see the whole board. | High | `teamIssueVisibilityCondition` in `apps/web/src/lib/server/issue-access.ts` | 2026-11-07 |
 | Connectors | None | GitHub issue sync creates a new Garden issue when an issue is transferred to another linked repository, because the transferred issue gets a new repository and number. The original Garden issue stays on its board. | Low | `githubWebhookIssueCandidate` in `apps/web/src/lib/server/github-issue-sync.ts` | 2026-11-07 |
 | Runs | FLO-31 | Prove in staging that issue and automation runs survive the full lifecycle through `RunWorkflow`: start, wait, resume after eviction, cancel, failure, recovery, and duplicate-start prevention. | High | `packages/agent-runtime/src/run-workflow.ts` | 2026-11-03 |
-| Infrastructure | FLO-32 | No `/api/health` route and no beta smoke suite against staging for sign-in, chat, issue runs, automation runs, and documents. | High | No health route in `apps/web/src/routes/api/` | 2026-11-03 |
+| Infrastructure | FLO-32 | No beta smoke suite against staging for sign-in, chat, issue runs, automation runs, and documents. The health route exists. | High | `apps/web/src/routes/api/health.ts` serves `GET /api/health`; no staging smoke suite exists | 2026-11-10 |
 | Connectors | None | Capability catalog sync runs only on events: OAuth callback, connection actions, GitHub setup, and the internal sync endpoint. No scheduled job checks drift against upstream `tools/list`. The `0 */12 * * *` cron runs only the issue-run reconciler. | High | `apps/web/src/lib/server/capability-sync.ts`, `scheduled` in `apps/web/src/server.ts` | 2026-11-03 |
 | Connectors | None | Scoped Executor MCP sessions phases 2 to 4 are not done: transport proof, connector cleanup, and the Executor v2 evaluation. See [the decision record](../decisions/2026-10-scoped-executor-mcp-sessions.md). | High | `apps/web/src/lib/server/executor-engine/mcp.ts` | 2026-11-03 |
 | Connectors | None | Deployed Workers get no Discord credentials. `alchemy.run.ts` binds the GitHub and Slack values but none of the `DISCORD_*` values, so the Discord install and bot calls receive empty strings on staging and production. | High | `optionalPlainBindings` and `optionalSecretBindings` in `alchemy.run.ts` | 2026-11-03 |
