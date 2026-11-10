@@ -1,9 +1,9 @@
 ---
 title: Teams group people and agents, and scope who sees which issues
-description: How Teams work in a workspace, who can manage them, how admins reach them from Settings, and why Team realtime events carry identifiers only.
+description: How Teams work in a workspace, who can manage them, how invites add people to Teams, how admins reach them from Settings, and why Team realtime events carry identifiers only.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-07
+last_reviewed: 2026-11-10
 ---
 
 Related issue: [#155](https://github.com/Flow-Research/garden/issues/155)
@@ -47,17 +47,48 @@ Engineering teams import their GitHub issues onto a Team board, and most of thos
 
 The rule lives in one module, `packages/db/src/team-issue-visibility.ts`. `canViewTeamIssue` decides a single issue or realtime event. `teamIssueVisibilityCondition` is the SQL form for collection queries. These callers use it:
 
-| Surface                                          | Caller                                                                                       |
-| ------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| Issue detail, update, comments, and subresources | `requireIssueAccess` in `apps/web/src/lib/server/issue-access.ts`                            |
-| Issue list, search, and child progress           | `apps/web/src/routes/api/issues.ts`, `issues/search.ts`, `issues/child-progress.ts`          |
-| Realtime issue and comment events                | `canReceiveRealtimeEvent` in `packages/agent-runtime/src/realtime-audience.ts`               |
-| The chat agent's `list_issues` tool              | `listIssues` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace |
+| Surface                                                                                              | Caller                                                                                                                                                                |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Issue detail, update, comments, and subresources                                                     | `requireIssueAccess` in `apps/web/src/lib/server/issue-access.ts`                                                                                                     |
+| Issue list, search, and child progress                                                               | `apps/web/src/routes/api/issues.ts`, `issues/search.ts`, `issues/child-progress.ts`                                                                                   |
+| Realtime issue and comment events                                                                    | `canReceiveRealtimeEvent` in `packages/agent-runtime/src/realtime-audience.ts`                                                                                        |
+| The chat agent's `list_issues` tool                                                                  | `listIssues` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace                                                                          |
 | The chat agent's `read_issue`, `post_issue_comment`, `assign_issue`, and `update_issue_status` tools | `readIssue` and `resolveVisibleIssue` in `packages/server/src/issues/server.ts`, as the chat owner sees the workspace. A hidden Team issue returns `Issue not found.` |
 
 The Team owner needs no separate term. Creating a Team adds its owner as a member, an ownership transfer requires an existing member, and the owner cannot be removed. Team issue counts in `GET /api/teams` and `GET /api/teams/:teamId` count the whole board, because only managers and members can open a Team.
 
 Write access follows read access, with limits on assignment and Team moves. A member can update any issue on their Team's board and comment on it, so they can move cards across the board and pick up work. A Team issue may be unassigned. When it has an assignee, that assignee must be a member of the Team or an agent on the Team, and `POST /api/issues` and `PUT /api/issues/:id` reject any other assignee with `Assignee must be a Team member`, including when an issue moves onto a Team. A member can assign a Team issue only to themselves. Through the API a member may create a Team issue unassigned or assigned to themselves; the create modal on a Team page locks the assignee to that member. Assigning a Team issue to someone else, clearing an assignee, and moving an issue between Teams stay with the Team owner and workspace owners and admins, whose assignee picker offers **Unassigned** on Team issues. Deleting an issue needs the workspace `issue:update` permission, which normal members do not have. The `PUT` and `DELETE` handlers in `apps/web/src/routes/api/issues/$id.ts` enforce these limits.
+
+## Invites add people to Teams
+
+An invitation can name the Teams its invitee joins. Before this, accepting an invite created only the workspace membership, so a new member opened `/teams` and saw an empty board until someone added them by hand.
+
+`POST /api/workspaces/:id/members` takes an optional `team_ids` array. Garden records each Team in `invitation_team`, and the accept flow adds the person to every Team the invite names. `planInvitationTeams` in `apps/web/src/lib/server/invitation-teams.ts` decides who may attach which Team:
+
+| Inviter                          | May attach                                                               | Refusal                                                              |
+| -------------------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Workspace owner or admin         | Any Team in the workspace                                                | None                                                                 |
+| Team owner who is a plain member | Only Teams they own, while **Team owners can invite** is on, as `member` | `403 INVITATION_TEAM_FORBIDDEN` or `403 TEAM_OWNER_INVITES_DISABLED` |
+| Any other member                 | Nothing                                                                  | `403 INVITATION_TEAM_FORBIDDEN`                                      |
+
+A Team id that does not exist in the workspace returns `404 TEAM_NOT_FOUND` before any invite is created. When owners or admins name no Team and the workspace has a default Team, the invite joins the default Team. A resend that names Teams adds them to the existing invite. A resend that names none keeps its Teams.
+
+Workspace owners and admins create the invite through Better Auth's `createInvitation`. A Team owner who is a plain member does not hold Better Auth's `invitation:create` permission, so Garden writes that invite row itself with the same 48-hour expiry and the same refusals for an existing member or a live pending invite. If the invite email fails, the route cancels the invite and deletes its `invitation_team` rows.
+
+Acceptance adds Team memberships after the workspace membership exists. It runs on the normal accept path and on the recovery path for a person who is already a member, and it skips Teams the person already belongs to, so a repeated accept leaves one row per Team. A canceled or rejected invite adds no Teams. If the Team write fails, the person still joins the workspace, and the server logs `invitation.join_teams_failed`.
+
+The invite form in **Settings › Members** has a Team picker. Leaving it empty means the default Team applies.
+
+## Invite settings live on the Teams page
+
+Owners and admins see an **Invites** section on `/teams` with two settings, stored as typed columns on `organization`:
+
+| Setting                                         | Column                   | Default |
+| ----------------------------------------------- | ------------------------ | ------- |
+| **Team owners can invite people to their Team** | `team_owners_can_invite` | On      |
+| **Default team for new members**                | `default_team_id`        | None    |
+
+`GET /api/workspaces/:id/team-settings` returns both settings to any workspace member. `PATCH` changes them and is limited to owners and admins. A `default_team_id` from another workspace returns `404 TEAM_NOT_FOUND`. The column has a plain foreign key to `team.id` with `ON DELETE SET NULL`, so deleting the default Team clears the setting. The service checks the workspace, because a composite `(default_team_id, id)` key would try to null `organization.id` on delete.
 
 ## Teams live at `/teams`
 
@@ -65,7 +96,7 @@ Teams has one home in the app:
 
 | Route            | What it shows                                                                                                                                                                                                                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/teams`         | Owners and admins see summary cards and a grid of Team cards with create, edit, delete, and ownership actions. Members see a Team selector and their Team's issues.                                                                                                                                |
+| `/teams`         | Owners and admins see summary cards, a grid of Team cards with create, edit, delete, and ownership actions, and the **Invites** settings. Members see a Team selector and their Team's issues.                                                                                                     |
 | `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md). |
 | `/teams/issues`  | Issues across every Team, for owners and admins                                                                                                                                                                                                                                                    |
 
@@ -104,7 +135,7 @@ Team query keys are scoped by workspace: `['teams', workspaceId, 'list']`, `['te
 | `DELETE` | `/api/teams/:teamId/repositories/:repositoryId`       | Unlink a repository. Imported issues stay. Team managers only.                                                  |
 | `POST`   | `/api/teams/:teamId/repositories/:repositoryId/retry` | Run a failed import again. Team managers only.                                                                  |
 
-Request bodies use the Zod schemas in `apps/web/src/lib/server/validation/teams.ts`. Errors use the `{ error, code }` envelope. The tables are `team` and `team_member` in `packages/db/src/schema/teams.ts`, and `issue.team_id` links an issue to its Team.
+Request bodies use the Zod schemas in `apps/web/src/lib/server/validation/teams.ts`. Errors use the `{ error, code }` envelope. The tables are `team`, `team_member`, and `invitation_team` in `packages/db/src/schema/teams.ts`, and `issue.team_id` links an issue to its Team. Invite and invite-settings endpoints are described in [Invites add people to Teams](#invites-add-people-to-teams).
 
 ## Realtime events say what changed, not what it looks like
 
