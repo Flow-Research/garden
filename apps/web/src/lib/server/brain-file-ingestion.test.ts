@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { Result } from 'better-result'
 import { DateTime, Effect, Layer } from 'effect'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ItemId, Kind, WorkspaceId, type BrainItem } from '@garden/brain/domain'
@@ -108,10 +109,12 @@ const runDeferredBrainIndexAndAudit = (
 
 describe('deferred brain indexing audit trigger', () => {
   beforeEach(() => {
-    mockEnsureAgentRow.mockReset().mockResolvedValue({
-      id: 'agent-1',
-      hostName: 'agent-host-1',
-    })
+    mockEnsureAgentRow.mockReset().mockResolvedValue(
+      Result.ok({
+        id: 'agent-1',
+        hostName: 'agent-host-1',
+      }),
+    )
     mockGetAgentByName.mockReset().mockResolvedValue({
       startBrainAudit: mockStartBrainAudit,
     })
@@ -162,6 +165,21 @@ describe('deferred brain indexing audit trigger', () => {
       status: 'failed',
       error: 'index failed',
     })
+  })
+
+  it('keeps indexed content when default-agent recovery is denied', async () => {
+    mockEnsureAgentRow.mockResolvedValueOnce(
+      Result.err(new Error('setup recovery denied')),
+    )
+    await expect(
+      runDeferredBrainIndexAndAudit(Effect.succeed(indexedItem)),
+    ).resolves.toBeUndefined()
+    expect(mockStartBrainAudit).not.toHaveBeenCalled()
+    expect(mockUpdateIndexStatus).toHaveBeenCalledTimes(1)
+    expect(mockLogError).toHaveBeenCalledWith(
+      'brain file deferred audit failed',
+      expect.objectContaining({ itemId: 'item-42' }),
+    )
   })
 
   it('logs AgentDO failures without rejecting the deferred task', async () => {
