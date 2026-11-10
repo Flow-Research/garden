@@ -206,9 +206,16 @@ describe('membership changes through client navigation', () => {
 
   it('shows and selects a created workspace through the real mutation and router', async () => {
     let memberships = [oldWorkspace]
+    let activeWorkspaceId = oldWorkspace.id
+    configureWorkspaceStore({
+      setWorkspaceHeader: vi.fn(),
+      setWorkspaceId: async (workspaceId) => {
+        activeWorkspaceId = workspaceId ?? oldWorkspace.id
+      },
+    })
     server.bootstrap.mockImplementation(async (workspaceId?: string) => ({
       user,
-      preferredWorkspaceId: workspaceId ?? oldWorkspace.id,
+      preferredWorkspaceId: workspaceId ?? activeWorkspaceId,
       workspaces: memberships,
     }))
     server.listWorkspaces.mockImplementation(async () => memberships)
@@ -240,6 +247,12 @@ describe('membership changes through client navigation', () => {
       invitedWorkspace,
     ])
     expect(server.bootstrap).toHaveBeenLastCalledWith(invitedWorkspace.id)
+    await act(() => router.navigate({ to: '/home', search: {} }))
+    expect(useWorkspaceStore.getState().workspace?.id).toBe(invitedWorkspace.id)
+    expect(queryClient.getQueryData(workspaceKeys.list())).toEqual([
+      oldWorkspace,
+      invitedWorkspace,
+    ])
   })
 
   it('does not restore an old bootstrap snapshot when authenticated layout remounts', async () => {
@@ -319,6 +332,12 @@ describe('membership changes through client navigation', () => {
     expect(server.bootstrap).toHaveBeenLastCalledWith(invitedWorkspace.id)
     expect(server.bootstrap).toHaveBeenNthCalledWith(1, undefined)
     expect(router.state.location.pathname).toBe('/home')
+    await act(() => router.navigate({ to: '/home', search: {} }))
+    expect(useWorkspaceStore.getState().workspace?.id).toBe(invitedWorkspace.id)
+    expect(queryClient.getQueryData(workspaceKeys.list())).toEqual([
+      oldWorkspace,
+      invitedWorkspace,
+    ])
   })
 
   it('refreshes a cold invite whose parent bootstrap started before acceptance', async () => {

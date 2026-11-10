@@ -31,6 +31,11 @@ export const Route = createFileRoute('/_authenticated')({
   // workspace changes invalidate the route when the value must change.
   staleTime: Number.POSITIVE_INFINITY,
   preloadStaleTime: Number.POSITIVE_INFINITY,
+  // Keep the active auth boundary warm, but discard inactive workspace variants.
+  // Reusing the old no-workspace_id snapshot after create/invite otherwise
+  // restored the previous selection when an ordinary navigation cleared search.
+  gcTime: 0,
+  preloadGcTime: 0,
   // Invite/create destinations must reload this snapshot even when the parent
   // stayed mounted. TanStack's loaderDeps changes bypass staleTime: Infinity.
   validateSearch: (search) => {

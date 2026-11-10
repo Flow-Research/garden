@@ -72,6 +72,9 @@ the signed-in user.
   Create and invite destinations reload the account snapshot despite its
   infinite freshness window. The bootstrap server function receives that id
   explicitly because client server-function URLs differ from the browser URL.
+- The active account snapshot stays warm. Inactive workspace variants are
+  discarded so clearing `workspace_id` during ordinary navigation cannot restore
+  an older membership list or selection. Membership query data remains cached.
 - A fresh bootstrap owns membership and active-workspace reconciliation.
   Remounting a cached bootstrap only initializes missing client state and never
   overwrites newer memberships or a selection made since that snapshot.
