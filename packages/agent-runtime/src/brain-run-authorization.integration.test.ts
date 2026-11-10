@@ -1527,6 +1527,22 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 ? 'agent_runtime.brain_output_denied'
                 : 'agent_do.brain_write_back.trigger_failed',
             )
+          const table =
+            kind === 'issue' ? schema.issueRun : schema.automationRun
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database!.db
+                    .select({ status: table.status })
+                    .from(table)
+                    .where(eq(table.id, input.runId))
+                )[0]?.status,
+              { timeout: 60_000 },
+            )
+            .toBe(
+              revoked ? 'failed' : kind === 'issue' ? 'succeeded' : 'completed',
+            )
           expect(JSON.stringify(modelRequests[0])).not.toContain(allowedMarker)
           expect(JSON.stringify(modelRequests.slice(1))).toContain(
             allowedMarker,
@@ -1538,18 +1554,6 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
               ),
             ),
           ).toHaveLength(0)
-          const table =
-            kind === 'issue' ? schema.issueRun : schema.automationRun
-          expect(
-            (
-              await database!.db
-                .select({ status: table.status })
-                .from(table)
-                .where(eq(table.id, input.runId))
-            )[0]?.status,
-          ).toBe(
-            revoked ? 'failed' : kind === 'issue' ? 'succeeded' : 'completed',
-          )
           if (revoked) {
             expect(
               await database!.db.select().from(schema.issueWorkProduct),
