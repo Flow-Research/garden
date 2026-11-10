@@ -6,6 +6,7 @@ file when a shipped user path needs repeatable proof.
 
 | Feature | User path | Status |
 | --- | --- | --- |
+| [Email notifications](./email-notifications.md) | Mention a member or create an inbox item, then verify Resend delivery and deduplication | Database proof automated; live mailbox check pending |
 | [MVP beta path](./mvp.md) | Connect a tool, chat, create an issue, run an agent, approve an action, review output | Documented; driver pending |
 | [Decide integration](./decide.md) | Install Decide, diagnose the connection, and run a Decide-backed agent action | Documented; live environment check pending |
 | [Internal handbook](./handbook.md) | Sign in, open `/handbook`, browse the Diátaxis sections, follow links, scroll a long page | Documented; checked by hand on PR #262 |

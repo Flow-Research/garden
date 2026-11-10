@@ -44,6 +44,7 @@ import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
+import { upsertChatMentionInbox } from '@garden/db/inbox'
 import { and, asc, eq, or, type SQL } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from 'effect'
@@ -2102,6 +2103,38 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       ? derivePermissions({ agent: { permissions: identity.agentPermissions } })
       : null
     if (identity) {
+      /**
+       * Notify tagged members from Think's persisted user turn, including
+       * recovered turns. UI ids give the inbox writer a stable dedupe key.
+       * Before this hook chat mentions never created recipient notifications.
+       * Reference: installed @cloudflare/think beforeTurn lifecycle contract.
+       */
+      const message = [...this.messages]
+        .reverse()
+        .find((entry) => entry.role === 'user')
+      if (message) {
+        const notification = await Result.tryPromise(() =>
+          upsertChatMentionInbox({
+            db: this.getDb(),
+            workspaceId: identity.workspaceId,
+            threadId: identity.id,
+            messageId: message.id,
+            actorId: identity.ownerUserId,
+            content: message.parts
+              .filter((part) => part.type === 'text')
+              .map((part) => part.text)
+              .join('\n'),
+          }),
+        )
+        notification.match({
+          ok: () => {},
+          err: (error) =>
+            agentRuntimeLogger.error(
+              'chat.mention_inbox_failed',
+              errorFields(error),
+            ),
+        })
+      }
       this.aiObservation.startTurn(
         {
           runtimeKind: 'chat',

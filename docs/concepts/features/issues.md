@@ -49,11 +49,17 @@ Chat agents can work with issues directly. `createChatSubAgentTools` in `package
 
 A chat thread can also point at one issue. `chat_thread.primary_issue_id` stores the link, `/api/chat/threads/:id/primary-issue` sets it, and the chat title bar shows the issue as a pill. From an issue's detail header you can open an agent chat about that issue. Issue mentions in chat messages render as links through `MentionAwareAnchor` in `apps/web/src/components/ai-elements/message.tsx`.
 
-## The Inbox is computed, not stored
+## The Inbox stores recipient notifications
 
-The Inbox has no table of items. `apps/web/src/lib/server/inbox-compute.ts` computes it on each request from approvals, mentions, blockers, and failed runs. It includes agent comments and comments by other users, and leaves out your own. Permission requests join through `agent.workspace_id`, so each workspace sees only its own approvals. Mentions match with `commentMentionsUserSql()`, a JSON containment query on `issue_comment.mentions` backed by the `issue_comment_mentions_gin` index. Dismissing an item writes an `inbox_dismissal` row.
+`inbox_item` persists notifications written by assignment, mention, approval,
+comment, and agent-tool paths. Reads use `computeInboxItems`; the separate
+reconciliation function can refresh derived sources. Read and archive state
+live on each recipient row.
 
-Computing the Inbox keeps it consistent with the data it summarizes. An item disappears when its cause is resolved, with no second record to clean up.
+Explicit member mentions in descriptions and comments create inbox items at
+write time, including edits that add recipients. Each new inbox row also queues
+[email delivery](./email-notifications.md). Stable recipient/source keys prevent
+repeated edits from sending duplicate emails.
 
 ## The UI polls active runs and listens for issue events
 

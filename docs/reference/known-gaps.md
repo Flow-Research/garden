@@ -14,6 +14,7 @@ FLO ids are Linear issues. The GitHub issues that tracked some of these gaps (#2
 
 | Area | Issue | Gap | Priority | Evidence | Last verified |
 | --- | --- | --- | --- | --- | --- |
+| Notifications | [#335](https://github.com/Flow-Research/garden/issues/335) | Local Postgres and simulated Resend tests cover delivery; live mailbox and deployed minute-cron proof remain pending. | Medium | `apps/web/src/lib/server/email/notifications.integration.test.ts` | 2026-11-10 |
 | Auth | Security remediation | Prove on the server that roles without permission cannot change permissions. A static test checks that every mutating route calls a permission check, but no test exercises each role against each route. Exploit details follow `SECURITY.md`. | Critical | `apps/web/src/routes/api/-authorization.test.ts` | 2026-11-03 |
 | Auth | FLO-30 | Garden checks workspace access in application code, but no test suite proves that one workspace cannot reach another through every product surface. | High | `resolveWorkspaceId` in `apps/web/src/lib/server/control-plane.ts` | 2026-11-03 |
 | Auth | None | The chat agent's `read_run` tool finds an issue run by issue number anywhere in the workspace and ignores Team visibility, so a chat owner outside a Team can read that Team issue's run state. The other chat issue tools apply the Team rule. | High | `resolveIssueRun` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` | 2026-11-09 |

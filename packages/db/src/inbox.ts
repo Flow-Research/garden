@@ -2,8 +2,28 @@ import { randomUUID } from 'node:crypto'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import type { GardenDatabase } from './client.js'
 import * as schema from './schema/index.js'
+import { isWorkspaceManagerRole } from './team-issue-visibility.js'
 
-type GardenDb = GardenDatabase
+type GardenDb = Pick<GardenDatabase, 'select' | 'insert' | 'update'>
+
+/**
+ * The editor serializes explicit people as stable member links. Parse ids,
+ * not labels, so duplicate names and ordinary @text cannot email the wrong user.
+ * See packages/ui/markdown/mentions.ts.
+ */
+export function explicitMemberMentionIds(content: string): string[] {
+  return [
+    ...new Set(
+      [
+        ...content.matchAll(
+          /\[@(?:\\.|[^\]\\])*\]\(mention:\/\/member\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\)/gi,
+        ),
+      ]
+        .map((match) => match[1]?.toLowerCase())
+        .filter((id): id is string => id !== undefined),
+    ),
+  ]
+}
 
 type InboxActorType = 'member' | 'agent' | null
 type InboxSeverity = 'action_required' | 'attention' | 'info'
@@ -173,6 +193,41 @@ async function isActiveWorkspaceUser(
 }
 
 /**
+ * An email or inbox mention must not leak a Team issue to an outside member.
+ * Mirrors canViewTeamIssue in team-issue-visibility.ts and rechecks membership
+ * at delivery because queued work can outlive the recipient's access.
+ */
+export async function canReceiveIssueNotification(
+  db: GardenDb,
+  issue: Pick<typeof schema.issue.$inferSelect, 'workspaceId' | 'teamId'>,
+  userId: string,
+): Promise<boolean> {
+  const [member] = await db
+    .select({ role: schema.member.role })
+    .from(schema.member)
+    .where(
+      and(
+        eq(schema.member.organizationId, issue.workspaceId),
+        eq(schema.member.userId, userId),
+      ),
+    )
+    .limit(1)
+  if (!member) return false
+  if (!issue.teamId || isWorkspaceManagerRole(member.role)) return true
+  const [membership] = await db
+    .select({ id: schema.teamMember.id })
+    .from(schema.teamMember)
+    .where(
+      and(
+        eq(schema.teamMember.teamId, issue.teamId),
+        eq(schema.teamMember.userId, userId),
+      ),
+    )
+    .limit(1)
+  return Boolean(membership)
+}
+
+/**
  * Recipient order for Team-linked inbox items, per the Teams spec:
  * agent owner → linked issue assignee → Team owner → workspace owner/admin.
  * Every step must resolve to an active workspace user, the first eligible
@@ -283,6 +338,82 @@ function issueDetails(issue: typeof schema.issue.$inferSelect) {
   return {
     issue_number: String(issue.number),
     status: issue.status ?? 'todo',
+  }
+}
+
+/**
+ * Push explicit mentions at write time. Previously human mentions relied on
+ * inbox reconciliation, so an offline recipient never got a notification.
+ * Stable per-source keys preserve one email when edits/retries revisit a mention.
+ */
+export async function upsertIssueMentionInbox(args: {
+  db: GardenDb
+  workspaceId: string
+  issueId: string
+  content: string
+  commentId?: string
+  actorType: InboxActorType
+  actorId: string
+}): Promise<void> {
+  const recipients = explicitMemberMentionIds(args.content)
+  if (!recipients.length) return
+  const issue = await loadIssue(args.db, args.workspaceId, args.issueId)
+  if (!issue) return
+  for (const recipientId of recipients) {
+    if (recipientId === args.actorId) continue
+    if (!(await canReceiveIssueNotification(args.db, issue, recipientId)))
+      continue
+    await upsertInboxItem(args.db, {
+      workspaceId: args.workspaceId,
+      recipientId,
+      itemKey: args.commentId
+        ? `mention:${args.commentId}`
+        : `description_mention:${issue.id}`,
+      type: 'mentioned',
+      severity: 'action_required',
+      issueId: issue.id,
+      issueStatus: issue.status,
+      title: `Mentioned on ${issue.title}`,
+      body: truncate(args.content),
+      actorType: args.actorType,
+      actorId: args.actorId,
+      details: {
+        ...issueDetails(issue),
+        ...(args.commentId ? { comment_id: args.commentId } : {}),
+      },
+    })
+  }
+}
+
+/**
+ * Chats are owner-only (getThreadAccess); notify explicitly tagged members
+ * without exposing private message text/title or granting thread access.
+ * The message id makes model retries and recovered turns idempotent.
+ */
+export async function upsertChatMentionInbox(args: {
+  db: GardenDb
+  workspaceId: string
+  threadId: string
+  messageId: string
+  actorId: string
+  content: string
+}): Promise<void> {
+  for (const recipientId of explicitMemberMentionIds(args.content)) {
+    if (recipientId === args.actorId) continue
+    if (!(await isActiveWorkspaceUser(args.db, args.workspaceId, recipientId)))
+      continue
+    await upsertInboxItem(args.db, {
+      workspaceId: args.workspaceId,
+      recipientId,
+      itemKey: `chat_mention:${args.threadId}:${args.messageId}`,
+      type: 'mentioned',
+      severity: 'attention',
+      issueId: null,
+      issueStatus: null,
+      title: 'You were mentioned in a private chat',
+      actorType: 'member',
+      actorId: args.actorId,
+    })
   }
 }
 

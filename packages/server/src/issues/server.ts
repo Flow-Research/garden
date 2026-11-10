@@ -1,6 +1,11 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import {
+  explicitMemberMentionIds,
+  upsertIssueAssignmentInbox,
+  upsertIssueMentionInbox,
+} from '@garden/db/inbox'
+import {
   addIssueSubscribers,
   assigneeToSubscriberType,
   type SubscriberEntry,
@@ -346,18 +351,11 @@ function normalizeMention(value: string) {
   return value.trim().toLowerCase()
 }
 
-function mentionAliases(value: {
-  name?: string | null
-  email?: string | null
-}) {
+function mentionAliases(value: { name?: string | null }) {
   const aliases = new Set<string>()
   if (value.name) {
     aliases.add(normalizeMention(value.name))
     aliases.add(normalizeMention(value.name.replace(/\s+/g, '')))
-  }
-  if (value.email) {
-    aliases.add(normalizeMention(value.email))
-    aliases.add(normalizeMention(value.email.split('@')[0] ?? ''))
   }
   aliases.delete('')
   return aliases
@@ -378,13 +376,20 @@ function extractMentionTokens(content: string) {
   )
 }
 
+/**
+ * Resolve people by canonical member ids, so duplicate labels cannot notify
+ * an untagged person during inbox reconciliation. Agent name tokens retain
+ * their existing run-wakeup meaning. The editor contract lives in
+ * packages/ui/markdown/mentions.ts.
+ */
 async function resolveMentions(args: {
   db: IssueDb
   workspaceId: string
   content: string
 }) {
   const tokens = extractMentionTokens(args.content)
-  if (tokens.size === 0)
+  const explicitIds = new Set(explicitMemberMentionIds(args.content))
+  if (tokens.size === 0 && explicitIds.size === 0)
     return { agents: [] as string[], users: [] as string[] }
 
   const [agentRows, memberRows] = await Promise.all([
@@ -402,12 +407,9 @@ async function resolveMentions(args: {
       ),
     args.db
       .select({
-        id: schema.user.id,
-        name: schema.user.name,
-        email: schema.user.email,
+        id: schema.member.userId,
       })
       .from(schema.member)
-      .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
       .where(eq(schema.member.organizationId, args.workspaceId)),
   ])
 
@@ -417,12 +419,7 @@ async function resolveMentions(args: {
     )
     .map((agent) => agent.id)
   const users = memberRows
-    .filter((member) =>
-      hasMentionToken(
-        mentionAliases({ name: member.name, email: member.email }),
-        tokens,
-      ),
-    )
+    .filter((member) => explicitIds.has(member.id))
     .map((member) => member.id)
 
   return {
@@ -1038,6 +1035,22 @@ export async function createIssue(
         }
         const issue = insertedIssue
 
+        await upsertIssueAssignmentInbox({
+          db: tx,
+          workspaceId: issue.workspaceId,
+          issueId: issue.id,
+          actorType: 'member',
+          actorId: parsed.data.createdBy,
+        })
+        await upsertIssueMentionInbox({
+          db: tx,
+          workspaceId: issue.workspaceId,
+          issueId: issue.id,
+          content: issue.description ?? '',
+          actorType: 'member',
+          actorId: parsed.data.createdBy,
+        })
+
         if (parsed.data.source) {
           await attachSourceBindingInTransaction(tx, {
             workspaceId: parsed.data.workspaceId,
@@ -1313,6 +1326,15 @@ export async function postIssueComment(
         })
       }
       const comment = insertedComment
+      await upsertIssueMentionInbox({
+        db,
+        workspaceId: issue.workspaceId,
+        issueId: issue.id,
+        content: comment.body,
+        commentId: comment.id,
+        actorType: 'member',
+        actorId: parsed.data.authorUserId,
+      })
       await linkIssueAttachments({
         db,
         workspaceId: parsed.data.workspaceId,

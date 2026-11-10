@@ -1,7 +1,12 @@
 import { eq } from 'drizzle-orm'
+import {
+  upsertIssueMentionInbox,
+  explicitMemberMentionIds,
+} from '@garden/db/inbox'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
+import { issueCommentMentionsSchema } from '@garden/db/validation'
 import {
   commentBodySchema,
   parseJsonBody,
@@ -67,13 +72,38 @@ export const Route = createFileRoute('/api/comments/$id')({
           )
         }
 
+        /**
+         * Refresh member ids on edit without clearing existing agent metadata.
+         * Previously edits left member mentions stale. Agent wake behavior
+         * remains owned by the comment service, outside this email path.
+         */
+        const previousMentions = issueCommentMentionsSchema.safeParse(
+          existingComment.mentions,
+        )
         const [updatedComment] = await db
           .update(schema.issueComment)
-          .set({ body: body.content })
+          .set({
+            body: body.content,
+            mentions: {
+              users: explicitMemberMentionIds(body.content),
+              agents: previousMentions.success
+                ? previousMentions.data.agents
+                : [],
+            },
+          })
           .where(eq(schema.issueComment.id, params.id))
           .returning()
 
         if (!updatedComment) return notFound('Comment not found')
+        await upsertIssueMentionInbox({
+          db,
+          workspaceId: access.issue.workspaceId,
+          issueId: access.issue.id,
+          content: updatedComment.body,
+          commentId: updatedComment.id,
+          actorType: 'member',
+          actorId: access.session.user.id,
+        })
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
             type: 'comment:updated',
