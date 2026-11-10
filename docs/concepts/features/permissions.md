@@ -64,7 +64,7 @@ Open policy gaps are tracked in [known gaps](../../reference/known-gaps.md).
 
 ## Issue tools see the workspace as the chat owner does
 
-A chat agent's issue tools act for the person who owns the chat. `list_issues` applies the Team issue rule to that person, so the agent lists workspace issues and the boards of Teams the owner belongs to, and every Team issue when the owner is a workspace owner or admin. `listIssues` in `packages/server/src/issues/server.ts` reads the owner's workspace role and applies `teamIssueVisibilityCondition`. See [Teams](teams.md#team-members-work-the-whole-team-board) for the rule. `read_issue` and `post_issue_comment` do not apply it yet. [Known gaps](../../reference/known-gaps.md) tracks that.
+A chat agent's issue tools act for the person who owns the chat. `list_issues`, `read_issue`, `post_issue_comment`, `assign_issue`, and `update_issue_status` apply the Team issue rule to that person, so the agent reaches workspace issues and the boards of Teams the owner belongs to, and every Team issue when the owner is a workspace owner or admin. A Team issue outside the owner's reach returns `Issue not found.`, so the agent cannot confirm that it exists. `issueVisibilityFor` in `packages/server/src/issues/server.ts` reads the owner's workspace role and builds `teamIssueVisibilityCondition`; `listIssues`, `readIssue`, and `resolveVisibleIssue` apply it. See [Teams](teams.md#team-members-work-the-whole-team-board) for the rule. `read_run` does not apply it yet. [Known gaps](../../reference/known-gaps.md) tracks that.
 
 ## Rules for permission changes
 
