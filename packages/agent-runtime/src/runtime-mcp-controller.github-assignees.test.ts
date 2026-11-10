@@ -77,7 +77,12 @@ function hostedIssueWrite(workspaceId: string) {
   const tool = tools[
     buildMcpAiToolKey('github-mcp', 'issue_write')
   ] as unknown as ExecutableTool
+  const nativeTool = tools[
+    buildMcpAiToolKey('github', 'issue_write')
+  ] as unknown as ExecutableTool
   return {
+    runNative: (input: unknown) =>
+      nativeTool.execute(input, { toolCallId: randomUUID(), messages: [] }),
     callTool,
     run: (input: unknown) =>
       tool.execute(input, { toolCallId: randomUUID(), messages: [] }),
@@ -136,6 +141,44 @@ describe('hosted github issue_write assignees', () => {
       message: expect.stringContaining('stranger'),
     })
     expect(callTool).not.toHaveBeenCalled()
+  })
+
+  // #294: a present `assignees` that is not an array of strings used to skip
+  // the linked-login check entirely and reach GitHub.
+  it.each([
+    ['a bare string', 'stranger'],
+    ['an array with a non-string entry', [LINKED_LOGIN, 42]],
+    ['an object', { login: 'stranger' }],
+  ])('rejects assignees given as %s on create', async (_label, assignees) => {
+    const { run, callTool } = hostedIssueWrite(workspaceId)
+    const result = await run({
+      method: 'create',
+      owner: 'o',
+      repo: 'r',
+      title: 't',
+      assignees,
+    })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('string[]'),
+    })
+    expect(callTool).not.toHaveBeenCalled()
+  })
+
+  // The native tool shares the gate; a rejection returns before its execute
+  // runs, so no GitHub request is attempted.
+  it('rejects non-array assignees on the native surface', async () => {
+    const { runNative } = hostedIssueWrite(workspaceId)
+    const result = await runNative({
+      owner: 'o',
+      repo: 'r',
+      title: 't',
+      assignees: 'stranger',
+    })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('string[]'),
+    })
   })
 
   it('refuses assignees on update so existing assignees survive', async () => {

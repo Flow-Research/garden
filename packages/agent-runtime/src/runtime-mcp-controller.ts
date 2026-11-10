@@ -397,15 +397,29 @@ type ActiveNativeConnectorAccount = {
   status: 'connected' | 'degraded'
 }
 
-function requestedGithubAssignees(input: unknown): string[] {
-  return typeof input === 'object' &&
-    input !== null &&
-    'assignees' in input &&
-    Array.isArray(input.assignees)
-    ? input.assignees.filter(
-        (login): login is string => typeof login === 'string',
-      )
-    : []
+type GithubAssigneesInput =
+  | { kind: 'absent' }
+  | { kind: 'invalid' }
+  | { kind: 'valid'; logins: readonly string[] }
+
+/**
+ * Classifies the `assignees` field of an `issue_write` call so the gate can
+ * tell "not provided" from "provided but malformed".
+ * Before (#294): anything other than an array read as no assignees, and
+ * non-string entries were filtered out, so a string, object, or mixed array
+ * skipped the linked-login check and reached GitHub.
+ * After: a present value that is not `string[]` is `invalid` and rejected.
+ */
+function parseGithubAssignees(input: unknown): GithubAssigneesInput {
+  if (!hasAssigneesKey(input)) return { kind: 'absent' }
+  const value = input.assignees
+  if (
+    !Array.isArray(value) ||
+    !value.every((login): login is string => typeof login === 'string')
+  ) {
+    return { kind: 'invalid' }
+  }
+  return { kind: 'valid', logins: value }
 }
 
 /**
@@ -414,7 +428,7 @@ function requestedGithubAssignees(input: unknown): string[] {
  * on update clears every assignee.
  * Ref: github/github-mcp-server pkg/github/issues.go (AssigneesProvided)
  */
-function hasAssigneesKey(input: unknown): boolean {
+function hasAssigneesKey(input: unknown): input is { assignees: unknown } {
   return typeof input === 'object' && input !== null && 'assignees' in input
 }
 
@@ -847,6 +861,9 @@ export class RuntimeMcpController {
    * Ref: https://docs.github.com/en/rest/issues/assignees#add-assignees-to-an-issue
    * Ref: https://github.com/github/github-mcp-server (issue_write method=update)
    *
+   * A present `assignees` that is not `string[]` is rejected on both
+   * surfaces (#294); before, it skipped the login check and reached GitHub.
+   *
    * Returns the rejection message, or null to proceed.
    */
   private async rejectGithubIssueWrite(
@@ -862,9 +879,13 @@ export class RuntimeMcpController {
     ) {
       return 'github-mcp.issue_write cannot set assignees on update: it replaces existing assignees. Use github.issue_write, which adds assignees without removing current ones.'
     }
-    const requested = requestedGithubAssignees(input)
-    if (requested.length === 0) return null
-    return this.rejectUnlinkedGithubAssignees(requested)
+    const assignees = parseGithubAssignees(input)
+    if (assignees.kind === 'absent') return null
+    if (assignees.kind === 'invalid') {
+      return `${toolName} rejected: assignees must be an array of GitHub login strings (string[]).`
+    }
+    if (assignees.logins.length === 0) return null
+    return this.rejectUnlinkedGithubAssignees(assignees.logins)
   }
 
   /**
