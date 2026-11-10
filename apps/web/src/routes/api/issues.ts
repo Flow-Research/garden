@@ -151,9 +151,11 @@ export const Route = createFileRoute('/api/issues')({
 
         if (typeof body.team_id === 'string') {
           // Team-scoped create: normal Team members may create issues even
-          // though they lack the workspace issueManage permission, as long as
-          // the issue is assigned to themselves and the assignee is a Team
-          // member. Workspace managers and the Team owner may assign others.
+          // though they lack the workspace issueManage permission. Team issues
+          // may be unassigned; when an assignee is given it must be a Team
+          // member (or Team agent), and normal members may only pick
+          // themselves. Workspace managers and the Team owner may assign
+          // others.
           const teamAccess = await requireTeamAccess(appContext, body.team_id)
           if (teamAccess instanceof Response) return teamAccess
           const manager = isWorkspaceManager(
@@ -168,10 +170,8 @@ export const Route = createFileRoute('/api/issues')({
               'Team membership required',
             )
           }
-          if (typeof body.assignee_id !== 'string') {
-            return badRequest('Team issues must be assigned to a Team member')
-          }
           if (
+            typeof body.assignee_id === 'string' &&
             !canAssignOthers &&
             (body.assignee_type === 'agent' ||
               body.assignee_id !== session.user.id)
@@ -182,22 +182,24 @@ export const Route = createFileRoute('/api/issues')({
               'Team members can only assign issues to themselves',
             )
           }
-          const assigneeCondition =
-            body.assignee_type === 'agent'
-              ? and(
-                  eq(schema.teamMember.teamId, body.team_id),
-                  eq(schema.teamMember.agentId, body.assignee_id),
-                )
-              : and(
-                  eq(schema.teamMember.teamId, body.team_id),
-                  eq(schema.teamMember.userId, body.assignee_id),
-                )
-          const [assigneeMembership] = await db
-            .select({ id: schema.teamMember.id })
-            .from(schema.teamMember)
-            .where(assigneeCondition)
-          if (!assigneeMembership) {
-            return badRequest('Assignee must be a Team member')
+          if (typeof body.assignee_id === 'string') {
+            const assigneeCondition =
+              body.assignee_type === 'agent'
+                ? and(
+                    eq(schema.teamMember.teamId, body.team_id),
+                    eq(schema.teamMember.agentId, body.assignee_id),
+                  )
+                : and(
+                    eq(schema.teamMember.teamId, body.team_id),
+                    eq(schema.teamMember.userId, body.assignee_id),
+                  )
+            const [assigneeMembership] = await db
+              .select({ id: schema.teamMember.id })
+              .from(schema.teamMember)
+              .where(assigneeCondition)
+            if (!assigneeMembership) {
+              return badRequest('Assignee must be a Team member')
+            }
           }
         } else {
           const managePermission = await requireWorkspacePermission({
