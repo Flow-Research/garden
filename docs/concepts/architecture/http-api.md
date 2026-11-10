@@ -3,7 +3,7 @@ title: One Effect HttpApi serves the /api splat route
 description: How Garden mounts typed Effect HttpApi groups behind the TanStack Start `/api/$` route, and how requests, the database, and TanStack Query fit around it.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-10
 ---
 
 Most Garden API endpoints are plain TanStack Start server routes under `apps/web/src/routes/api/`. A growing set uses a different pattern: a typed Effect `HttpApi` contract mounted behind one splat route, `apps/web/src/routes/api/$.ts`. This page explains that pattern. The [Effect HttpApi decision](../../decisions/2026-07-effect-http-api.md) records why Garden chose it.
@@ -97,3 +97,7 @@ These rules keep the contract honest:
 - Let HttpApi encode responses. Do not call `Schema.encodeEffect` in handlers.
 - Declare every public field in the schema. `Schema.Struct` drops undeclared fields when it encodes.
 - Use `{ onExcessProperty: 'error' }` on inputs where an unknown key must fail.
+
+## Proposed native clients reuse this boundary
+
+The [cross-platform client proposal](../../proposals/cross-platform-clients.md) maps the current transport, sign-in, chat and authority boundaries. The agreed client scope does not make every product route part of `GardenApi`. Extend the existing contract only for required operations; keep browser/native transport and session adapters outside domain contracts. Native authentication and lifecycle behavior still need implementation and device proof.
