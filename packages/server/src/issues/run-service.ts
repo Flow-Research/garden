@@ -37,6 +37,39 @@ export class IssueRunServiceError extends TaggedError('IssueRunServiceError')<{
   cause?: unknown
 }>() {}
 
+/**
+ * The run's Cloudflare Workflow instance can no longer receive control events:
+ * either Workflows has no record of it, or it already reached a terminal
+ * status. Before this existed, cancelling such a run returned a 502 and left
+ * the row live forever (seen on garden-dev with runs stuck since Sep/Oct).
+ * Cancel recovers from this by finalizing the row itself, since no workflow
+ * step will ever do it; every other workflow error still fails the call.
+ */
+export class WorkflowInstanceGoneError extends TaggedError(
+  'WorkflowInstanceGoneError',
+)<{
+  reason: 'workflow_instance_missing' | 'workflow_instance_terminal'
+  message: string
+  cause?: unknown
+}>() {}
+
+/** Terminal `InstanceStatus['status']` values from the Workflows binding. */
+const TERMINAL_WORKFLOW_STATUSES = new Set([
+  'complete',
+  'errored',
+  'terminated',
+])
+
+/**
+ * Workflows reports a missing instance by rejecting `get()` with an error whose
+ * message carries the `instance.not_found` code: miniflare throws the bare code
+ * (`miniflare/dist/src/workers/workflows/wrapped-binding.worker.js`), production
+ * prefixes it as `(instance.not_found) Instance not found`.
+ */
+function isWorkflowInstanceNotFound(cause: unknown) {
+  return cause instanceof Error && cause.message.includes('instance.not_found')
+}
+
 export type StartIssueRunInput = {
   workspaceId: string
   issueId: string
@@ -281,12 +314,17 @@ async function resumeIssueRunRuntime(args: {
   env: IssueRunEnv
   workflowInstanceId: string
 }): Promise<ResultValue<void, IssueRunServiceError>> {
-  return await sendRunWorkflowControlEvent({
+  const result = await sendRunWorkflowControlEvent({
     env: args.env,
     workflowInstanceId: args.workflowInstanceId,
     event: { kind: 'resume' },
     operation: 'resume issue run workflow',
   })
+  return result.mapError((error) =>
+    WorkflowInstanceGoneError.is(error)
+      ? runtimeError('resume issue run workflow', error)
+      : error,
+  )
 }
 
 async function sendRunWorkflowControlEvent(args: {
@@ -294,7 +332,9 @@ async function sendRunWorkflowControlEvent(args: {
   workflowInstanceId: string
   event: RunWorkflowControlEvent
   operation: string
-}): Promise<ResultValue<void, IssueRunServiceError>> {
+}): Promise<
+  ResultValue<void, IssueRunServiceError | WorkflowInstanceGoneError>
+> {
   const workflow = args.env.RUN_WORKFLOW
   if (!workflow) {
     return Result.err(
@@ -305,17 +345,119 @@ async function sendRunWorkflowControlEvent(args: {
     )
   }
 
-  const result = await Result.tryPromise({
-    try: async () => {
-      const instance = await workflow.get(args.workflowInstanceId)
+  const instanceResult = await Result.tryPromise({
+    try: async () => await workflow.get(args.workflowInstanceId),
+    catch: (cause) =>
+      isWorkflowInstanceNotFound(cause)
+        ? new WorkflowInstanceGoneError({
+            reason: 'workflow_instance_missing',
+            message: `Workflow instance ${args.workflowInstanceId} not found.`,
+            cause,
+          })
+        : runtimeError(args.operation, cause),
+  })
+  if (instanceResult.isErr()) return Result.err(instanceResult.error)
+  const instance = instanceResult.value
+
+  const sendResult = await Result.tryPromise({
+    try: async () =>
       await instance.sendEvent({
         type: RUN_WORKFLOW_CONTROL_EVENT_TYPE,
         payload: args.event,
-      })
-    },
+      }),
     catch: (cause) => runtimeError(args.operation, cause),
   })
-  if (result.isErr()) return Result.err(result.error)
+  return await sendResult.tryRecoverAsync(
+    async (
+      sendError,
+    ): Promise<
+      ResultValue<void, IssueRunServiceError | WorkflowInstanceGoneError>
+    > => {
+      const statusResult = await Result.tryPromise({
+        try: async () => await instance.status(),
+        catch: (cause) => runtimeError(`${args.operation} status check`, cause),
+      })
+      if (
+        statusResult.isOk() &&
+        TERMINAL_WORKFLOW_STATUSES.has(statusResult.value.status)
+      ) {
+        return Result.err(
+          new WorkflowInstanceGoneError({
+            reason: 'workflow_instance_terminal',
+            message: `Workflow instance ${args.workflowInstanceId} is already ${statusResult.value.status}.`,
+            cause: sendError,
+          }),
+        )
+      }
+      return Result.err(sendError)
+    },
+  )
+}
+
+/**
+ * Finalizes a live run whose workflow instance is gone, mirroring the
+ * workflow-driven `finishCancelled` in `IssueRunSubAgent`: mark the row
+ * cancelled with the reason, clear the issue's `active_run_id`, and append
+ * `issue_run:cancelled`. Inbox items derive from live run status, so they
+ * drop out on their own.
+ */
+async function finalizeOrphanedRunCancelled(args: {
+  env: IssueRunEnv
+  workspaceId: string
+  issueId: string
+  runId: string
+  error: WorkflowInstanceGoneError
+}): Promise<ResultValue<void, IssueRunServiceError>> {
+  const db = getDb(args.env)
+  const now = new Date()
+  const writeResult = await Result.tryPromise({
+    try: async () =>
+      await db.transaction(async (tx) => {
+        const [cancelledRun] = await tx
+          .update(schema.issueRun)
+          .set({
+            status: 'cancelled',
+            error: args.error.message,
+            resultJson: { resolution: 'cancelled', reason: args.error.reason },
+            finishedAt: now,
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.issueRun.id, args.runId),
+              inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+            ),
+          )
+          .returning({ id: schema.issueRun.id })
+        if (!cancelledRun) return false
+        await tx
+          .update(schema.issue)
+          .set({ activeRunId: null, updatedAt: now })
+          .where(
+            and(
+              eq(schema.issue.id, args.issueId),
+              eq(schema.issue.activeRunId, args.runId),
+            ),
+          )
+        return true
+      }),
+    catch: (cause) => serviceDbError('finalize orphaned issue run', cause),
+  })
+  if (writeResult.isErr()) return Result.err(writeResult.error)
+  if (!writeResult.value) return Result.ok()
+
+  const eventResult = await appendIssueRunEvent({
+    env: args.env,
+    workspaceId: args.workspaceId,
+    issueId: args.issueId,
+    runId: args.runId,
+    eventType: 'issue_run:cancelled',
+    stream: 'system',
+    level: 'warn',
+    message: 'Run cancelled',
+    payload: { reason: args.error.reason, error: args.error.message },
+  })
+  if (eventResult.isErr()) return Result.err(eventResult.error)
   return Result.ok()
 }
 
@@ -747,7 +889,18 @@ export async function cancelIssueRun(
     event: { kind: 'cancel' },
     operation: 'cancel run workflow',
   })
-  if (workflowResult.isErr()) return Result.err(workflowResult.error)
+  const signalResult = await workflowResult.tryRecoverAsync(async (error) =>
+    WorkflowInstanceGoneError.is(error)
+      ? await finalizeOrphanedRunCancelled({
+          env,
+          workspaceId: input.workspaceId,
+          issueId,
+          runId: input.runId,
+          error,
+        })
+      : Result.err(error),
+  )
+  if (signalResult.isErr()) return Result.err(signalResult.error)
 
   if (result.value.previousStatus === 'running') {
     const abortResult = await abortRunningIssueRunRuntime({
