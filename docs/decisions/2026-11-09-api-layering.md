@@ -3,10 +3,10 @@ title: Keep TanStack API routes thin with Zod, queries, and Result services
 description: Decision record for layering Garden's TanStack Start `/api` routes as Zod validation, Drizzle queries, better-result services, and thin route handlers — without adding Hono.
 status: decision
 owner: "@Umoren"
-last_reviewed: 2026-11-09
+last_reviewed: 2026-11-10
 ---
 
-**Date:** 2026-11-09. **Outcome:** accepted; migration starts on `refactor/api-layering` with warn-level lint and `/api/issues` as the reference route. Not fully shipped yet.
+**Date:** 2026-11-09. **Outcome:** accepted; migration on `refactor/api-layering`. Decision doc and warn-level lint for `routes/api` Drizzle/db imports are in. `/api/issues` reference extract is next. Not fully shipped yet.
 
 ## Context
 
