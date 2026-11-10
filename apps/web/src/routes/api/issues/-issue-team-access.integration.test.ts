@@ -441,7 +441,11 @@ describe('team issue access (integration)', () => {
         '/api/issues',
       ),
     )
-    expect(unassignedResponse.status).toBe(400)
+    expect(unassignedResponse.status).toBe(201)
+    const unassigned = (await unassignedResponse.json()) as {
+      assignee_id: string | null
+    }
+    expect(unassigned.assignee_id).toBeNull()
   })
 
   it('rejects Team issue creation by non-members and non-member assignees', async () => {
@@ -607,7 +611,7 @@ describe('team issue access (integration)', () => {
         '/api/issues/$id',
       ),
     )
-    expect(unassignedMoveResponse.status).toBe(400)
+    expect(unassignedMoveResponse.status).toBe(200)
 
     const moveInRequest = jsonRequest(
       `https://garden.test/api/issues/${workspaceIssueId}`,
@@ -670,6 +674,83 @@ describe('team issue access (integration)', () => {
       team_id: string | null
     }
     expect(movedOut.team_id).toBeNull()
+  })
+
+  it('allows unassigned Team issues but keeps assignees inside the Team', async () => {
+    const { fixture, teamId, assignedIssueId, workspaceIssueId } =
+      await seedScenario()
+    const asOwner = {
+      workspaceId: fixture.workspaceId,
+      userId: fixture.ownerId,
+      role: 'owner' as const,
+    }
+
+    const moveUnassigned = await callAs({
+      ...asOwner,
+      route: IssueRoute,
+      method: 'PUT',
+      url: `/api/issues/${workspaceIssueId}`,
+      params: { id: workspaceIssueId },
+      body: { team_id: teamId },
+    })
+    expect(moveUnassigned.status).toBe(200)
+    const moved = (await moveUnassigned.json()) as {
+      team_id: string | null
+      assignee_id: string | null
+    }
+    expect(moved.team_id).toBe(teamId)
+    expect(moved.assignee_id).toBeNull()
+
+    const clearAssignee = await callAs({
+      ...asOwner,
+      route: IssueRoute,
+      method: 'PUT',
+      url: `/api/issues/${assignedIssueId}`,
+      params: { id: assignedIssueId },
+      body: { assignee_id: null },
+    })
+    expect(clearAssignee.status).toBe(200)
+    const cleared = (await clearAssignee.json()) as {
+      team_id: string | null
+      assignee_id: string | null
+    }
+    expect(cleared.team_id).toBe(teamId)
+    expect(cleared.assignee_id).toBeNull()
+
+    const outsiderIssueId = await seedTeamIssue(testDb, {
+      workspaceId: fixture.workspaceId,
+      teamId: null,
+      number: 50,
+      createdBy: fixture.ownerId,
+      assigneeId: fixture.otherId,
+    })
+    const moveWithOutsider = await callAs({
+      ...asOwner,
+      route: IssueRoute,
+      method: 'PUT',
+      url: `/api/issues/${outsiderIssueId}`,
+      params: { id: outsiderIssueId },
+      body: { team_id: teamId },
+    })
+    expect(moveWithOutsider.status).toBe(400)
+    expect(await moveWithOutsider.text()).toContain(
+      'Assignee must be a Team member',
+    )
+
+    const createUnassigned = await callAs({
+      ...asOwner,
+      route: IssuesRoute,
+      method: 'POST',
+      url: '/api/issues',
+      body: { title: 'Unassigned team issue', team_id: teamId },
+    })
+    expect(createUnassigned.status).toBe(201)
+    const created = (await createUnassigned.json()) as {
+      team_id: string | null
+      assignee_id: string | null
+    }
+    expect(created.team_id).toBe(teamId)
+    expect(created.assignee_id).toBeNull()
   })
 
   it('renders identifiers with the workspace issue prefix on list, detail, and update', async () => {
