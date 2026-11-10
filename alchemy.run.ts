@@ -58,6 +58,10 @@ const executorBlobs = Cloudflare.R2.Bucket(deployTarget.executorBlobsId, {
 
 const database = Cloudflare.Hyperdrive.Connection(deployTarget.databaseId, {
   name: deployTarget.databaseName,
+  // Hyperdrive caches reads for 60s by default, and writes do not invalidate
+  // the cache. With it on, a cancelled run still showed as the issue's live
+  // active run after the cancel returned 200.
+  caching: { disabled: true },
   origin: postgresOriginFromEnv(deployTarget.databaseUrlEnv),
 })
 
