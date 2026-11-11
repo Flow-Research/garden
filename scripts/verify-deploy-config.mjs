@@ -452,3 +452,13 @@ assert.match(
   /GARDEN_DEPLOY_TARGET=dev.*alchemy deploy --stage dev --yes/,
 )
 assert.match(alchemySource, /Alchemy.Stack\(\s*deployTarget.stackName/)
+
+// Hyperdrive caches read queries by default (alchemy Cloudflare/Hyperdrive/
+// Connection.ts: maxAge 60s, staleWhileRevalidate 15s) and writes do not
+// invalidate it. Garden reads its own writes (cancel a run, then read the
+// issue and its active run), so cached reads served cancelled runs as live.
+assert.match(
+  alchemySource,
+  /Cloudflare\.Hyperdrive\.Connection\([^)]*caching:\s*\{\s*disabled:\s*true\s*\}/s,
+  'Hyperdrive query caching must be disabled for read-after-write correctness',
+)

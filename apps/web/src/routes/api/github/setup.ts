@@ -2,7 +2,7 @@ import { Effect, Result as EffectResult } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { Result, matchError } from 'better-result'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import {
   badRequest,
@@ -19,6 +19,10 @@ import {
 } from '@/lib/server/capability-sync'
 import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import {
+  requireVerifiedWorkspaceActorPermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { captureApiFailure } from '@/lib/server/api-logging'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import {
@@ -253,17 +257,13 @@ export const Route = createFileRoute('/api/github/setup')({
         }
 
         const db = await appContext.db()
-        const [membership] = await db
-          .select({ id: schema.member.id })
-          .from(schema.member)
-          .where(
-            and(
-              eq(schema.member.organizationId, workspaceId),
-              eq(schema.member.userId, userId),
-            ),
-          )
-          .limit(1)
-        if (!membership) return unauthorized()
+        const denied = await requireVerifiedWorkspaceActorPermission({
+          appContext,
+          userId,
+          workspaceId,
+          permissions: workspacePermissions.connectionManage,
+        })
+        if (denied) return denied
 
         const result = await finishGitHubSetupCallback({
           db,
