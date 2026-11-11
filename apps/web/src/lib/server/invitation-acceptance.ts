@@ -4,6 +4,7 @@ import { createLogger } from '@garden/observability/console'
 import type { GardenAuth, GardenAuthSession } from '@/lib/server/context'
 import { schema, type Db } from '@/lib/server/db'
 import { toInvitation } from '@/lib/server/control-plane'
+import { joinInvitationTeams } from '@/lib/server/invitation-teams'
 import {
   invitationUnavailableMessages,
   type InvitationAutoAcceptResult,
@@ -109,6 +110,41 @@ async function activateWorkspace(args: {
   }
 }
 
+/**
+ * Adds the accepted invitee to the invite's Teams. Before this, accepting an
+ * invite created only the workspace membership, so new members landed on an
+ * empty board. A Team write failure must not undo the join: the person is
+ * already a workspace member, so this logs a structured error and returns.
+ * A canceled or rejected invite adds no Teams, even when the person reached
+ * the workspace another way.
+ */
+async function joinTeamsAfterAccept(args: {
+  db: Db
+  invitationId: string
+  invitationStatus: string
+  organizationId: string
+  userId: string
+}) {
+  if (
+    args.invitationStatus === 'canceled' ||
+    args.invitationStatus === 'rejected'
+  ) {
+    return
+  }
+  const result = await joinInvitationTeams(args)
+  if (result.isErr()) {
+    logger.error('invitation.join_teams_failed', {
+      invitationId: args.invitationId,
+      organizationId: args.organizationId,
+      userId: args.userId,
+      errorMessage:
+        result.error.cause instanceof Error
+          ? result.error.cause.message
+          : result.error.message,
+    })
+  }
+}
+
 /** Reads the machine code Better Auth attaches to thrown APIErrors. */
 function readApiErrorCode(cause: unknown) {
   if (cause && typeof cause === 'object' && 'body' in cause) {
@@ -203,6 +239,14 @@ export async function acceptInvitationWithSession(args: {
       forwardResponseHeaders: args.forwardResponseHeaders,
     })
 
+    await joinTeamsAfterAccept({
+      db,
+      invitationId: args.invitationId,
+      invitationStatus: invitation.status,
+      organizationId: invitation.organizationId,
+      userId: session.user.id,
+    })
+
     return {
       status: 'accepted',
       workspaceId: invitation.organizationId,
@@ -258,6 +302,14 @@ export async function acceptInvitationWithSession(args: {
         forwardResponseHeaders: args.forwardResponseHeaders,
       })
 
+      await joinTeamsAfterAccept({
+        db,
+        invitationId: args.invitationId,
+        invitationStatus: invitation.status,
+        organizationId: invitation.organizationId,
+        userId: session.user.id,
+      })
+
       return {
         status: 'accepted' as const,
         workspaceId: result.member.organizationId,
@@ -278,6 +330,14 @@ export async function acceptInvitationWithSession(args: {
           invitationId: args.invitationId,
           organizationId: invitation.organizationId,
           forwardResponseHeaders: args.forwardResponseHeaders,
+        })
+
+        await joinTeamsAfterAccept({
+          db,
+          invitationId: args.invitationId,
+          invitationStatus: invitation.status,
+          organizationId: invitation.organizationId,
+          userId: session.user.id,
         })
 
         return {

@@ -28,6 +28,7 @@ import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiIssuesRouteImport } from './routes/api/issues'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDebugStreamRouteImport } from './routes/api/debug-stream'
 import { Route as ApiConnectionsRouteImport } from './routes/api/connections'
 import { Route as ApiAutomationsRouteImport } from './routes/api/automations'
@@ -92,6 +93,7 @@ import { Route as AuthenticatedAppTeamsIndexRouteImport } from './routes/_authen
 import { Route as AuthenticatedAppTasksIndexRouteImport } from './routes/_authenticated/_app/tasks.index'
 import { Route as AuthenticatedAppChatsIndexRouteImport } from './routes/_authenticated/_app/chats.index'
 import { Route as AuthenticatedAppAgentsIndexRouteImport } from './routes/_authenticated/_app/agents.index'
+import { Route as ApiWorkspacesIdTeamSettingsRouteImport } from './routes/api/workspaces/$id/team-settings'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
 import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-products/$id/review'
@@ -253,6 +255,11 @@ const ApiIssuesRoute = ApiIssuesRouteImport.update({
 const ApiInboxRoute = ApiInboxRouteImport.update({
   id: '/api/inbox',
   path: '/api/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDebugStreamRoute = ApiDebugStreamRouteImport.update({
@@ -589,6 +596,12 @@ const AuthenticatedAppAgentsIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedAppAgentsRoute,
+  } as any)
+const ApiWorkspacesIdTeamSettingsRoute =
+  ApiWorkspacesIdTeamSettingsRouteImport.update({
+    id: '/team-settings',
+    path: '/team-settings',
+    getParentRoute: () => ApiWorkspacesIdRoute,
   } as any)
 const ApiWorkspacesIdMembersRoute = ApiWorkspacesIdMembersRouteImport.update({
   id: '/members',
@@ -982,6 +995,7 @@ export interface FileRoutesByFullPath {
   '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
@@ -1089,6 +1103,7 @@ export interface FileRoutesByFullPath {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/chats/': typeof AuthenticatedAppChatsIndexRoute
   '/tasks/': typeof AuthenticatedAppTasksIndexRoute
@@ -1133,6 +1148,7 @@ export interface FileRoutesByTo {
   '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
@@ -1235,6 +1251,7 @@ export interface FileRoutesByTo {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/agents': typeof AuthenticatedAppAgentsIndexRoute
   '/chats': typeof AuthenticatedAppChatsIndexRoute
   '/tasks': typeof AuthenticatedAppTasksIndexRoute
@@ -1282,6 +1299,7 @@ export interface FileRoutesById {
   '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
@@ -1389,6 +1407,7 @@ export interface FileRoutesById {
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/_authenticated/_app/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/_authenticated/_app/chats/': typeof AuthenticatedAppChatsIndexRoute
   '/_authenticated/_app/tasks/': typeof AuthenticatedAppTasksIndexRoute
@@ -1435,6 +1454,7 @@ export interface FileRouteTypes {
     | '/api/automations'
     | '/api/connections'
     | '/api/debug-stream'
+    | '/api/health'
     | '/api/inbox'
     | '/api/issues'
     | '/api/me'
@@ -1542,6 +1562,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/workspaces/$id/team-settings'
     | '/agents/'
     | '/chats/'
     | '/tasks/'
@@ -1586,6 +1607,7 @@ export interface FileRouteTypes {
     | '/api/automations'
     | '/api/connections'
     | '/api/debug-stream'
+    | '/api/health'
     | '/api/inbox'
     | '/api/issues'
     | '/api/me'
@@ -1688,6 +1710,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/workspaces/$id/team-settings'
     | '/agents'
     | '/chats'
     | '/tasks'
@@ -1734,6 +1757,7 @@ export interface FileRouteTypes {
     | '/api/automations'
     | '/api/connections'
     | '/api/debug-stream'
+    | '/api/health'
     | '/api/inbox'
     | '/api/issues'
     | '/api/me'
@@ -1841,6 +1865,7 @@ export interface FileRouteTypes {
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/api/workspaces/$id/team-settings'
     | '/_authenticated/_app/agents/'
     | '/_authenticated/_app/chats/'
     | '/_authenticated/_app/tasks/'
@@ -1884,6 +1909,7 @@ export interface RootRouteChildren {
   ApiAutomationsRoute: typeof ApiAutomationsRouteWithChildren
   ApiConnectionsRoute: typeof ApiConnectionsRouteWithChildren
   ApiDebugStreamRoute: typeof ApiDebugStreamRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
   ApiIssuesRoute: typeof ApiIssuesRouteWithChildren
   ApiMeRoute: typeof ApiMeRoute
@@ -2059,6 +2085,13 @@ declare module '@tanstack/react-router' {
       path: '/api/inbox'
       fullPath: '/api/inbox'
       preLoaderRoute: typeof ApiInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/debug-stream': {
@@ -2508,6 +2541,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/agents/'
       preLoaderRoute: typeof AuthenticatedAppAgentsIndexRouteImport
       parentRoute: typeof AuthenticatedAppAgentsRoute
+    }
+    '/api/workspaces/$id/team-settings': {
+      id: '/api/workspaces/$id/team-settings'
+      path: '/team-settings'
+      fullPath: '/api/workspaces/$id/team-settings'
+      preLoaderRoute: typeof ApiWorkspacesIdTeamSettingsRouteImport
+      parentRoute: typeof ApiWorkspacesIdRoute
     }
     '/api/workspaces/$id/members': {
       id: '/api/workspaces/$id/members'
@@ -3438,11 +3478,13 @@ const ApiWorkspacesIdMembersRouteWithChildren =
 interface ApiWorkspacesIdRouteChildren {
   ApiWorkspacesIdInvitationsRoute: typeof ApiWorkspacesIdInvitationsRouteWithChildren
   ApiWorkspacesIdMembersRoute: typeof ApiWorkspacesIdMembersRouteWithChildren
+  ApiWorkspacesIdTeamSettingsRoute: typeof ApiWorkspacesIdTeamSettingsRoute
 }
 
 const ApiWorkspacesIdRouteChildren: ApiWorkspacesIdRouteChildren = {
   ApiWorkspacesIdInvitationsRoute: ApiWorkspacesIdInvitationsRouteWithChildren,
   ApiWorkspacesIdMembersRoute: ApiWorkspacesIdMembersRouteWithChildren,
+  ApiWorkspacesIdTeamSettingsRoute: ApiWorkspacesIdTeamSettingsRoute,
 }
 
 const ApiWorkspacesIdRouteWithChildren = ApiWorkspacesIdRoute._addFileChildren(
@@ -3585,6 +3627,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAutomationsRoute: ApiAutomationsRouteWithChildren,
   ApiConnectionsRoute: ApiConnectionsRouteWithChildren,
   ApiDebugStreamRoute: ApiDebugStreamRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
   ApiIssuesRoute: ApiIssuesRouteWithChildren,
   ApiMeRoute: ApiMeRoute,

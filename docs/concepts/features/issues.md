@@ -31,6 +31,10 @@ When you assign an issue to an agent and start it, the work passes through four 
 3. `RunWorkflow` in `packages/agent-runtime/src/run-workflow.ts` drives the turns. It owns retry, wait, resume, and cancel.
 4. Each turn runs in `IssueRunSubAgent` (`packages/agent-runtime/src/issue-run-sub-agent.ts`), a Think facet keyed by the issue ID.
 
+Each agent gets at most one live run per issue. `startIssueRun` takes a Postgres advisory lock on the issue ID, then checks for a live run by the same agent before it inserts. A second start for that agent, from a double click, a retry, or another actor, returns `{ kind: 'already_running', runId }` with the existing run, and no second row or Workflow is created. A waiting run is resumed instead (`resumed`). The Workflow instance ID is the run ID, so retrying the runtime start for the same run cannot create a second instance. Different agents can each run on the same issue, for example after a comment mentions them.
+
+If the runtime start fails after the row is written, `markStartFailed` marks the run `failed` with the error, clears `issue.active_run_id`, and appends `issue_run:failed` with reason `workflow_start_failed`. The issue activity timeline shows that event as "agent run failed: <error>", and the Inbox lists the failed run.
+
 `cancelIssueRun` sets `issue_run.cancel_requested_at` and sends a cancel event to the run's Workflow instance, which finalizes the row. Both `POST /api/issues/:id/cancel` and an issue status or assignee change that stops live runs go through it.
 
 A run can outlive its Workflow instance: Workflows may report the instance as not found, or it may already be `complete`, `errored`, or `terminated`. No workflow step will finalize such a run, so `cancelIssueRun` does it directly. It marks the run `cancelled` with `result_json.reason` set to `workflow_instance_missing` or `workflow_instance_terminal`, clears `issue.active_run_id`, appends `issue_run:cancelled`, and returns success. Inbox items derive from live run status, so they clear too. Any other Workflow error fails the cancel and leaves the run unchanged.
@@ -42,6 +46,8 @@ The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accu
 An issue can carry source bindings. `packages/server/src/issues/source-binding.ts` attaches and lists them. During a run the agent reads the bound item with the `read_source` tool from `packages/agent-runtime/src/agent-tools/read-source.ts`, so it works from the original pull request, message, or email thread instead of a pasted summary.
 
 The run returns its results as work products. The `create_work_product` and `revise_work_product` tools write `issue_work_product` rows. A work product is a reviewable deliverable such as a report, checklist, plan, or proposed change. `apps/web/src/lib/server/work-products.ts` handles review and apply.
+
+Approving a work product offers two choices, and the review request must name one through the required `close_issue` flag. **Approve** (`close_issue: false`) marks the work product approved and moves an `in_review` issue back to `in_progress`, so the issue stays open and a later `@Garden` comment can start a follow-up run. **Approve and close** (`close_issue: true`) moves an `in_review` issue to `done`. Comment wakeups skip `done` issues, so closing ends agent follow-ups until someone reopens the issue. Both choices leave an issue in any other status unchanged.
 
 ## Chat and issues link in both directions
 

@@ -307,6 +307,7 @@ type AssignIssueToolResult = {
   run:
     | { kind: 'started'; run_id: string }
     | { kind: 'resumed'; run_id: string }
+    | { kind: 'already_running'; run_id: string }
     | { kind: 'skipped'; reason: string }
 }
 
@@ -1332,11 +1333,9 @@ async function assignIssueFromChat(
   })
   if (startResult.isErr()) return issueToolErr(startResult.error.message)
   const run: AssignIssueToolResult['run'] =
-    startResult.value.kind === 'started'
-      ? { kind: 'started', run_id: startResult.value.runId }
-      : startResult.value.kind === 'resumed'
-        ? { kind: 'resumed', run_id: startResult.value.runId }
-        : { kind: 'skipped', reason: startResult.value.reason }
+    startResult.value.kind === 'skipped'
+      ? { kind: 'skipped', reason: startResult.value.reason }
+      : { kind: startResult.value.kind, run_id: startResult.value.runId }
 
   const summaryResult = await readIssueService({
     databaseUrl: context.databaseUrl,

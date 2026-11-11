@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { reviewWorkProduct } from './work-products'
+import { reviewWorkProduct, workProductReviewBodySchema } from './work-products'
 
 const state = vi.hoisted(() => ({ db: undefined as unknown }))
 
@@ -38,16 +38,22 @@ const workProductRow = () => ({
   updatedAt: new Date('2026-01-01T00:00:00Z'),
 })
 
-type InsertRow = { eventType?: string }
+type InsertRow = {
+  eventType?: string
+  message?: string
+  payload?: unknown
+}
 
 function makeDb(args: { issueUpdateReturns: Array<{ id: string }> }) {
   const inserts: InsertRow[] = []
+  const sets: Array<Record<string, unknown>> = []
   const tx = {
     update: () => ({
-      set: () => ({
-        where: () => ({
-          returning: async () => args.issueUpdateReturns,
-        }),
+      set: (values: Record<string, unknown>) => ({
+        where: () => {
+          sets.push(values)
+          return { returning: async () => args.issueUpdateReturns }
+        },
       }),
     }),
     execute: async () => undefined,
@@ -80,7 +86,7 @@ function makeDb(args: { issueUpdateReturns: Array<{ id: string }> }) {
     }),
     transaction: async (fn: (t: unknown) => Promise<unknown>) => fn(tx),
   }
-  return { db, inserts }
+  return { db, inserts, sets }
 }
 
 describe('reviewWorkProduct approve', () => {
@@ -95,7 +101,7 @@ describe('reviewWorkProduct approve', () => {
     const result = await reviewWorkProduct({
       actorUserId: '00000000-0000-4000-8000-000000000005',
       env: {} as never,
-      input: { action: 'approve' },
+      input: { action: 'approve', close_issue: true },
       workProductId,
       workspaceId,
     })
@@ -112,13 +118,15 @@ describe('reviewWorkProduct approve', () => {
   })
 
   it('moves the issue to done only when the conditional update claims it', async () => {
-    const { db, inserts } = makeDb({ issueUpdateReturns: [{ id: issueId }] })
+    const { db, inserts, sets } = makeDb({
+      issueUpdateReturns: [{ id: issueId }],
+    })
     state.db = db
 
     const result = await reviewWorkProduct({
       actorUserId: '00000000-0000-4000-8000-000000000005',
       env: {} as never,
-      input: { action: 'approve' },
+      input: { action: 'approve', close_issue: true },
       workProductId,
       workspaceId,
     })
@@ -127,5 +135,36 @@ describe('reviewWorkProduct approve', () => {
     expect(inserts.some((row) => row.eventType === 'issue_run:message')).toBe(
       true,
     )
+    expect(sets.some((values) => values.status === 'done')).toBe(true)
+  })
+
+  it('approve without close keeps the issue open by moving in_review to in_progress', async () => {
+    const { db, inserts, sets } = makeDb({
+      issueUpdateReturns: [{ id: issueId }],
+    })
+    state.db = db
+
+    const result = await reviewWorkProduct({
+      actorUserId: '00000000-0000-4000-8000-000000000005',
+      env: {} as never,
+      input: { action: 'approve', close_issue: false },
+      workProductId,
+      workspaceId,
+    })
+
+    expect(result.isOk()).toBe(true)
+    expect(sets.some((values) => values.status === 'done')).toBe(false)
+    expect(sets.some((values) => values.status === 'in_progress')).toBe(true)
+    expect(
+      inserts.find((row) => row.eventType === 'issue_run:message')?.payload,
+    ).toEqual({ from: 'in_review', to: 'in_progress' })
+  })
+})
+
+describe('workProductReviewBodySchema', () => {
+  it('rejects an approve request that omits close_issue', () => {
+    expect(
+      workProductReviewBodySchema.safeParse({ action: 'approve' }).success,
+    ).toBe(false)
   })
 })

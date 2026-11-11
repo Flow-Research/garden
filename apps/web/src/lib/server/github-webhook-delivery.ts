@@ -163,6 +163,17 @@ export function githubWebhookIssueOrderScope(bindingId: string) {
   return `binding:${bindingId}:issue`
 }
 
+/**
+ * Order scope for one pull request's effect on a linked issue, independent
+ * of issue edits, so a PR's `updated_at` never makes an issue edit stale.
+ */
+export function githubWebhookPullRequestOrderScope(
+  bindingId: string,
+  pullRequestNumber: number,
+) {
+  return `binding:${bindingId}:pull_request:${pullRequestNumber}`
+}
+
 /** Order scope for one GitHub comment, independent of issue edits. */
 export function githubWebhookCommentOrderScope(
   bindingId: string,

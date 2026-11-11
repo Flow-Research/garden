@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
 import type { Issue } from '@garden/core/types/issue'
 import { schema, type Db } from '@/lib/server/db'
+import { openIssuesCondition } from '@/lib/server/issue-list-filters'
 import { getWorkspaceIssuePrefix } from './issue-prefix'
 
 /**
@@ -65,8 +66,10 @@ export async function listWorkspaceIssuesQuery(
   if (input.creatorId) {
     conditions.push(eq(schema.issue.createdBy, input.creatorId))
   }
+  // Match Issues "open" filter to shared OPEN_STATUSES (excludes cancelled),
+  // same as Home dashboard counts — see `openIssuesCondition` (#364).
   if (input.openOnly) {
-    conditions.push(sql`${schema.issue.status} <> 'done'`)
+    conditions.push(openIssuesCondition())
   }
 
   const whereClause = and(...conditions)

@@ -52,6 +52,7 @@ export function UserCard({
   onLogout,
   onSwitchWorkspace,
   onCreateWorkspace,
+  onRefreshWorkspaces,
 }: {
   user: { id: string; name: string; email: string; avatar?: string | null }
   role: MemberRole | null
@@ -63,6 +64,7 @@ export function UserCard({
   onLogout: () => void
   onSwitchWorkspace: (workspace: Workspace) => void
   onCreateWorkspace: () => void
+  onRefreshWorkspaces: () => void
 }) {
   const { theme, setTheme } = useTheme()
   const [flyoutOpen, setFlyoutOpen] = useState(false)
@@ -226,7 +228,12 @@ export function UserCard({
         <div className="border-t border-border-default">
           <button
             type="button"
-            onClick={() => setWorkspacesOpen((value) => !value)}
+            onClick={() => {
+              // Keep the warm list visible while discovering memberships added
+              // in another tab. Opening previously never refreshed this cache.
+              if (!workspacesOpen) onRefreshWorkspaces()
+              setWorkspacesOpen((value) => !value)
+            }}
             aria-expanded={workspacesOpen}
             className="cursor-pointer flex h-10 w-full items-center gap-3 px-2 text-sm tracking-wider text-text-neutral-default transition-colors hover:bg-background-main-secondary [&_svg]:size-[18px]"
           >

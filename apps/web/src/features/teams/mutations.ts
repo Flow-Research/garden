@@ -6,6 +6,7 @@ import type {
   CreateTeamRequest,
   TransferTeamOwnerRequest,
   UpdateTeamRequest,
+  WorkspaceTeamSettings,
 } from '@garden/core/types'
 import { api } from '@/lib/api'
 import { teamKeys } from './queries'
@@ -152,5 +153,29 @@ export function useRetryTeamRepositoryImport() {
       repositoryId: string
     }) => api.retryTeamRepositoryImport(teamId, repositoryId),
     onSuccess: (_repository, vars) => invalidate(vars.teamId),
+  })
+}
+
+/**
+ * Saves workspace invite settings optimistically so the toggle and select
+ * respond at once, and restores the previous value if the server refuses.
+ */
+export function useUpdateWorkspaceTeamSettings() {
+  const qc = useQueryClient()
+  const wsId = useWorkspaceId()
+  const key = teamKeys.inviteSettings(wsId)
+  return useMutation({
+    mutationFn: (patch: WorkspaceTeamSettings) =>
+      api.updateWorkspaceTeamSettings(wsId, patch),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: key })
+      const previous = qc.getQueryData<WorkspaceTeamSettings>(key)
+      if (previous) qc.setQueryData(key, { ...previous, ...patch })
+      return { previous }
+    },
+    onError: (_error, _patch, context) => {
+      if (context?.previous) qc.setQueryData(key, context.previous)
+    },
+    onSuccess: (settings) => qc.setQueryData(key, settings),
   })
 }
