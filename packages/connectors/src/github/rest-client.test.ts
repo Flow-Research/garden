@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
 import { Result } from 'better-result'
-import { ConnectorAuthError } from '../effect/errors.ts'
+import { ConnectorAuthError, ConnectorNotFoundError } from '../effect/errors.ts'
 import { createGitHubInstallationAccessToken } from '../github-app.ts'
 import { GitHubRestClient, makeGitHubBaseLayer } from './rest-client.ts'
 
@@ -137,5 +137,63 @@ describe('GitHubRestClient remint-once', () => {
       status: 403,
     })
     expect(mint).toHaveBeenCalledTimes(1)
+  })
+
+  // #332: the request path decides whether a 404 gets the owner/repo retry
+  // hint, so the client, not just the error mapper, is covered.
+  it('adds the retry hint when a repository path 404s', async () => {
+    mintOk('ghs_ok')
+
+    const fetch: typeof globalThis.fetch = (async () =>
+      new Response('Not Found', { status: 404 })) as typeof globalThis.fetch
+
+    const error = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* GitHubRestClient
+        return yield* client.request({
+          operation: 'github.listBranches',
+          path: '/repos/acme/garden/branches',
+        })
+      }).pipe(
+        Effect.provide(
+          makeGitHubBaseLayer(
+            { installationId: '42', appId: '1', privateKey: 'pem' },
+            { fetch },
+          ),
+        ),
+        Effect.flip,
+      ),
+    )
+
+    expect(error).toBeInstanceOf(ConnectorNotFoundError)
+    expect(error.message).toContain('list_repositories')
+  })
+
+  it('omits the retry hint when a non-repository path 404s', async () => {
+    mintOk('ghs_ok')
+
+    const fetch: typeof globalThis.fetch = (async () =>
+      new Response('Not Found', { status: 404 })) as typeof globalThis.fetch
+
+    const error = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* GitHubRestClient
+        return yield* client.request({
+          operation: 'github.searchIssues',
+          path: '/search/issues',
+        })
+      }).pipe(
+        Effect.provide(
+          makeGitHubBaseLayer(
+            { installationId: '42', appId: '1', privateKey: 'pem' },
+            { fetch },
+          ),
+        ),
+        Effect.flip,
+      ),
+    )
+
+    expect(error).toBeInstanceOf(ConnectorNotFoundError)
+    expect(error.message).not.toContain('list_repositories')
   })
 })

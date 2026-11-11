@@ -20,6 +20,13 @@ import {
 
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 
+/**
+ * Matches `/repos/{owner}/{repo}` request paths (with or without a
+ * sub-resource suffix) so 404 handling can tell a wrong owner/repo guess
+ * (#332) from a missing issue, workflow, or search result.
+ */
+const REPOSITORY_PATH_PATTERN = /^\/repos\/[^/]+\/[^/]+/
+
 export type GitHubAppConfigShape = {
   readonly appId?: string
   readonly clientId?: string
@@ -146,6 +153,7 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
                   operation: input.operation,
                   status: response.status,
                   bodyText,
+                  repoScoped: REPOSITORY_PATH_PATTERN.test(input.path),
                 })
               }
               if (response.status === 204) return null

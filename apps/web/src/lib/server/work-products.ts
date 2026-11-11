@@ -9,6 +9,7 @@ import {
   type ConnectorError,
 } from '@garden/core/connectors/errors'
 import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
+import { resolveGithubToolOwner } from '@garden/connectors/github/identity'
 import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
   issueSourceBindingSelectSchema,
@@ -355,6 +356,7 @@ async function callConnectorTool(args: {
       const [installation] = await db
         .select({
           installationId: schema.githubAppInstallation.installationId,
+          accountLogin: schema.githubAppInstallation.accountLogin,
           status: schema.githubAppInstallation.status,
         })
         .from(schema.githubAppInstallation)
@@ -370,10 +372,20 @@ async function callConnectorTool(args: {
     return Result.err(invalidState('GitHub App installation is not connected'))
   }
 
+  // Owner identity gate (#332): writeback args are agent-authored, so a
+  // hallucinated owner must not reach GitHub from this path either.
+  const ownerGate = resolveGithubToolOwner({
+    accountLogin: installation.accountLogin,
+    input: args.toolArgs,
+  })
+  if (ownerGate.kind === 'reject') {
+    return Result.err(invalidState(ownerGate.message))
+  }
+
   const result = await Result.tryPromise({
     try: async () =>
       await Effect.runPromise(
-        nativeTool.execute(args.toolArgs).pipe(
+        nativeTool.execute(ownerGate.input).pipe(
           Effect.provide(
             makeGitHubBaseLayer({
               appId: args.env.GITHUB_APP_ID,
