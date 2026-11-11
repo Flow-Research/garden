@@ -89,3 +89,34 @@ The `dev` branch builds on the non-production trigger and needs `DEV_DATABASE_UR
 3. Test the feature you changed.
 4. Check the browser console and failed network requests.
 5. To read Worker errors, see [Find a problem in the Worker logs](./debug-with-logs.md).
+
+## Run the smoke suite
+
+`pnpm smoke` runs read-only checks against a deployed Worker and prints one `PASS`, `FAIL`, or `SKIPPED` line per check with the HTTP status and time. It exits with code `1` if a check fails.
+
+1. Run the public checks against garden-dev, the default target. The GitHub App webhook points at garden-dev, and garden-dev is where Garden stabilises before staging takes over at the end of Sprint 1:
+
+   ```sh
+   pnpm smoke
+   ```
+
+   The public checks need no session. They confirm that `GET /api/health` returns `200` with `status: ok`, that `/login` returns HTML, that `POST /api/github/webhook` rejects a bad signature with `401` or `403`, and that `GET /api/me` returns `401` without a session. The webhook probe sends an empty body. The route rejects it before it reads or writes data.
+
+2. To check another Worker, such as staging or a preview, set `SMOKE_BASE_URL`:
+
+   ```sh
+   SMOKE_BASE_URL=https://<host> pnpm smoke
+   ```
+
+3. To run the authenticated checks, get a session cookie for a test account:
+   1. Sign in to the Worker URL in a browser with a test account. Do not use a personal account.
+   2. Open the developer tools, go to Application > Cookies, and copy the value of `__Secure-better-auth.session_token`.
+   3. Run the suite with the full cookie pair:
+
+      ```sh
+      SMOKE_SESSION_COOKIE='__Secure-better-auth.session_token=<value>' SMOKE_REQUIRE_AUTH=1 pnpm smoke
+      ```
+
+   The authenticated checks send `GET` requests only, to `/api/me`, `/api/workspaces`, `/api/issues`, `/api/automations`, `/api/brain/files`, and `/api/chat/threads`. The script never prints the cookie. Without `SMOKE_SESSION_COOKIE`, these checks print `SKIPPED`. With `SMOKE_REQUIRE_AUTH=1`, a skipped check makes the run fail.
+
+4. Sign out of the test account when you finish. Signing out ends the session that the cookie belongs to.

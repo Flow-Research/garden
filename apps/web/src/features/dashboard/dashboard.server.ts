@@ -9,6 +9,7 @@ import { listAvailableConnectorBindings } from '@garden/server/connectors/availa
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
 import { STATUS_CONFIG } from '@garden/core/issues/config'
+import { summarizeIssueCounts } from './dashboard-summary'
 
 export type DashboardIssue = {
   id: string
@@ -236,11 +237,7 @@ export async function getDashboardOverviewSnapshot(
 
   return {
     summary: {
-      totalIssues: issues.length,
-      openIssues: issues.filter((issue) => issue.status !== 'done').length,
-      blockedIssues: issues.filter((issue) => issue.status === 'blocked')
-        .length,
-      completedIssues: issues.filter((issue) => issue.status === 'done').length,
+      ...summarizeIssueCounts(issues),
       // Archived agents no longer work, so they are not counted.
       agentCount: agents.filter((agent) => agent.status !== 'archived').length,
       skillCount: skills.length,
@@ -257,6 +254,7 @@ export async function getDashboardDistributionSnapshot(
   workspaceId: string,
 ) {
   const issues = await loadDashboardIssues(appContext, workspaceId)
+  const issueCounts = summarizeIssueCounts(issues)
 
   const issueStatus = Array.from(
     issues.reduce((map, issue) => {
@@ -284,8 +282,8 @@ export async function getDashboardDistributionSnapshot(
 
   return {
     summary: {
-      totalIssues: issues.length,
-      openIssues: issues.filter((issue) => issue.status !== 'done').length,
+      totalIssues: issueCounts.totalIssues,
+      openIssues: issueCounts.openIssues,
     },
     issueStatus,
     issuePriority,
