@@ -30,7 +30,8 @@ export interface SkillsClientOptions {
  * supply transport/credentials; no browser or service bindings enter this module.
  * See docs/decisions/2026-11-shared-client-session.md and FetchHttpClient.Fetch.
  */
-export function createSkillsClient(options: SkillsClientOptions) {
+export function createSkillsClient(input: SkillsClientOptions) {
+  const options = Object.freeze({ ...input })
   const origin = new URL(options.origin)
   if (
     !['http:', 'https:'].includes(origin.protocol) ||

@@ -67,7 +67,7 @@ describe('web skills session adapter', () => {
     expect(fetch).not.toHaveBeenCalled()
   })
 
-  it.each(['workspace', 'account', 'reconfigure'])(
+  it.each(['workspace', 'account', 'logout', 'reconfigure'])(
     'rejects old responses after %s changes, including switching away and back',
     async (change) => {
       const { transport } = setup()
@@ -82,6 +82,8 @@ describe('web skills session adapter', () => {
       } else if (change === 'account') {
         useAuthStore.setState({ user: { id: 'account-b' } as User })
         useAuthStore.setState({ user: { id: 'account-a' } as User })
+      } else if (change === 'logout') {
+        useAuthStore.setState({ user: null })
       } else setup('https://next.test')
       delayed.response.resolve(Response.json([]))
       await rejected

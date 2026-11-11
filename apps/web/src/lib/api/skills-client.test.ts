@@ -90,6 +90,20 @@ describe('portable skills client', () => {
     ).toThrow(Error)
   })
 
+  it('captures its configuration instead of reading caller mutations', async () => {
+    const config = options()
+    const client = createSkillsClient(config)
+    config.origin = 'https://changed.test'
+    config.workspaceId = 'workspace-b'
+    config.fetch = vi.fn(async () => {
+      throw new Error('Replacement transport')
+    })
+    await expect(client.listSkills()).resolves.toEqual([skill()])
+    expect(config.fetch).not.toHaveBeenCalled()
+    expect(client.scope.origin).toBe('https://garden.test')
+    expect(client.scope.workspaceId).toBe('workspace-a')
+  })
+
   it('keeps independent origins and workspace sessions separate', async () => {
     const a = options()
     const b = options({
@@ -146,9 +160,9 @@ describe('portable skills client', () => {
     await expect(client.listSkills()).resolves.toEqual([])
   })
 
-  it.each([[{ id: 'incomplete' }], { skills: [] }])(
-    'rejects malformed response %j',
-    async (payload) => {
+  it.each([{ payload: [{ id: 'incomplete' }] }, { payload: { skills: [] } }])(
+    'rejects malformed response $payload',
+    async ({ payload }) => {
       const client = createSkillsClient(
         options({ fetch: vi.fn(async () => Response.json(payload)) }),
       )
