@@ -12,6 +12,8 @@ export type ApiRequestInit = RequestInit & {
 
 export class ApiTransport {
   private workspaceId: string | null = null
+  private sessionRevision = 0
+  private readonly sessionListeners = new Set<() => void>()
   private options: ApiTransportOptions
 
   constructor(
@@ -29,7 +31,23 @@ export class ApiTransport {
     return this.workspaceId
   }
 
+  /** Ends scoped reads when local authority context changes, including A→B→A. */
+  invalidateSession() {
+    this.sessionRevision += 1
+    for (const listener of this.sessionListeners) listener()
+  }
+
+  getSessionRevision() {
+    return this.sessionRevision
+  }
+
+  onSessionInvalidated(listener: () => void) {
+    this.sessionListeners.add(listener)
+    return () => this.sessionListeners.delete(listener)
+  }
+
   setWorkspaceId(id: string | null) {
+    if (this.workspaceId !== id) this.invalidateSession()
     this.workspaceId = id
   }
 
@@ -40,6 +58,7 @@ export class ApiTransport {
   }
 
   notifyUnauthorized() {
+    this.invalidateSession()
     this.workspaceId = null
     this.options.onUnauthorized?.()
   }
