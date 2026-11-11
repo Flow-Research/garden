@@ -46,6 +46,7 @@ import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { memberGithubIdentity } from './member-github-identity'
 import { createSandboxTools } from './sandbox-tools'
+import { createReadChatIssueAttachmentTool } from './agent-tools/read-chat-issue-attachment'
 import {
   createIssue as createIssueService,
   listIssues as listIssuesService,
@@ -88,6 +89,7 @@ type ChatSubAgentToolsInput = {
   }) => Promise<ExecutorCatalog | null>
   getSandbox: () => SandboxDO
   issueRunEnv: IssueRunEnv
+  files?: R2Bucket
   cancelIssueRun?: (input: { issueId: string; runId: string }) => Promise<void>
   brain: {
     helixUrl?: string
@@ -1892,6 +1894,7 @@ export function createChatSubAgentTools({
   loadExecutorCatalog,
   getSandbox,
   issueRunEnv,
+  files,
   cancelIssueRun,
   brain,
 }: ChatSubAgentToolsInput): ToolSet {
@@ -2080,6 +2083,16 @@ export function createChatSubAgentTools({
         return Result.serialize(await readIssueFromChat(context, input))
       },
     }),
+
+    ...(databaseUrl && threadId && files
+      ? {
+          read_issue_attachment: createReadChatIssueAttachmentTool({
+            databaseUrl,
+            threadId,
+            files,
+          }),
+        }
+      : {}),
 
     update_issue_status: tool({
       description:

@@ -4,6 +4,7 @@
 
 - Account and workspace creation.
 - Agent chat.
+- Inspect an image attached to an issue from regular chat.
 - Tool connection and permission display.
 - Issue creation and agent run.
 - Approval and work-product review.

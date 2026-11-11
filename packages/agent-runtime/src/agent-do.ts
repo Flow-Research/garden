@@ -1720,6 +1720,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       loadExecutorCatalog: (input) => this.loadChatExecutorCatalog(input),
       getSandbox: () => this.getAgentSandbox(),
       issueRunEnv: this.env,
+      files: this.env.FILES,
       brain: {
         ...(this.env.HELIX_URL === undefined
           ? {}
