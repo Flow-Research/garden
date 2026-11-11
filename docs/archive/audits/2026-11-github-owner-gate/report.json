@@ -1,0 +1,11 @@
+{
+  "scenario": "github-owner-gate",
+  "profile": "lite",
+  "result": "PASS",
+  "timestamp": "20261111T070755Z",
+  "branch": "fix/github-repo-identity",
+  "driver": "vitest runtime-mcp-controller.github-owner.integration.test.ts",
+  "limits": "headed browser closed under memory pressure; user-flow captured headless after one-time GitHub login",
+  "real_network_run": "PASS (gh CLI PAT substituted at mint boundary)",
+  "live_user_flow_run": "PASS (local app + real GitHub App installation + LM Studio lfm3-1.7b-uncensored; hosted and native surfaces; screenshots recorded)"
+}
