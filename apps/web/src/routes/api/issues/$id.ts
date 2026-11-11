@@ -178,7 +178,7 @@ export const Route = createFileRoute('/api/issues/$id')({
 
         // Build field changes first, then stamp updatedAt, so the empty-update
         // check stays `length === 0` instead of relying on a sentinel key count.
-        const updateValues: IssueRowUpdate = {}
+        const updateValues: Omit<IssueRowUpdate, 'updatedAt'> = {}
 
         if (typeof body.title === 'string') updateValues.title = body.title
         if (Object.prototype.hasOwnProperty.call(body, 'description')) {
@@ -213,7 +213,6 @@ export const Route = createFileRoute('/api/issues/$id')({
         if (Object.keys(updateValues).length === 0) {
           return badRequest('No valid issue changes submitted')
         }
-        updateValues.updatedAt = new Date()
 
         // IDs from the body are global: confirm they live in this workspace
         // before storing them (and before emailing an assignee below).
@@ -247,7 +246,7 @@ export const Route = createFileRoute('/api/issues/$id')({
         const issue = await updateIssueRow(db, {
           workspaceId: existingIssue.workspaceId,
           issueId: params.id,
-          values: updateValues,
+          values: { ...updateValues, updatedAt: new Date() },
         })
 
         if (!issue) return notFound('Issue not found')
