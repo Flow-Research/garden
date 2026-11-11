@@ -28,6 +28,7 @@ import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiIssuesRouteImport } from './routes/api/issues'
 import { Route as ApiInboxRouteImport } from './routes/api/inbox'
+import { Route as ApiHealthRouteImport } from './routes/api/health'
 import { Route as ApiDebugStreamRouteImport } from './routes/api/debug-stream'
 import { Route as ApiConnectionsRouteImport } from './routes/api/connections'
 import { Route as ApiAutomationsRouteImport } from './routes/api/automations'
@@ -254,6 +255,11 @@ const ApiIssuesRoute = ApiIssuesRouteImport.update({
 const ApiInboxRoute = ApiInboxRouteImport.update({
   id: '/api/inbox',
   path: '/api/inbox',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiHealthRoute = ApiHealthRouteImport.update({
+  id: '/api/health',
+  path: '/api/health',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiDebugStreamRoute = ApiDebugStreamRouteImport.update({
@@ -989,6 +995,7 @@ export interface FileRoutesByFullPath {
   '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
@@ -1141,6 +1148,7 @@ export interface FileRoutesByTo {
   '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
@@ -1291,6 +1299,7 @@ export interface FileRoutesById {
   '/api/automations': typeof ApiAutomationsRouteWithChildren
   '/api/connections': typeof ApiConnectionsRouteWithChildren
   '/api/debug-stream': typeof ApiDebugStreamRoute
+  '/api/health': typeof ApiHealthRoute
   '/api/inbox': typeof ApiInboxRouteWithChildren
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
@@ -1445,6 +1454,7 @@ export interface FileRouteTypes {
     | '/api/automations'
     | '/api/connections'
     | '/api/debug-stream'
+    | '/api/health'
     | '/api/inbox'
     | '/api/issues'
     | '/api/me'
@@ -1597,6 +1607,7 @@ export interface FileRouteTypes {
     | '/api/automations'
     | '/api/connections'
     | '/api/debug-stream'
+    | '/api/health'
     | '/api/inbox'
     | '/api/issues'
     | '/api/me'
@@ -1746,6 +1757,7 @@ export interface FileRouteTypes {
     | '/api/automations'
     | '/api/connections'
     | '/api/debug-stream'
+    | '/api/health'
     | '/api/inbox'
     | '/api/issues'
     | '/api/me'
@@ -1897,6 +1909,7 @@ export interface RootRouteChildren {
   ApiAutomationsRoute: typeof ApiAutomationsRouteWithChildren
   ApiConnectionsRoute: typeof ApiConnectionsRouteWithChildren
   ApiDebugStreamRoute: typeof ApiDebugStreamRoute
+  ApiHealthRoute: typeof ApiHealthRoute
   ApiInboxRoute: typeof ApiInboxRouteWithChildren
   ApiIssuesRoute: typeof ApiIssuesRouteWithChildren
   ApiMeRoute: typeof ApiMeRoute
@@ -2072,6 +2085,13 @@ declare module '@tanstack/react-router' {
       path: '/api/inbox'
       fullPath: '/api/inbox'
       preLoaderRoute: typeof ApiInboxRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/health': {
+      id: '/api/health'
+      path: '/api/health'
+      fullPath: '/api/health'
+      preLoaderRoute: typeof ApiHealthRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/debug-stream': {
@@ -3607,6 +3627,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAutomationsRoute: ApiAutomationsRouteWithChildren,
   ApiConnectionsRoute: ApiConnectionsRouteWithChildren,
   ApiDebugStreamRoute: ApiDebugStreamRoute,
+  ApiHealthRoute: ApiHealthRoute,
   ApiInboxRoute: ApiInboxRouteWithChildren,
   ApiIssuesRoute: ApiIssuesRouteWithChildren,
   ApiMeRoute: ApiMeRoute,
