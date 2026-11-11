@@ -94,7 +94,7 @@ The `dev` branch builds on the non-production trigger and needs `DEV_DATABASE_UR
 
 `pnpm smoke` runs read-only checks against a deployed Worker and prints one `PASS`, `FAIL`, or `SKIPPED` line per check with the HTTP status and time. It exits with code `1` if a check fails.
 
-1. Run the public checks against staging:
+1. Run the public checks against garden-dev, the default target. The GitHub App webhook points at garden-dev, and garden-dev is where Garden stabilises before staging takes over at the end of Sprint 1:
 
    ```sh
    pnpm smoke
@@ -102,7 +102,7 @@ The `dev` branch builds on the non-production trigger and needs `DEV_DATABASE_UR
 
    The public checks need no session. They confirm that `GET /api/health` returns `200` with `status: ok`, that `/login` returns HTML, that `POST /api/github/webhook` rejects a bad signature with `401` or `403`, and that `GET /api/me` returns `401` without a session. The webhook probe sends an empty body. The route rejects it before it reads or writes data.
 
-2. To check another Worker, such as a preview, set `SMOKE_BASE_URL`:
+2. To check another Worker, such as staging or a preview, set `SMOKE_BASE_URL`:
 
    ```sh
    SMOKE_BASE_URL=https://<host> pnpm smoke
