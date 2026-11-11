@@ -1,3 +1,4 @@
+import type { WorkProductReviewInput } from '@/lib/server/work-products'
 import { useState, useCallback } from 'react'
 import {
   useMutation,
@@ -754,14 +755,39 @@ export function useIssueActionInvalidation(issueId: string | null) {
   }, [issueId, queryClient, wsId])
 }
 
-export type WorkProductReviewAction = 'approve' | 'request_changes' | 'apply'
+/**
+ * Review actions the UI offers. `approve` keeps the issue open for follow-up
+ * runs; `approve_and_close` also moves it to done. Both map to the API's
+ * `approve` action with an explicit `close_issue` flag.
+ */
+export type WorkProductReviewAction =
+  | 'approve'
+  | 'approve_and_close'
+  | 'request_changes'
+  | 'apply'
 
-/** Approve, request changes on, or apply a work product. */
+/** Maps a UI review action to the review endpoint's request body. */
+function reviewRequestBody(
+  action: WorkProductReviewAction,
+): WorkProductReviewInput {
+  switch (action) {
+    case 'approve':
+      return { action: 'approve', close_issue: false }
+    case 'approve_and_close':
+      return { action: 'approve', close_issue: true }
+    case 'request_changes':
+      return { action: 'request_changes' }
+    case 'apply':
+      return { action: 'apply' }
+  }
+}
+
+/** Approve, approve and close, request changes on, or apply a work product. */
 export function useReviewWorkProduct(issueId: string | null) {
   const invalidate = useIssueActionInvalidation(issueId)
   return useMutation({
     mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
-      api.reviewWorkProduct(vars.id, { action: vars.action }),
+      api.reviewWorkProduct(vars.id, reviewRequestBody(vars.action)),
     onSuccess: invalidate,
     onError: () => toast.error('Failed to update work product'),
   })
