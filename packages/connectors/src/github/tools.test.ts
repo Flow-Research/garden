@@ -103,7 +103,9 @@ describe('GitHub App tool surface', () => {
   // what keep the model from guessing the login in the first place. This
   // asserts they survive into the JSON schema the model actually receives.
   it('describes owner/repo with the connected account login requirement', () => {
-    const tool = githubNativeTools.find((entry) => entry.name === 'list_branches')
+    const tool = githubNativeTools.find(
+      (entry) => entry.name === 'list_branches',
+    )
     const properties = (
       tool?.inputSchema as
         | { properties?: Record<string, { description?: string }> }
@@ -112,10 +114,13 @@ describe('GitHub App tool surface', () => {
     expect(properties?.owner?.description).toContain(
       'connected GitHub account login',
     )
-    expect(properties?.repo?.description).toContain('exactly as GitHub stores it')
+    expect(properties?.repo?.description).toContain(
+      'exactly as GitHub stores it',
+    )
   })
 
-  it('classifies the live hosted-MCP-only operations', () => {    expect(
+  it('classifies the live hosted-MCP-only operations', () => {
+    expect(
       Object.keys(githubHostedMcpExtraClassifications).sort((first, second) =>
         first.localeCompare(second),
       ),

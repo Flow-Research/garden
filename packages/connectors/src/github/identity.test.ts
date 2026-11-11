@@ -10,9 +10,9 @@ describe('resolveGithubToolOwner', () => {
       kind: 'proceed',
       input,
     })
-    expect(
-      resolveGithubToolOwner({ accountLogin: '   ', input }).kind,
-    ).toBe('proceed')
+    expect(resolveGithubToolOwner({ accountLogin: '   ', input }).kind).toBe(
+      'proceed',
+    )
   })
 
   it('proceeds for inputs without an owner field', () => {
