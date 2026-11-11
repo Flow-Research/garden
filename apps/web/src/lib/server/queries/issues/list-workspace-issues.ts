@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
 import type { Issue } from '@garden/core/types/issue'
 import { schema, type Db } from '@/lib/server/db'
+import { getWorkspaceIssuePrefix } from './issue-prefix'
 
 /**
  * Filters for the workspace issue board/list API. Auth and Zod already ran in
@@ -97,15 +98,7 @@ export async function listWorkspaceIssuesQuery(
     ? query.limit(safeLimit).offset(safeOffset)
     : query.offset(safeOffset))
 
-  const [org] = await db
-    .select({ issuePrefix: schema.organization.issuePrefix })
-    .from(schema.organization)
-    .where(eq(schema.organization.id, input.workspaceId))
-    .limit(1)
-  const issuePrefix =
-    org && typeof org.issuePrefix === 'string' && org.issuePrefix
-      ? org.issuePrefix
-      : 'ISS'
+  const issuePrefix = await getWorkspaceIssuePrefix(db, input.workspaceId)
 
   return { rows, total, issuePrefix }
 }

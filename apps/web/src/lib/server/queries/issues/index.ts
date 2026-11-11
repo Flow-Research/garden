@@ -3,6 +3,7 @@ export {
   type ListWorkspaceIssuesQuery,
   type ListWorkspaceIssuesResult,
 } from './list-workspace-issues'
+export { getWorkspaceIssuePrefix } from './issue-prefix'
 export { isTeamAssigneeMember } from './team-assignee'
 export { agentExistsInWorkspace } from './agents'
 export { getIssueSourceBindingWorkspaceId } from './source-bindings'

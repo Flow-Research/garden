@@ -2,12 +2,14 @@ import { and, eq } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
 /**
- * True when the user or agent is a member of the Team. Used by issue create
- * before writing a team-scoped issue so assignees cannot be pointed outside
- * the Team.
+ * True when the user or agent is a member of the Team. Used by
+ * `PUT /api/issues/$id` when changing a Team issue assignee so the new
+ * assignee cannot sit outside the Team.
  *
- * Before: `POST /api/issues` selected `team_member` inline with Drizzle.
+ * Before: the issue `$id` route selected `team_member` inline with Drizzle.
  * After: the route calls this query helper so it stays free of `drizzle-orm`.
+ * Team create authorization for `POST /api/issues` lives in
+ * `authorizeTeamIssueCreate` (`@garden/server/issues/server`).
  */
 export async function isTeamAssigneeMember(
   db: Db,

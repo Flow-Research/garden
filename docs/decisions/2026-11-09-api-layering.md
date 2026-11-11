@@ -3,7 +3,7 @@ title: Keep TanStack API routes thin with Zod, queries, and Result services
 description: Decision record for layering Garden's TanStack Start `/api` routes as Zod validation, Drizzle queries, better-result services, and thin route handlers — without adding Hono.
 status: decision
 owner: "@Umoren"
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-11
 
 ---
 
@@ -52,21 +52,21 @@ Additional locks:
 - **Effect `HttpApi` splat stays** for the groups already on it (`skills`, `documentArtifacts`). This decision does not migrate those groups onto Zod+query+service, and it does not move ordinary CRUD onto the splat.
 - **Browser clients stay in `apps/web/src/lib/api/`.** That folder is not the server validation or service layer.
 - **Schema migrations stay unchanged.** This refactor should not need a migration unless a later batch discovers a real schema bug.
-- **Lint ratchet:** ban `drizzle-orm` and db imports under `apps/web/src/routes/api/` as **warn** first, then **error** once domain batches clear the backlog.
+- **Lint ratchet:** ban `drizzle-orm` and db imports under `apps/web/src/routes/api/` as **warn** first (second oxlint config `.oxlintrc.api-layering.json`, run via `@garden/web` `lint:api-layering`), then **error** once domain batches clear the backlog. Keep Neon / Phosphor / Tabler `no-restricted-imports` at **error** in the root `.oxlintrc.json` — do not fold the warn ratchet into that same override (one rule cannot hold two severities).
 - **Reference route:** `/api/issues` first. Later batches go by domain to `dev`, not a long-lived parallel product branch.
 
 ## Consequences
 
-New and migrated TanStack API code follows the table above. `GET /api/issues` is the reference: `listWorkspaceIssues` in `apps/web/src/lib/server/issues/list-service.ts` over `queries/issues`, mapped with `.match()`. `POST /api/issues` calls `createIssue` in `@garden/server` and uses `isTeamAssigneeMember` from `queries/issues` for the remaining Team membership check. Issue child routes under `routes/api/issues/` and `routes/api/comments/` follow the same pattern (no `drizzle-orm` / `@/lib/server/db` / `@garden/db` imports). Other flat `issue-*.ts` / domain files under `lib/server/` move into `{domain}/` folders gradually; do not mass-move them in one PR.
+New and migrated TanStack API code follows the table above. `GET /api/issues` is the reference: `listWorkspaceIssues` in `apps/web/src/lib/server/issues/list-service.ts` over `queries/issues`, mapped with `.match()`. `POST /api/issues` calls `createIssue` / `authorizeTeamIssueCreate` in `@garden/server`. `PUT /api/issues/$id` uses `isTeamAssigneeMember` from `queries/issues` when changing a Team assignee. Issue child routes under `routes/api/issues/` and `routes/api/comments/` follow the same pattern (no `drizzle-orm` / `@/lib/server/db` / `@garden/db` imports). Other flat `issue-*.ts` / domain files under `lib/server/` move into `{domain}/` folders gradually; do not mass-move them in one PR.
 
-Warn-level lint will flag remaining Drizzle imports in `routes/api/` until each domain batch moves them. Promoting the rule to error is a later phase after the backlog is gone or allowlisted down to empty.
+Warn-level lint (`.oxlintrc.api-layering.json`) flags remaining Drizzle / db imports in `routes/api/` until each domain batch moves them. Root lint still errors on Neon and Phosphor/Tabler imports in those same routes. Promoting the layering rule to error is a later phase after the backlog is gone or allowlisted down to empty.
 
 Contributors should not add new inline Drizzle in route handlers. If a route needs SQL, add or extend a query module and, when there is orchestration, a `@garden/server` (or existing `lib/server`) service that returns `Result`.
 
 ## Migration shape
 
 1. This decision document.
-2. Lint warn for `drizzle-orm` / db imports under `routes/api/`.
+2. Lint warn for `drizzle-orm` / db imports under `routes/api/` via `.oxlintrc.api-layering.json` (separate from root Neon/icon error bans).
 3. `/api/issues` as the reference (queries + thin route; reuse `@garden/server` where it already owns writes).
 4. Domain batches: issues children → workspaces/members → agents → connections → documents → github/webhooks/misc.
 5. Lint error once the route tree is clean.
