@@ -291,6 +291,7 @@ export function startIssueRun(
 ): Promise<
   | { kind: 'started'; runId: string }
   | { kind: 'resumed'; runId: string }
+  | { kind: 'already_running'; runId: string }
   | { kind: 'skipped'; reason: string }
 > {
   return getApiTransport().request(
