@@ -15,6 +15,7 @@ import {
   parseJsonBody,
   parseSearchParams,
 } from '@/lib/server/validation/issues'
+import { openIssuesCondition } from '@/lib/server/issue-list-filters'
 import {
   badRequest,
   getWorkspaceIssuePrefix,
@@ -119,7 +120,7 @@ export const Route = createFileRoute('/api/issues')({
           conditions.push(inArray(schema.issue.assigneeId, assigneeIds))
         }
         if (creatorId) conditions.push(eq(schema.issue.createdBy, creatorId))
-        if (openOnly) conditions.push(sql`${schema.issue.status} <> 'done'`)
+        if (openOnly) conditions.push(openIssuesCondition())
 
         const whereClause = and(...conditions)
         const [countRow] = await db
