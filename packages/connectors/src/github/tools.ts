@@ -8,36 +8,51 @@ const Pagination = {
   page: boundedPageInput(100),
   perPage: boundedPageInput(100),
 }
+/**
+ * Shared `owner`/`repo` parameters (#332). Both are free-hand strings the
+ * model supplies, which is how a hallucinated org name (`flowresearch`
+ * instead of `Flow-Research`) reached the API as a 404. The runtime owner
+ * gate (`identity.ts`) rejects a mismatched owner before any request; these
+ * descriptions steer the model at the schema level toward the
+ * inventory-derived login instead of a guess.
+ */
+const OwnerParam = Schema.String.annotate({
+  description:
+    'Repository owner. Must be the connected GitHub account login with its exact casing — take it from list_workspace_inventory or a prior GitHub tool result; never guess or re-case it.',
+})
+const RepoParam = Schema.String.annotate({
+  description: 'Repository name exactly as GitHub stores it, including casing.',
+})
 const RepositoryListInput = Schema.Struct({
   ...Pagination,
 })
 const FileInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   path: Schema.String,
   ref: Schema.optional(Schema.String),
 })
 const SearchCodeInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   query: Schema.String,
   ...Pagination,
 })
 const IssueListInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   state: Schema.optional(Schema.Literals(['open', 'closed', 'all'])),
   labels: Schema.optional(Schema.String),
   ...Pagination,
 })
 const IssueInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   issueNumber: Schema.Number,
 })
 const IssueWriteInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   issueNumber: Schema.optional(Schema.Number),
   title: Schema.optional(Schema.String),
   body: Schema.optional(Schema.String),
@@ -51,27 +66,27 @@ const IssueWriteInput = Schema.Struct({
   assignees: Schema.optional(Schema.Array(Schema.String)),
 })
 const IssueCommentInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   issueNumber: Schema.Number,
   body: Schema.String,
 })
 const PullRequestListInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   state: Schema.optional(Schema.Literals(['open', 'closed', 'all'])),
   base: Schema.optional(Schema.String),
   head: Schema.optional(Schema.String),
   ...Pagination,
 })
 const PullRequestInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   pullNumber: Schema.Number,
 })
 const CreatePullRequestInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   title: Schema.String,
   head: Schema.String,
   base: Schema.String,
@@ -79,56 +94,56 @@ const CreatePullRequestInput = Schema.Struct({
   draft: Schema.optional(Schema.Boolean),
 })
 const MergePullRequestInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   pullNumber: Schema.Number,
   commitTitle: Schema.optional(Schema.String),
   commitMessage: Schema.optional(Schema.String),
   mergeMethod: Schema.optional(Schema.Literals(['merge', 'squash', 'rebase'])),
 })
 const ReviewPullRequestInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   pullNumber: Schema.Number,
   body: Schema.String,
   event: Schema.Literals(['APPROVE', 'REQUEST_CHANGES', 'COMMENT']),
 })
 const BranchListInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   ...Pagination,
 })
 const CreateBranchInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   branch: Schema.String,
   fromSha: Schema.String,
 })
 const CommitListInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   sha: Schema.optional(Schema.String),
   path: Schema.optional(Schema.String),
   ...Pagination,
 })
 const WorkflowRunsInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   workflowId: Schema.optional(Schema.String),
   branch: Schema.optional(Schema.String),
   status: Schema.optional(Schema.String),
   ...Pagination,
 })
 const DispatchWorkflowInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   workflowId: Schema.String,
   ref: Schema.String,
   inputs: Schema.optional(Schema.Record(Schema.String, Schema.String)),
 })
 const PutFileInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   path: Schema.String,
   message: Schema.String,
   content: Schema.String,
@@ -136,25 +151,25 @@ const PutFileInput = Schema.Struct({
   sha: Schema.optional(Schema.String),
 })
 const DeleteFileInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   path: Schema.String,
   message: Schema.String,
   sha: Schema.String,
   branch: Schema.optional(Schema.String),
 })
 const RepositoryInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
 })
 const RepositoryRefInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   ref: Schema.String,
 })
 const RepositoryTagInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   tag: Schema.String,
 })
 const RepositorySearchInput = Schema.Struct({
@@ -162,30 +177,30 @@ const RepositorySearchInput = Schema.Struct({
   ...Pagination,
 })
 const ScopedSearchInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   query: Schema.String,
   ...Pagination,
 })
 const ForkRepositoryInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   organization: Schema.optional(Schema.String),
 })
 const PullRequestCommentReplyInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   commentId: Schema.Number,
   body: Schema.String,
 })
 const LabelInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   label: Schema.String,
 })
 const UpdatePullRequestInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   pullNumber: Schema.Number,
   title: Schema.optional(Schema.String),
   body: Schema.optional(Schema.String),
@@ -193,14 +208,14 @@ const UpdatePullRequestInput = Schema.Struct({
   base: Schema.optional(Schema.String),
 })
 const UpdatePullRequestBranchInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   pullNumber: Schema.Number,
   expectedHeadSha: Schema.optional(Schema.String),
 })
 const SubIssueWriteInput = Schema.Struct({
-  owner: Schema.String,
-  repo: Schema.String,
+  owner: OwnerParam,
+  repo: RepoParam,
   issueNumber: Schema.Number,
   subIssueId: Schema.Number,
   action: Schema.Literals(['add', 'remove']),

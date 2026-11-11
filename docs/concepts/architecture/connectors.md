@@ -38,6 +38,10 @@ Executor stores integration and connection state in the `EXECUTOR_DB` D1 databas
 
 Unknown tools fail closed. A tool with no risk class defaults to `ask`. Unclassified native or hosted GitHub tools are not exposed at all. Executor receives tenant and member identity from Garden, and it never replaces Garden's workspace authorization checks.
 
+## GitHub tool calls are gated on install identity
+
+Every repo-scoped GitHub tool takes `owner` and `repo` as free-hand strings from the model, so a guessed or re-cased org name used to reach `api.github.com` and fail as a bare 404 (#332). Before any GitHub request is built, `resolveGithubToolOwner` (`packages/connectors/src/github/identity.ts`) compares the call's `owner` against the installation account login (`github_app_installation.account_login`, written from GitHub's install API): a case variant is corrected to the canonical casing, any other owner is rejected with the connected account named, and a call with no canonical login available proceeds untouched. The gate runs on both GitHub surfaces — native `github.*` and hosted `github-mcp.*` — next to the assignee gate in `RuntimeMcpController`, and on the work-product connector writeback path. A GitHub 404 on a repository path returns `ConnectorNotFoundError` with a hint to retry against `list_repositories`. Schema descriptions on `owner`/`repo` and the foundation prompt point the model at inventory-derived logins so the gate rarely has to reject.
+
 ## Each runtime gets its own Executor MCP session
 
 Installed Executor tools reach an agent through one MCP server per runtime. `RuntimeMcpController.ensureProxyMcpConnections` in `packages/agent-runtime/src/runtime-mcp-controller.ts` registers that server for every chat facet and run facet.

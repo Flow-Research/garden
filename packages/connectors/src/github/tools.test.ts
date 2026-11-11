@@ -99,8 +99,23 @@ describe('GitHub App tool surface', () => {
     ])
   })
 
-  it('classifies the live hosted-MCP-only operations', () => {
-    expect(
+  // #332: the gate rejects a wrong owner, but the schema descriptions are
+  // what keep the model from guessing the login in the first place. This
+  // asserts they survive into the JSON schema the model actually receives.
+  it('describes owner/repo with the connected account login requirement', () => {
+    const tool = githubNativeTools.find((entry) => entry.name === 'list_branches')
+    const properties = (
+      tool?.inputSchema as
+        | { properties?: Record<string, { description?: string }> }
+        | undefined
+    )?.properties
+    expect(properties?.owner?.description).toContain(
+      'connected GitHub account login',
+    )
+    expect(properties?.repo?.description).toContain('exactly as GitHub stores it')
+  })
+
+  it('classifies the live hosted-MCP-only operations', () => {    expect(
       Object.keys(githubHostedMcpExtraClassifications).sort((first, second) =>
         first.localeCompare(second),
       ),
