@@ -1,5 +1,5 @@
 {
-  "id": "44f42cfc-c8d7-447b-a727-7c55da93f8fb",
+  "id": "abddee8d-3103-49ce-b086-278668e70f3e",
   "prevId": "505dc09f-1b08-4f32-b9ae-d62597a965d5",
   "version": "7",
   "dialect": "postgresql",
@@ -727,13 +727,6 @@
           "primaryKey": false,
           "notNull": false,
           "default": "'free'"
-        },
-        "team_owners_can_invite": {
-          "name": "team_owners_can_invite",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": true
         },
         "default_team_id": {
           "name": "default_team_id",

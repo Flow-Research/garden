@@ -310,58 +310,18 @@ describe('invitation Teams (integration)', () => {
     expect(await teamMemberships(ws.engineeringId, invitee.id)).toHaveLength(1)
   })
 
-  it('lets a Team owner invite into their own Team while the setting is on', async () => {
-    const ws = await seedWorkspace()
-    const email = `new-${ws.suffix}@example.com`
+  it('refuses Team owners and plain members', async () => {
+    const wsForOwner = await seedWorkspace()
+    const teamOwnerResponse = await invite(
+      wsForOwner.teamOwner,
+      wsForOwner.workspaceId,
+      {
+        email: `new-${wsForOwner.suffix}@example.com`,
+        team_ids: [wsForOwner.engineeringId],
+      },
+    )
+    expect(teamOwnerResponse.status).toBe(403)
 
-    const response = await invite(ws.teamOwner, ws.workspaceId, {
-      email,
-      team_ids: [ws.engineeringId],
-    })
-
-    expect(response.status).toBe(200)
-    const invitation = (await response.json()) as { id: string }
-    expect(await invitationTeamIds(invitation.id)).toEqual([ws.engineeringId])
-    const invitee = await signUp(auth, email)
-    expect((await accept(invitee, invitation.id)).status).toBe('accepted')
-    expect(await teamMemberships(ws.engineeringId, invitee.id)).toHaveLength(1)
-  })
-
-  it('refuses Team owner invites when the setting is off', async () => {
-    const ws = await seedWorkspace()
-    expect(
-      (
-        await updateSettings(ws.owner, ws.workspaceId, {
-          team_owners_can_invite: false,
-        })
-      ).status,
-    ).toBe(200)
-
-    const response = await invite(ws.teamOwner, ws.workspaceId, {
-      email: `new-${ws.suffix}@example.com`,
-      team_ids: [ws.engineeringId],
-    })
-
-    expect(response.status).toBe(403)
-    expect(await response.json()).toMatchObject({
-      code: 'TEAM_OWNER_INVITES_DISABLED',
-    })
-  })
-
-  it('refuses a Team owner attaching a Team they do not own', async () => {
-    const ws = await seedWorkspace()
-    const response = await invite(ws.teamOwner, ws.workspaceId, {
-      email: `new-${ws.suffix}@example.com`,
-      team_ids: [ws.engineeringId, ws.financeId],
-    })
-
-    expect(response.status).toBe(403)
-    expect(await response.json()).toMatchObject({
-      code: 'INVITATION_TEAM_FORBIDDEN',
-    })
-  })
-
-  it('refuses a plain member', async () => {
     const ws = await seedWorkspace()
     const withTeam = await invite(ws.plain, ws.workspaceId, {
       email: `new-${ws.suffix}@example.com`,
@@ -461,17 +421,15 @@ describe('invitation Teams (integration)', () => {
     const other = await seedWorkspace()
 
     const adminResponse = await updateSettings(ws.admin, ws.workspaceId, {
-      team_owners_can_invite: false,
       default_team_id: ws.engineeringId,
     })
     expect(adminResponse.status).toBe(200)
     expect(await adminResponse.json()).toEqual({
-      team_owners_can_invite: false,
       default_team_id: ws.engineeringId,
     })
 
     const memberResponse = await updateSettings(ws.plain, ws.workspaceId, {
-      team_owners_can_invite: true,
+      default_team_id: null,
     })
     expect(memberResponse.status).toBe(403)
 
@@ -487,7 +445,6 @@ describe('invitation Teams (integration)', () => {
       default_team_id: null,
     })
     expect(await clearResponse.json()).toEqual({
-      team_owners_can_invite: false,
       default_team_id: null,
     })
 

@@ -165,7 +165,7 @@ export function useUpdateWorkspaceTeamSettings() {
   const wsId = useWorkspaceId()
   const key = teamKeys.inviteSettings(wsId)
   return useMutation({
-    mutationFn: (patch: Partial<WorkspaceTeamSettings>) =>
+    mutationFn: (patch: WorkspaceTeamSettings) =>
       api.updateWorkspaceTeamSettings(wsId, patch),
     onMutate: async (patch) => {
       await qc.cancelQueries({ queryKey: key })

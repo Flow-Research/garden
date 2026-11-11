@@ -85,7 +85,6 @@ export interface CreateMemberRequest {
 }
 
 export interface WorkspaceTeamSettings {
-  team_owners_can_invite: boolean
   default_team_id: string | null
 }
 

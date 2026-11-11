@@ -8,7 +8,7 @@
 - `/teams` shows owners and admins the summary cards and Team grid. It has no **Manage Teams** button.
 - Members see only their Teams and no management actions.
 - Team detail keeps its tab in `?tab=`. An unknown value falls back to **Members**.
-- `/teams` shows owners and admins an **Invites** section with **Team owners can invite people to their Team** and **Default team for new members**.
+- `/teams` shows owners and admins an **Invites** section with **Default team for new members**.
 - An invite sent with Teams from **Settings › Members** adds the invitee to those Teams on accept. With no Team picked, the default Team applies.
 
 ## How to get to it (user POV)

@@ -2,7 +2,6 @@ import { useQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { TeamSummary, WorkspaceTeamSettings } from '@garden/core/types'
 import { Label } from '@garden/ui/components/ui/label'
-import { Switch } from '@garden/ui/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -19,16 +18,15 @@ const NO_DEFAULT_TEAM = 'none'
 /**
  * Workspace invite settings on the Teams overview, for owners and admins.
  * Before this, an accepted invite joined no Team, so new members landed on
- * an empty board. These two controls decide whether Team owners may invite
- * people into their Teams and which Team an invite joins when it names none.
- * The server enforces both; this only edits them.
+ * an empty board. This control picks the Team an invite joins when it names
+ * none. The server enforces the rule; this only edits it.
  */
 export function TeamInviteSettings({ teams }: { teams: TeamSummary[] }) {
   const wsId = useWorkspaceId()
   const { data: settings } = useQuery(workspaceTeamSettingsOptions(wsId))
   const update = useUpdateWorkspaceTeamSettings()
 
-  const save = (patch: Partial<WorkspaceTeamSettings>) =>
+  const save = (patch: WorkspaceTeamSettings) =>
     update.mutate(patch, {
       onError: (error) =>
         toast.error(
@@ -39,26 +37,7 @@ export function TeamInviteSettings({ teams }: { teams: TeamSummary[] }) {
   return (
     <section className="flex flex-col gap-4">
       <h2 className="text-xl">Invites</h2>
-      <div className="flex flex-col divide-y divide-border-default rounded-xl border-[0.5px] border-border-default bg-background-main-default">
-        <div className="flex items-center justify-between gap-4 p-4">
-          <div className="flex flex-col gap-0.5">
-            <Label htmlFor="team-owners-can-invite">
-              Team owners can invite people to their Team
-            </Label>
-            <p className="text-sm text-text-secondary">
-              Owners and admins can always invite. Team owners join new people
-              as members of the Teams they own.
-            </p>
-          </div>
-          <Switch
-            id="team-owners-can-invite"
-            disabled={!settings}
-            checked={settings?.team_owners_can_invite ?? false}
-            onCheckedChange={(checked) =>
-              save({ team_owners_can_invite: checked === true })
-            }
-          />
-        </div>
+      <div className="flex flex-col rounded-xl border-[0.5px] border-border-default bg-background-main-default">
         <div className="flex items-center justify-between gap-4 p-4">
           <div className="flex flex-col gap-0.5">
             <Label htmlFor="default-team">Default team for new members</Label>

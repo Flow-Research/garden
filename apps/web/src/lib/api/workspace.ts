@@ -55,7 +55,7 @@ export function getWorkspaceTeamSettings(
 
 export function updateWorkspaceTeamSettings(
   workspaceId: string,
-  data: Partial<WorkspaceTeamSettings>,
+  data: WorkspaceTeamSettings,
 ): Promise<WorkspaceTeamSettings> {
   return getApiTransport().request(
     `/api/workspaces/${workspaceId}/team-settings`,

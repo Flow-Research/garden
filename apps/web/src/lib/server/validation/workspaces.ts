@@ -54,20 +54,11 @@ export const createWorkspaceMemberBodySchema = z
   })
   .strict()
 
-export const workspaceTeamSettingsSchema = z.object({
-  team_owners_can_invite: z.boolean(),
-  default_team_id: uuidSchema.nullable(),
-})
+export const workspaceTeamSettingsSchema = z
+  .object({ default_team_id: uuidSchema.nullable() })
+  .strict()
 
 export type WorkspaceTeamSettings = z.infer<typeof workspaceTeamSettingsSchema>
-
-export const updateWorkspaceTeamSettingsBodySchema = workspaceTeamSettingsSchema
-  .partial()
-  .strict()
-  .refine(
-    (value) => Object.keys(value).length > 0,
-    'No valid Team settings submitted',
-  )
 
 /**
  * GitHub login shape (max 39, alphanumeric/hyphen, no leading/trailing hyphen).

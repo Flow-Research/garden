@@ -6,7 +6,6 @@ CREATE TABLE "invitation_team" (
 	CONSTRAINT "invitation_team_invitation_team_unique" UNIQUE("invitation_id","team_id")
 );
 --> statement-breakpoint
-ALTER TABLE "organization" ADD COLUMN "team_owners_can_invite" boolean DEFAULT true NOT NULL;--> statement-breakpoint
 ALTER TABLE "organization" ADD COLUMN "default_team_id" uuid;--> statement-breakpoint
 ALTER TABLE "invitation_team" ADD CONSTRAINT "invitation_team_invitation_id_invitation_id_fk" FOREIGN KEY ("invitation_id") REFERENCES "public"."invitation"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "invitation_team" ADD CONSTRAINT "invitation_team_workspace_id_organization_id_fk" FOREIGN KEY ("workspace_id") REFERENCES "public"."organization"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

@@ -1,6 +1,5 @@
 import { sql } from 'drizzle-orm'
 import {
-  boolean,
   check,
   index,
   jsonb,
@@ -32,13 +31,6 @@ export const organization = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     plan: text('plan').default('free'),
-    /**
-     * Lets a Team owner who is a plain workspace member invite people into
-     * the Teams they own. Owners and admins can always invite.
-     */
-    teamOwnersCanInvite: boolean('team_owners_can_invite')
-      .notNull()
-      .default(true),
     /**
      * Team that an invitation joins when the inviter names no Team. A plain
      * FK with SET NULL: a composite `(default_team_id, id)` FK would try to

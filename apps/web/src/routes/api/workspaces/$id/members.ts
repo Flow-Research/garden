@@ -21,8 +21,7 @@ import {
 import { githubIdentityByMemberId } from '@/lib/server/workspace-members'
 import {
   attachInvitationTeams,
-  cancelCreatedInvitation,
-  createTeamOwnerInvitation,
+  discardInvitationTeams,
   INVITATION_EXPIRES_IN_MS,
   InvitationTeamError,
   planInvitationTeams,
@@ -238,12 +237,11 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             // A resend that names Teams adds them to the invite; one that
             // names none keeps the invite's current Teams.
             if (body.team_ids?.length) {
-              const plan = yield* Result.await(
+              const teamIds = yield* Result.await(
                 planInvitationTeams({
                   db,
                   workspaceId: params.id,
                   inviterId: session.user.id,
-                  role: existing.role,
                   requestedTeamIds: body.team_ids,
                 }),
               )
@@ -252,7 +250,7 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
                   db,
                   invitationId: existing.id,
                   workspaceId: params.id,
-                  teamIds: plan.teamIds,
+                  teamIds,
                 }),
               )
             }
@@ -308,55 +306,51 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             return Result.ok(toInvitation(refreshed))
           }
 
-          const role = body.role ?? 'member'
-          const plan = yield* Result.await(
+          const teamIds = yield* Result.await(
             planInvitationTeams({
               db,
               workspaceId: params.id,
               inviterId: session.user.id,
-              role,
               requestedTeamIds: body.team_ids,
             }),
           )
-          const invitation: AuthInvitation =
-            plan.inviter === 'team_owner'
-              ? yield* Result.await(
-                  createTeamOwnerInvitation({
-                    db,
-                    workspaceId: params.id,
-                    inviterId: session.user.id,
+          const invitation = yield* Result.await(
+            Result.tryPromise({
+              try: async () =>
+                (await auth.api.createInvitation({
+                  headers: request.headers,
+                  body: {
                     email: body.email,
-                  }),
-                )
-              : yield* Result.await(
-                  Result.tryPromise({
-                    try: async () =>
-                      (await auth.api.createInvitation({
-                        headers: request.headers,
-                        body: {
-                          email: body.email,
-                          role,
-                          organizationId: params.id,
-                        },
-                      })) as AuthInvitation,
-                    catch: (cause) =>
-                      new WorkspaceInvitationRequestError({
-                        message:
-                          cause instanceof Error
-                            ? cause.message
-                            : 'Failed to create invitation',
-                        status: 400,
-                      }),
-                  }),
-                )
+                    role: body.role ?? 'member',
+                    organizationId: params.id,
+                  },
+                })) as AuthInvitation,
+              catch: (cause) =>
+                new WorkspaceInvitationRequestError({
+                  message:
+                    cause instanceof Error
+                      ? cause.message
+                      : 'Failed to create invitation',
+                  status: 400,
+                }),
+            }),
+          )
 
-          // Cancel only invites this request created. The resend path
-          // returned above before reaching here, so every invitation at this
-          // point is newly created.
+          /**
+           * Cancels the invite this request just created after a later step
+           * failed, then drops its Team rows (cancel keeps the invitation
+           * row, so the cascade does not fire). The resend path returned
+           * above, so every invitation here is newly created.
+           */
           const cancelCreated = async () => {
-            const cancelResult = await cancelCreatedInvitation({
-              db,
-              invitationId: invitation.id,
+            const cancelResult = await Result.tryPromise({
+              try: async () => {
+                await auth.api.cancelInvitation({
+                  headers: request.headers,
+                  body: { invitationId: invitation.id },
+                })
+              },
+              catch: (cause) => cause,
             })
             if (cancelResult.isErr()) {
               logger.error('workspace.invitation_cancel_after_failure_failed', {
@@ -368,13 +362,24 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
                     : String(cancelResult.error),
               })
             }
+            const discardResult = await discardInvitationTeams({
+              db,
+              invitationId: invitation.id,
+            })
+            if (discardResult.isErr()) {
+              logger.error('workspace.invitation_team_discard_failed', {
+                invitationId: invitation.id,
+                workspaceId: params.id,
+                error: discardResult.error.message,
+              })
+            }
           }
 
           const attachResult = await attachInvitationTeams({
             db,
             invitationId: invitation.id,
             workspaceId: params.id,
-            teamIds: plan.teamIds,
+            teamIds,
           })
           if (attachResult.isErr()) {
             await cancelCreated()

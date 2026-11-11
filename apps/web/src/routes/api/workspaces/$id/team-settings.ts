@@ -3,7 +3,7 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { badRequest, notFound } from '@/lib/server/control-plane'
 import {
   parseJsonBody,
-  updateWorkspaceTeamSettingsBodySchema,
+  workspaceTeamSettingsSchema,
 } from '@/lib/server/validation/workspaces'
 import {
   readWorkspaceTeamSettings,
@@ -15,10 +15,9 @@ import {
 } from '@/lib/server/workspace-permissions'
 
 /**
- * Workspace invite settings for Teams: whether Team owners may invite people
- * into their Teams, and which Team an invite joins when it names none. Any
- * member can read them, because the invite UI needs them to decide what to
- * show a Team owner. Only owners and admins can change them.
+ * Workspace invite settings for Teams: which Team an invite joins when it
+ * names none. Any member can read them; only owners and admins can change
+ * them.
  */
 export const Route = createFileRoute('/api/workspaces/$id/team-settings')({
   server: {
@@ -47,7 +46,7 @@ export const Route = createFileRoute('/api/workspaces/$id/team-settings')({
 
         const bodyResult = await parseJsonBody(
           request,
-          updateWorkspaceTeamSettingsBodySchema,
+          workspaceTeamSettingsSchema,
           'Invalid Team settings payload',
         )
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
