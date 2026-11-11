@@ -3,7 +3,11 @@ import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { createIssue } from '@garden/server/issues/server'
+import {
+  authorizeTeamIssueCreate,
+  createIssue,
+  type IssueServiceError,
+} from '@garden/server/issues/server'
 import { startIssueRun } from '@garden/server/issues/run-service'
 import {
   createIssueBodySchema,
@@ -11,6 +15,7 @@ import {
   parseJsonBody,
   parseSearchParams,
 } from '@/lib/server/validation/issues'
+import { openIssuesCondition } from '@/lib/server/issue-list-filters'
 import {
   badRequest,
   getWorkspaceIssuePrefix,
@@ -33,7 +38,7 @@ import {
   requireTeamAccess,
   teamError,
 } from '@/lib/server/team-access'
-import { teamIssueVisibilityCondition } from '@/lib/server/issue-access'
+import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
@@ -42,6 +47,22 @@ const logger = createGardenLogger({
   service: 'garden-staging',
   component: 'issues-api',
 })
+
+/**
+ * Maps issue-service create errors to the route's HTTP envelope. Team rule
+ * denials keep the `ISSUE_TEAM_ACCESS_DENIED` 403 the UI keys off, and an
+ * off-Team assignee stays a 400, exactly as the route answered when it owned
+ * the rules inline; everything else uses `serviceErrorResponse`.
+ */
+function teamCreateErrorResponse(error: IssueServiceError) {
+  if (error.code === 'team_access_denied') {
+    return teamError(403, 'ISSUE_TEAM_ACCESS_DENIED', error.message)
+  }
+  if (error.code === 'team_not_found') {
+    return teamError(404, 'TEAM_NOT_FOUND', error.message)
+  }
+  return serviceErrorResponse(error)
+}
 
 export const Route = createFileRoute('/api/issues')({
   server: {
@@ -99,7 +120,7 @@ export const Route = createFileRoute('/api/issues')({
           conditions.push(inArray(schema.issue.assigneeId, assigneeIds))
         }
         if (creatorId) conditions.push(eq(schema.issue.createdBy, creatorId))
-        if (openOnly) conditions.push(sql`${schema.issue.status} <> 'done'`)
+        if (openOnly) conditions.push(openIssuesCondition())
 
         const whereClause = and(...conditions)
         const [countRow] = await db
@@ -150,55 +171,26 @@ export const Route = createFileRoute('/api/issues')({
         const db = await appContext.db()
 
         if (typeof body.team_id === 'string') {
-          // Team-scoped create: normal Team members may create issues even
-          // though they lack the workspace issueManage permission, as long as
-          // the issue is assigned to themselves and the assignee is a Team
-          // member. Workspace managers and the Team owner may assign others.
+          // Team-scoped create: normal Team members may create issues without
+          // workspace issueManage. requireTeamAccess keeps the HTTP access
+          // envelope (401/404/TEAM_ACCESS_DENIED); the Team create rules
+          // themselves live in the issue service, and run here first so they
+          // win over the generic assignee/parent checks below.
           const teamAccess = await requireTeamAccess(appContext, body.team_id)
           if (teamAccess instanceof Response) return teamAccess
-          const manager = isWorkspaceManager(
-            teamAccess.workspaceMembership.role,
-          )
-          const canAssignOthers =
-            manager || teamAccess.team.ownerUserId === session.user.id
-          if (!manager && !teamAccess.teamMembership) {
-            return teamError(
-              403,
-              'ISSUE_TEAM_ACCESS_DENIED',
-              'Team membership required',
-            )
-          }
-          if (typeof body.assignee_id !== 'string') {
-            return badRequest('Team issues must be assigned to a Team member')
-          }
-          if (
-            !canAssignOthers &&
-            (body.assignee_type === 'agent' ||
-              body.assignee_id !== session.user.id)
-          ) {
-            return teamError(
-              403,
-              'ISSUE_TEAM_ACCESS_DENIED',
-              'Team members can only assign issues to themselves',
-            )
-          }
-          const assigneeCondition =
-            body.assignee_type === 'agent'
-              ? and(
-                  eq(schema.teamMember.teamId, body.team_id),
-                  eq(schema.teamMember.agentId, body.assignee_id),
-                )
-              : and(
-                  eq(schema.teamMember.teamId, body.team_id),
-                  eq(schema.teamMember.userId, body.assignee_id),
-                )
-          const [assigneeMembership] = await db
-            .select({ id: schema.teamMember.id })
-            .from(schema.teamMember)
-            .where(assigneeCondition)
-          if (!assigneeMembership) {
-            return badRequest('Assignee must be a Team member')
-          }
+          const teamRules = await authorizeTeamIssueCreate(db, {
+            workspaceId,
+            teamId: body.team_id,
+            createdBy: session.user.id,
+            assigneeType:
+              typeof body.assignee_id === 'string'
+                ? body.assignee_type === 'agent'
+                  ? 'agent'
+                  : 'user'
+                : null,
+            assigneeId: body.assignee_id ?? null,
+          })
+          if (teamRules.isErr()) return teamCreateErrorResponse(teamRules.error)
         } else {
           const managePermission = await requireWorkspacePermission({
             appContext,
@@ -251,7 +243,8 @@ export const Route = createFileRoute('/api/issues')({
           dueDate: body.due_date ? new Date(body.due_date) : null,
           attachmentIds: body.attachment_ids,
         })
-        if (issueResult.isErr()) return serviceErrorResponse(issueResult.error)
+        if (issueResult.isErr())
+          return teamCreateErrorResponse(issueResult.error)
         const issue = issueResult.value
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, workspaceId, {

@@ -5,10 +5,12 @@ import {
   jsonb,
   pgTable,
   text,
+  type AnyPgColumn,
   timestamp,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core'
+import { team } from './teams.js'
 import { user } from './users.js'
 
 export const organization = pgTable(
@@ -29,6 +31,17 @@ export const organization = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     plan: text('plan').default('free'),
+    /**
+     * Team that an invitation joins when the inviter names no Team. A plain
+     * FK with SET NULL: a composite `(default_team_id, id)` FK would try to
+     * null `organization.id` on Team delete, and Drizzle cannot emit the
+     * Postgres 15 `SET NULL (column)` form. The workspace settings service
+     * checks the Team belongs to this workspace before writing it.
+     */
+    defaultTeamId: uuid('default_team_id').references(
+      (): AnyPgColumn => team.id,
+      { onDelete: 'set null' },
+    ),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
@@ -64,6 +77,8 @@ export const member = pgTable(
       .notNull()
       .references(() => user.id),
     role: text('role').notNull().default('member'),
+    githubUserId: text('github_user_id'),
+    githubLogin: text('github_login'),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',
@@ -77,9 +92,17 @@ export const member = pgTable(
       table.organizationId,
       table.userId,
     ),
+    uniqueIndex('member_organization_github_user_unique')
+      .on(table.organizationId, table.githubUserId)
+      .where(sql`${table.githubUserId} is not null`),
     check(
       'member_role_check',
       sql`${table.role} in ('owner', 'admin', 'member')`,
+    ),
+    // Linked and not_linked are explicit: never store a lone id or login.
+    check(
+      'member_github_identity_pair_check',
+      sql`(${table.githubUserId} is null) = (${table.githubLogin} is null)`,
     ),
   ],
 )

@@ -11,7 +11,9 @@ import {
   Mail,
   MailWarning,
   SendHorizontal,
+  Unlink,
 } from 'lucide-react'
+import { BrandGithubIcon } from '@/components/icons/brand-github-icon'
 import { ActorAvatar } from '../../common/actor-avatar'
 import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
 import { Input } from '@garden/ui/components/ui/input'
@@ -37,6 +39,7 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '@garden/ui/components/ui/dropdown-menu'
+import { Result } from 'better-result'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -48,6 +51,11 @@ import {
   workspaceKeys,
 } from '@/lib/workspace/queries'
 import { api } from '@/lib/api'
+import {
+  GithubIdentityLinkDialog,
+  githubIdentityStatusLabel,
+} from './github-workspace-identity'
+import { TeamMultiPicker } from '@/features/teams/components/team-picker'
 
 const roleConfig: Record<
   MemberRole,
@@ -78,6 +86,8 @@ function MemberRow({
   busy,
   onRoleChange,
   onRemove,
+  onLinkGithub,
+  onUnlinkGithub,
 }: {
   member: MemberWithUser
   canManage: boolean
@@ -86,6 +96,8 @@ function MemberRow({
   busy: boolean
   onRoleChange: (role: MemberRole) => void
   onRemove: () => void
+  onLinkGithub: () => void
+  onUnlinkGithub: () => void
 }) {
   const rc = roleConfig[member.role]
   const RoleIcon = rc.icon
@@ -93,7 +105,14 @@ function MemberRow({
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
   const canRemove =
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
-  const showMenu = canEditRole || canRemove
+  /**
+   * Owner/admin only, own row included; an owner's row needs an owner, the
+   * same rule as role edits (matches the API's 403s).
+   */
+  const canEditGithub =
+    canManage && (member.role !== 'owner' || canManageOwners)
+  const showMenu = canEditRole || canRemove || canEditGithub
+  const githubLabel = githubIdentityStatusLabel(member)
 
   return (
     <li className="flex items-center gap-3 py-3">
@@ -102,6 +121,9 @@ function MemberRow({
         <div className="truncate text-sm font-medium">{member.name}</div>
         <div className="truncate text-xs text-muted-foreground">
           {member.email}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {githubLabel}
         </div>
       </div>
       {showMenu && (
@@ -157,7 +179,21 @@ function MemberRow({
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
             )}
-            {canEditRole && canRemove && <DropdownMenuSeparator />}
+            {canEditGithub && (
+              <DropdownMenuItem onClick={onLinkGithub}>
+                <BrandGithubIcon className="h-3.5 w-3.5" />
+                {member.github_login ? 'Edit GitHub identity' : 'Link GitHub'}
+              </DropdownMenuItem>
+            )}
+            {canEditGithub && member.github_login ? (
+              <DropdownMenuItem onClick={onUnlinkGithub}>
+                <Unlink className="h-3.5 w-3.5" />
+                Unlink GitHub
+              </DropdownMenuItem>
+            ) : null}
+            {canRemove && (canEditRole || canEditGithub) ? (
+              <DropdownMenuSeparator />
+            ) : null}
             {canRemove && (
               <DropdownMenuItem variant="destructive" onClick={onRemove}>
                 <UserMinus className="size-3.5" />
@@ -256,6 +292,7 @@ export function MembersTab() {
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<MemberRole>('member')
+  const [inviteTeamIds, setInviteTeamIds] = useState<string[]>([])
   const [inviteLoading, setInviteLoading] = useState(false)
   const [memberActionId, setMemberActionId] = useState<string | null>(null)
   const [invitationActionId, setInvitationActionId] = useState<string | null>(
@@ -269,6 +306,7 @@ export function MembersTab() {
     variant?: 'destructive'
     onConfirm: () => Promise<void>
   } | null>(null)
+  const [githubTarget, setGithubTarget] = useState<MemberWithUser | null>(null)
 
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null
   const pendingInvitations = invitations.filter(
@@ -294,9 +332,11 @@ export function MembersTab() {
       await api.createMember(wsId, {
         email,
         role: inviteRole,
+        ...(inviteTeamIds.length ? { team_ids: inviteTeamIds } : {}),
       })
       setInviteEmail('')
       setInviteRole('member')
+      setInviteTeamIds([])
       qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
       toast.success('Invitation sent')
     } catch (e) {
@@ -396,6 +436,39 @@ export function MembersTab() {
     })
   }
 
+  const handleUnlinkGithub = (member: MemberWithUser) => {
+    if (!workspace) return
+    setConfirmAction({
+      title: `Unlink GitHub for ${member.name}`,
+      description: `Remove the GitHub identity for ${member.name}? Mirrored GitHub issue assignment will show not linked until an owner or admin links it again.`,
+      confirmLabel: 'Unlink',
+      pendingLabel: 'Unlinking...',
+      variant: 'destructive',
+      onConfirm: async () => {
+        setMemberActionId(member.id)
+        const result = await Result.tryPromise({
+          try: () =>
+            api.updateMember(workspace.id, member.id, {
+              github_user_id: null,
+              github_login: null,
+            }),
+          catch: (cause) =>
+            cause instanceof Error
+              ? cause.message
+              : 'Failed to unlink GitHub identity',
+        })
+        setMemberActionId(null)
+        result.match({
+          ok: () => {
+            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+            toast.success('GitHub identity unlinked')
+          },
+          err: (message) => toast.error(message),
+        })
+      },
+    })
+  }
+
   if (!workspace) return null
 
   return (
@@ -417,7 +490,7 @@ export function MembersTab() {
 
         {canManageWorkspace && (
           <form
-            className="grid gap-2 sm:grid-cols-[1fr_120px_auto]"
+            className="grid gap-2 sm:grid-cols-[1fr_120px_140px_auto]"
             noValidate
             onSubmit={(event) => {
               event.preventDefault()
@@ -443,6 +516,19 @@ export function MembersTab() {
                 <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
+            <TeamMultiPicker
+              teamIds={inviteTeamIds}
+              onUpdate={setInviteTeamIds}
+              triggerRender={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Teams the invitee joins"
+                  className="justify-start gap-1.5 overflow-hidden"
+                />
+              }
+            />
             <Button
               type="submit"
               size="sm"
@@ -481,6 +567,8 @@ export function MembersTab() {
                 busy={memberActionId === m.id}
                 onRoleChange={(role) => handleRoleChange(m.id, role)}
                 onRemove={() => handleRemoveMember(m)}
+                onLinkGithub={() => setGithubTarget(m)}
+                onUnlinkGithub={() => handleUnlinkGithub(m)}
               />
             ))}
           </ul>
@@ -488,6 +576,21 @@ export function MembersTab() {
           <p className="text-sm text-muted-foreground">No members found.</p>
         )}
       </section>
+
+      {githubTarget ? (
+        <GithubIdentityLinkDialog
+          key={githubTarget.id}
+          open
+          onOpenChange={(open) => {
+            if (!open) setGithubTarget(null)
+          }}
+          workspaceId={workspace.id}
+          member={githubTarget}
+          onSaved={() =>
+            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+          }
+        />
+      ) : null}
 
       {pendingInvitations.length > 0 && (
         <section className="space-y-5">

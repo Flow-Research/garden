@@ -58,6 +58,10 @@ const executorBlobs = Cloudflare.R2.Bucket(deployTarget.executorBlobsId, {
 
 const database = Cloudflare.Hyperdrive.Connection(deployTarget.databaseId, {
   name: deployTarget.databaseName,
+  // Hyperdrive caches reads for 60s by default, and writes do not invalidate
+  // the cache. With it on, a cancelled run still showed as the issue's live
+  // active run after the cancel returned 200.
+  caching: { disabled: true },
   origin: postgresOriginFromEnv(deployTarget.databaseUrlEnv),
 })
 
@@ -86,6 +90,15 @@ const decideAnalysisWorkflow = Cloudflare.WorkflowResource(
   {
     workflowName: deployTarget.decideAnalysisWorkflowName,
     className: 'DecideAnalysisWorkflow',
+    scriptName: deployTarget.workerName,
+  },
+)
+
+const githubRepoImportWorkflow = Cloudflare.WorkflowResource(
+  deployTarget.githubRepoImportWorkflowId,
+  {
+    workflowName: deployTarget.githubRepoImportWorkflowName,
+    className: 'GitHubRepoImportWorkflow',
     scriptName: deployTarget.workerName,
   },
 )
@@ -184,7 +197,10 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     HYPERDRIVE: database,
     HELIX_URL: plainEnv('HELIX_URL'),
     HELIX_API_KEY: Config.redacted('HELIX_API_KEY'),
-    DATABASE_URL: Config.redacted('DATABASE_URL'),
+    // Same env var as the Hyperdrive origin above, so a target's Worker secret
+    // and its Hyperdrive always point at one database (dev reads
+    // DEV_DATABASE_URL even when deploy:dev:alchemy runs without deploy-dev.mjs).
+    DATABASE_URL: Config.redacted(deployTarget.databaseUrlEnv),
     BETTER_AUTH_SECRET: Config.redacted('BETTER_AUTH_SECRET'),
     RESEND_API_KEY: Config.redacted('RESEND_API_KEY'),
     // Cloudflare does not expose existing Worker secret values. Omitting EXA
@@ -317,6 +333,20 @@ export default Alchemy.Stack(
           name: 'DECIDE_ANALYSIS_WORKFLOW',
           workflowName: deployedDecideAnalysisWorkflow.workflowName,
           className: 'DecideAnalysisWorkflow',
+        },
+      ],
+    })
+    const deployedGitHubRepoImportWorkflow =
+      yield* githubRepoImportWorkflow.pipe(
+        Effect.provide(Cloudflare.Workflows.WorkflowProvider()),
+      )
+    yield* deployed.bind(deployTarget.githubRepoImportWorkflowId, {
+      bindings: [
+        {
+          type: 'workflow',
+          name: 'GITHUB_REPO_IMPORT_WORKFLOW',
+          workflowName: deployedGitHubRepoImportWorkflow.workflowName,
+          className: 'GitHubRepoImportWorkflow',
         },
       ],
     })

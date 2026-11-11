@@ -3,12 +3,6 @@ import { Result, TaggedError } from 'better-result'
 const textEncoder = new TextEncoder()
 const GITHUB_APP_JWT_BACKDATE_SECONDS = 60
 const GITHUB_APP_JWT_TTL_SECONDS = 10 * 60
-/** Upper bound for one GitHub App API round trip. */
-const GITHUB_APP_REQUEST_TIMEOUT_MS = 15_000
-/** Refresh a cached installation token this long before GitHub expires it. */
-const INSTALLATION_TOKEN_REFRESH_MARGIN_MS = 5 * 60_000
-/** Cached installation tokens kept per isolate before the oldest is dropped. */
-const MAX_CACHED_INSTALLATION_TOKENS = 500
 
 export class GitHubAppAuthError extends TaggedError('GitHubAppAuthError')<{
   code:
@@ -21,31 +15,6 @@ export class GitHubAppAuthError extends TaggedError('GitHubAppAuthError')<{
 }>() {}
 
 type GitHubAppEnv = Record<string, string | undefined>
-
-export type GitHubInstallationAccessToken = {
-  token: string
-  /** Epoch milliseconds from GitHub's `expires_at`, or null if absent. */
-  expiresAt: number | null
-}
-
-/** Reads a string field from an unvalidated JSON response body. */
-function stringField(body: unknown, key: string) {
-  if (!body || typeof body !== 'object') return undefined
-  const value: unknown = Reflect.get(body, key)
-  return typeof value === 'string' ? value : undefined
-}
-
-function objectField(body: unknown, key: string) {
-  if (!body || typeof body !== 'object') return undefined
-  const value: unknown = Reflect.get(body, key)
-  return value && typeof value === 'object' ? value : undefined
-}
-
-function parseExpiresAt(value: string | undefined) {
-  if (!value) return null
-  const time = Date.parse(value)
-  return Number.isFinite(time) ? time : null
-}
 
 function base64Url(bytes: Uint8Array) {
   let value = ''
@@ -122,12 +91,31 @@ function pkcs1ToPkcs8(pkcs1: Uint8Array) {
   return der(0x30, concatBytes(version, algorithmIdentifier, privateKey))
 }
 
-function parsePrivateKeyPem(privateKey: string) {
-  const trimmed = privateKey.trim()
+/**
+ * Unwraps Worker/JSON-quoted PEMs and literal `\\n` so every mint path shares
+ * one private-key shape (#163 phase 6). Empty input stays undefined.
+ */
+export function normalizeGitHubAppPrivateKey(
+  privateKey: string | undefined,
+): string | undefined {
+  const trimmed = privateKey?.trim()
+  if (!trimmed) return undefined
   const unwrapped = trimmed.startsWith('"')
     ? Result.try(() => JSON.parse(trimmed) as string).unwrapOr(trimmed)
     : trimmed
-  const normalized = unwrapped.replaceAll('\\n', '\n').trim()
+  return unwrapped.replaceAll('\\n', '\n').trim()
+}
+
+function parsePrivateKeyPem(privateKey: string) {
+  const normalized = normalizeGitHubAppPrivateKey(privateKey)
+  if (!normalized) {
+    return Result.err(
+      new GitHubAppAuthError({
+        code: 'invalid_private_key',
+        message: 'GitHub App private key is not a valid PEM block',
+      }),
+    )
+  }
   const match = normalized.match(
     /-----BEGIN ([^-]+)-----\s*([A-Za-z0-9+/=\s]+)\s*-----END \1-----/,
   )
@@ -221,21 +209,45 @@ export async function createGitHubAppJwt(env: GitHubAppEnv) {
 }
 
 /**
- * Mints a fresh installation access token. Prefer
- * `getCachedGitHubInstallationAccessToken`, which reuses a token until shortly
- * before it expires instead of signing a JWT and calling GitHub every time.
+ * Short-lived installation credential minted from the workspace GitHub App
+ * install. Phase 1 of flaky-auth hardening (#163): one mint API returns token
+ * plus expiry and installation id so REST and hosted MCP share the same
+ * source of truth (no duplicated mint, expiry no longer discarded).
  */
-export async function requestGitHubInstallationAccessToken(args: {
+export type GitHubInstallationAccessToken = {
+  token: string
+  /** ISO-8601 expiry from GitHub (`expires_at`). */
+  expiresAt: string
+  installationId: string
+}
+
+/**
+ * Mints an installation access token for the workspace GitHub App install.
+ * Callers must not persist the token beyond the shared in-memory cache in
+ * `mintGitHubInstallationAccessToken` (expires_at minus skew).
+ */
+export async function createGitHubInstallationAccessToken(args: {
   env: GitHubAppEnv
   installationId: string
+  fetch?: typeof fetch
 }) {
+  const installationId = args.installationId.trim()
+  if (!installationId) {
+    return Result.err(
+      new GitHubAppAuthError({
+        code: 'missing_config',
+        message: 'GitHub installation id is required',
+      }),
+    )
+  }
+
   const jwt = await createGitHubAppJwt(args.env)
   if (jwt.isErr()) return jwt
 
   const responseResult = await Result.tryPromise({
-    try: async (): Promise<GitHubInstallationAccessToken> => {
-      const response = await fetch(
-        `https://api.github.com/app/installations/${args.installationId}/access_tokens`,
+    try: async () => {
+      const response = await (args.fetch ?? fetch)(
+        `https://api.github.com/app/installations/${installationId}/access_tokens`,
         {
           method: 'POST',
           headers: {
@@ -244,26 +256,29 @@ export async function requestGitHubInstallationAccessToken(args: {
             'x-github-api-version': '2022-11-28',
             'user-agent': 'garden-github-app',
           },
-          signal: AbortSignal.timeout(GITHUB_APP_REQUEST_TIMEOUT_MS),
         },
       )
-      const body: unknown = await response.json()
-      const token = stringField(body, 'token')
+      const body = (await response.json()) as {
+        token?: string
+        expires_at?: string
+        message?: string
+      }
 
-      if (!response.ok || !token) {
+      if (!response.ok || !body.token || !body.expires_at) {
         throw new GitHubAppAuthError({
           code: 'token_request_failed',
           status: response.status,
           message:
-            stringField(body, 'message') ??
+            body.message ??
             `Failed to create GitHub installation token (${response.status})`,
         })
       }
 
       return {
-        token,
-        expiresAt: parseExpiresAt(stringField(body, 'expires_at')),
-      }
+        token: body.token,
+        expiresAt: body.expires_at,
+        installationId,
+      } satisfies GitHubInstallationAccessToken
     },
     catch: (cause) =>
       cause instanceof GitHubAppAuthError
@@ -278,87 +293,6 @@ export async function requestGitHubInstallationAccessToken(args: {
   })
 
   return responseResult
-}
-
-/** Mints a fresh installation access token and returns only the token. */
-export async function createGitHubInstallationAccessToken(args: {
-  env: GitHubAppEnv
-  installationId: string
-}) {
-  const result = await requestGitHubInstallationAccessToken(args)
-  if (result.isErr()) return result
-  return Result.ok(result.value.token)
-}
-
-const installationTokenCache = new Map<string, GitHubInstallationAccessToken>()
-const installationTokenRequests = new Map<
-  string,
-  ReturnType<typeof requestGitHubInstallationAccessToken>
->()
-
-function installationTokenCacheKey(args: {
-  env: GitHubAppEnv
-  installationId: string
-}) {
-  const issuer =
-    args.env.GITHUB_CLIENT_ID?.trim() || args.env.GITHUB_APP_ID?.trim() || ''
-  return `${issuer}:${args.installationId}`
-}
-
-/**
- * Returns an installation access token, reusing the one cached for this app
- * and installation until `INSTALLATION_TOKEN_REFRESH_MARGIN_MS` before it
- * expires. GitHub installation tokens live for an hour; minting one per API
- * call cost a JWT signature plus an extra round trip on every request and
- * counted against the app's rate limit. Concurrent callers share one request.
- */
-export async function getCachedGitHubInstallationAccessToken(args: {
-  env: GitHubAppEnv
-  installationId: string
-  now?: () => number
-}) {
-  const now = args.now ?? Date.now
-  const key = installationTokenCacheKey(args)
-  const cached = installationTokenCache.get(key)
-  if (
-    cached?.expiresAt != null &&
-    cached.expiresAt - INSTALLATION_TOKEN_REFRESH_MARGIN_MS > now()
-  ) {
-    return Result.ok(cached.token)
-  }
-
-  let request = installationTokenRequests.get(key)
-  if (!request) {
-    request = requestGitHubInstallationAccessToken(args)
-    installationTokenRequests.set(key, request)
-  }
-  const result = await request.finally(() => {
-    if (installationTokenRequests.get(key) === request) {
-      installationTokenRequests.delete(key)
-    }
-  })
-  if (result.isErr()) return result
-
-  installationTokenCache.delete(key)
-  if (result.value.expiresAt !== null) {
-    if (installationTokenCache.size >= MAX_CACHED_INSTALLATION_TOKENS) {
-      const oldest = installationTokenCache.keys().next()
-      if (!oldest.done) installationTokenCache.delete(oldest.value)
-    }
-    installationTokenCache.set(key, result.value)
-  }
-  return Result.ok(result.value.token)
-}
-
-/**
- * Drops a cached installation token, e.g. after GitHub rejects it with 401
- * because the installation was suspended or its permissions changed.
- */
-export function invalidateCachedGitHubInstallationAccessToken(args: {
-  env: GitHubAppEnv
-  installationId: string
-}) {
-  installationTokenCache.delete(installationTokenCacheKey(args))
 }
 
 /**
@@ -386,17 +320,16 @@ export async function deleteGitHubAppInstallation(args: {
             'x-github-api-version': '2022-11-28',
             'user-agent': 'garden-github-app',
           },
-          signal: AbortSignal.timeout(GITHUB_APP_REQUEST_TIMEOUT_MS),
         },
       )
       if (response.ok || response.status === 404) return
 
-      const body: unknown = await response.json()
+      const body = (await response.json()) as { message?: string }
       throw new GitHubAppAuthError({
         code: 'token_request_failed',
         status: response.status,
         message:
-          stringField(body, 'message') ??
+          body.message ??
           `Failed to delete GitHub installation (${response.status})`,
       })
     },
@@ -431,36 +364,26 @@ export async function getGitHubAppInstallation(args: {
             'x-github-api-version': '2022-11-28',
             'user-agent': 'garden-github-app',
           },
-          signal: AbortSignal.timeout(GITHUB_APP_REQUEST_TIMEOUT_MS),
         },
       )
-      const body: unknown = await response.json()
+      const body = (await response.json()) as {
+        account?: { login?: string }
+        repository_selection?: string
+        target_type?: string
+        message?: string
+      }
 
       if (!response.ok) {
         throw new GitHubAppAuthError({
           code: 'token_request_failed',
           status: response.status,
           message:
-            stringField(body, 'message') ??
+            body.message ??
             `Failed to load GitHub installation (${response.status})`,
         })
       }
 
-      const account = objectField(body, 'account')
-      const installation: {
-        account?: { login?: string }
-        repository_selection?: string
-        target_type?: string
-        message?: string
-      } = {
-        ...(account
-          ? { account: { login: stringField(account, 'login') } }
-          : {}),
-        repository_selection: stringField(body, 'repository_selection'),
-        target_type: stringField(body, 'target_type'),
-        message: stringField(body, 'message'),
-      }
-      return installation
+      return body
     },
     catch: (cause) =>
       cause instanceof GitHubAppAuthError

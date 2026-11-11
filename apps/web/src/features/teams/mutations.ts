@@ -2,9 +2,11 @@ import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type {
   AddTeamMemberRequest,
+  LinkTeamRepositoryRequest,
   CreateTeamRequest,
   TransferTeamOwnerRequest,
   UpdateTeamRequest,
+  WorkspaceTeamSettings,
 } from '@garden/core/types'
 import type {
   TeamAgentPolicy,
@@ -129,5 +131,82 @@ export function useUpdateTeamAgentPolicy(teamId: string) {
     onSuccess: (saved) => {
       qc.setQueryData(queryKey, saved)
     },
+  })
+}
+
+/**
+ * Repository link writes refresh the Team's repository queries, including the
+ * picker's linked markers, and the Team issue list the import fills.
+ */
+function useTeamRepositoryInvalidation() {
+  const qc = useQueryClient()
+  const wsId = useWorkspaceId()
+  return (teamId: string) => {
+    qc.invalidateQueries({ queryKey: teamKeys.repositories(wsId, teamId) })
+    qc.invalidateQueries({ queryKey: teamKeys.issues(wsId, teamId) })
+  }
+}
+
+export function useLinkTeamRepository() {
+  const invalidate = useTeamRepositoryInvalidation()
+  return useMutation({
+    mutationFn: ({
+      teamId,
+      ...data
+    }: { teamId: string } & LinkTeamRepositoryRequest) =>
+      api.linkTeamRepository(teamId, data),
+    onSuccess: (_repository, vars) => invalidate(vars.teamId),
+  })
+}
+
+export function useUnlinkTeamRepository() {
+  const invalidate = useTeamRepositoryInvalidation()
+  return useMutation({
+    mutationFn: ({
+      teamId,
+      repositoryId,
+    }: {
+      teamId: string
+      repositoryId: string
+    }) => api.unlinkTeamRepository(teamId, repositoryId),
+    onSuccess: (_data, vars) => invalidate(vars.teamId),
+  })
+}
+
+export function useRetryTeamRepositoryImport() {
+  const invalidate = useTeamRepositoryInvalidation()
+  return useMutation({
+    mutationFn: ({
+      teamId,
+      repositoryId,
+    }: {
+      teamId: string
+      repositoryId: string
+    }) => api.retryTeamRepositoryImport(teamId, repositoryId),
+    onSuccess: (_repository, vars) => invalidate(vars.teamId),
+  })
+}
+
+/**
+ * Saves workspace invite settings optimistically so the toggle and select
+ * respond at once, and restores the previous value if the server refuses.
+ */
+export function useUpdateWorkspaceTeamSettings() {
+  const qc = useQueryClient()
+  const wsId = useWorkspaceId()
+  const key = teamKeys.inviteSettings(wsId)
+  return useMutation({
+    mutationFn: (patch: WorkspaceTeamSettings) =>
+      api.updateWorkspaceTeamSettings(wsId, patch),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: key })
+      const previous = qc.getQueryData<WorkspaceTeamSettings>(key)
+      if (previous) qc.setQueryData(key, { ...previous, ...patch })
+      return { previous }
+    },
+    onError: (_error, _patch, context) => {
+      if (context?.previous) qc.setQueryData(key, context.previous)
+    },
+    onSuccess: (settings) => qc.setQueryData(key, settings),
   })
 }

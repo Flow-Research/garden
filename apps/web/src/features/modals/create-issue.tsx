@@ -106,9 +106,6 @@ export function CreateIssueModal({
   const [pickedTeamId, setPickedTeamId] = useState<string | undefined>(
     undefined,
   )
-  // The API rejects team-scoped creates without an assignee ("Team issues
-  // must be assigned to a Team member"), so the Team modes require one.
-  const requiresAssignee = Boolean(teamId || pickedTeamId)
   const lockedAssigneeUserId =
     typeof data?.lock_assignee_user_id === 'string'
       ? data.lock_assignee_user_id
@@ -126,9 +123,9 @@ export function CreateIssueModal({
   )
   const [priority, setPriority] = useState<IssuePriority>(draft.priority)
   const [submitting, setSubmitting] = useState(false)
-  // Team creates must assign to a Team member, so a persisted draft assignee
-  // (which may be a non-member) is not inherited; the picker starts empty and
-  // lists only the Team's members.
+  // A Team issue's assignee must be a Team member, so a persisted draft
+  // assignee (which may be a non-member) is not inherited; the picker starts
+  // unassigned and lists only the Team's members.
   const [assigneeType, setAssigneeType] = useState<
     IssueAssigneeType | undefined
   >(lockedAssigneeUserId ? 'member' : teamId ? undefined : draft.assigneeType)
@@ -182,7 +179,6 @@ export function CreateIssueModal({
   const handleSubmit = async () => {
     if (!title.trim() || submitting) return
     if (showTeamPicker && !pickedTeamId) return
-    if (requiresAssignee && !lockedAssigneeUserId && !assigneeId) return
     if (descEditorRef.current?.hasActiveUploads()) {
       toast.info(UPLOAD_IN_PROGRESS_MESSAGE)
       return
@@ -282,9 +278,9 @@ export function CreateIssueModal({
             ? '!max-w-[480px] !w-[calc(100vw-2rem)] !h-auto !-translate-y-1/2 !transition-none !duration-0'
             : '!transition-all !duration-300 !ease-out',
           !todoHintIssueId && isExpanded
-            ? '!max-w-4xl !w-full !h-5/6 !-translate-y-1/2'
+            ? '!max-w-4xl !w-[calc(100vw-2rem)] !h-5/6 !-translate-y-1/2'
             : !todoHintIssueId
-              ? '!max-w-2xl !w-full !h-96 !-translate-y-1/2'
+              ? '!max-w-2xl !w-[calc(100vw-2rem)] !h-96 !-translate-y-1/2'
               : '',
         )}
       >
@@ -480,11 +476,6 @@ export function CreateIssueModal({
                 onSelect={(file) => descEditorRef.current?.uploadFile(file)}
               />
               <div className="flex items-center gap-3">
-                {requiresAssignee && !lockedAssigneeUserId && !assigneeId ? (
-                  <span className="text-xs text-text-secondary">
-                    Team tasks need an assignee
-                  </span>
-                ) : null}
                 {assigneeType === 'agent' &&
                 assigneeId &&
                 !['todo', 'blocked', 'done', 'cancelled'].includes(status) ? (
@@ -504,8 +495,7 @@ export function CreateIssueModal({
                   disabled={
                     !title.trim() ||
                     submitting ||
-                    (showTeamPicker && !pickedTeamId) ||
-                    (requiresAssignee && !lockedAssigneeUserId && !assigneeId)
+                    (showTeamPicker && !pickedTeamId)
                   }
                 >
                   {submitting ? 'Creating...' : 'Create Issue'}

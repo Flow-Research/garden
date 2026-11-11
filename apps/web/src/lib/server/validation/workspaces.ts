@@ -1,4 +1,8 @@
-import { jsonObjectSchema, memberRoleSchema } from '@garden/db/validation'
+import {
+  jsonObjectSchema,
+  memberRoleSchema,
+  uuidSchema,
+} from '@garden/db/validation'
 import { z } from 'zod'
 import {
   nonEmptyStringSchema,
@@ -41,11 +45,70 @@ export const createWorkspaceMemberBodySchema = z
      * Auth's own resend flag excludes) instead of creating a duplicate.
      */
     resend: z.boolean().optional(),
+    /**
+     * Teams the invitee joins on accept. Omitted on a new invite, the
+     * workspace's default Team applies; on a resend, omitted keeps the
+     * invite's current Teams.
+     */
+    team_ids: z.array(uuidSchema).max(50).optional(),
   })
   .strict()
 
+export const workspaceTeamSettingsSchema = z
+  .object({ default_team_id: uuidSchema.nullable() })
+  .strict()
+
+export type WorkspaceTeamSettings = z.infer<typeof workspaceTeamSettingsSchema>
+
+/**
+ * GitHub login shape (max 39, alphanumeric/hyphen, no leading/trailing hyphen).
+ * Paired with github_user_id for stable identity; login alone is not the key.
+ */
+export const githubLoginSchema = z
+  .string()
+  .trim()
+  .regex(
+    /^(?:[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9-]{0,37}[a-zA-Z0-9])$/,
+    'Invalid GitHub username',
+  )
+
+/** GitHub's numeric user id as a canonical positive decimal string (no zeros/pad). */
+export const githubUserIdSchema = z
+  .string()
+  .trim()
+  .regex(/^[1-9]\d*$/, 'Invalid GitHub user id')
+
+/**
+ * Role and/or GitHub identity update. github_* must both be omitted, both null
+ * (unlink / not_linked), or both set (link). Role stays optional so self-link
+ * does not require admin role permission. Role and github_* cannot combine in
+ * one PATCH — avoids partial commits across Better Auth + Garden member row.
+ */
 export const updateWorkspaceMemberBodySchema = z
   .object({
-    role: memberRoleSchema,
+    role: memberRoleSchema.optional(),
+    github_user_id: githubUserIdSchema.nullable().optional(),
+    github_login: githubLoginSchema.nullable().optional(),
   })
   .strict()
+  .refine(
+    (value) =>
+      value.role !== undefined ||
+      value.github_user_id !== undefined ||
+      value.github_login !== undefined,
+    'No valid member changes submitted',
+  )
+  .refine((value) => {
+    const hasGithub =
+      value.github_user_id !== undefined || value.github_login !== undefined
+    return !(value.role !== undefined && hasGithub)
+  }, 'role and github identity cannot be updated in the same request')
+  .refine((value) => {
+    const hasId = value.github_user_id !== undefined
+    const hasLogin = value.github_login !== undefined
+    if (!hasId && !hasLogin) return true
+    if (hasId !== hasLogin) return false
+    const idNull = value.github_user_id === null
+    const loginNull = value.github_login === null
+    return idNull === loginNull
+  }, 'github_user_id and github_login must both be set or both be null')

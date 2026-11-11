@@ -80,8 +80,16 @@ export interface CreateMemberRequest {
   role?: MemberRole
   /** Idempotent re-send of an existing pending (or expired) invitation. */
   resend?: boolean
+  /** Teams the invitee joins on accept. */
+  team_ids?: string[]
+}
+
+export interface WorkspaceTeamSettings {
+  default_team_id: string | null
 }
 
 export interface UpdateMemberRequest {
-  role: MemberRole
+  role?: MemberRole
+  github_user_id?: string | null
+  github_login?: string | null
 }

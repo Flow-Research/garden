@@ -38,6 +38,8 @@ export const deploymentTargets = {
     workflowName: 'garden-run-workflow-staging',
     decideAnalysisWorkflowId: 'decide-analysis-workflow',
     decideAnalysisWorkflowName: 'garden-decide-analysis-workflow-staging',
+    githubRepoImportWorkflowId: 'github-repo-import-workflow',
+    githubRepoImportWorkflowName: 'garden-github-repo-import-workflow-staging',
     sandboxId: 'sandbox',
     sandboxName: 'garden-web-sandbox-staging',
     aiGatewayId: 'garden-staging',
@@ -59,9 +61,9 @@ export const deploymentTargets = {
     brainFilesBucket: 'org-brain-dev',
     databaseId: 'database-dev',
     databaseName: 'garden-database-dev',
-    // Dev uses the configured Postgres origin; only staging runs migrations.
-    // Cloudflare resources and Executor storage remain independently owned.
-    databaseUrlEnv: 'DATABASE_URL',
+    // Dev owns a separate Neon branch so dev deploys can migrate it without
+    // touching staging data. scripts/deploy-dev.mjs requires this variable.
+    databaseUrlEnv: 'DEV_DATABASE_URL',
     executorDatabaseId: 'executor-connectors-db-dev',
     executorDatabaseName: 'harnessy-connectors-dev',
     executorBlobsId: 'executor-blobs-dev',
@@ -74,6 +76,8 @@ export const deploymentTargets = {
     workflowName: 'garden-run-workflow-dev',
     decideAnalysisWorkflowId: 'decide-analysis-workflow-dev',
     decideAnalysisWorkflowName: 'garden-decide-analysis-workflow-dev',
+    githubRepoImportWorkflowId: 'github-repo-import-workflow-dev',
+    githubRepoImportWorkflowName: 'garden-github-repo-import-workflow-dev',
     sandboxId: 'sandbox-dev',
     sandboxName: 'garden-web-sandbox-dev',
     aiGatewayId: 'garden-dev',
@@ -111,6 +115,8 @@ export const deploymentTargets = {
     workflowName: 'garden-run-workflow-preview',
     decideAnalysisWorkflowId: 'decide-analysis-workflow-preview',
     decideAnalysisWorkflowName: 'garden-decide-analysis-workflow-preview',
+    githubRepoImportWorkflowId: 'github-repo-import-workflow-preview',
+    githubRepoImportWorkflowName: 'garden-github-repo-import-workflow-preview',
     sandboxId: 'sandbox-preview',
     sandboxName: 'garden-web-sandbox-preview',
     aiGatewayId: 'garden-preview',
@@ -143,4 +149,22 @@ export function deploymentTargetFromBranch(
   )
   if (target) return target
   throw new Error('Automatic deploys require WORKERS_CI_BRANCH=main or dev')
+}
+
+/**
+ * Returns the deploy-process environment for a target's Postgres database.
+ * Before: every target read the shared DATABASE_URL, so dev deploys could not
+ * run migrations without migrating staging data. After: the target's
+ * databaseUrlEnv is required and copied into DATABASE_URL, which drizzle-kit,
+ * the Hyperdrive origin, and the Worker secret all read. A missing value
+ * throws instead of falling back to the shared database.
+ */
+export function databaseEnvForTarget(target, env = process.env) {
+  const url = env[target.databaseUrlEnv]
+  if (!url) {
+    throw new Error(
+      `${target.databaseUrlEnv} must be set to deploy ${target.workerName}`,
+    )
+  }
+  return { ...env, DATABASE_URL: url }
 }

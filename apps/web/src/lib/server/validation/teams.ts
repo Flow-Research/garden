@@ -38,3 +38,10 @@ export const transferTeamOwnerBodySchema = z
     owner_user_id: uuidSchema,
   })
   .strict()
+
+/** Links one repository by GitHub's numeric id, which survives renames. */
+export const linkTeamRepositoryBodySchema = z
+  .object({
+    github_repo_id: z.number().int().positive(),
+  })
+  .strict()

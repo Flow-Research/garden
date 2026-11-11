@@ -6,6 +6,7 @@ import { useAuthStore } from '@garden/app-state/auth'
 import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
 import type { TeamMember } from '@garden/core/types'
 import {
+  FolderGit2,
   Funnel,
   MoreHorizontal,
   ShieldCheck,
@@ -49,6 +50,7 @@ import {
 import { TeamAgentPolicySheet } from './team-agent-policy-sheet'
 import { TeamIssuesPanel } from './team-issues-panel'
 import { TeamMembersPanel } from './team-members-panel'
+import { TeamRepositoriesPanel } from './team-repositories-panel'
 import { memberRoleLabel } from './team-members-table'
 import { StatusIcon } from '@/features/issues/components/status-icon'
 import { TeamSummaryCard } from './team-summary-card'
@@ -62,7 +64,7 @@ import {
 } from './team-tab-toolbar'
 import { teamColor } from './team-tokens'
 
-export type TeamTab = 'members' | 'issues'
+export type TeamTab = 'members' | 'issues' | 'repositories'
 
 type MemberRoleFilter = 'all' | 'Owner' | 'Admin' | 'Member' | 'Agent'
 
@@ -73,6 +75,7 @@ const TAB_ITEMS: readonly {
 }[] = [
   { value: 'members', label: 'Members', icon: Users },
   { value: 'issues', label: 'Issues', icon: TriangleAlert },
+  { value: 'repositories', label: 'Repositories', icon: FolderGit2 },
 ]
 
 /** Members toolbar: identity search plus a role/type filter. */
@@ -381,14 +384,14 @@ export function TeamDetail({
                     role={memberRole}
                     search={memberSearch}
                   />
-                ) : (
+                ) : tab === 'issues' ? (
                   <IssuesToolbar
                     issues={issues}
                     onCreateIssue={() => openCreateIssue(null)}
                     onSearchChange={setIssueSearch}
                     search={issueSearch}
                   />
-                )}
+                ) : null}
               </div>
 
               <TabsContent className="mt-8 flex flex-col" value="members">
@@ -415,6 +418,13 @@ export function TeamDetail({
                     teamChips={teamChips}
                   />
                 </div>
+              </TabsContent>
+
+              <TabsContent className="mt-8 flex flex-col" value="repositories">
+                <TeamRepositoriesPanel
+                  canManage={team.can_manage}
+                  teamId={team.id}
+                />
               </TabsContent>
             </Tabs>
           </ViewStoreProvider>

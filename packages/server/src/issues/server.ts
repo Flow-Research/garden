@@ -25,11 +25,16 @@ import type {
 const logger = createLogger('issues')
 import * as schema from '@garden/db/schema'
 import {
+  isWorkspaceManagerRole,
+  teamIssueVisibilityCondition,
+} from '@garden/db/team-issue-visibility'
+import {
   issueCommentInsertSchema,
   issueInsertSchema,
   issuePrioritySchema,
   issueSourceBindingInsertSchema,
   issueStatusSchema,
+  uuidSchema,
 } from '@garden/db/validation'
 import { z } from 'zod'
 import {
@@ -41,7 +46,13 @@ import { startIssueRun, type IssueRunEnv } from './run-service'
 const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
 
 export class IssueServiceError extends TaggedError('IssueServiceError')<{
-  code: 'issue_not_found' | 'validation_failed' | 'db_error'
+  code:
+    | 'issue_not_found'
+    | 'team_not_found'
+    | 'team_access_denied'
+    | 'team_assignee_invalid'
+    | 'validation_failed'
+    | 'db_error'
   message: string
   cause?: unknown
 }>() {}
@@ -79,6 +90,7 @@ const readIssueInputSchema = z
   .object({
     databaseUrl: z.string().trim().min(1),
     workspaceId: issueInsertSchema.shape.workspaceId,
+    viewerUserId: issueInsertSchema.shape.createdBy,
     issueIdOrIdentifier: z.string().trim().min(1),
     commentsPage: z.enum(['head', 'tail']).optional(),
     commentsLimit: z.number().int().positive().max(100).optional(),
@@ -103,7 +115,9 @@ const postIssueCommentInputSchema = z
     databaseUrl: z.string().trim().min(1),
     workspaceId: issueInsertSchema.shape.workspaceId,
     issueIdOrIdentifier: z.string().trim().min(1),
-    authorUserId: issueCommentInsertSchema.shape.authorId,
+    // Native Garden comments are always member-authored; connector comments
+    // use nullable authorId and arrive via webhook apply, not this path.
+    authorUserId: uuidSchema,
     body: issueCommentInsertSchema.shape.body,
     parentId: issueCommentInsertSchema.shape.id.optional().nullable(),
     attachmentIds: z.array(z.string().uuid()).optional(),
@@ -279,19 +293,45 @@ export function toIssueAttachment(
   }
 }
 
+/**
+ * Timeline label for connector-sourced comments. Metadata shape comes from
+ * inbound GitHub webhooks (#161): `{ github_login, ... }`.
+ */
+export function connectorCommentActorLabel(metadata: unknown): string {
+  if (
+    metadata !== null &&
+    typeof metadata === 'object' &&
+    !Array.isArray(metadata)
+  ) {
+    const login = (metadata as Record<string, unknown>).github_login
+    if (typeof login === 'string' && login.trim().length > 0) {
+      return `GitHub · @${login.trim()}`
+    }
+  }
+  return 'GitHub'
+}
+
 export function toIssueComment(
   row: typeof schema.issueComment.$inferSelect,
   attachments: Attachment[] = [],
 ): Comment {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType: Comment['author_type'] =
+    row.authorType === 'agent'
+      ? 'agent'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : 'member'
 
   return {
     id: row.id,
     issue_id: row.issueId,
-    author_type: (row.authorType === 'agent'
-      ? 'agent'
-      : 'member') as Comment['author_type'],
+    author_type: authorType,
     author_id: row.authorId,
+    author_display:
+      authorType === 'connector'
+        ? connectorCommentActorLabel(row.metadata)
+        : null,
     content: row.body,
     type: 'comment',
     parent_id: null,
@@ -523,33 +563,68 @@ function parseIssueIdentifier(value: string) {
   return Number.isSafeInteger(issueNumber) ? issueNumber : null
 }
 
-async function resolveIssue(
+/**
+ * Builds the Team visibility condition for `viewerUserId` in a workspace.
+ * Shared by every service entry point that acts for a human (`listIssues`,
+ * `readIssue`, `resolveVisibleIssue`) so agent tools apply the same rule as
+ * `requireIssueAccess` and `GET /api/issues`. Before, only `listIssues` did;
+ * the others reached any Team issue by number.
+ */
+async function issueVisibilityFor(
   db: IssueDb,
   workspaceId: string,
-  issueIdOrIdentifier: string,
+  viewerUserId: string,
 ) {
+  const [viewer] = await db
+    .select({ role: schema.member.role })
+    .from(schema.member)
+    .where(
+      and(
+        eq(schema.member.organizationId, workspaceId),
+        eq(schema.member.userId, viewerUserId),
+      ),
+    )
+    .limit(1)
+  return teamIssueVisibilityCondition({
+    viewerId: viewerUserId,
+    manager: isWorkspaceManagerRole(viewer?.role),
+  })
+}
+
+/** Matches an issue by `PREFIX-123` identifier or UUID; null when neither. */
+function issueLookupCondition(issueIdOrIdentifier: string) {
   const issueNumber = parseIssueIdentifier(issueIdOrIdentifier)
-  const trimmed = issueIdOrIdentifier.trim()
-  const issueUuid = z.string().uuid().safeParse(trimmed)
+  if (issueNumber !== null) return eq(schema.issue.number, issueNumber)
+  const issueUuid = z.string().uuid().safeParse(issueIdOrIdentifier.trim())
+  return issueUuid.success ? eq(schema.issue.id, issueUuid.data) : null
+}
 
-  const conditions =
-    issueNumber !== null
-      ? and(
-          eq(schema.issue.workspaceId, workspaceId),
-          eq(schema.issue.number, issueNumber),
-        )
-      : issueUuid.success
-        ? and(
-            eq(schema.issue.workspaceId, workspaceId),
-            eq(schema.issue.id, issueUuid.data),
-          )
-        : undefined
-
-  if (!conditions) return null
+/**
+ * Finds a workspace issue the viewer may see. A Team issue outside the
+ * viewer's reach resolves to null, so callers report `issue_not_found` and do
+ * not confirm that the issue exists. Used by `postIssueComment` and the chat
+ * `assign_issue` / `update_issue_status` tools.
+ */
+export async function resolveVisibleIssue(
+  db: IssueDb,
+  args: {
+    workspaceId: string
+    viewerUserId: string
+    issueIdOrIdentifier: string
+  },
+) {
+  const lookup = issueLookupCondition(args.issueIdOrIdentifier)
+  if (!lookup) return null
   const [issue] = await db
     .select()
     .from(schema.issue)
-    .where(conditions)
+    .where(
+      and(
+        eq(schema.issue.workspaceId, args.workspaceId),
+        lookup,
+        await issueVisibilityFor(db, args.workspaceId, args.viewerUserId),
+      ),
+    )
     .limit(1)
   return issue ?? null
 }
@@ -729,6 +804,182 @@ async function toIssueSummary(
   }
 }
 
+/**
+ * Picks the next workspace issue number and an order key at the end of the
+ * issue's status column, inside the caller's transaction.
+ *
+ * Why shared: `createIssue` and the GitHub repository import both insert
+ * issues. Before, only `createIssue` placed new issues at the end of their
+ * column; a second copy of this logic would drift. New issues used to share
+ * one default position, so their order was arbitrary and a card dropped
+ * between two of them did not move.
+ *
+ * Why the lock: the number is `max + 1`, so two transactions in one workspace
+ * read the same max and the second insert hit `issue_workspace_number_unique`.
+ * A repository import, GitHub webhooks, and people creating issues run at the
+ * same time, so that surfaced as 500s and lost webhook issues. A
+ * transaction-scoped advisory lock on the workspace serializes allocation
+ * until the caller commits its insert. It needs no schema change, unlike a
+ * counter row, and every issue insert already goes through this function.
+ * The caller must hold a transaction, or the lock releases at once.
+ * https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS
+ */
+export async function allocateIssueSlot(
+  executor: Pick<IssueDb, 'select' | 'execute'>,
+  args: { workspaceId: string; status: string },
+): Promise<{ number: number; position: string }> {
+  await executor.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`issue-number:${args.workspaceId}`}, 0))`,
+  )
+  const [{ nextNumber }] = (await executor
+    .select({
+      nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
+    })
+    .from(schema.issue)
+    .where(eq(schema.issue.workspaceId, args.workspaceId))) as [
+    { nextNumber: number },
+  ]
+  const [{ lastPosition }] = (await executor
+    .select({
+      lastPosition: sql<string | null>`max(${schema.issue.position})`,
+    })
+    .from(schema.issue)
+    .where(
+      and(
+        eq(schema.issue.workspaceId, args.workspaceId),
+        eq(schema.issue.status, args.status),
+      ),
+    )) as [{ lastPosition: string | null }]
+  return { number: nextNumber, position: orderKeyBetween(lastPosition, null) }
+}
+
+/** Who is creating a Team issue and whom they want to assign. */
+export type TeamIssueCreateInput = {
+  workspaceId: string
+  teamId: string
+  createdBy: string
+  assigneeType?: 'user' | 'agent' | null
+  assigneeId?: string | null
+}
+
+/**
+ * Enforces the Team create rules for a new Team issue: the creator must be a
+ * Team member unless they are a workspace owner/admin; a normal member may
+ * only assign themselves (the Team owner and workspace managers may assign
+ * others); any assignee must be a Team member (user or Team agent).
+ *
+ * Before: these rules lived only inline in the web `POST /api/issues` route,
+ * so the agent `create_issue` tool, which calls `createIssue` directly, could
+ * file Team issues for non-members and assign anyone. After: the issue service
+ * owns the rules; `createIssue` applies them whenever `teamId` is set, and the
+ * web route calls this function to keep its pre-validation ordering.
+ * Reference: `apps/web/src/routes/api/issues.ts` (previous inline block) and
+ * `isWorkspaceManagerRole` in `@garden/db/team-issue-visibility`.
+ */
+export async function authorizeTeamIssueCreate(
+  db: Pick<IssueDb, 'select'>,
+  input: TeamIssueCreateInput,
+): Promise<ResultValue<void, IssueServiceError>> {
+  return Result.gen(async function* () {
+    const loaded = yield* Result.await(
+      Result.tryPromise({
+        try: async () => {
+          const [team] = await db
+            .select({
+              workspaceId: schema.team.workspaceId,
+              ownerUserId: schema.team.ownerUserId,
+            })
+            .from(schema.team)
+            .where(eq(schema.team.id, input.teamId))
+          const [workspaceMembership] = await db
+            .select({ role: schema.member.role })
+            .from(schema.member)
+            .where(
+              and(
+                eq(schema.member.organizationId, input.workspaceId),
+                eq(schema.member.userId, input.createdBy),
+              ),
+            )
+          const [creatorTeamMembership] = await db
+            .select({ id: schema.teamMember.id })
+            .from(schema.teamMember)
+            .where(
+              and(
+                eq(schema.teamMember.teamId, input.teamId),
+                eq(schema.teamMember.userId, input.createdBy),
+              ),
+            )
+          return { team, workspaceMembership, creatorTeamMembership }
+        },
+        catch: (cause) => serviceDbError('load team access', cause),
+      }),
+    )
+    const { team, workspaceMembership, creatorTeamMembership } = loaded
+    if (!team || team.workspaceId !== input.workspaceId) {
+      return Result.err(
+        new IssueServiceError({
+          code: 'team_not_found',
+          message: 'Team not found',
+        }),
+      )
+    }
+    const manager = isWorkspaceManagerRole(workspaceMembership?.role)
+    if (!workspaceMembership || (!manager && !creatorTeamMembership)) {
+      return Result.err(
+        new IssueServiceError({
+          code: 'team_access_denied',
+          message: 'Team membership required',
+        }),
+      )
+    }
+    if (!input.assigneeId) return Result.ok(undefined)
+
+    const canAssignOthers = manager || team.ownerUserId === input.createdBy
+    const isAgent = input.assigneeType === 'agent'
+    if (!canAssignOthers && (isAgent || input.assigneeId !== input.createdBy)) {
+      return Result.err(
+        new IssueServiceError({
+          code: 'team_access_denied',
+          message: 'Team members can only assign issues to themselves',
+        }),
+      )
+    }
+    const assigneeId = input.assigneeId
+    const assigneeMembership = yield* Result.await(
+      Result.tryPromise({
+        try: async () => {
+          const [row] = await db
+            .select({ id: schema.teamMember.id })
+            .from(schema.teamMember)
+            .where(
+              and(
+                eq(schema.teamMember.teamId, input.teamId),
+                isAgent
+                  ? eq(schema.teamMember.agentId, assigneeId)
+                  : eq(schema.teamMember.userId, assigneeId),
+              ),
+            )
+          return row ?? null
+        },
+        catch: (cause) => serviceDbError('load team assignee', cause),
+      }),
+    )
+    if (!assigneeMembership) {
+      return Result.err(
+        new IssueServiceError({
+          code: 'team_assignee_invalid',
+          message: 'Assignee must be a Team member',
+        }),
+      )
+    }
+    return Result.ok(undefined)
+  })
+}
+
+/**
+ * Creates an issue. When `teamId` is set, `authorizeTeamIssueCreate` runs
+ * first so every caller (web route, agent chat tool) gets the same Team rules.
+ */
 export async function createIssue(
   input: CreateIssueInput,
 ): Promise<ResultValue<Issue, IssueServiceError>> {
@@ -740,41 +991,32 @@ export async function createIssue(
   }
 
   const db = getIssueDb(parsed.data.databaseUrl)
+  if (parsed.data.teamId) {
+    const teamResult = await authorizeTeamIssueCreate(db, {
+      workspaceId: parsed.data.workspaceId,
+      teamId: parsed.data.teamId,
+      createdBy: parsed.data.createdBy,
+      assigneeType: parsed.data.assigneeType,
+      assigneeId: parsed.data.assigneeId,
+    })
+    if (teamResult.isErr()) return Result.err(teamResult.error)
+  }
   const result = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
-        const [{ nextNumber }] = (await tx
-          .select({
-            nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.workspaceId, parsed.data.workspaceId))) as [
-          { nextNumber: number },
-        ]
-
-        // At the end of its column. New issues all defaulted to the same
-        // position, so their order was arbitrary and a card dropped between
-        // two of them did not move.
         const status = parsed.data.status ?? 'todo'
-        const [{ lastPosition }] = (await tx
-          .select({
-            lastPosition: sql<string | null>`max(${schema.issue.position})`,
-          })
-          .from(schema.issue)
-          .where(
-            and(
-              eq(schema.issue.workspaceId, parsed.data.workspaceId),
-              eq(schema.issue.status, status),
-            ),
-          )) as [{ lastPosition: string | null }]
+        const slot = await allocateIssueSlot(tx, {
+          workspaceId: parsed.data.workspaceId,
+          status,
+        })
 
         const [insertedIssue] = await tx
           .insert(schema.issue)
           .values({
             id: crypto.randomUUID(),
             workspaceId: parsed.data.workspaceId,
-            number: nextNumber,
-            position: orderKeyBetween(lastPosition, null),
+            number: slot.number,
+            position: slot.position,
             title: parsed.data.title,
             description: parsed.data.description ?? null,
             status,
@@ -860,6 +1102,11 @@ export async function createIssue(
   return Result.ok(toIssue(result.value, { issuePrefix: prefixResult.value }))
 }
 
+/**
+ * Reads one issue with a bounded comment page for the chat `read_issue` tool,
+ * as `viewerUserId` sees it. A Team issue the viewer cannot open returns
+ * `issue_not_found`, matching `list_issues` and `requireIssueAccess`.
+ */
 export async function readIssue(
   input: ReadIssueInput,
 ): Promise<ResultValue<IssueSummary, IssueServiceError>> {
@@ -875,17 +1122,9 @@ export async function readIssue(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const issueNumber = parseIssueIdentifier(parsed.data.issueIdOrIdentifier)
-      const issueUuid = z
-        .string()
-        .uuid()
-        .safeParse(parsed.data.issueIdOrIdentifier.trim())
-      const issueCondition =
-        issueNumber !== null
-          ? eq(schema.issue.number, issueNumber)
-          : issueUuid.success
-            ? eq(schema.issue.id, issueUuid.data)
-            : undefined
+      const issueCondition = issueLookupCondition(
+        parsed.data.issueIdOrIdentifier,
+      )
       if (!issueCondition) return null
 
       const [issue] = await db
@@ -902,6 +1141,11 @@ export async function readIssue(
           and(
             eq(schema.issue.workspaceId, parsed.data.workspaceId),
             issueCondition,
+            await issueVisibilityFor(
+              db,
+              parsed.data.workspaceId,
+              parsed.data.viewerUserId,
+            ),
           ),
         )
         .limit(1)
@@ -945,6 +1189,13 @@ export async function readIssue(
   return Result.ok(result.value)
 }
 
+/**
+ * Lists workspace issues for the chat `list_issues` tool as `ownerUserId` sees
+ * them. Before, the query ignored Teams and returned every Team issue in the
+ * workspace to any chat owner; it now applies `teamIssueVisibilityCondition`,
+ * the same rule as `GET /api/issues`, so the agent lists exactly the Team
+ * boards its human can open.
+ */
 export async function listIssues(
   input: ListIssuesInput,
 ): Promise<ResultValue<IssueSummary[], IssueServiceError>> {
@@ -960,7 +1211,14 @@ export async function listIssues(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const conditions = [eq(schema.issue.workspaceId, parsed.data.workspaceId)]
+      const conditions = [
+        eq(schema.issue.workspaceId, parsed.data.workspaceId),
+        await issueVisibilityFor(
+          db,
+          parsed.data.workspaceId,
+          parsed.data.ownerUserId,
+        ),
+      ]
       if (parsed.data.status) {
         conditions.push(eq(schema.issue.status, parsed.data.status))
       }
@@ -1000,6 +1258,12 @@ export async function listIssues(
   return Result.ok(result.value)
 }
 
+/**
+ * Posts a member comment and wakes issue agents. The author must be able to
+ * see the issue under the Team rule; the web route checks this first through
+ * `requireIssueAccess`, and the chat `post_issue_comment` tool relies on it
+ * here, so a Team issue outside the author's reach returns `issue_not_found`.
+ */
 export async function postIssueComment(
   input: PostIssueCommentInput,
 ): Promise<
@@ -1018,11 +1282,11 @@ export async function postIssueComment(
   const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
-      const issue = await resolveIssue(
-        db,
-        parsed.data.workspaceId,
-        parsed.data.issueIdOrIdentifier,
-      )
+      const issue = await resolveVisibleIssue(db, {
+        workspaceId: parsed.data.workspaceId,
+        viewerUserId: parsed.data.authorUserId,
+        issueIdOrIdentifier: parsed.data.issueIdOrIdentifier,
+      })
       if (!issue) return { kind: 'missing' as const }
 
       const mentions = await resolveMentions({
@@ -1121,8 +1385,8 @@ export async function postIssueComment(
     issueId: result.value.issueId,
     comment: {
       id: result.value.dbComment.id,
-      authorType: result.value.dbComment.authorType as 'user' | 'agent',
-      authorId: result.value.dbComment.authorId,
+      authorType: 'user',
+      authorId: parsed.data.authorUserId,
       body: result.value.dbComment.body,
       parentId: parsed.data.parentId ?? null,
     },
@@ -1223,13 +1487,16 @@ export async function wakeAgentsForIssueComment(
           body: input.comment.body,
           parentId: input.comment.parentId ?? null,
         },
-        parentComment: parentComment
-          ? {
-              authorType:
-                parentComment.authorType === 'agent' ? 'agent' : 'user',
-              authorId: parentComment.authorId,
-            }
-          : null,
+        parentComment:
+          parentComment &&
+          parentComment.authorId &&
+          parentComment.authorType !== 'connector'
+            ? {
+                authorType:
+                  parentComment.authorType === 'agent' ? 'agent' : 'user',
+                authorId: parentComment.authorId,
+              }
+            : null,
         runningRuns,
         mentionedAgentIds: input.mentionedAgentIds ?? [],
       })

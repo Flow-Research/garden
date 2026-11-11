@@ -13,7 +13,7 @@ Garden deploys with Alchemy. `alchemy.run.ts` declares the resources. `deploy-ta
 | Target    | Branch      | Alchemy stack       | Alchemy stage | Worker           | Tail Worker            | `ENVIRONMENT` | Runs migrations |
 | --------- | ----------- | ------------------- | ------------- | ---------------- | ---------------------- | ------------- | --------------- |
 | `staging` | `main`      | `garden-production` | `production`  | `garden-staging` | `garden-staging-tail`  | `production`  | Yes             |
-| `dev`     | `dev`       | `garden-dev`        | `dev`         | `garden-dev`     | `garden-dev-tail`      | `development` | No              |
+| `dev`     | `dev`       | `garden-dev`        | `dev`         | `garden-dev`     | `garden-dev-tail`      | `development` | Yes             |
 | `preview` | Manual only | `garden-preview`    | `preview`     | `garden-preview` | `garden-preview-tail`  | `development` | No              |
 
 The `staging` target keeps the `garden-production` stack and `production` stage so that Alchemy keeps ownership of the existing resources.
@@ -29,11 +29,12 @@ The `staging` target keeps the `garden-production` stack and `production` stage 
 | `EXECUTOR_BLOBS` bucket  | `harnessy-connectors-blobs`               | `harnessy-connectors-blobs-dev`       | `harnessy-connectors-blobs-preview`       |
 | `RUN_WORKFLOW`           | `garden-run-workflow-staging`             | `garden-run-workflow-dev`             | `garden-run-workflow-preview`             |
 | `DECIDE_ANALYSIS_WORKFLOW` | `garden-decide-analysis-workflow-staging` | `garden-decide-analysis-workflow-dev` | `garden-decide-analysis-workflow-preview` |
+| `GITHUB_REPO_IMPORT_WORKFLOW` | `garden-github-repo-import-workflow-staging` | `garden-github-repo-import-workflow-dev` | `garden-github-repo-import-workflow-preview` |
 | Sandbox container        | `garden-web-sandbox-staging`              | `garden-web-sandbox-dev`              | `garden-web-sandbox-preview`              |
 | AI Gateway               | `garden-staging`                          | `garden-dev`                          | `garden-preview`                          |
 | Empty buckets on destroy | No                                        | No                                    | Yes                                       |
 
-Every target reads its Postgres origin from `DATABASE_URL`. The `preview` target shares the live Postgres origin. Its Cloudflare resources and Executor storage stay separate.
+The `staging` and `preview` targets read their Postgres origin from `DATABASE_URL`. The `dev` target reads `DEV_DATABASE_URL`, which points at its own Neon branch, and `scripts/deploy-dev.mjs` fails if that variable is unset instead of falling back to the shared database. The `preview` target shares the staging Postgres origin. Its Cloudflare resources and Executor storage stay separate.
 
 ## Scripts
 
@@ -44,7 +45,7 @@ These scripts are in the root `package.json`.
 | `deploy`                 | `pnpm typecheck`, then `deploy:migrate`, then `deploy:alchemy`.                               |
 | `deploy:migrate`         | `pnpm --filter @garden/db db:migrate`                                                         |
 | `deploy:alchemy`         | `alchemy deploy --stage production --yes` with `GARDEN_DEPLOY_TARGET=staging`.               |
-| `deploy:dev`             | `pnpm typecheck`, then `deploy:dev:alchemy`.                                                   |
+| `deploy:dev`             | `pnpm typecheck`, then `scripts/deploy-dev.mjs`: requires `DEV_DATABASE_URL`, runs `deploy:migrate` against it, then `deploy:dev:alchemy`. |
 | `deploy:dev:alchemy`     | `alchemy deploy --stage dev --yes` with `GARDEN_DEPLOY_TARGET=dev`.                           |
 | `deploy:preview`         | `pnpm typecheck`, then `deploy:preview:alchemy`.                                               |
 | `deploy:preview:alchemy` | `alchemy deploy --stage preview --yes` with `GARDEN_DEPLOY_TARGET=preview`.                   |

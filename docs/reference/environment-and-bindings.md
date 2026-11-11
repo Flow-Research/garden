@@ -29,14 +29,15 @@ Durable Object migrations run from tag `v1` to `v11` in `apps/web/wrangler.jsonc
 | -------------------------- | ------------------------ | ---------------------------------------- | ----------------------------------------------- | -------------------------------------------------------------------------------- |
 | `RUN_WORKFLOW`             | `RunWorkflow`            | `garden-run-workflow-local`              | Durable execution for issue and automation runs. | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
 | `DECIDE_ANALYSIS_WORKFLOW` | `DecideAnalysisWorkflow` | `garden-decide-analysis-workflow-local`  | Durable Decide analysis runs.                   | `apps/web/src/lib/server/decide-analysis/service.ts`                             |
+| `GITHUB_REPO_IMPORT_WORKFLOW` | `GitHubRepoImportWorkflow` | `garden-github-repo-import-workflow-local` | Imports a linked repository's open GitHub issues onto a Team board. | `apps/web/src/lib/server/team-repositories.ts` |
 
-Deployed Workflow names come from `workflowName` and `decideAnalysisWorkflowName` in `deploy-targets.mjs`.
+Deployed Workflow names come from `workflowName`, `decideAnalysisWorkflowName`, and `githubRepoImportWorkflowName` in `deploy-targets.mjs`.
 
 ## Storage
 
 | Binding          | Type       | Local resource                   | Purpose                                     | Read in                                                     |
 | ---------------- | ---------- | -------------------------------- | ------------------------------------------- | ----------------------------------------------------------- |
-| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database.   | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
+| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database. Query caching is disabled in `alchemy.run.ts` so reads see the Worker's own writes. | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
 | `EXECUTOR_DB`    | D1         | `garden-executor-local`          | Executor connector state.                   | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `EXECUTOR_BLOBS` | R2         | `garden-executor-blobs-local`    | Executor blob storage.                      | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `FILES`          | R2         | `garden-files-local`             | Uploads, attachments, and run files.        | `packages/agent-runtime/src/agent-tools/read-attachment.ts`  |
@@ -67,6 +68,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | Name                          | Kind   | Required             | Purpose                                                             | Read in                                                  |
 | ----------------------------- | ------ | -------------------- | ------------------------------------------------------------------- | -------------------------------------------------------- |
 | `DATABASE_URL`                | Secret | Yes                  | Postgres connection string. Must start with `postgres://` or `postgresql://`. | `packages/db/src/client.ts`, `packages/env/src/index.ts` |
+| `DEV_DATABASE_URL`            | Build secret | Dev deploys only | Dev Neon branch connection string. `scripts/deploy-dev.mjs` copies it into `DATABASE_URL` for migrations, Hyperdrive, and the Worker secret. | `deploy-targets.mjs`, `scripts/deploy-dev.mjs` |
 | `BETTER_AUTH_SECRET`          | Secret | Yes                  | Better Auth signing secret.                                         | `apps/web/src/auth.ts`                                   |
 | `BETTER_AUTH_URL`             | Var    | Yes                  | Public origin. Alchemy sets it to the Worker URL.                   | `apps/web/src/auth.ts`                                   |
 | `ENVIRONMENT`                 | Var    | Yes                  | `development`, `test`, `staging`, or `production`.                  | `packages/env/src/index.ts`, `packages/agent-runtime/src/model.ts` |

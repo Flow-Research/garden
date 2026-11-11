@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -188,10 +189,12 @@ vi.mock('@/lib/server/control-plane', () => ({
 }))
 
 vi.mock('@/lib/server/chat-agents', () => ({
-  ensureAgentRow: vi.fn().mockResolvedValue({
-    id: 'agent-1',
-    hostName: 'agent-host-1',
-  }),
+  ensureAgentRow: vi.fn().mockImplementation(async () =>
+    Result.ok({
+      id: 'agent-1',
+      hostName: 'agent-host-1',
+    }),
+  ),
 }))
 
 vi.mock('@/lib/server/db', () => ({

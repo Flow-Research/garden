@@ -1,5 +1,5 @@
 {
-  "id": "a645c4b3-9e9c-4947-ab87-7c773c02df24",
+  "id": "1ae427cc-18a8-4e77-954e-a298dee76e79",
   "prevId": "83ad48b0-34aa-428a-baa1-2d77741bd550",
   "version": "7",
   "dialect": "postgresql",
@@ -537,6 +537,18 @@
           "notNull": true,
           "default": "'member'"
         },
+        "github_user_id": {
+          "name": "github_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "github_login": {
+          "name": "github_login",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -581,6 +593,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "member_organization_github_user_unique": {
+          "name": "member_organization_github_user_unique",
+          "columns": [
+            {
+              "expression": "organization_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "github_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"member\".\"github_user_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -618,6 +652,10 @@
         "member_role_check": {
           "name": "member_role_check",
           "value": "\"member\".\"role\" in ('owner', 'admin', 'member')"
+        },
+        "member_github_identity_pair_check": {
+          "name": "member_github_identity_pair_check",
+          "value": "(\"member\".\"github_user_id\" is null) = (\"member\".\"github_login\" is null)"
         }
       },
       "isRLSEnabled": false
@@ -878,108 +916,6 @@
           ]
         }
       },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.team_agent_policy": {
-      "name": "team_agent_policy",
-      "schema": "",
-      "columns": {
-        "team_id": {
-          "name": "team_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "workspace_id": {
-          "name": "workspace_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "policy": {
-          "name": "policy",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "team_agent_policy_workspace_idx": {
-          "name": "team_agent_policy_workspace_idx",
-          "columns": [
-            {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "team_agent_policy_workspace_id_organization_id_fk": {
-          "name": "team_agent_policy_workspace_id_organization_id_fk",
-          "tableFrom": "team_agent_policy",
-          "tableTo": "organization",
-          "columnsFrom": [
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "team_agent_policy_updated_by_user_id_fk": {
-          "name": "team_agent_policy_updated_by_user_id_fk",
-          "tableFrom": "team_agent_policy",
-          "tableTo": "user",
-          "columnsFrom": [
-            "updated_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "team_agent_policy_team_workspace_fk": {
-          "name": "team_agent_policy_team_workspace_fk",
-          "tableFrom": "team_agent_policy",
-          "tableTo": "team",
-          "columnsFrom": [
-            "team_id",
-            "workspace_id"
-          ],
-          "columnsTo": [
-            "id",
-            "workspace_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -6899,12 +6835,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "team_id": {
-          "name": "team_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
         "args_json": {
           "name": "args_json",
           "type": "jsonb",
@@ -7042,19 +6972,6 @@
           "tableTo": "chat_thread",
           "columnsFrom": [
             "thread_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "permission_request_team_id_team_id_fk": {
-          "name": "permission_request_team_id_team_id_fk",
-          "tableFrom": "permission_request",
-          "tableTo": "team",
-          "columnsFrom": [
-            "team_id"
           ],
           "columnsTo": [
             "id"

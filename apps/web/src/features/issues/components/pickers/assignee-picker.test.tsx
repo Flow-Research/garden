@@ -98,6 +98,8 @@ const WORKSPACE_MEMBERS = [
     workspace_id: 'ws-1',
     user_id: 'user-1',
     role: 'owner',
+    github_user_id: null,
+    github_login: null,
     created_at: '2026-01-01T00:00:00.000Z',
     name: 'Ada Lovelace',
     email: 'ada@example.com',
@@ -108,6 +110,8 @@ const WORKSPACE_MEMBERS = [
     workspace_id: 'ws-1',
     user_id: 'user-9',
     role: 'member',
+    github_user_id: null,
+    github_login: null,
     created_at: '2026-01-01T00:00:00.000Z',
     name: 'Outside Member',
     email: 'outside@example.com',
@@ -163,8 +167,8 @@ describe('AssigneePicker', () => {
     // Archived agents are not assignable, workspace outsiders are not members.
     expect(screen.queryByText('Archived Agent')).toBeNull()
     expect(screen.queryByText('Outside Member')).toBeNull()
-    // Team issues must always carry a Team member assignee.
-    expect(screen.queryByText('Unassigned')).toBeNull()
+    // Team issues may be unassigned, so the picker can clear the assignee.
+    expect(screen.getAllByText('Unassigned').length).toBeGreaterThan(0)
     expect(mocks.listTeamMembers).toHaveBeenCalledWith('team-1')
     expect(mocks.listMembers).not.toHaveBeenCalled()
     expect(mocks.listAgents).not.toHaveBeenCalled()

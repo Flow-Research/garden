@@ -18,6 +18,14 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { githubIdentityByMemberId } from '@/lib/server/workspace-members'
+import {
+  attachInvitationTeams,
+  discardInvitationTeams,
+  INVITATION_EXPIRES_IN_MS,
+  InvitationTeamError,
+  planInvitationTeams,
+} from '@/lib/server/invitation-teams'
 
 const logger = createLogger('workspace-members-api')
 
@@ -133,17 +141,29 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             }
           }>
         }
+        const db = await appContext.db()
+        const githubById = await githubIdentityByMemberId({
+          db,
+          workspaceId: params.id,
+          memberIds: result.members.map((row) => row.id),
+        })
+
         return Response.json(
-          result.members.map((row) => ({
-            id: row.id,
-            workspace_id: row.organizationId,
-            user_id: row.userId,
-            role: row.role,
-            created_at: new Date(row.createdAt).toISOString(),
-            name: row.user.name,
-            email: row.user.email,
-            avatar_url: row.user.image ?? null,
-          })),
+          result.members.map((row) => {
+            const github = githubById.get(row.id)
+            return {
+              id: row.id,
+              workspace_id: row.organizationId,
+              user_id: row.userId,
+              role: row.role,
+              github_user_id: github?.githubUserId ?? null,
+              github_login: github?.githubLogin ?? null,
+              created_at: new Date(row.createdAt).toISOString(),
+              name: row.user.name,
+              email: row.user.email,
+              avatar_url: row.user.image ?? null,
+            }
+          }),
         )
       },
       POST: async ({ context, request, params }) => {
@@ -214,8 +234,30 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
               )
             }
 
-            // Mirrors Better Auth's invitationExpiresIn default (48h).
-            const refreshedExpiry = new Date(Date.now() + 48 * 3600 * 1000)
+            // A resend that names Teams adds them to the invite; one that
+            // names none keeps the invite's current Teams.
+            if (body.team_ids?.length) {
+              const teamIds = yield* Result.await(
+                planInvitationTeams({
+                  db,
+                  workspaceId: params.id,
+                  inviterId: session.user.id,
+                  requestedTeamIds: body.team_ids,
+                }),
+              )
+              yield* Result.await(
+                attachInvitationTeams({
+                  db,
+                  invitationId: existing.id,
+                  workspaceId: params.id,
+                  teamIds,
+                }),
+              )
+            }
+
+            const refreshedExpiry = new Date(
+              Date.now() + INVITATION_EXPIRES_IN_MS,
+            )
             const [updated] = await db
               .update(schema.invitation)
               .set({ expiresAt: refreshedExpiry })
@@ -264,6 +306,14 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             return Result.ok(toInvitation(refreshed))
           }
 
+          const teamIds = yield* Result.await(
+            planInvitationTeams({
+              db,
+              workspaceId: params.id,
+              inviterId: session.user.id,
+              requestedTeamIds: body.team_ids,
+            }),
+          )
           const invitation = yield* Result.await(
             Result.tryPromise({
               try: async () =>
@@ -285,21 +335,14 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
                 }),
             }),
           )
-          const emailResult = await sendInvitationForRoute({
-            baseURL: new URL(request.url).origin,
-            db: await appContext.db(),
-            env: appContext.env,
-            invitation,
-            inviter: {
-              email: session.user.email,
-              name: session.user.name,
-            },
-          })
 
-          if (emailResult.isErr()) {
-            // Cancel only invites this request created. The resend path
-            // returned above before reaching here, so every invitation at
-            // this point is newly created.
+          /**
+           * Cancels the invite this request just created after a later step
+           * failed, then drops its Team rows (cancel keeps the invitation
+           * row, so the cascade does not fire). The resend path returned
+           * above, so every invitation here is newly created.
+           */
+          const cancelCreated = async () => {
             const cancelResult = await Result.tryPromise({
               try: async () => {
                 await auth.api.cancelInvitation({
@@ -310,19 +353,51 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
               catch: (cause) => cause,
             })
             if (cancelResult.isErr()) {
-              logger.error(
-                'workspace.invitation_cancel_after_email_failure_failed',
-                {
-                  invitationId: invitation.id,
-                  workspaceId: params.id,
-                  error:
-                    cancelResult.error instanceof Error
-                      ? cancelResult.error.message
-                      : String(cancelResult.error),
-                },
-              )
+              logger.error('workspace.invitation_cancel_after_failure_failed', {
+                invitationId: invitation.id,
+                workspaceId: params.id,
+                error:
+                  cancelResult.error instanceof Error
+                    ? cancelResult.error.message
+                    : String(cancelResult.error),
+              })
             }
+            const discardResult = await discardInvitationTeams({
+              db,
+              invitationId: invitation.id,
+            })
+            if (discardResult.isErr()) {
+              logger.error('workspace.invitation_team_discard_failed', {
+                invitationId: invitation.id,
+                workspaceId: params.id,
+                error: discardResult.error.message,
+              })
+            }
+          }
 
+          const attachResult = await attachInvitationTeams({
+            db,
+            invitationId: invitation.id,
+            workspaceId: params.id,
+            teamIds,
+          })
+          if (attachResult.isErr()) {
+            await cancelCreated()
+            return Result.err(attachResult.error)
+          }
+
+          const emailResult = await sendInvitationForRoute({
+            baseURL: new URL(request.url).origin,
+            db,
+            env: appContext.env,
+            invitation,
+            inviter: {
+              email: session.user.email,
+              name: session.user.name,
+            },
+          })
+          if (emailResult.isErr()) {
+            await cancelCreated()
             return Result.err(emailResult.error)
           }
 
@@ -332,15 +407,12 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
         return result.match({
           ok: (invitation) => Response.json(invitation),
           err: (error) =>
-            error instanceof WorkspaceInvitationRequestError
-              ? Response.json(
-                  { error: error.message },
-                  { status: error.status },
-                )
-              : Response.json(
-                  { error: error.message },
-                  { status: error.status },
-                ),
+            Response.json(
+              error instanceof InvitationTeamError
+                ? { error: error.message, code: error.code }
+                : { error: error.message },
+              { status: error.status },
+            ),
         })
       },
     },

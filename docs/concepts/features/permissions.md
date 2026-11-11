@@ -3,7 +3,7 @@ title: One permission story covers direct tools, codemode, and connectors
 description: How agent permissions, capability risk classes, and trust levels decide whether a tool call runs, asks for approval, or is blocked, and the rules that keep approvals out of codemode.
 status: current
 owner: "@Flow-Research/security"
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-10
 ---
 
 An agent can act through direct tools, through codemode, and through connector tools that Executor serves over MCP. Approval behavior should not depend on which of those paths a call took. Garden is not fully there yet, but every path already reads the same two inputs: the agent's permissions and the capability's trust level.
@@ -28,6 +28,20 @@ A Team can cap what any agent does for its members. The runtime loads the polici
 
 [Teams](./teams.md#agent-policy-caps-what-agents-do-for-a-teams-members) describes the policy shape, the UI, and the approval routing.
 
+## Connector installation requires current workspace authority
+
+GitHub App and Discord bot callbacks verify signed state, then read the current membership of the actor in that state. The actor must still have connection-management permission in the workspace in that state. The callbacks use the same role policy as Garden's organization permission checks. A request header cannot select a different workspace for this check. Garden checks this authority before it calls the provider or writes the installation, callback record, capabilities, or grants.
+
+GitHub keeps its session check outside the development environment. Discord uses verified signed state and does not require a browser cookie. These callbacks do not give authority to an agent or to task content.
+
+## Default-agent recovery requires current creation authority
+
+Workspace creation normally supplies the default Garden agent. Chat listing reads existing records and does not create agents or grants. Chat creation validates a selected issue or agent before it can request default-agent recovery. A selected existing agent does not require a new default.
+
+When the default is missing, only a current workspace member with agent-management permission can repair it. The new default belongs to that authorized person. Members can use an existing default without changing its owner, settings or grants. The same rule applies when Brain file indexing needs a default agent for its audit. If recovery is denied, the indexed file remains, and Garden records the audit failure.
+
+Recovery serializes concurrent attempts for the workspace. It writes the default and its initial grants in one database transaction. A failed grant write rolls back the new agent. Workspace creation uses the same lock and preserves a default that an authorized recovery already created. This repairs a missing default agent; it does not repeat all workspace setup or skill seeding.
+
 ## Capabilities carry a risk class and a trust level
 
 Every connector tool is a row in the `capability` table (`packages/db/src/schema/capabilities.ts`). Its `risk_class` is one of `read`, `write`, `send_external`, or `destructive`. `packages/connectors/src/capabilities.ts` holds the shared trust rules. Its `defaultTrustLevelForRisk` gives `read` the default `auto`, `write` the default `allow`, and every other risk class the default `ask`.
@@ -50,10 +64,10 @@ An approval surfaces in the chat timeline through `apps/web/src/features/chat/us
 
 Garden has two ways to run code. They do not share files.
 
-| Surface | Runtime | Best for | Storage |
-| --- | --- | --- | --- |
-| Codemode `execute` | `@cloudflare/codemode` in a Dynamic Worker through the `LOADER` binding | Bounded JavaScript that plans several file or tool steps | The Think workspace |
-| Container sandbox tools | `@cloudflare/sandbox` through the `Sandbox` binding | Shell, native binaries, package installs, previews, and long-running processes | The container's `/workspace` |
+| Surface                 | Runtime                                                                 | Best for                                                                       | Storage                      |
+| ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------- |
+| Codemode `execute`      | `@cloudflare/codemode` in a Dynamic Worker through the `LOADER` binding | Bounded JavaScript that plans several file or tool steps                       | The Think workspace          |
+| Container sandbox tools | `@cloudflare/sandbox` through the `Sandbox` binding                     | Shell, native binaries, package installs, previews, and long-running processes | The container's `/workspace` |
 
 `createExecuteTool` builds the codemode tool in `packages/agent-runtime/src/chat-sub-agent-tools.ts` and `automation-run-sub-agent.ts`. The sandbox tools live in `packages/agent-runtime/src/sandbox-tools.ts`. The [execution runtimes](../architecture/execution-runtimes.md) page explains both.
 
@@ -70,6 +84,10 @@ The intended shape has five parts:
 5. Every tool call is audited, including calls made inside codemode.
 
 Open policy gaps are tracked in [known gaps](../../reference/known-gaps.md).
+
+## Issue tools see the workspace as the chat owner does
+
+A chat agent's issue tools act for the person who owns the chat. `list_issues`, `read_issue`, `post_issue_comment`, `assign_issue`, and `update_issue_status` apply the Team issue rule to that person, so the agent reaches workspace issues and the boards of Teams the owner belongs to, and every Team issue when the owner is a workspace owner or admin. A Team issue outside the owner's reach returns `Issue not found.`, so the agent cannot confirm that it exists. `issueVisibilityFor` in `packages/server/src/issues/server.ts` reads the owner's workspace role and builds `teamIssueVisibilityCondition`; `listIssues`, `readIssue`, and `resolveVisibleIssue` apply it. See [Teams](teams.md#team-members-work-the-whole-team-board) for the rule. `read_run` does not apply it yet. [Known gaps](../../reference/known-gaps.md) tracks that.
 
 ## Rules for permission changes
 

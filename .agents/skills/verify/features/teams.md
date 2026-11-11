@@ -11,6 +11,8 @@
 - Team detail's actions menu opens **Agent policy** for workspace managers and the Team owner. Managers edit and save; the Team owner sees it read-only.
 - Unbacked design controls (Chats, Home, Delete projects, Manage billing, Read locked files, Deploy changes, Create documents, Team role, Admin Policy) render disabled with **Coming soon**.
 - A Team policy removes blocked tools from the agent and makes approval-required connector calls wait for the Team owner.
+- `/teams` shows owners and admins an **Invites** section with **Default team for new members**.
+- An invite sent with Teams from **Settings › Members** adds the invitee to those Teams on accept. With no Team picked, the default Team applies.
 
 ## How to get to it (user POV)
 
@@ -26,6 +28,9 @@
 10. Check the **Admin Policy** tab and the Chats, Home, and restriction rows: each is disabled with a **Coming soon** badge.
 11. Make the member the Team owner, sign in as them, and open **Agent policy**. Every control is disabled and the sheet says only workspace admins can change it.
 12. Set **Write** to **Approval required**, then, as a Team member, ask the agent to run a connector write such as a GitHub comment. The call waits, and the Team owner's Inbox shows the approval. The owner can approve it.
+13. As the owner, open `/teams`. Under **Invites**, set **Default team for new members** to a Team, reload, and check it stays set.
+14. Open Settings › Members, enter a new email, pick a Team in the Team picker, and click **Invite**.
+15. Accept the invite as that email in a private window. Open `/teams`. The picked Team is listed.
 
 ## Driving it with the Garden verification workflow
 
@@ -35,6 +40,7 @@ Run the unit and route tests first:
 - `pnpm --filter @garden/web exec vitest run src/routes/api/teams src/routes/api/permission-requests` (needs Docker for the test database)
 - `pnpm --filter @garden/agent-runtime exec vitest run src/chat-tools.test.ts src/runtime-mcp-controller.team-approval.test.ts`
 - `pnpm --filter @garden/core exec vitest run src/teams`
+- `pnpm --filter @garden/web exec vitest run 'src/routes/api/workspaces/$id/-invitation-teams.integration.test.ts'` (needs the test database)
 
 Then drive the user path in a browser against `pnpm dev`. Use two accounts in the same workspace: one owner or admin, one member.
 

@@ -8,6 +8,7 @@ import type {
   MemberWithUser,
   UpdateMemberRequest,
   Workspace,
+  WorkspaceTeamSettings,
 } from '@garden/core/types'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
 import type { PermissionTrustLevel } from '@garden/connectors/capabilities'
@@ -42,6 +43,24 @@ export function updateWorkspace(
     method: 'PATCH',
     body: JSON.stringify(data),
   })
+}
+
+export function getWorkspaceTeamSettings(
+  workspaceId: string,
+): Promise<WorkspaceTeamSettings> {
+  return getApiTransport().request(
+    `/api/workspaces/${workspaceId}/team-settings`,
+  )
+}
+
+export function updateWorkspaceTeamSettings(
+  workspaceId: string,
+  data: WorkspaceTeamSettings,
+): Promise<WorkspaceTeamSettings> {
+  return getApiTransport().request(
+    `/api/workspaces/${workspaceId}/team-settings`,
+    { method: 'PATCH', body: JSON.stringify(data) },
+  )
 }
 
 export function listMembers(workspaceId: string): Promise<MemberWithUser[]> {

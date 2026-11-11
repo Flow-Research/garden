@@ -44,12 +44,14 @@ import { createProposeAgentTool } from './agent-tools/propose-agent'
 import { createWebTools, type WebToolsSqlValue } from './agent-tools/web'
 import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
+import { memberGithubIdentity } from './member-github-identity'
 import { createSandboxTools } from './sandbox-tools'
 import {
   createIssue as createIssueService,
   listIssues as listIssuesService,
   postIssueComment as postIssueCommentService,
   readIssue as readIssueService,
+  resolveVisibleIssue,
   type IssueSummary,
 } from '@garden/server/issues/server'
 import {
@@ -151,11 +153,30 @@ const createIssueInputSchema = z
     assignee_agent_id: issueInsertSchema.shape.assigneeId
       .optional()
       .describe('Assign the issue to this agent id and start it immediately.'),
+    assignee_member: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .describe(
+        'Assign the issue to a human workspace member by name, email, or user id. Do not combine with assignee_agent_id.',
+      ),
+    team_id: z
+      .string()
+      .uuid()
+      .optional()
+      .describe(
+        'Create the issue on this Team (uuid). Team rules apply: the chat owner must be on the Team, a normal member may only assign themselves, and any assignee must be on the Team.',
+      ),
     source: issueSourceToolInputSchema
       .optional()
       .describe('Optional external object to bind to the new issue.'),
   })
   .strict()
+  .refine(
+    (input) => !(input.assignee_agent_id && input.assignee_member),
+    'Pass either assignee_agent_id or assignee_member, not both.',
+  )
 
 const readIssueInputSchema = z
   .object({
@@ -286,6 +307,7 @@ type AssignIssueToolResult = {
   run:
     | { kind: 'started'; run_id: string }
     | { kind: 'resumed'; run_id: string }
+    | { kind: 'already_running'; run_id: string }
     | { kind: 'skipped'; reason: string }
 }
 
@@ -323,6 +345,13 @@ type WorkspaceInventoryToolResult = {
     name: string
     email: string
     role: string
+    /**
+     * Workspace GitHub identity for issue mirroring. linked includes stable
+     * user_id + current login; not_linked means ask a human to link first.
+     */
+    github_identity:
+      | { status: 'linked'; user_id: string; login: string }
+      | { status: 'not_linked' }
   }>
   skills: Array<{
     slug: string
@@ -635,60 +664,28 @@ async function loadWorkspaceMemberCandidates(args: {
   return result.isErr() ? issueToolErr(result.error) : Result.ok(result.value)
 }
 
+/**
+ * Resolves the issue for chat `assign_issue` and `update_issue_status` as the
+ * chat owner sees it. Before, it matched any issue in the workspace, so an
+ * owner outside a Team could reassign or close that Team's issues by number;
+ * it now delegates to `resolveVisibleIssue`, which applies the Team rule and
+ * reports a hidden issue as not found.
+ */
 async function resolveChatIssue(args: {
   db: ReadRunDb
   workspaceId: string
+  viewerUserId: string
   issueIdOrIdentifier: string
-}): Promise<
-  ResultValue<
-    {
-      id: string
-      status: string | null
-      activeRunId: string | null
-      assigneeType: string | null
-      assigneeId: string | null
-    },
-    string
-  >
-> {
-  const issueNumber = parseIssueIdentifier(args.issueIdOrIdentifier)
-  const issueUuid = z.string().uuid().safeParse(args.issueIdOrIdentifier.trim())
-  const issueCondition =
-    issueNumber !== null
-      ? eq(schema.issue.number, issueNumber)
-      : issueUuid.success
-        ? eq(schema.issue.id, issueUuid.data)
-        : null
-  if (!issueCondition) {
+}): Promise<ResultValue<typeof schema.issue.$inferSelect, string>> {
+  if (
+    parseIssueIdentifier(args.issueIdOrIdentifier) === null &&
+    !z.string().uuid().safeParse(args.issueIdOrIdentifier.trim()).success
+  ) {
     return issueToolErr('assign_issue: issue must be an identifier or UUID.')
   }
 
-  const result = await Result.tryPromise<
-    {
-      id: string
-      status: string | null
-      activeRunId: string | null
-      assigneeType: string | null
-      assigneeId: string | null
-    } | null,
-    string
-  >({
-    try: async () => {
-      const [issue] = await args.db
-        .select({
-          id: schema.issue.id,
-          status: schema.issue.status,
-          activeRunId: schema.issue.activeRunId,
-          assigneeType: schema.issue.assigneeType,
-          assigneeId: schema.issue.assigneeId,
-        })
-        .from(schema.issue)
-        .where(
-          and(eq(schema.issue.workspaceId, args.workspaceId), issueCondition),
-        )
-        .limit(1)
-      return issue ?? null
-    },
+  const result = await Result.tryPromise({
+    try: () => resolveVisibleIssue(args.db, args),
     catch: errorMessage,
   })
   if (result.isErr()) return issueToolErr(result.error)
@@ -1013,7 +1010,51 @@ async function readRun(
   })
 }
 
-async function createIssueFromChat(
+/**
+ * Resolves the chat `create_issue` assignee. A member selector goes through
+ * the same `resolveWorkspaceMember` path as `assign_issue`; an agent id must
+ * be an active workspace agent.
+ */
+async function resolveCreateIssueAssignee(args: {
+  db: ReadRunDb
+  workspaceId: string
+  input: z.infer<typeof createIssueInputSchema>
+}): Promise<
+  ResultValue<{ type: 'user' | 'agent'; id: string } | null, string>
+> {
+  const { input } = args
+  if (input.assignee_member !== undefined) {
+    const membersResult = await loadWorkspaceMemberCandidates(args)
+    if (membersResult.isErr()) return issueToolErr(membersResult.error)
+    return resolveWorkspaceMember(
+      membersResult.value,
+      input.assignee_member,
+    ).map((member) => ({ type: 'user' as const, id: member.userId }))
+  }
+  if (input.assignee_agent_id) {
+    const agentId = input.assignee_agent_id
+    const agentResult = await requireActiveWorkspaceAgent({
+      db: args.db,
+      workspaceId: args.workspaceId,
+      agentId,
+    })
+    return agentResult.map(() => ({ type: 'agent' as const, id: agentId }))
+  }
+  return Result.ok(null)
+}
+
+/**
+ * Creates an issue from chat as the chat owner.
+ *
+ * Before: it could only assign an agent and never set `teamId`, so agents
+ * could not file Team issues or assign a person. After: it accepts `team_id`
+ * and `assignee_member`, and passes `teamId`, the assignee, and
+ * `createdBy = chat owner` to `createIssue`, whose `authorizeTeamIssueCreate`
+ * applies the same Team rules as the web `POST /api/issues` route.
+ * References: `packages/server/src/issues/server.ts` (`createIssue`),
+ * `assignIssueFromChat` for member resolution.
+ */
+export async function createIssueFromChat(
   context: ChatIssueToolContext,
   input: z.infer<typeof createIssueInputSchema>,
 ): Promise<ResultValue<CreateIssueToolResult, string>> {
@@ -1022,16 +1063,14 @@ async function createIssueFromChat(
   const identity = identityResult.value
   const db = getReadRunDb(context.databaseUrl)
 
-  const assigneeAgentId = input.assignee_agent_id
-  if (assigneeAgentId) {
-    const assigneeResult = await requireActiveWorkspaceAgent({
-      db,
-      workspaceId: identity.workspaceId,
-      agentId: assigneeAgentId,
-    })
-    if (assigneeResult.isErr())
-      return issueToolErr(`create_issue: ${assigneeResult.error}`)
-  }
+  const assigneeResult = await resolveCreateIssueAssignee({
+    db,
+    workspaceId: identity.workspaceId,
+    input,
+  })
+  if (assigneeResult.isErr())
+    return issueToolErr(`create_issue: ${assigneeResult.error}`)
+  const assignee = assigneeResult.value
 
   const issueResult = await createIssueService({
     databaseUrl: context.databaseUrl,
@@ -1041,8 +1080,9 @@ async function createIssueFromChat(
     status: 'todo',
     priority: 'medium',
     createdBy: identity.ownerUserId,
-    assigneeType: input.assignee_agent_id ? 'agent' : null,
-    assigneeId: input.assignee_agent_id ?? null,
+    assigneeType: assignee?.type ?? null,
+    assigneeId: assignee?.id ?? null,
+    teamId: input.team_id ?? null,
     source: input.source
       ? {
           connectorId: input.source.connector_id,
@@ -1052,7 +1092,8 @@ async function createIssueFromChat(
         }
       : undefined,
   })
-  if (issueResult.isErr()) return issueToolErr(issueResult.error.message)
+  if (issueResult.isErr())
+    return issueToolErr(`create_issue: ${issueResult.error.message}`)
 
   const issue = issueResult.value
   const linkResult = await Result.tryPromise<void, string>({
@@ -1095,6 +1136,7 @@ async function assignIssueFromChat(
   const issueResult = await resolveChatIssue({
     db,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: input.issue_id_or_identifier,
   })
   if (issueResult.isErr()) return issueToolErr(issueResult.error)
@@ -1219,6 +1261,7 @@ async function assignIssueFromChat(
     const summaryResult = await readIssueService({
       databaseUrl: context.databaseUrl,
       workspaceId: identity.workspaceId,
+      viewerUserId: identity.ownerUserId,
       issueIdOrIdentifier: issue.id,
     })
     if (summaryResult.isErr()) return issueToolErr(summaryResult.error.message)
@@ -1290,15 +1333,14 @@ async function assignIssueFromChat(
   })
   if (startResult.isErr()) return issueToolErr(startResult.error.message)
   const run: AssignIssueToolResult['run'] =
-    startResult.value.kind === 'started'
-      ? { kind: 'started', run_id: startResult.value.runId }
-      : startResult.value.kind === 'resumed'
-        ? { kind: 'resumed', run_id: startResult.value.runId }
-        : { kind: 'skipped', reason: startResult.value.reason }
+    startResult.value.kind === 'skipped'
+      ? { kind: 'skipped', reason: startResult.value.reason }
+      : { kind: startResult.value.kind, run_id: startResult.value.runId }
 
   const summaryResult = await readIssueService({
     databaseUrl: context.databaseUrl,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: issue.id,
   })
   if (summaryResult.isErr()) return issueToolErr(summaryResult.error.message)
@@ -1325,6 +1367,7 @@ async function updateIssueStatusFromChat(
   const issueResult = await resolveChatIssue({
     db,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: input.issue_id_or_identifier,
   })
   if (issueResult.isErr()) return issueToolErr(issueResult.error)
@@ -1418,6 +1461,7 @@ async function updateIssueStatusFromChat(
   const summaryResult = await readIssueService({
     databaseUrl: context.databaseUrl,
     workspaceId: identity.workspaceId,
+    viewerUserId: identity.ownerUserId,
     issueIdOrIdentifier: issue.id,
   })
   if (summaryResult.isErr()) return issueToolErr(summaryResult.error.message)
@@ -1486,6 +1530,8 @@ async function listWorkspaceInventoryFromChat(
                 name: schema.user.name,
                 email: schema.user.email,
                 role: schema.member.role,
+                githubUserId: schema.member.githubUserId,
+                githubLogin: schema.member.githubLogin,
               })
               .from(schema.member)
               .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
@@ -1595,6 +1641,8 @@ async function listWorkspaceInventoryFromChat(
           member.name,
           member.email,
           member.role,
+          member.githubLogin,
+          member.githubUserId,
         ),
       )
       const filteredSkills = skills.filter((skill) =>
@@ -1621,11 +1669,12 @@ async function listWorkspaceInventoryFromChat(
                   ),
                 )
               : tools
+            const bindingStatus = binding?.status ?? null
             const connectorMatches = matchesQuery(
               connector.id,
               connector.label,
               connector.description,
-              binding ? 'connected' : null,
+              bindingStatus,
             )
             if (!connectorMatches && filteredTools.length === 0) return []
 
@@ -1635,7 +1684,7 @@ async function listWorkspaceInventoryFromChat(
                 label: connector.label,
                 description: connector.description,
                 connected: Boolean(binding),
-                status: binding ? 'connected' : null,
+                status: bindingStatus,
                 account_login: binding?.accountLogin ?? null,
                 auth_kind: binding?.authKind ?? null,
                 ...(binding?.repositorySelection
@@ -1718,7 +1767,7 @@ async function listWorkspaceInventoryFromChat(
           'Use current_agent_id when the current agent is an appropriate assignee for a generic or follow-up task.',
           'Prefer assigning to an existing active agent from this inventory. Propose a new agent only when the task calls for a reusable role that is not already represented.',
           includeMembers
-            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience.'
+            ? 'Human workspace members are included. Use their user id, name, or email with assignee_member; membership_id is accepted only as a lookup convenience. github_identity is linked (stable user_id + current login) or not_linked — pass linked login as issue_write.assignees when mirroring to GitHub; never invent a handle.'
             : 'Human members were not requested. Pass a named person directly to assign_issue; request members only if resolution is ambiguous or the user asks who is available.',
           includeConnectors
             ? 'Connector/MCP capabilities are included. They are separate from skills; do not require a skill slug for connector tools.'
@@ -1746,6 +1795,10 @@ async function listWorkspaceInventoryFromChat(
           name: member.name,
           email: member.email,
           role: member.role,
+          github_identity: memberGithubIdentity({
+            githubUserId: member.githubUserId,
+            githubLogin: member.githubLogin,
+          }),
         })),
         skills: filteredSkills.slice(0, limit).map((skill) => ({
           slug: skill.slug,
@@ -1772,6 +1825,7 @@ async function readIssueFromChat(
   const issueResult = await readIssueService({
     databaseUrl: context.databaseUrl,
     workspaceId: identityResult.value.workspaceId,
+    viewerUserId: identityResult.value.ownerUserId,
     issueIdOrIdentifier: input.issue_id_or_identifier,
     commentsPage: input.comments_page,
     commentsLimit: input.comments_limit,
@@ -1952,7 +2006,9 @@ export function createChatSubAgentTools({
       description:
         'Create a Garden issue from chat. Optionally assign it to an agent and bind it to an external source. ' +
         'Use assignee_agent_id when the user asks for an agent to do the work; assigned issues start immediately in todo. ' +
-        'Before assigning, list workspace agents and choose an existing active agent; the current agent is a valid assignee when it is the right owner.',
+        'Before assigning, list workspace agents and choose an existing active agent; the current agent is a valid assignee when it is the right owner. ' +
+        'Use assignee_member to assign a named person instead (name/email/id; never both assignees). ' +
+        'Pass team_id when the user asks for the issue on a specific Team; Team membership and self-assignment rules apply.',
       inputSchema: createIssueInputSchema,
       execute: async (input) => {
         const context = chatIssueContext()
@@ -1989,7 +2045,7 @@ export function createChatSubAgentTools({
     list_workspace_inventory: tool({
       description:
         'List bounded current workspace inventory. Defaults to agents only; request members, skills, or connectors when needed. ' +
-        'Use when browsing possible owners, proposing an agent, resolving an ambiguous person, or checking skills/connectors. ' +
+        'Use when browsing possible owners, proposing an agent, resolving an ambiguous person, checking skills/connectors, or reading member github_identity before GitHub issue mirroring. ' +
         'Use current_agent_id for agent self-assignment; direct named human assignments do not need an inventory preflight.',
       inputSchema: listWorkspaceInventoryInputSchema,
       execute: async (input) => {
