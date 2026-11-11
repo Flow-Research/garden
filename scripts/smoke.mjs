@@ -19,8 +19,8 @@
  */
 import { pathToFileURL } from 'node:url'
 
-export const DEFAULT_BASE_URL =
-  'https://garden-staging.flow-research.workers.dev'
+/** garden-dev holds the GitHub webhook and is the stabilisation target until Sprint 1 ends; staging follows. */
+export const DEFAULT_BASE_URL = 'https://garden-dev.flow-research.workers.dev'
 
 /** @typedef {{ status: number, contentType: string, json: unknown }} SmokeResponse  `json` is undefined when the body is not JSON. */
 /** @typedef {{ name: string, auth: boolean, method?: string, path: string, headers?: Record<string,string>, expect: (res: SmokeResponse) => string | null }} SmokeCheck */
