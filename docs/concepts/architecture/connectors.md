@@ -3,7 +3,7 @@ title: Connectors run through Executor inside the Garden Worker
 description: How Garden installs external integrations, gates their tools, and exposes them to agents through scoped Executor MCP sessions and the direct Decide path.
 status: current
 owner: "@Flow-Research/security"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-11
 ---
 
 Garden has one application Worker. Executor v1.5.40 (`@executor-js/sdk` and its plugins in `apps/web/package.json`) runs inside that Worker. Executor handles the connector catalog, installation, OAuth, connections, execution, and hibernating MCP sessions. Garden API routes call the Executor SDK directly. The Worker also exports Executor's MCP session and execution-owner Durable Objects, bound as `EXECUTOR_MCP_SESSION` and `EXECUTOR_MCP_EXECUTION_OWNER` in `apps/web/wrangler.jsonc`.
@@ -37,6 +37,10 @@ Executor stores integration and connection state in the `EXECUTOR_DB` D1 databas
 `packages/connectors/src/sdk.ts` defines four risk classes: `read`, `write`, `send_external`, and `destructive`. An agent's trust level for a tool is `auto`, `allow`, or `ask`. `packages/connectors/src/capabilities.ts` maps a risk class to its default trust and resolves the effective trust for a connection.
 
 Unknown tools fail closed. A tool with no risk class defaults to `ask`. Unclassified native or hosted GitHub tools are not exposed at all. Executor receives tenant and member identity from Garden, and it never replaces Garden's workspace authorization checks.
+
+## GitHub tool calls are gated on install identity
+
+Every repo-scoped GitHub tool takes `owner` and `repo` as free-hand strings from the model, so a guessed or re-cased org name used to reach `api.github.com` and fail as a bare 404 (#332). Before any GitHub request is built, `resolveGithubToolOwner` (`packages/connectors/src/github/identity.ts`) compares the call's `owner` against the installation account login (`github_app_installation.account_login`, written from GitHub's install API): a case variant is corrected to the canonical casing, any other owner is rejected with the connected account named, and a call with no canonical login available proceeds untouched. The gate runs on both GitHub surfaces — native `github.*` and hosted `github-mcp.*` — next to the assignee gate in `RuntimeMcpController`, and on the work-product connector writeback path. A GitHub 404 on a repository path returns `ConnectorNotFoundError` with a hint to retry against `list_repositories`. Schema descriptions on `owner`/`repo` and the foundation prompt point the model at inventory-derived logins so the gate rarely has to reject.
 
 ## Each runtime gets its own Executor MCP session
 
