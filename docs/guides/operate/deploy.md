@@ -3,7 +3,7 @@ title: Deploy Garden
 description: Deploy Garden to preview, dev, or staging with the repository scripts, and tear down a preview when you finish.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-10
 ---
 
 Garden deploys through Alchemy package scripts. Do not run `wrangler deploy` and do not write an ad hoc Wrangler config. For the full list of targets, resources, and triggers, see [Deploy targets](../../reference/deploy-targets.md).
@@ -84,8 +84,8 @@ The `dev` branch builds on the non-production trigger and needs `DEV_DATABASE_UR
 
 ## Check the deployment
 
-1. Open the Worker URL that Alchemy printed.
-2. Confirm that the app and the sign-in page load.
+1. Run `curl -fsS https://<host>/api/health` against the Worker URL that Alchemy printed. A healthy deploy returns `200` with `{"status":"ok","checks":{"database":"ok"}}`. If the database does not answer, the route returns `503` with `{"status":"degraded","checks":{"database":"error"}}`, and `curl -f` exits with an error. The route needs no session. The error detail is in the Worker logs, not in the response.
+2. Open the Worker URL in a browser and confirm that the app and the sign-in page load.
 3. Test the feature you changed.
 4. Check the browser console and failed network requests.
 5. To read Worker errors, see [Find a problem in the Worker logs](./debug-with-logs.md).
