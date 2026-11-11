@@ -172,6 +172,23 @@ const gardenMemberRole = gardenAccessControl.newRole({
   skill: [],
 })
 
+/** Uses the same role policy as the organization permission endpoint. */
+export function workspaceRoleHasPermission(
+  role: string,
+  permissions: Record<string, string[]>,
+): boolean {
+  switch (role) {
+    case 'owner':
+      return gardenOwnerRole.authorize(permissions).success
+    case 'admin':
+      return gardenAdminRole.authorize(permissions).success
+    case 'member':
+      return gardenMemberRole.authorize(permissions).success
+    default:
+      return false
+  }
+}
+
 function getConnectorByProviderId(providerId: string | null | undefined) {
   return connectorRegistry.find(
     (connector) => connector.oauth?.providerId === providerId,

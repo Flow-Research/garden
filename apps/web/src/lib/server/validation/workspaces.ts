@@ -1,4 +1,8 @@
-import { jsonObjectSchema, memberRoleSchema } from '@garden/db/validation'
+import {
+  jsonObjectSchema,
+  memberRoleSchema,
+  uuidSchema,
+} from '@garden/db/validation'
 import { z } from 'zod'
 import {
   nonEmptyStringSchema,
@@ -41,8 +45,20 @@ export const createWorkspaceMemberBodySchema = z
      * Auth's own resend flag excludes) instead of creating a duplicate.
      */
     resend: z.boolean().optional(),
+    /**
+     * Teams the invitee joins on accept. Omitted on a new invite, the
+     * workspace's default Team applies; on a resend, omitted keeps the
+     * invite's current Teams.
+     */
+    team_ids: z.array(uuidSchema).max(50).optional(),
   })
   .strict()
+
+export const workspaceTeamSettingsSchema = z
+  .object({ default_team_id: uuidSchema.nullable() })
+  .strict()
+
+export type WorkspaceTeamSettings = z.infer<typeof workspaceTeamSettingsSchema>
 
 /**
  * GitHub login shape (max 39, alphanumeric/hyphen, no leading/trailing hyphen).

@@ -12,7 +12,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { agent } from './agents.js'
 import { user } from './users.js'
-import { organization } from './workspaces.js'
+import { invitation, organization } from './workspaces.js'
 
 /**
  * Team — a named group inside a workspace. `owner_user_id` is Team ownership,
@@ -102,6 +102,40 @@ export const teamMember = pgTable(
     check(
       'team_member_identity_check',
       sql`(${table.userId} is not null) <> (${table.agentId} is not null)`,
+    ),
+  ],
+)
+
+/**
+ * Teams an invitation joins on accept. Before this table, accepting an invite
+ * created only the workspace membership, so new members landed on an empty
+ * board. The composite `(team_id, workspace_id)` FK keeps each row in the
+ * invitation's workspace, and both cascades remove rows with their Team or
+ * invitation.
+ */
+export const invitationTeam = pgTable(
+  'invitation_team',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    invitationId: uuid('invitation_id')
+      .notNull()
+      .references(() => invitation.id, { onDelete: 'cascade' }),
+    teamId: uuid('team_id').notNull(),
+    workspaceId: uuid('workspace_id')
+      .notNull()
+      .references(() => organization.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    foreignKey({
+      name: 'invitation_team_team_workspace_fk',
+      columns: [table.teamId, table.workspaceId],
+      foreignColumns: [team.id, team.workspaceId],
+    }).onDelete('cascade'),
+    unique('invitation_team_invitation_team_unique').on(
+      table.invitationId,
+      table.teamId,
     ),
   ],
 )

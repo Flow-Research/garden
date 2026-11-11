@@ -15,12 +15,24 @@ import type {
 import { createRequestId } from '@garden/core/utils'
 import { GardenSkillsApi } from './skills-contract'
 import { getApiTransport } from './state'
+import { createSkillsClient } from './skills-client'
+import type { ApiTransport } from './transport'
 
 const runtime = ManagedRuntime.make(FetchHttpClient.layer)
-let clientPromise: ReturnType<typeof createGeneratedSkillsClient> | undefined
+const generatedClients = new WeakMap<
+  ApiTransport,
+  ReturnType<typeof createGeneratedSkillsClient>
+>()
+let readClient:
+  | {
+      transport: ApiTransport
+      revision: number
+      client: ReturnType<typeof createSkillsClient>
+      unsubscribe: () => void
+    }
+  | undefined
 
-function createGeneratedSkillsClient() {
-  const transport = getApiTransport()
+function createGeneratedSkillsClient(transport: ApiTransport) {
   return runtime.runPromise(
     HttpApiClient.make(GardenSkillsApi, {
       baseUrl: transport.getBaseUrl(),
@@ -36,9 +48,13 @@ function createGeneratedSkillsClient() {
   )
 }
 
-function generatedSkillsClient() {
-  clientPromise ??= createGeneratedSkillsClient()
-  return clientPromise
+function generatedSkillsClient(transport: ApiTransport) {
+  let client = generatedClients.get(transport)
+  if (!client) {
+    client = createGeneratedSkillsClient(transport)
+    generatedClients.set(transport, client)
+  }
+  return client
 }
 
 /** Executes generated-client Effects at TanStack Query's Promise boundary. */
@@ -48,22 +64,78 @@ async function runClientEffect<A, E>(
   ) => Effect.Effect<A, E>,
   signal?: AbortSignal,
 ): Promise<A> {
-  const client = await generatedSkillsClient()
+  const transport = getApiTransport()
+  const revision = transport.getSessionRevision()
+  const client = await generatedSkillsClient(transport)
   const effect = make(client).pipe(
     Effect.tapError((error) =>
       error instanceof SkillUnauthorizedError
-        ? Effect.sync(() => getApiTransport().notifyUnauthorized())
+        ? Effect.sync(() => {
+            if (
+              getApiTransport() === transport &&
+              transport.getSessionRevision() === revision
+            )
+              transport.notifyUnauthorized()
+          })
         : Effect.void,
     ),
   )
   return runtime.runPromise(effect, { signal })
 }
 
+/**
+ * Keeps the web consumer on the portable read contract. Session invalidation
+ * aborts old reads before a changed account/workspace can consume their results.
+ */
 export function listSkills(
-  _params?: { workspace_id?: string },
+  params?: { workspace_id?: string },
   signal?: AbortSignal,
 ) {
-  return runClientEffect((client) => client.skills.list(), signal)
+  const transport = getApiTransport()
+  const workspaceId = transport.getWorkspaceId()
+  if (
+    !workspaceId ||
+    (params?.workspace_id !== undefined && params.workspace_id !== workspaceId)
+  ) {
+    return Promise.reject(
+      new Error('Skills read requires the active workspace'),
+    )
+  }
+  const revision = transport.getSessionRevision()
+  if (
+    !readClient ||
+    readClient.transport !== transport ||
+    readClient.revision !== revision
+  ) {
+    readClient?.client.invalidate()
+    readClient?.unsubscribe()
+    const client = createSkillsClient({
+      origin: new URL(
+        transport.getBaseUrl() || '/',
+        globalThis.location?.origin,
+      ).href,
+      workspaceId,
+      sessionId: String(revision),
+      fetch: (input, init) =>
+        globalThis.fetch(input, { ...init, credentials: 'include' }),
+      createRequestId,
+      onUnauthorized: () => {
+        if (
+          getApiTransport() === transport &&
+          transport.getSessionRevision() === revision
+        ) {
+          transport.notifyUnauthorized()
+        }
+      },
+    })
+    readClient = {
+      transport,
+      revision,
+      client,
+      unsubscribe: transport.onSessionInvalidated(() => client.invalidate()),
+    }
+  }
+  return readClient.client.listSkills(signal)
 }
 
 export function getSkill(id: string, signal?: AbortSignal) {
