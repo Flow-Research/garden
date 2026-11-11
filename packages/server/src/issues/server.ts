@@ -1,33 +1,33 @@
-import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { getPooledDb } from "@garden/db/runtime";
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { getPooledDb } from '@garden/db/runtime'
 import {
   addIssueSubscribers,
   assigneeToSubscriberType,
   type SubscriberEntry,
-} from "@garden/db/subscribers";
-import { Result, TaggedError, type Result as ResultValue } from "better-result";
-import { formatIssueIdentifier } from "@garden/core/issues/identifier";
-import { orderKeyBetween } from "@garden/core/issues/order-key";
+} from '@garden/db/subscribers'
+import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { formatIssueIdentifier } from '@garden/core/issues/identifier'
+import { orderKeyBetween } from '@garden/core/issues/order-key'
 import {
   LIVE_RUN_STATUSES,
   WAKEUP_DEDUPING_RUN_STATUSES,
-} from "@garden/core/issues/run-sync";
-import { decideWakeups } from "@garden/core/issues/triggers";
-import { createLogger } from "@garden/observability/console";
-import type { Attachment } from "@garden/core/types/attachment";
-import type { Comment } from "@garden/core/types/comment";
+} from '@garden/core/issues/run-sync'
+import { decideWakeups } from '@garden/core/issues/triggers'
+import { createLogger } from '@garden/observability/console'
+import type { Attachment } from '@garden/core/types/attachment'
+import type { Comment } from '@garden/core/types/comment'
 import type {
   Issue,
   IssueAssigneeType,
   IssueStatus,
-} from "@garden/core/types/issue";
+} from '@garden/core/types/issue'
 
-const logger = createLogger("issues");
-import * as schema from "@garden/db/schema";
+const logger = createLogger('issues')
+import * as schema from '@garden/db/schema'
 import {
   isWorkspaceManagerRole,
   teamIssueVisibilityCondition,
-} from "@garden/db/team-issue-visibility";
+} from '@garden/db/team-issue-visibility'
 import {
   issueCommentInsertSchema,
   issueInsertSchema,
@@ -35,27 +35,27 @@ import {
   issueSourceBindingInsertSchema,
   issueStatusSchema,
   uuidSchema,
-} from "@garden/db/validation";
-import { z } from "zod";
+} from '@garden/db/validation'
+import { z } from 'zod'
 import {
   attachSourceBindingInTransaction,
   type AttachSourceBindingInput,
-} from "./source-binding";
-import { startIssueRun, type IssueRunEnv } from "./run-service";
+} from './source-binding'
+import { startIssueRun, type IssueRunEnv } from './run-service'
 
-const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g;
-const MENTION_LINK_PATTERN = /\(mention:\/\/(member|user|agent)\/([^)\s]+)\)/g;
+const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
+const MENTION_LINK_PATTERN = /\(mention:\/\/(member|user|agent)\/([^)\s]+)\)/g
 
-export class IssueServiceError extends TaggedError("IssueServiceError")<{
+export class IssueServiceError extends TaggedError('IssueServiceError')<{
   code:
-    | "issue_not_found"
-    | "team_not_found"
-    | "team_access_denied"
-    | "team_assignee_invalid"
-    | "validation_failed"
-    | "db_error";
-  message: string;
-  cause?: unknown;
+    | 'issue_not_found'
+    | 'team_not_found'
+    | 'team_access_denied'
+    | 'team_assignee_invalid'
+    | 'validation_failed'
+    | 'db_error'
+  message: string
+  cause?: unknown
 }>() {}
 
 const sourceInputSchema = z
@@ -65,7 +65,7 @@ const sourceInputSchema = z
     externalId: issueSourceBindingInsertSchema.shape.externalId,
     externalUrl: z.string().trim().min(1).optional().nullable(),
   })
-  .strict();
+  .strict()
 
 const createIssueInputSchema = z
   .object({
@@ -76,7 +76,7 @@ const createIssueInputSchema = z
     status: issueStatusSchema.optional(),
     priority: issuePrioritySchema.optional(),
     createdBy: issueInsertSchema.shape.createdBy,
-    assigneeType: z.enum(["user", "agent"]).optional().nullable(),
+    assigneeType: z.enum(['user', 'agent']).optional().nullable(),
     assigneeId: issueInsertSchema.shape.assigneeId.optional().nullable(),
     teamId: issueInsertSchema.shape.teamId.optional().nullable(),
     parentId: issueInsertSchema.shape.parentId.optional().nullable(),
@@ -85,7 +85,7 @@ const createIssueInputSchema = z
     source: sourceInputSchema.optional(),
     attachmentIds: z.array(z.string().uuid()).optional(),
   })
-  .strict();
+  .strict()
 
 const readIssueInputSchema = z
   .object({
@@ -93,11 +93,11 @@ const readIssueInputSchema = z
     workspaceId: issueInsertSchema.shape.workspaceId,
     viewerUserId: issueInsertSchema.shape.createdBy,
     issueIdOrIdentifier: z.string().trim().min(1),
-    commentsPage: z.enum(["head", "tail"]).optional(),
+    commentsPage: z.enum(['head', 'tail']).optional(),
     commentsLimit: z.number().int().positive().max(100).optional(),
     commentsOffset: z.number().int().nonnegative().optional(),
   })
-  .strict();
+  .strict()
 
 const listIssuesInputSchema = z
   .object({
@@ -109,7 +109,7 @@ const listIssuesInputSchema = z
     mine: z.boolean().optional(),
     limit: z.number().int().positive().max(100).optional(),
   })
-  .strict();
+  .strict()
 
 const postIssueCommentInputSchema = z
   .object({
@@ -123,78 +123,78 @@ const postIssueCommentInputSchema = z
     parentId: issueCommentInsertSchema.shape.id.optional().nullable(),
     attachmentIds: z.array(z.string().uuid()).optional(),
   })
-  .strict();
+  .strict()
 
-export type CreateIssueInput = z.infer<typeof createIssueInputSchema>;
-export type ReadIssueInput = z.infer<typeof readIssueInputSchema>;
-export type ListIssuesInput = z.infer<typeof listIssuesInputSchema>;
+export type CreateIssueInput = z.infer<typeof createIssueInputSchema>
+export type ReadIssueInput = z.infer<typeof readIssueInputSchema>
+export type ListIssuesInput = z.infer<typeof listIssuesInputSchema>
 export type PostIssueCommentInput = z.infer<
   typeof postIssueCommentInputSchema
 > & {
-  issueRunEnv: IssueRunEnv;
-};
+  issueRunEnv: IssueRunEnv
+}
 
 type IssueCommentWakeupInput = {
-  databaseUrl: string;
-  issueRunEnv: IssueRunEnv;
-  workspaceId: string;
-  issueId: string;
+  databaseUrl: string
+  issueRunEnv: IssueRunEnv
+  workspaceId: string
+  issueId: string
   comment: {
-    id: string;
-    authorType: "user" | "agent";
-    authorId: string;
-    body: string;
-    parentId?: string | null;
-  };
-  mentionedAgentIds?: string[];
-  actor: { type: "member" | "agent" | "system"; id: string };
-};
+    id: string
+    authorType: 'user' | 'agent'
+    authorId: string
+    body: string
+    parentId?: string | null
+  }
+  mentionedAgentIds?: string[]
+  actor: { type: 'member' | 'agent' | 'system'; id: string }
+}
 
-type IssueDb = ReturnType<typeof getIssueDb>;
-type IssueTransaction = Parameters<Parameters<IssueDb["transaction"]>[0]>[0];
+type IssueDb = ReturnType<typeof getIssueDb>
+type IssueTransaction = Parameters<Parameters<IssueDb['transaction']>[0]>[0]
 
 type IssueRunSummary = {
-  run_id: string;
-  agent_id: string;
-  status: string;
-  started_at: string | null;
-};
+  run_id: string
+  agent_id: string
+  status: string
+  started_at: string | null
+}
 
 export type IssueSummary = {
-  issue_id: string;
-  identifier: string;
-  title: string;
-  status: IssueStatus;
+  issue_id: string
+  identifier: string
+  title: string
+  status: IssueStatus
   assignee: {
-    type: "member" | "agent";
-    id: string;
-    name: string | null;
-  } | null;
-  active_run: IssueRunSummary | null;
+    type: 'member' | 'agent'
+    id: string
+    name: string | null
+  } | null
+  active_run: IssueRunSummary | null
   last_event: {
-    event_type: string;
-    message: string | null;
-    created_at: string;
-  } | null;
+    event_type: string
+    message: string | null
+    created_at: string
+  } | null
   work_products_summary: Array<{
-    id: string;
-    type: string;
-    title: string;
-    status: string;
-  }>;
-  description?: string | null;
-  comments?: Comment[];
-  attachments?: Attachment[];
+    id: string
+    type: string
+    title: string
+    status: string
+  }>
+  description?: string | null
+  comments?: Comment[]
+  attachments?: Attachment[]
   comments_page?: {
-    mode: "head" | "tail";
-    limit: number;
-    offset: number;
-    returned: number;
-    total: number;
-    has_more: boolean;
-  };
-  blocked_reason?: string | null;
-};
+    mode: 'head' | 'tail'
+    limit: number
+    offset: number
+    returned: number
+    total: number
+    has_more: boolean
+  }
+  blocked_reason?: string | null
+}
 
 /**
  * Resolves the issue read/write Drizzle client through Hyperdrive's pooled
@@ -206,28 +206,28 @@ export type IssueSummary = {
  * origin pooling behind it.
  */
 export function getIssueDb(databaseUrl: string) {
-  return getPooledDb(databaseUrl);
+  return getPooledDb(databaseUrl)
 }
 
 // The driver's message stays on `cause` for logs; `message` reaches API clients
 // and must not carry raw Postgres error text.
 function serviceDbError(operation: string, cause: unknown) {
   return new IssueServiceError({
-    code: "db_error",
+    code: 'db_error',
     message: `${operation} failed`,
     cause,
-  });
+  })
 }
 
 function validationError(message: string) {
   return new IssueServiceError({
-    code: "validation_failed",
+    code: 'validation_failed',
     message,
-  });
+  })
 }
 
 function dateToIso(value: Date | null | undefined) {
-  return value ? value.toISOString() : null;
+  return value ? value.toISOString() : null
 }
 
 export function toIssue(
@@ -236,11 +236,11 @@ export function toIssue(
 ): Issue {
   const sourceSummary = record.sourceSummary
     ? {
-        connector_id: "manual",
+        connector_id: 'manual',
         display_ref: record.sourceSummary,
         external_url: null,
       }
-    : null;
+    : null
 
   return {
     id: record.id,
@@ -250,13 +250,13 @@ export function toIssue(
     identifier: formatIssueIdentifier(options.issuePrefix, record.number),
     title: record.title,
     description: record.description ?? null,
-    status: (record.status ?? "todo") as IssueStatus,
-    priority: record.priority as Issue["priority"],
-    assignee_type: (record.assigneeType === "user"
-      ? "member"
+    status: (record.status ?? 'todo') as IssueStatus,
+    priority: record.priority as Issue['priority'],
+    assignee_type: (record.assigneeType === 'user'
+      ? 'member'
       : record.assigneeType) as IssueAssigneeType | null,
     assignee_id: record.assigneeId ?? null,
-    creator_type: "member",
+    creator_type: 'member',
     creator_id: record.createdBy,
     parent_issue_id: record.parentId ?? null,
     project_id: record.projectId ?? null,
@@ -267,17 +267,17 @@ export function toIssue(
     reactions: [],
     created_at: record.createdAt.toISOString(),
     updated_at: record.updatedAt.toISOString(),
-  };
+  }
 }
 
 export function issueAttachmentUrl(attachmentId: string) {
-  return `/api/attachments/${attachmentId}`;
+  return `/api/attachments/${attachmentId}`
 }
 
 export function toIssueAttachment(
   row: typeof schema.issueAttachment.$inferSelect,
 ): Attachment {
-  const url = issueAttachmentUrl(row.id);
+  const url = issueAttachmentUrl(row.id)
   return {
     id: row.id,
     workspace_id: row.workspaceId,
@@ -291,7 +291,7 @@ export function toIssueAttachment(
     content_type: row.contentType,
     size_bytes: row.sizeBytes,
     created_at: dateToIso(row.createdAt) ?? new Date().toISOString(),
-  };
+  }
 }
 
 /**
@@ -301,28 +301,28 @@ export function toIssueAttachment(
 export function connectorCommentActorLabel(metadata: unknown): string {
   if (
     metadata !== null &&
-    typeof metadata === "object" &&
+    typeof metadata === 'object' &&
     !Array.isArray(metadata)
   ) {
-    const login = (metadata as Record<string, unknown>).github_login;
-    if (typeof login === "string" && login.trim().length > 0) {
-      return `GitHub · @${login.trim()}`;
+    const login = (metadata as Record<string, unknown>).github_login
+    if (typeof login === 'string' && login.trim().length > 0) {
+      return `GitHub · @${login.trim()}`
     }
   }
-  return "GitHub";
+  return 'GitHub'
 }
 
 export function toIssueComment(
   row: typeof schema.issueComment.$inferSelect,
   attachments: Attachment[] = [],
 ): Comment {
-  const createdAt = (row.createdAt ?? new Date()).toISOString();
-  const authorType: Comment["author_type"] =
-    row.authorType === "agent"
-      ? "agent"
-      : row.authorType === "connector"
-        ? "connector"
-        : "member";
+  const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType: Comment['author_type'] =
+    row.authorType === 'agent'
+      ? 'agent'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : 'member'
 
   return {
     id: row.id,
@@ -330,59 +330,59 @@ export function toIssueComment(
     author_type: authorType,
     author_id: row.authorId,
     author_display:
-      authorType === "connector"
+      authorType === 'connector'
         ? connectorCommentActorLabel(row.metadata)
         : null,
     content: row.body,
-    type: "comment",
+    type: 'comment',
     parent_id: null,
     reactions: [],
     attachments,
     created_at: createdAt,
     updated_at: createdAt,
-  };
+  }
 }
 
 function normalizeMention(value: string) {
-  return value.trim().toLowerCase();
+  return value.trim().toLowerCase()
 }
 
 function mentionAliases(value: {
-  name?: string | null;
-  email?: string | null;
+  name?: string | null
+  email?: string | null
 }) {
-  const aliases = new Set<string>();
+  const aliases = new Set<string>()
   if (value.name) {
-    aliases.add(normalizeMention(value.name));
-    aliases.add(normalizeMention(value.name.replace(/\s+/g, "")));
+    aliases.add(normalizeMention(value.name))
+    aliases.add(normalizeMention(value.name.replace(/\s+/g, '')))
   }
   if (value.email) {
-    aliases.add(normalizeMention(value.email));
-    aliases.add(normalizeMention(value.email.split("@")[0] ?? ""));
+    aliases.add(normalizeMention(value.email))
+    aliases.add(normalizeMention(value.email.split('@')[0] ?? ''))
   }
-  aliases.delete("");
-  return aliases;
+  aliases.delete('')
+  return aliases
 }
 
 function hasMentionToken(aliases: Set<string>, tokens: Set<string>) {
   for (const alias of aliases) {
-    if (tokens.has(alias)) return true;
+    if (tokens.has(alias)) return true
   }
-  return false;
+  return false
 }
 
 function extractMentionTokens(content: string) {
   return new Set(
     [...content.matchAll(MENTION_PATTERN)].map((match) =>
-      normalizeMention(match[1] ?? ""),
+      normalizeMention(match[1] ?? ''),
     ),
-  );
+  )
 }
 
 type MentionCandidates = {
-  agents: Array<{ id: string; name: string | null }>;
-  members: Array<{ id: string; name: string | null; email: string | null }>;
-};
+  agents: Array<{ id: string; name: string | null }>
+  members: Array<{ id: string; name: string | null; email: string | null }>
+}
 
 /**
  * Matches comment text against workspace agents and members.
@@ -396,17 +396,15 @@ type MentionCandidates = {
  * typed `@token` mentions still match by alias.
  */
 export function matchMentions(content: string, candidates: MentionCandidates) {
-  const linkedIds = { agents: new Set<string>(), users: new Set<string>() };
+  const linkedIds = { agents: new Set<string>(), users: new Set<string>() }
   for (const match of content.matchAll(MENTION_LINK_PATTERN)) {
-    const kind = match[1];
-    const id = match[2]?.toLowerCase();
-    if (!id) continue;
-    if (kind === "agent") linkedIds.agents.add(id);
-    else linkedIds.users.add(id);
+    const kind = match[1]
+    const id = match[2]?.toLowerCase()
+    if (!id) continue
+    if (kind === 'agent') linkedIds.agents.add(id)
+    else linkedIds.users.add(id)
   }
-  const tokens = extractMentionTokens(
-    content.replace(MENTION_LINK_PATTERN, ""),
-  );
+  const tokens = extractMentionTokens(content.replace(MENTION_LINK_PATTERN, ''))
 
   const agents = candidates.agents
     .filter(
@@ -414,7 +412,7 @@ export function matchMentions(content: string, candidates: MentionCandidates) {
         linkedIds.agents.has(agent.id.toLowerCase()) ||
         hasMentionToken(mentionAliases({ name: agent.name }), tokens),
     )
-    .map((agent) => agent.id);
+    .map((agent) => agent.id)
   const users = candidates.members
     .filter(
       (member) =>
@@ -424,21 +422,21 @@ export function matchMentions(content: string, candidates: MentionCandidates) {
           tokens,
         ),
     )
-    .map((member) => member.id);
+    .map((member) => member.id)
 
   return {
     agents: [...new Set(agents)],
     users: [...new Set(users)],
-  };
+  }
 }
 
 async function resolveMentions(args: {
-  db: IssueDb;
-  workspaceId: string;
-  content: string;
+  db: IssueDb
+  workspaceId: string
+  content: string
 }) {
-  if (!args.content.includes("@") && !args.content.includes("mention://"))
-    return { agents: [] as string[], users: [] as string[] };
+  if (!args.content.includes('@') && !args.content.includes('mention://'))
+    return { agents: [] as string[], users: [] as string[] }
 
   const [agentRows, memberRows] = await Promise.all([
     args.db
@@ -450,7 +448,7 @@ async function resolveMentions(args: {
       .where(
         and(
           eq(schema.agent.workspaceId, args.workspaceId),
-          inArray(schema.agent.status, ["active", "pending_approval"]),
+          inArray(schema.agent.status, ['active', 'pending_approval']),
         ),
       ),
     args.db
@@ -462,30 +460,30 @@ async function resolveMentions(args: {
       .from(schema.member)
       .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
       .where(eq(schema.member.organizationId, args.workspaceId)),
-  ]);
+  ])
 
   return matchMentions(args.content, {
     agents: agentRows,
     members: memberRows,
-  });
+  })
 }
 
 function mentionsJson(mentions: { agents: string[]; users: string[] }) {
   return mentions.agents.length > 0 || mentions.users.length > 0
     ? mentions
-    : null;
+    : null
 }
 
 function groupAttachmentsByCommentId(attachments: Attachment[]) {
-  const grouped = new Map<string, Attachment[]>();
+  const grouped = new Map<string, Attachment[]>()
   for (const attachment of attachments) {
-    if (!attachment.comment_id) continue;
+    if (!attachment.comment_id) continue
     grouped.set(attachment.comment_id, [
       ...(grouped.get(attachment.comment_id) ?? []),
       attachment,
-    ]);
+    ])
   }
-  return grouped;
+  return grouped
 }
 
 async function loadIssueBodyAttachments(db: IssueDb, issueId: string) {
@@ -498,8 +496,8 @@ async function loadIssueBodyAttachments(db: IssueDb, issueId: string) {
         isNull(schema.issueAttachment.commentId),
       ),
     )
-    .orderBy(asc(schema.issueAttachment.createdAt));
-  return rows.map(toIssueAttachment);
+    .orderBy(asc(schema.issueAttachment.createdAt))
+  return rows.map(toIssueAttachment)
 }
 
 /**
@@ -510,43 +508,43 @@ async function loadIssueBodyAttachments(db: IssueDb, issueId: string) {
  * offset for paging older chunks like `tail/head` rather than an unbounded dump.
  */
 async function loadIssueCommentPage(input: {
-  db: IssueDb;
-  issueId: string;
-  mode: "head" | "tail";
-  limit: number;
-  offset: number;
+  db: IssueDb
+  issueId: string
+  mode: 'head' | 'tail'
+  limit: number
+  offset: number
 }) {
   const [{ count }] = (await input.db
     .select({ count: sql<number>`cast(count(*) as int)` })
     .from(schema.issueComment)
     .where(eq(schema.issueComment.issueId, input.issueId))) as [
     { count: number },
-  ];
+  ]
 
   const rows = await input.db
     .select()
     .from(schema.issueComment)
     .where(eq(schema.issueComment.issueId, input.issueId))
     .orderBy(
-      input.mode === "head"
+      input.mode === 'head'
         ? asc(schema.issueComment.createdAt)
         : desc(schema.issueComment.createdAt),
     )
     .limit(input.limit)
-    .offset(input.offset);
+    .offset(input.offset)
 
-  const orderedRows = input.mode === "tail" ? [...rows].reverse() : rows;
-  const commentIds = orderedRows.map((comment) => comment.id);
+  const orderedRows = input.mode === 'tail' ? [...rows].reverse() : rows
+  const commentIds = orderedRows.map((comment) => comment.id)
   const attachmentRows = commentIds.length
     ? await input.db
         .select()
         .from(schema.issueAttachment)
         .where(inArray(schema.issueAttachment.commentId, commentIds))
         .orderBy(asc(schema.issueAttachment.createdAt))
-    : [];
+    : []
   const attachmentsByCommentId = groupAttachmentsByCommentId(
     attachmentRows.map(toIssueAttachment),
-  );
+  )
 
   return {
     comments: orderedRows.map((comment) =>
@@ -560,7 +558,7 @@ async function loadIssueCommentPage(input: {
       total: count,
       has_more: input.offset + orderedRows.length < count,
     },
-  };
+  }
 }
 
 /**
@@ -571,16 +569,16 @@ async function loadIssueCommentPage(input: {
  * attaching someone else's uploaded object by guessing an id.
  */
 async function linkIssueAttachments(input: {
-  db: IssueDb | IssueTransaction;
-  workspaceId: string;
-  attachmentIds?: string[];
-  issueId: string;
-  commentId?: string | null;
-  uploaderType: "member" | "agent";
-  uploaderId: string;
+  db: IssueDb | IssueTransaction
+  workspaceId: string
+  attachmentIds?: string[]
+  issueId: string
+  commentId?: string | null
+  uploaderType: 'member' | 'agent'
+  uploaderId: string
 }) {
-  if (!input.attachmentIds?.length) return;
-  const uniqueIds = [...new Set(input.attachmentIds)];
+  if (!input.attachmentIds?.length) return
+  const uniqueIds = [...new Set(input.attachmentIds)]
   await input.db
     .update(schema.issueAttachment)
     .set({ issueId: input.issueId, commentId: input.commentId ?? null })
@@ -591,15 +589,15 @@ async function linkIssueAttachments(input: {
         eq(schema.issueAttachment.uploaderId, input.uploaderId),
         inArray(schema.issueAttachment.id, uniqueIds),
       ),
-    );
+    )
 }
 
 function parseIssueIdentifier(value: string) {
-  const match = /^[A-Z0-9]{2,8}-(\d+)$/i.exec(value.trim());
-  const numberText = match?.[1];
-  if (!numberText) return null;
-  const issueNumber = Number(numberText);
-  return Number.isSafeInteger(issueNumber) ? issueNumber : null;
+  const match = /^[A-Z0-9]{2,8}-(\d+)$/i.exec(value.trim())
+  const numberText = match?.[1]
+  if (!numberText) return null
+  const issueNumber = Number(numberText)
+  return Number.isSafeInteger(issueNumber) ? issueNumber : null
 }
 
 /**
@@ -623,19 +621,19 @@ async function issueVisibilityFor(
         eq(schema.member.userId, viewerUserId),
       ),
     )
-    .limit(1);
+    .limit(1)
   return teamIssueVisibilityCondition({
     viewerId: viewerUserId,
     manager: isWorkspaceManagerRole(viewer?.role),
-  });
+  })
 }
 
 /** Matches an issue by `PREFIX-123` identifier or UUID; null when neither. */
 function issueLookupCondition(issueIdOrIdentifier: string) {
-  const issueNumber = parseIssueIdentifier(issueIdOrIdentifier);
-  if (issueNumber !== null) return eq(schema.issue.number, issueNumber);
-  const issueUuid = z.string().uuid().safeParse(issueIdOrIdentifier.trim());
-  return issueUuid.success ? eq(schema.issue.id, issueUuid.data) : null;
+  const issueNumber = parseIssueIdentifier(issueIdOrIdentifier)
+  if (issueNumber !== null) return eq(schema.issue.number, issueNumber)
+  const issueUuid = z.string().uuid().safeParse(issueIdOrIdentifier.trim())
+  return issueUuid.success ? eq(schema.issue.id, issueUuid.data) : null
 }
 
 /**
@@ -647,13 +645,13 @@ function issueLookupCondition(issueIdOrIdentifier: string) {
 export async function resolveVisibleIssue(
   db: IssueDb,
   args: {
-    workspaceId: string;
-    viewerUserId: string;
-    issueIdOrIdentifier: string;
+    workspaceId: string
+    viewerUserId: string
+    issueIdOrIdentifier: string
   },
 ) {
-  const lookup = issueLookupCondition(args.issueIdOrIdentifier);
-  if (!lookup) return null;
+  const lookup = issueLookupCondition(args.issueIdOrIdentifier)
+  if (!lookup) return null
   const [issue] = await db
     .select()
     .from(schema.issue)
@@ -664,8 +662,8 @@ export async function resolveVisibleIssue(
         await issueVisibilityFor(db, args.workspaceId, args.viewerUserId),
       ),
     )
-    .limit(1);
-  return issue ?? null;
+    .limit(1)
+  return issue ?? null
 }
 
 async function loadIssuePrefix(db: IssueDb, workspaceId: string) {
@@ -673,37 +671,37 @@ async function loadIssuePrefix(db: IssueDb, workspaceId: string) {
     .select({ issuePrefix: schema.organization.issuePrefix })
     .from(schema.organization)
     .where(eq(schema.organization.id, workspaceId))
-    .limit(1);
+    .limit(1)
   if (!workspace) {
     throw new IssueServiceError({
-      code: "db_error",
-      message: "Workspace not found while loading issue prefix",
-    });
+      code: 'db_error',
+      message: 'Workspace not found while loading issue prefix',
+    })
   }
-  return workspace.issuePrefix;
+  return workspace.issuePrefix
 }
 
 async function issueAssigneeSummary(
   db: IssueDb,
   issue: typeof schema.issue.$inferSelect,
-): Promise<IssueSummary["assignee"]> {
-  if (!issue.assigneeType || !issue.assigneeId) return null;
+): Promise<IssueSummary['assignee']> {
+  if (!issue.assigneeType || !issue.assigneeId) return null
 
-  if (issue.assigneeType === "agent") {
+  if (issue.assigneeType === 'agent') {
     const [agent] = await db
       .select({ id: schema.agent.id, name: schema.agent.name })
       .from(schema.agent)
       .where(eq(schema.agent.id, issue.assigneeId))
-      .limit(1);
-    return agent ? { type: "agent", id: agent.id, name: agent.name } : null;
+      .limit(1)
+    return agent ? { type: 'agent', id: agent.id, name: agent.name } : null
   }
 
   const [user] = await db
     .select({ id: schema.user.id, name: schema.user.name })
     .from(schema.user)
     .where(eq(schema.user.id, issue.assigneeId))
-    .limit(1);
-  return user ? { type: "member", id: user.id, name: user.name } : null;
+    .limit(1)
+  return user ? { type: 'member', id: user.id, name: user.name } : null
 }
 
 async function activeRunSummary(
@@ -718,7 +716,7 @@ async function activeRunSummary(
     : and(
         eq(schema.issueRun.issueId, issue.id),
         inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
-      );
+      )
 
   const [run] = await db
     .select({
@@ -730,7 +728,7 @@ async function activeRunSummary(
     .from(schema.issueRun)
     .where(runConditions)
     .orderBy(desc(schema.issueRun.createdAt))
-    .limit(1);
+    .limit(1)
 
   return run
     ? {
@@ -739,14 +737,14 @@ async function activeRunSummary(
         status: run.status,
         started_at: dateToIso(run.startedAt),
       }
-    : null;
+    : null
 }
 
 async function latestIssueEvent(
   db: IssueDb,
   issue: typeof schema.issue.$inferSelect,
   activeRun: IssueRunSummary | null,
-): Promise<IssueSummary["last_event"]> {
+): Promise<IssueSummary['last_event']> {
   const eventConditions = activeRun
     ? and(
         eq(schema.issueRunEvent.workspaceId, issue.workspaceId),
@@ -755,7 +753,7 @@ async function latestIssueEvent(
     : and(
         eq(schema.issueRunEvent.workspaceId, issue.workspaceId),
         eq(schema.issueRunEvent.issueId, issue.id),
-      );
+      )
 
   const [event] = await db
     .select({
@@ -769,7 +767,7 @@ async function latestIssueEvent(
       desc(schema.issueRunEvent.createdAt),
       desc(schema.issueRunEvent.seq),
     )
-    .limit(1);
+    .limit(1)
 
   return event
     ? {
@@ -777,7 +775,7 @@ async function latestIssueEvent(
         message: event.message ?? null,
         created_at: dateToIso(event.createdAt) ?? new Date().toISOString(),
       }
-    : null;
+    : null
 }
 
 async function workProductsSummary(db: IssueDb, issueId: string) {
@@ -791,28 +789,28 @@ async function workProductsSummary(db: IssueDb, issueId: string) {
     .from(schema.issueWorkProduct)
     .where(eq(schema.issueWorkProduct.issueId, issueId))
     .orderBy(desc(schema.issueWorkProduct.updatedAt))
-    .limit(10);
+    .limit(10)
 
   return rows.map((row) => ({
     id: row.id,
     type: row.type,
     title: row.title ?? row.type,
     status: row.status,
-  }));
+  }))
 }
 
 async function blockedReason(
   db: IssueDb,
   issue: typeof schema.issue.$inferSelect,
 ) {
-  if (issue.status !== "blocked") return null;
+  if (issue.status !== 'blocked') return null
   const [run] = await db
     .select({ error: schema.issueRun.error })
     .from(schema.issueRun)
     .where(eq(schema.issueRun.issueId, issue.id))
     .orderBy(desc(schema.issueRun.createdAt))
-    .limit(1);
-  return run?.error ?? null;
+    .limit(1)
+  return run?.error ?? null
 }
 
 async function toIssueSummary(
@@ -828,19 +826,19 @@ async function toIssueSummary(
       ),
       workProductsSummary(db, issue.id),
       blockedReason(db, issue),
-    ]);
+    ])
 
   return {
     issue_id: issue.id,
     identifier: formatIssueIdentifier(options.issuePrefix, issue.number),
     title: issue.title,
-    status: (issue.status ?? "todo") as IssueStatus,
+    status: (issue.status ?? 'todo') as IssueStatus,
     assignee,
     active_run: activeRun,
     last_event: lastEvent,
     work_products_summary: products,
     ...(reason ? { blocked_reason: reason } : {}),
-  };
+  }
 }
 
 /**
@@ -864,12 +862,12 @@ async function toIssueSummary(
  * https://www.postgresql.org/docs/current/functions-admin.html#FUNCTIONS-ADVISORY-LOCKS
  */
 export async function allocateIssueSlot(
-  executor: Pick<IssueDb, "select" | "execute">,
+  executor: Pick<IssueDb, 'select' | 'execute'>,
   args: { workspaceId: string; status: string },
 ): Promise<{ number: number; position: string }> {
   await executor.execute(
     sql`select pg_advisory_xact_lock(hashtextextended(${`issue-number:${args.workspaceId}`}, 0))`,
-  );
+  )
   const [{ nextNumber }] = (await executor
     .select({
       nextNumber: sql<number>`cast(coalesce(max(${schema.issue.number}), 0) + 1 as int)`,
@@ -877,7 +875,7 @@ export async function allocateIssueSlot(
     .from(schema.issue)
     .where(eq(schema.issue.workspaceId, args.workspaceId))) as [
     { nextNumber: number },
-  ];
+  ]
   const [{ lastPosition }] = (await executor
     .select({
       lastPosition: sql<string | null>`max(${schema.issue.position})`,
@@ -888,18 +886,18 @@ export async function allocateIssueSlot(
         eq(schema.issue.workspaceId, args.workspaceId),
         eq(schema.issue.status, args.status),
       ),
-    )) as [{ lastPosition: string | null }];
-  return { number: nextNumber, position: orderKeyBetween(lastPosition, null) };
+    )) as [{ lastPosition: string | null }]
+  return { number: nextNumber, position: orderKeyBetween(lastPosition, null) }
 }
 
 /** Who is creating a Team issue and whom they want to assign. */
 export type TeamIssueCreateInput = {
-  workspaceId: string;
-  teamId: string;
-  createdBy: string;
-  assigneeType?: "user" | "agent" | null;
-  assigneeId?: string | null;
-};
+  workspaceId: string
+  teamId: string
+  createdBy: string
+  assigneeType?: 'user' | 'agent' | null
+  assigneeId?: string | null
+}
 
 /**
  * Enforces the Team create rules for a new Team issue: the creator must be a
@@ -916,7 +914,7 @@ export type TeamIssueCreateInput = {
  * `isWorkspaceManagerRole` in `@garden/db/team-issue-visibility`.
  */
 export async function authorizeTeamIssueCreate(
-  db: Pick<IssueDb, "select">,
+  db: Pick<IssueDb, 'select'>,
   input: TeamIssueCreateInput,
 ): Promise<ResultValue<void, IssueServiceError>> {
   return Result.gen(async function* () {
@@ -929,7 +927,7 @@ export async function authorizeTeamIssueCreate(
               ownerUserId: schema.team.ownerUserId,
             })
             .from(schema.team)
-            .where(eq(schema.team.id, input.teamId));
+            .where(eq(schema.team.id, input.teamId))
           const [workspaceMembership] = await db
             .select({ role: schema.member.role })
             .from(schema.member)
@@ -938,7 +936,7 @@ export async function authorizeTeamIssueCreate(
                 eq(schema.member.organizationId, input.workspaceId),
                 eq(schema.member.userId, input.createdBy),
               ),
-            );
+            )
           const [creatorTeamMembership] = await db
             .select({ id: schema.teamMember.id })
             .from(schema.teamMember)
@@ -947,43 +945,43 @@ export async function authorizeTeamIssueCreate(
                 eq(schema.teamMember.teamId, input.teamId),
                 eq(schema.teamMember.userId, input.createdBy),
               ),
-            );
-          return { team, workspaceMembership, creatorTeamMembership };
+            )
+          return { team, workspaceMembership, creatorTeamMembership }
         },
-        catch: (cause) => serviceDbError("load team access", cause),
+        catch: (cause) => serviceDbError('load team access', cause),
       }),
-    );
-    const { team, workspaceMembership, creatorTeamMembership } = loaded;
+    )
+    const { team, workspaceMembership, creatorTeamMembership } = loaded
     if (!team || team.workspaceId !== input.workspaceId) {
       return Result.err(
         new IssueServiceError({
-          code: "team_not_found",
-          message: "Team not found",
+          code: 'team_not_found',
+          message: 'Team not found',
         }),
-      );
+      )
     }
-    const manager = isWorkspaceManagerRole(workspaceMembership?.role);
+    const manager = isWorkspaceManagerRole(workspaceMembership?.role)
     if (!workspaceMembership || (!manager && !creatorTeamMembership)) {
       return Result.err(
         new IssueServiceError({
-          code: "team_access_denied",
-          message: "Team membership required",
+          code: 'team_access_denied',
+          message: 'Team membership required',
         }),
-      );
+      )
     }
-    if (!input.assigneeId) return Result.ok(undefined);
+    if (!input.assigneeId) return Result.ok(undefined)
 
-    const canAssignOthers = manager || team.ownerUserId === input.createdBy;
-    const isAgent = input.assigneeType === "agent";
+    const canAssignOthers = manager || team.ownerUserId === input.createdBy
+    const isAgent = input.assigneeType === 'agent'
     if (!canAssignOthers && (isAgent || input.assigneeId !== input.createdBy)) {
       return Result.err(
         new IssueServiceError({
-          code: "team_access_denied",
-          message: "Team members can only assign issues to themselves",
+          code: 'team_access_denied',
+          message: 'Team members can only assign issues to themselves',
         }),
-      );
+      )
     }
-    const assigneeId = input.assigneeId;
+    const assigneeId = input.assigneeId
     const assigneeMembership = yield* Result.await(
       Result.tryPromise({
         try: async () => {
@@ -997,22 +995,22 @@ export async function authorizeTeamIssueCreate(
                   ? eq(schema.teamMember.agentId, assigneeId)
                   : eq(schema.teamMember.userId, assigneeId),
               ),
-            );
-          return row ?? null;
+            )
+          return row ?? null
         },
-        catch: (cause) => serviceDbError("load team assignee", cause),
+        catch: (cause) => serviceDbError('load team assignee', cause),
       }),
-    );
+    )
     if (!assigneeMembership) {
       return Result.err(
         new IssueServiceError({
-          code: "team_assignee_invalid",
-          message: "Assignee must be a Team member",
+          code: 'team_assignee_invalid',
+          message: 'Assignee must be a Team member',
         }),
-      );
+      )
     }
-    return Result.ok(undefined);
-  });
+    return Result.ok(undefined)
+  })
 }
 
 /**
@@ -1022,14 +1020,14 @@ export async function authorizeTeamIssueCreate(
 export async function createIssue(
   input: CreateIssueInput,
 ): Promise<ResultValue<Issue, IssueServiceError>> {
-  const parsed = createIssueInputSchema.safeParse(input);
+  const parsed = createIssueInputSchema.safeParse(input)
   if (!parsed.success) {
     return Result.err(
-      validationError(parsed.error.issues[0]?.message ?? "Invalid issue."),
-    );
+      validationError(parsed.error.issues[0]?.message ?? 'Invalid issue.'),
+    )
   }
 
-  const db = getIssueDb(parsed.data.databaseUrl);
+  const db = getIssueDb(parsed.data.databaseUrl)
   if (parsed.data.teamId) {
     const teamResult = await authorizeTeamIssueCreate(db, {
       workspaceId: parsed.data.workspaceId,
@@ -1037,17 +1035,17 @@ export async function createIssue(
       createdBy: parsed.data.createdBy,
       assigneeType: parsed.data.assigneeType,
       assigneeId: parsed.data.assigneeId,
-    });
-    if (teamResult.isErr()) return Result.err(teamResult.error);
+    })
+    if (teamResult.isErr()) return Result.err(teamResult.error)
   }
   const result = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
-        const status = parsed.data.status ?? "todo";
+        const status = parsed.data.status ?? 'todo'
         const slot = await allocateIssueSlot(tx, {
           workspaceId: parsed.data.workspaceId,
           status,
-        });
+        })
 
         const [insertedIssue] = await tx
           .insert(schema.issue)
@@ -1059,7 +1057,7 @@ export async function createIssue(
             title: parsed.data.title,
             description: parsed.data.description ?? null,
             status,
-            priority: parsed.data.priority ?? "medium",
+            priority: parsed.data.priority ?? 'medium',
             createdBy: parsed.data.createdBy,
             assigneeType: parsed.data.assigneeType ?? null,
             assigneeId: parsed.data.assigneeId ?? null,
@@ -1068,14 +1066,14 @@ export async function createIssue(
             projectId: parsed.data.projectId ?? null,
             dueDate: parsed.data.dueDate ?? null,
           })
-          .returning();
+          .returning()
         if (!insertedIssue) {
           throw new IssueServiceError({
-            code: "db_error",
-            message: "Issue insert returned no row",
-          });
+            code: 'db_error',
+            message: 'Issue insert returned no row',
+          })
         }
-        const issue = insertedIssue;
+        const issue = insertedIssue
 
         if (parsed.data.source) {
           await attachSourceBindingInTransaction(tx, {
@@ -1085,7 +1083,7 @@ export async function createIssue(
             sourceKind: parsed.data.source.sourceKind,
             externalId: parsed.data.source.externalId,
             externalUrl: parsed.data.source.externalUrl,
-          } satisfies Omit<AttachSourceBindingInput, "databaseUrl">);
+          } satisfies Omit<AttachSourceBindingInput, 'databaseUrl'>)
         }
 
         await linkIssueAttachments({
@@ -1093,33 +1091,33 @@ export async function createIssue(
           workspaceId: parsed.data.workspaceId,
           attachmentIds: parsed.data.attachmentIds,
           issueId: issue.id,
-          uploaderType: "member",
+          uploaderType: 'member',
           uploaderId: parsed.data.createdBy,
-        });
+        })
 
-        return issue;
+        return issue
       }),
-    catch: (cause) => serviceDbError("create issue", cause),
-  });
-  if (result.isErr()) return Result.err(result.error);
+    catch: (cause) => serviceDbError('create issue', cause),
+  })
+  if (result.isErr()) return Result.err(result.error)
 
   // Durably record the issue's initial participants so the creator (and any
   // up-front assignee, including an agent) show up in the participants panel
   // and receive activity. Idempotent + best-effort: a failure here must not
   // fail issue creation, which already committed above.
-  const createdIssue = result.value;
+  const createdIssue = result.value
   const initialSubscribers: SubscriberEntry[] = [
-    { userType: "member", userId: parsed.data.createdBy, reason: "creator" },
-  ];
+    { userType: 'member', userId: parsed.data.createdBy, reason: 'creator' },
+  ]
   const createdAssigneeType = assigneeToSubscriberType(
     createdIssue.assigneeType,
-  );
+  )
   if (createdAssigneeType && createdIssue.assigneeId) {
     initialSubscribers.push({
       userType: createdAssigneeType,
       userId: createdIssue.assigneeId,
-      reason: "assignee",
-    });
+      reason: 'assignee',
+    })
   }
   const subscribeResult = await Result.tryPromise({
     try: () =>
@@ -1128,17 +1126,17 @@ export async function createIssue(
         issueId: createdIssue.id,
         entries: initialSubscribers,
       }),
-    catch: (cause) => serviceDbError("add issue subscribers", cause),
-  });
+    catch: (cause) => serviceDbError('add issue subscribers', cause),
+  })
   if (subscribeResult.isErr())
-    logger.error("addIssueSubscribers failed", subscribeResult.error.message);
+    logger.error('addIssueSubscribers failed', subscribeResult.error.message)
 
   const prefixResult = await Result.tryPromise({
     try: async () => await loadIssuePrefix(db, parsed.data.workspaceId),
-    catch: (cause) => serviceDbError("load issue prefix", cause),
-  });
-  if (prefixResult.isErr()) return Result.err(prefixResult.error);
-  return Result.ok(toIssue(result.value, { issuePrefix: prefixResult.value }));
+    catch: (cause) => serviceDbError('load issue prefix', cause),
+  })
+  if (prefixResult.isErr()) return Result.err(prefixResult.error)
+  return Result.ok(toIssue(result.value, { issuePrefix: prefixResult.value }))
 }
 
 /**
@@ -1149,22 +1147,22 @@ export async function createIssue(
 export async function readIssue(
   input: ReadIssueInput,
 ): Promise<ResultValue<IssueSummary, IssueServiceError>> {
-  const parsed = readIssueInputSchema.safeParse(input);
+  const parsed = readIssueInputSchema.safeParse(input)
   if (!parsed.success) {
     return Result.err(
       validationError(
-        parsed.error.issues[0]?.message ?? "Invalid issue lookup.",
+        parsed.error.issues[0]?.message ?? 'Invalid issue lookup.',
       ),
-    );
+    )
   }
 
-  const db = getIssueDb(parsed.data.databaseUrl);
+  const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
       const issueCondition = issueLookupCondition(
         parsed.data.issueIdOrIdentifier,
-      );
-      if (!issueCondition) return null;
+      )
+      if (!issueCondition) return null
 
       const [issue] = await db
         .select({
@@ -1187,11 +1185,11 @@ export async function readIssue(
             ),
           ),
         )
-        .limit(1);
-      if (!issue) return null;
-      const commentsLimit = parsed.data.commentsLimit ?? 20;
-      const commentsOffset = parsed.data.commentsOffset ?? 0;
-      const commentsPageMode = parsed.data.commentsPage ?? "tail";
+        .limit(1)
+      if (!issue) return null
+      const commentsLimit = parsed.data.commentsLimit ?? 20
+      const commentsOffset = parsed.data.commentsOffset ?? 0
+      const commentsPageMode = parsed.data.commentsPage ?? 'tail'
       const [summary, attachments, thread] = await Promise.all([
         toIssueSummary(db, issue.issue, {
           issuePrefix: issue.issuePrefix,
@@ -1204,7 +1202,7 @@ export async function readIssue(
           limit: commentsLimit,
           offset: commentsOffset,
         }),
-      ]);
+      ])
 
       return {
         ...summary,
@@ -1212,20 +1210,20 @@ export async function readIssue(
         attachments,
         comments: thread.comments,
         comments_page: thread.page,
-      };
+      }
     },
-    catch: (cause) => serviceDbError("read issue", cause),
-  });
-  if (result.isErr()) return Result.err(result.error);
+    catch: (cause) => serviceDbError('read issue', cause),
+  })
+  if (result.isErr()) return Result.err(result.error)
   if (!result.value) {
     return Result.err(
       new IssueServiceError({
-        code: "issue_not_found",
-        message: "Issue not found.",
+        code: 'issue_not_found',
+        message: 'Issue not found.',
       }),
-    );
+    )
   }
-  return Result.ok(result.value);
+  return Result.ok(result.value)
 }
 
 /**
@@ -1238,16 +1236,16 @@ export async function readIssue(
 export async function listIssues(
   input: ListIssuesInput,
 ): Promise<ResultValue<IssueSummary[], IssueServiceError>> {
-  const parsed = listIssuesInputSchema.safeParse(input);
+  const parsed = listIssuesInputSchema.safeParse(input)
   if (!parsed.success) {
     return Result.err(
       validationError(
-        parsed.error.issues[0]?.message ?? "Invalid issue list query.",
+        parsed.error.issues[0]?.message ?? 'Invalid issue list query.',
       ),
-    );
+    )
   }
 
-  const db = getIssueDb(parsed.data.databaseUrl);
+  const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
       const conditions = [
@@ -1257,18 +1255,18 @@ export async function listIssues(
           parsed.data.workspaceId,
           parsed.data.ownerUserId,
         ),
-      ];
+      ]
       if (parsed.data.status) {
-        conditions.push(eq(schema.issue.status, parsed.data.status));
+        conditions.push(eq(schema.issue.status, parsed.data.status))
       }
       if (parsed.data.assigneeAgentId) {
-        conditions.push(eq(schema.issue.assigneeType, "agent"));
+        conditions.push(eq(schema.issue.assigneeType, 'agent'))
         conditions.push(
           eq(schema.issue.assigneeId, parsed.data.assigneeAgentId),
-        );
+        )
       } else if (parsed.data.mine) {
-        conditions.push(eq(schema.issue.assigneeType, "user"));
-        conditions.push(eq(schema.issue.assigneeId, parsed.data.ownerUserId));
+        conditions.push(eq(schema.issue.assigneeType, 'user'))
+        conditions.push(eq(schema.issue.assigneeId, parsed.data.ownerUserId))
       }
 
       const issues = await db
@@ -1283,18 +1281,18 @@ export async function listIssues(
         )
         .where(and(...conditions))
         .orderBy(desc(schema.issue.updatedAt), desc(schema.issue.createdAt))
-        .limit(parsed.data.limit ?? 20);
+        .limit(parsed.data.limit ?? 20)
 
       return await Promise.all(
         issues.map((row) =>
           toIssueSummary(db, row.issue, { issuePrefix: row.issuePrefix }),
         ),
-      );
+      )
     },
-    catch: (cause) => serviceDbError("list issues", cause),
-  });
-  if (result.isErr()) return Result.err(result.error);
-  return Result.ok(result.value);
+    catch: (cause) => serviceDbError('list issues', cause),
+  })
+  if (result.isErr()) return Result.err(result.error)
+  return Result.ok(result.value)
 }
 
 /**
@@ -1308,59 +1306,59 @@ export async function postIssueComment(
 ): Promise<
   ResultValue<{ comment_id: string; comment: Comment }, IssueServiceError>
 > {
-  const { issueRunEnv, ...rawInput } = input;
-  const parsed = postIssueCommentInputSchema.safeParse(rawInput);
+  const { issueRunEnv, ...rawInput } = input
+  const parsed = postIssueCommentInputSchema.safeParse(rawInput)
   if (!parsed.success) {
     return Result.err(
       validationError(
-        parsed.error.issues[0]?.message ?? "Invalid issue comment.",
+        parsed.error.issues[0]?.message ?? 'Invalid issue comment.',
       ),
-    );
+    )
   }
 
-  const db = getIssueDb(parsed.data.databaseUrl);
+  const db = getIssueDb(parsed.data.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
       const issue = await resolveVisibleIssue(db, {
         workspaceId: parsed.data.workspaceId,
         viewerUserId: parsed.data.authorUserId,
         issueIdOrIdentifier: parsed.data.issueIdOrIdentifier,
-      });
-      if (!issue) return { kind: "missing" as const };
+      })
+      if (!issue) return { kind: 'missing' as const }
 
       const mentions = await resolveMentions({
         db,
         workspaceId: parsed.data.workspaceId,
         content: parsed.data.body,
-      });
+      })
       const [insertedComment] = await db
         .insert(schema.issueComment)
         .values({
           id: crypto.randomUUID(),
           issueId: issue.id,
-          authorType: "user",
+          authorType: 'user',
           authorId: parsed.data.authorUserId,
           body: parsed.data.body,
           mentions: mentionsJson(mentions),
         })
-        .returning();
+        .returning()
 
       if (!insertedComment) {
         throw new IssueServiceError({
-          code: "db_error",
-          message: "Comment insert returned no row",
-        });
+          code: 'db_error',
+          message: 'Comment insert returned no row',
+        })
       }
-      const comment = insertedComment;
+      const comment = insertedComment
       await linkIssueAttachments({
         db,
         workspaceId: parsed.data.workspaceId,
         attachmentIds: parsed.data.attachmentIds,
         issueId: issue.id,
         commentId: comment.id,
-        uploaderType: "member",
+        uploaderType: 'member',
         uploaderId: parsed.data.authorUserId,
-      });
+      })
       const commentAttachments = parsed.data.attachmentIds?.length
         ? (
             await db
@@ -1369,7 +1367,7 @@ export async function postIssueComment(
               .where(eq(schema.issueAttachment.commentId, comment.id))
               .orderBy(asc(schema.issueAttachment.createdAt))
           ).map(toIssueAttachment)
-        : [];
+        : []
 
       // Joining the issue durably: the comment author becomes a participant,
       // and every mentioned agent/member is recorded as 'mentioned'. This is
@@ -1381,41 +1379,41 @@ export async function postIssueComment(
         issueId: issue.id,
         entries: [
           {
-            userType: "member" as const,
+            userType: 'member' as const,
             userId: parsed.data.authorUserId,
-            reason: "commenter" as const,
+            reason: 'commenter' as const,
           },
           ...mentions.agents.map((agentId) => ({
-            userType: "agent" as const,
+            userType: 'agent' as const,
             userId: agentId,
-            reason: "mentioned" as const,
+            reason: 'mentioned' as const,
           })),
           ...mentions.users.map((userId) => ({
-            userType: "member" as const,
+            userType: 'member' as const,
             userId,
-            reason: "mentioned" as const,
+            reason: 'mentioned' as const,
           })),
         ],
-      });
+      })
 
       return {
-        kind: "posted" as const,
+        kind: 'posted' as const,
         comment: toIssueComment(comment, commentAttachments),
         dbComment: comment,
         issueId: issue.id,
         mentionedAgentIds: mentions.agents,
-      };
+      }
     },
-    catch: (cause) => serviceDbError("post issue comment", cause),
-  });
-  if (result.isErr()) return Result.err(result.error);
-  if (result.value.kind === "missing") {
+    catch: (cause) => serviceDbError('post issue comment', cause),
+  })
+  if (result.isErr()) return Result.err(result.error)
+  if (result.value.kind === 'missing') {
     return Result.err(
       new IssueServiceError({
-        code: "issue_not_found",
-        message: "Issue not found.",
+        code: 'issue_not_found',
+        message: 'Issue not found.',
       }),
-    );
+    )
   }
   const wakeResult = await wakeAgentsForIssueComment({
     databaseUrl: parsed.data.databaseUrl,
@@ -1424,26 +1422,26 @@ export async function postIssueComment(
     issueId: result.value.issueId,
     comment: {
       id: result.value.dbComment.id,
-      authorType: "user",
+      authorType: 'user',
       authorId: parsed.data.authorUserId,
       body: result.value.dbComment.body,
       parentId: parsed.data.parentId ?? null,
     },
     mentionedAgentIds: result.value.mentionedAgentIds,
-    actor: { type: "member", id: parsed.data.authorUserId },
-  });
-  if (wakeResult.isErr()) return Result.err(wakeResult.error);
+    actor: { type: 'member', id: parsed.data.authorUserId },
+  })
+  if (wakeResult.isErr()) return Result.err(wakeResult.error)
 
   return Result.ok({
     comment_id: result.value.comment.id,
     comment: result.value.comment,
-  });
+  })
 }
 
 export async function wakeAgentsForIssueComment(
   input: IssueCommentWakeupInput,
 ): Promise<ResultValue<void, IssueServiceError>> {
-  const db = getIssueDb(input.databaseUrl);
+  const db = getIssueDb(input.databaseUrl)
   const result = await Result.tryPromise({
     try: async () => {
       const [issue] = await db
@@ -1461,8 +1459,8 @@ export async function wakeAgentsForIssueComment(
             eq(schema.issue.workspaceId, input.workspaceId),
           ),
         )
-        .limit(1);
-      if (!issue) return { kind: "missing" as const };
+        .limit(1)
+      if (!issue) return { kind: 'missing' as const }
 
       const [parentComment] = input.comment.parentId
         ? await db
@@ -1478,7 +1476,7 @@ export async function wakeAgentsForIssueComment(
               ),
             )
             .limit(1)
-        : [];
+        : []
 
       const [runningRuns, activeWaitingRun] = await Promise.all([
         db
@@ -1499,23 +1497,23 @@ export async function wakeAgentsForIssueComment(
           .where(
             and(
               eq(schema.issueRun.issueId, input.issueId),
-              eq(schema.issueRun.status, "waiting_for_input"),
+              eq(schema.issueRun.status, 'waiting_for_input'),
             ),
           )
           .orderBy(desc(schema.issueRun.createdAt))
           .limit(1)
           .then((rows) => rows[0] ?? null),
-      ]);
+      ])
 
       const decisions = decideWakeups({
         issue: {
           id: issue.id,
-          status: (issue.status ?? "todo") as IssueStatus,
+          status: (issue.status ?? 'todo') as IssueStatus,
           assigneeType:
-            issue.assigneeType === "agent"
-              ? "agent"
-              : issue.assigneeType === "user"
-                ? "member"
+            issue.assigneeType === 'agent'
+              ? 'agent'
+              : issue.assigneeType === 'user'
+                ? 'member'
                 : null,
           assigneeId: issue.assigneeId,
         },
@@ -1529,35 +1527,35 @@ export async function wakeAgentsForIssueComment(
         parentComment:
           parentComment &&
           parentComment.authorId &&
-          parentComment.authorType !== "connector"
+          parentComment.authorType !== 'connector'
             ? {
                 authorType:
-                  parentComment.authorType === "agent" ? "agent" : "user",
+                  parentComment.authorType === 'agent' ? 'agent' : 'user',
                 authorId: parentComment.authorId,
               }
             : null,
         runningRuns,
         mentionedAgentIds: input.mentionedAgentIds ?? [],
-      });
+      })
 
-      const startedAgentIds = new Set<string>();
+      const startedAgentIds = new Set<string>()
       if (activeWaitingRun) {
         const startResult = await startIssueRun(input.issueRunEnv, {
           workspaceId: input.workspaceId,
           issueId: input.issueId,
           agentId: activeWaitingRun.agentId,
-          source: "comment",
+          source: 'comment',
           trigger: { commentId: input.comment.id },
           actor: input.actor,
-        });
-        startedAgentIds.add(activeWaitingRun.agentId);
+        })
+        startedAgentIds.add(activeWaitingRun.agentId)
         if (startResult.isErr())
-          logger.error("startIssueRun failed", startResult.error.message);
+          logger.error('startIssueRun failed', startResult.error.message)
       }
 
       for (const decision of decisions) {
-        if (decision.kind !== "enqueue") continue;
-        if (startedAgentIds.has(decision.agentId)) continue;
+        if (decision.kind !== 'enqueue') continue
+        if (startedAgentIds.has(decision.agentId)) continue
         const startResult = await startIssueRun(input.issueRunEnv, {
           workspaceId: input.workspaceId,
           issueId: input.issueId,
@@ -1565,23 +1563,23 @@ export async function wakeAgentsForIssueComment(
           source: decision.source,
           trigger: { commentId: input.comment.id },
           actor: input.actor,
-        });
+        })
         if (startResult.isErr())
-          logger.error("startIssueRun failed", startResult.error.message);
+          logger.error('startIssueRun failed', startResult.error.message)
       }
 
-      return { kind: "woke" as const };
+      return { kind: 'woke' as const }
     },
-    catch: (cause) => serviceDbError("wake issue agents", cause),
-  });
-  if (result.isErr()) return Result.err(result.error);
-  if (result.value.kind === "missing") {
+    catch: (cause) => serviceDbError('wake issue agents', cause),
+  })
+  if (result.isErr()) return Result.err(result.error)
+  if (result.value.kind === 'missing') {
     return Result.err(
       new IssueServiceError({
-        code: "issue_not_found",
-        message: "Issue not found.",
+        code: 'issue_not_found',
+        message: 'Issue not found.',
       }),
-    );
+    )
   }
-  return Result.ok();
+  return Result.ok()
 }
