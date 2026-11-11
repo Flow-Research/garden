@@ -1,10 +1,18 @@
 import {
   ConnectorAuthError,
   ConnectorHttpError,
+  ConnectorNotFoundError,
   ConnectorPermissionError,
   type ConnectorError,
 } from '../effect/errors.ts'
 import type { GitHubAppAuthError } from '../github-app.ts'
+
+/**
+ * Appended to 404s on repository-scoped paths so the agent can self-correct
+ * instead of surfacing GitHub's bare "Not Found" (#332).
+ */
+const GITHUB_REPOSITORY_404_HINT =
+  'The owner or repository name may be wrong or wrongly cased — call list_repositories to see the repositories this installation can access, then retry.'
 
 /**
  * Stable GitHub App auth failure codes for #163. Phase 2 surfaces these in
@@ -85,12 +93,21 @@ export function classifyGitHubMintFailure(error: GitHubAppAuthError): {
 /**
  * Maps GitHub REST/MCP HTTP failures into auth, permission, or generic HTTP
  * connector errors with classified messages.
+ *
+ * 404s become `ConnectorNotFoundError` (matching the Discord client's
+ * mapping of the same status). When the failing path was repository-scoped
+ * (`repoScoped`), the message carries a self-correction hint: after #332
+ * the most common cause of a repo-path 404 is a wrong or wrongly-cased
+ * owner/repo the model guessed, and the agent should retry against
+ * `list_repositories` instead of reporting a bare "Not Found".
  */
 export function connectorErrorFromGitHubHttp(args: {
   operation: string
   status: number
   bodyText?: string | null
   cause?: unknown
+  /** True when the request path addressed `/repos/{owner}/{repo}/…`. */
+  repoScoped?: boolean
 }): ConnectorError {
   const detail = args.bodyText?.trim() || null
 
@@ -111,6 +128,19 @@ export function connectorErrorFromGitHubHttp(args: {
       operation: args.operation,
       code: githubAuthFailureCode('insufficient_permission'),
       message: githubAuthMessage('insufficient_permission', detail),
+      status: args.status,
+      cause: args.cause,
+    })
+  }
+
+  if (args.status === 404) {
+    const notFound = detail || `GitHub API rejected the request (404).`
+    return new ConnectorNotFoundError({
+      connectorId: 'github',
+      operation: args.operation,
+      message: args.repoScoped
+        ? `${notFound} ${GITHUB_REPOSITORY_404_HINT}`
+        : notFound,
       status: args.status,
       cause: args.cause,
     })

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   ConnectorAuthError,
   ConnectorHttpError,
+  ConnectorNotFoundError,
   ConnectorPermissionError,
 } from '../effect/errors.ts'
 import { GitHubAppAuthError } from '../github-app.ts'
@@ -181,5 +182,32 @@ describe('connectorErrorFromGitHubHttp', () => {
     expect(error).toBeInstanceOf(ConnectorHttpError)
     expect(error.message).toBe('boom')
     expect(error.status).toBe(500)
+  })
+
+  // #332: a guessed owner/repo used to surface as GitHub's bare "Not Found".
+  // The hint routes the agent back to list_repositories for a self-correcting
+  // retry instead of a dead end.
+  it('maps a repository-scoped 404 to ConnectorNotFoundError with a retry hint', () => {
+    const error = connectorErrorFromGitHubHttp({
+      operation: 'github.listBranches',
+      status: 404,
+      bodyText: '{"message":"Not Found"}',
+      repoScoped: true,
+    })
+    expect(error).toBeInstanceOf(ConnectorNotFoundError)
+    expect(error.status).toBe(404)
+    expect(error.message).toContain('Not Found')
+    expect(error.message).toContain('list_repositories')
+  })
+
+  it('maps a non-repository 404 without the retry hint', () => {
+    const error = connectorErrorFromGitHubHttp({
+      operation: 'github.searchIssues',
+      status: 404,
+      bodyText: 'Not Found',
+    })
+    expect(error).toBeInstanceOf(ConnectorNotFoundError)
+    expect(error.message).toBe('Not Found')
+    expect(error.message).not.toContain('list_repositories')
   })
 })
