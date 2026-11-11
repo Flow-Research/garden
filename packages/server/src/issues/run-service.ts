@@ -135,9 +135,17 @@ function getDb(env: IssueRunEnv) {
   return getPooledDb(env.HYPERDRIVE.connectionString)
 }
 
+/**
+ * Outcome of a start request. `already_running` is the duplicate-start answer:
+ * a double click, retry, or a second actor hit an issue whose agent already has
+ * a live run, so the caller gets that run instead of a second one. Before this
+ * the duplicate returned `skipped` with no run id, leaving clients unable to
+ * follow the run they collided with.
+ */
 export type StartIssueRunOutcome =
   | { kind: 'started'; runId: string }
   | { kind: 'resumed'; runId: string }
+  | { kind: 'already_running'; runId: string }
   | { kind: 'skipped'; reason: string }
 
 export type CancelIssueRunInput = {
@@ -737,7 +745,7 @@ export async function startIssueRun(
               workflowInstanceId: activeRun.workflowInstanceId,
             }
           }
-          return { kind: 'skipped' as const, reason: 'active_run' }
+          return { kind: 'already_running' as const, runId: activeRun.id }
         }
 
         await tx.insert(schema.issueRun).values({
