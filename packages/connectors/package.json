@@ -24,6 +24,7 @@
     "./effect/errors": "./src/effect/errors.ts",
     "./effect/native": "./src/effect/native.ts",
     "./github": "./src/github/connector.ts",
+    "./github/identity": "./src/github/identity.ts",
     "./github/mcp-client": "./src/github/mcp-client.ts",
     "./github/mcp-tools": "./src/github/mcp-tools.ts",
     "./github/rest-client": "./src/github/rest-client.ts",
