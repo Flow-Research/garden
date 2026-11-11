@@ -1,5 +1,13 @@
 import { generateKeyPairSync, randomUUID } from 'node:crypto'
-import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest'
 import type { ToolSet } from 'ai'
 import { Result } from 'better-result'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
@@ -82,7 +90,9 @@ function stubGithub(options: GithubStubOptions = {}): GithubCall[] {
       input instanceof URL
         ? input
         : new URL(typeof input === 'string' ? input : input.url)
-    if (url.pathname === `/app/installations/${INSTALLATION_ID}/access_tokens`) {
+    if (
+      url.pathname === `/app/installations/${INSTALLATION_ID}/access_tokens`
+    ) {
       return new Response(
         JSON.stringify({
           token: MINTED_TOKEN,
