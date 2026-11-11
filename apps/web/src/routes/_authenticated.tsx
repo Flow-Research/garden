@@ -31,8 +31,23 @@ export const Route = createFileRoute('/_authenticated')({
   // workspace changes invalidate the route when the value must change.
   staleTime: Number.POSITIVE_INFINITY,
   preloadStaleTime: Number.POSITIVE_INFINITY,
-  loader: async ({ location }) => {
-    const bootstrap = await getAuthBootstrap()
+  // Keep the active auth boundary warm, but discard inactive workspace variants.
+  // Reusing the old no-workspace_id snapshot after create/invite otherwise
+  // restored the previous selection when an ordinary navigation cleared search.
+  gcTime: 0,
+  preloadGcTime: 0,
+  // Invite/create destinations must reload this snapshot even when the parent
+  // stayed mounted. TanStack's loaderDeps changes bypass staleTime: Infinity.
+  validateSearch: (search) => {
+    const destination: { workspace_id?: string } = {}
+    if (typeof search.workspace_id === 'string') {
+      destination.workspace_id = search.workspace_id
+    }
+    return destination
+  },
+  loaderDeps: ({ search }) => ({ workspaceId: search.workspace_id }),
+  loader: async ({ location, context, deps }) => {
+    const bootstrap = await getAuthBootstrap(deps.workspaceId)
     if (!bootstrap) {
       throw redirect({
         to: '/login',
@@ -41,6 +56,9 @@ export const Route = createFileRoute('/_authenticated')({
         },
       })
     }
+    // A fresh loader response owns membership updates. Cached loader remounts
+    // must not overwrite newer query data written by workspace mutations.
+    context.queryClient.setQueryData(workspaceKeys.list(), bootstrap.workspaces)
     return bootstrap
   },
   component: AuthenticatedLayout,
@@ -132,15 +150,27 @@ function AuthenticatedLayout() {
     initRealtime(qc)
     const nextKey = `${user.id}:${preferredWorkspaceId ?? ''}:${workspaces.map((workspace) => `${workspace.id}:${workspace.updated_at}`).join(',')}`
     if (hydratedKey.current !== nextKey) {
+      const wasHydrated = hydratedKey.current !== ''
       hydratedKey.current = nextKey
       scheduleClientStoreHydration(() => {
-        qc.setQueryData(workspaceKeys.list(), workspaces)
-        useAuthStore.setState({ user })
+        // SSR loader data seeds the client once; later fresh loaders update
+        // the cache themselves, preserving writes made since the snapshot.
+        if (qc.getQueryData(workspaceKeys.list()) === undefined) {
+          qc.setQueryData(workspaceKeys.list(), workspaces)
+        }
+        if (wasHydrated || !useAuthStore.getState().user) {
+          useAuthStore.setState({ user })
+        }
         const currentWorkspace = useWorkspaceStore.getState().workspace
-        const shouldHydratePreferred =
-          preferredWorkspaceId && currentWorkspace?.id !== preferredWorkspaceId
-
-        if (!currentWorkspace || shouldHydratePreferred) {
+        // Only a new snapshot on the mounted boundary changes an existing
+        // selection. Cached remounts preserve user actions, and intent preloads
+        // cannot activate a workspace before navigation commits.
+        if (
+          !currentWorkspace ||
+          (wasHydrated &&
+            preferredWorkspaceId &&
+            currentWorkspace.id !== preferredWorkspaceId)
+        ) {
           useWorkspaceStore
             .getState()
             .hydrateWorkspace(workspaces, preferredWorkspaceId)
