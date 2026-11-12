@@ -671,9 +671,9 @@ describe('reviewWorkProduct save_to_files', () => {
 
     const result = await saveToFiles()
 
-    expect(result.isErr() && result.error.message).toBe(
-      'Only approved work products can be saved to Files',
-    )
+    expect(result.isErr() && result.error).toMatchObject({
+      message: 'Only approved work products can be saved to Files',
+    })
     expect(filesState.uploads).toEqual([])
     expect(inserts).toEqual([])
   })
@@ -694,8 +694,10 @@ describe('reviewWorkProduct save_to_files', () => {
 
     const result = await saveToFiles()
 
-    expect(result.isErr() && result.error.status).toBe(404)
-    expect(result.isErr() && result.error.message).toBe('Folder not found')
+    expect(result.isErr() && result.error).toMatchObject({ status: 404 })
+    expect(result.isErr() && result.error).toMatchObject({
+      message: 'Folder not found',
+    })
     expect(filesState.uploads).toEqual([])
     expect(inserts).toEqual([])
   })
@@ -723,7 +725,9 @@ describe('reviewWorkProduct save_to_files', () => {
 
     const result = await saveToFiles()
 
-    expect(result.isOk() && result.value.externalId).toBe(previousFileId)
+    expect(result.isOk() && result.value).toMatchObject({
+      externalId: previousFileId,
+    })
     expect(filesState.uploads).toEqual([])
     expect(filesState.overwrites).toEqual([
       {
@@ -750,7 +754,9 @@ describe('reviewWorkProduct save_to_files', () => {
 
     const result = await saveToFiles()
 
-    expect(result.isOk() && result.value.externalId).toBe(savedFileId)
+    expect(result.isOk() && result.value).toMatchObject({
+      externalId: savedFileId,
+    })
     expect(filesState.uploads).toHaveLength(1)
     expect(sets.find((values) => 'payload' in values)?.payload).toMatchObject({
       saved_file: { file_id: savedFileId },

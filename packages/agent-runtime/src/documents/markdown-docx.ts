@@ -185,7 +185,7 @@ function blocksOf(tokens: Token[]): Block[] {
 export async function markdownToDocx(args: {
   title: string
   markdown: string
-}): Promise<Uint8Array> {
+}): Promise<Uint8Array<ArrayBuffer>> {
   const document = new Document({
     title: args.title,
     numbering: {
