@@ -290,3 +290,54 @@ describe('RunWorkflow Decide pause', () => {
     )
   })
 })
+
+describe('RunWorkflow run status invariant', () => {
+  it('fails the run instead of completing while the run row is still live', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const workflow = Object.create(RunWorkflow.prototype) as {
+      agent: Record<string, ReturnType<typeof vi.fn>>
+      run: (
+        event: {
+          payload: { kind: 'issue'; runId: string; issueId: string }
+        },
+        step: unknown,
+      ) => Promise<{ runId: string; status: string }>
+    }
+    workflow.agent = {
+      executeRunTurn: vi.fn(async () => ({
+        kind: 'submitted',
+        submissionId: 'submission-0',
+        submissionStatus: 'completed',
+      })),
+      completeRunTurn: vi.fn(async () => ({ status: 'running' })),
+      failRunTurn: vi.fn(async () => ({ status: 'failed' })),
+    }
+    const step = {
+      do: vi.fn(
+        async (
+          _name: string,
+          _config: unknown,
+          callback: () => Promise<unknown>,
+        ) => await callback(),
+      ),
+      waitForEvent: vi.fn(),
+      reportComplete: vi.fn(async () => undefined),
+    }
+
+    const result = await workflow.run(
+      { payload: { kind: 'issue', runId: 'run-1', issueId: 'issue-1' } },
+      step,
+    )
+
+    expect(workflow.agent.failRunTurn).toHaveBeenCalledWith({
+      runId: 'run-1',
+      issueId: 'issue-1',
+      reason: 'workflow_ended_with_live_run',
+    })
+    expect(result).toEqual({ runId: 'run-1', status: 'failed' })
+    expect(step.reportComplete).toHaveBeenCalledWith({
+      runId: 'run-1',
+      status: 'failed',
+    })
+  })
+})
