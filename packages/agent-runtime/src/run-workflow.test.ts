@@ -97,7 +97,7 @@ describe('RunWorkflow turn completion', () => {
     expect(agent.readRunTurnStatus).not.toHaveBeenCalled()
     expect(step.waitForEvent).toHaveBeenCalledWith(
       'turn-0-complete-event',
-      expect.objectContaining({ type: 'run-turn-complete:submission-1' }),
+      expect.objectContaining({ type: 'run-turn-complete-submission-1' }),
     )
   })
 
