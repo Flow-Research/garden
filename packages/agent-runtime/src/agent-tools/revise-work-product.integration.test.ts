@@ -139,8 +139,9 @@ describe('revise_work_product (integration)', () => {
       .select()
       .from(schema.issueWorkProduct)
       .where(eq(schema.issueWorkProduct.id, workProductId))
-    expect(row?.body).toBe('Body v3')
-    const versions = (row?.payload as { previous_versions: unknown[] })
+    if (!row) throw new Error('work product row missing')
+    expect(row.body).toBe('Body v3')
+    const versions = (row.payload as { previous_versions: unknown[] })
       .previous_versions
     expect(versions).toHaveLength(2)
     expect(versions[0]).toMatchObject({
