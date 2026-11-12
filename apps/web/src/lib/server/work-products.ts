@@ -9,6 +9,10 @@ import {
   type ConnectorError,
 } from '@garden/core/connectors/errors'
 import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
+import {
+  parseWorkProductSavedFile,
+  type WorkProductSavedFile,
+} from '@garden/core/issues/work-product-saved-file'
 import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
 import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
@@ -18,6 +22,8 @@ import {
 import type { AppEnv } from './env'
 import { getDb, schema } from './db'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
+import { addBrainFolderFile, getBrainFolder } from './brain-folders'
+import { overwriteBrainFile, saveBrainFileUpload } from './brain-file-upload'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
 
@@ -44,6 +50,9 @@ export const workProductReviewBodySchema = z.discriminatedUnion('action', [
     .strict(),
   z.object({ action: z.literal('apply') }).strict(),
   z.object({ action: z.literal('apply_pr') }).strict(),
+  z
+    .object({ action: z.literal('save_to_files'), folder_id: z.uuid() })
+    .strict(),
 ])
 
 export type WorkProductReviewInput = z.infer<typeof workProductReviewBodySchema>
@@ -53,7 +62,9 @@ export class WorkProductReviewError extends TaggedError(
 )<{
   code:
     | 'database_failed'
+    | 'folder_not_found'
     | 'invalid_state'
+    | 'save_failed'
     | 'unsupported_writeback'
     | 'validation_failed'
     | 'work_product_not_found'
@@ -113,7 +124,7 @@ export type WorkProductReviewOutcome =
       workProductId: string
     }
   | ({
-      action: 'apply' | 'apply_pr'
+      action: 'apply' | 'apply_pr' | 'save_to_files'
       workProductId: string
     } & ConnectorToolSuccess)
 
@@ -1346,10 +1357,201 @@ async function applyWorkProductAsPr(args: {
   })
 }
 
+/**
+ * Slugs the work product title into a Markdown filename for Files & Folders,
+ * so a saved guide reads as `workstream-task-guide.md` instead of an id.
+ */
+function savedFileName(workProduct: WorkProductRow) {
+  const slug = (workProduct.title ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 80)
+  return `${slug || `work-product-${workProduct.id.slice(0, 8)}`}.md`
+}
+
+/**
+ * "Save to Files" (#381). Before this, an approved work product could only
+ * leave Garden as a GitHub comment or PR; getting it into Files & Folders
+ * meant a manual upload. This saves the approved body as a Markdown file in
+ * a folder the approving person can see, through `saveBrainFileUpload` (the
+ * same stage → index → audit path `POST /api/brain/files` uses), so the file
+ * is indexed and searchable like an upload and the person is its owner.
+ *
+ * Saving is a copy, not an apply: status and `applied_external_*` stay as
+ * they are, so Apply and Apply as PR remain available. The link is recorded
+ * in `payload.saved_file` and an `issue_run:work_product_saved_to_files`
+ * event. Saving again creates a new file and replaces the recorded link.
+ */
+async function saveWorkProductToFiles(args: {
+  actorUserId: string
+  env: AppEnv
+  folderId: string
+  waitUntil?: (promise: Promise<unknown>) => void
+  workProductId: string
+  workspaceId: string
+}): Promise<ResultValue<WorkProductReviewOutcome, WorkProductReviewError>> {
+  const contextResult = await loadWorkProductContext(args)
+  if (contextResult.isErr()) return Result.err(contextResult.error)
+  const { workProduct } = contextResult.value
+  if (workProduct.status !== 'approved' && workProduct.status !== 'applied') {
+    return Result.err(
+      invalidState('Only approved work products can be saved to Files'),
+    )
+  }
+  const body = workProduct.body?.trim()
+  if (!body) return Result.err(invalidState('Work product body is empty'))
+  const runId = workProduct.runId
+  if (!runId) {
+    return Result.err(invalidState('Work product is not tied to an issue run'))
+  }
+
+  // getBrainFolder scopes by workspace and hides another member's private
+  // folder, the same visibility the Files page and folder routes enforce.
+  const folderResult = await Result.tryPromise({
+    try: () =>
+      getBrainFolder({
+        env: args.env,
+        workspaceId: args.workspaceId,
+        userId: args.actorUserId,
+        folderId: args.folderId,
+      }),
+    catch: (cause) => dbError('Failed to load folder', cause),
+  })
+  if (folderResult.isErr()) return Result.err(folderResult.error)
+  if (!folderResult.value) {
+    return Result.err(
+      new WorkProductReviewError({
+        code: 'folder_not_found',
+        status: 404,
+        message: 'Folder not found',
+      }),
+    )
+  }
+
+  // A re-save after revise → re-approve overwrites the recorded file so
+  // Files keeps one current copy; if that file was deleted, save a new one.
+  const previous = parseWorkProductSavedFile(workProduct.payload)
+  const overwritten = previous
+    ? await overwriteBrainFile({
+        env: args.env,
+        fileId: previous.file_id,
+        body,
+        ownerUserId: args.actorUserId,
+        waitUntil: args.waitUntil,
+        workspaceId: args.workspaceId,
+      })
+    : Result.ok(null)
+  const saved = await overwritten.andThenAsync(async (item) =>
+    item
+      ? Result.ok(item)
+      : saveBrainFileUpload({
+          env: args.env,
+          file: new File([body], savedFileName(workProduct), {
+            type: 'text/markdown',
+          }),
+          ownerUserId: args.actorUserId,
+          waitUntil: args.waitUntil,
+          workspaceId: args.workspaceId,
+        }),
+  )
+  if (saved.isErr()) {
+    return Result.err(
+      new WorkProductReviewError({
+        code: 'save_failed',
+        status: saved.error.code === 'brain_unconfigured' ? 400 : 503,
+        message: saved.error.message,
+      }),
+    )
+  }
+  const fileId = saved.value.id
+  const fileName = saved.value.label
+  const isOverwrite = overwritten.isOk() && overwritten.value !== null
+  const fileUrl = `/api/brain/files/${encodeURIComponent(fileId)}/content`
+
+  const db = await getDb(args.env)
+  const now = new Date()
+  const recorded = await Result.tryPromise({
+    try: async () => {
+      await addBrainFolderFile({
+        env: args.env,
+        workspaceId: args.workspaceId,
+        folderId: args.folderId,
+        fileId,
+        userId: args.actorUserId,
+      })
+      await db.transaction(async (tx) => {
+        await tx
+          .update(schema.issueWorkProduct)
+          .set({
+            payload: {
+              ...objectOrNull(workProduct.payload),
+              saved_file: {
+                file_id: fileId,
+                file_name: fileName,
+                folder_id: args.folderId,
+                url: fileUrl,
+                saved_by: args.actorUserId,
+                saved_at: now.toISOString(),
+              } satisfies WorkProductSavedFile,
+            },
+            updatedAt: now,
+          })
+          .where(
+            and(
+              eq(schema.issueWorkProduct.id, workProduct.id),
+              eq(schema.issueWorkProduct.workspaceId, args.workspaceId),
+            ),
+          )
+        await tx.execute(sql`
+          select pg_advisory_xact_lock(hashtextextended(${runId}::text, 0))
+        `)
+        const [seqRow] = await tx
+          .select({
+            nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
+          })
+          .from(schema.issueRunEvent)
+          .where(eq(schema.issueRunEvent.runId, runId))
+        await tx.insert(schema.issueRunEvent).values({
+          id: crypto.randomUUID(),
+          workspaceId: workProduct.workspaceId,
+          issueId: workProduct.issueId,
+          runId,
+          seq: seqRow?.nextSeq ?? 1,
+          eventType: 'issue_run:work_product_saved_to_files',
+          stream: 'system',
+          level: 'info',
+          message: `Work product ${isOverwrite ? 'updated in' : 'saved to'} Files as ${fileName}`,
+          payload: {
+            actor_user_id: args.actorUserId,
+            external_url: fileUrl,
+            file_id: fileId,
+            file_name: fileName,
+            folder_id: args.folderId,
+            overwritten: isOverwrite,
+            work_product_id: workProduct.id,
+          },
+        })
+      })
+    },
+    catch: (cause) => dbError('Failed to record saved file', cause),
+  })
+  if (recorded.isErr()) return Result.err(recorded.error)
+
+  return Result.ok({
+    action: 'save_to_files',
+    workProductId: workProduct.id,
+    externalId: fileId,
+    externalUrl: fileUrl,
+  })
+}
+
 export async function reviewWorkProduct(args: {
   actorUserId: string
   env: AppEnv
   input: WorkProductReviewInput
+  /** Lets Save to Files index the new file after the response, like uploads. */
+  waitUntil?: (promise: Promise<unknown>) => void
   workProductId: string
   workspaceId: string
 }): Promise<
@@ -1384,6 +1586,15 @@ export async function reviewWorkProduct(args: {
       return applyWorkProductAsPr({
         actorUserId: args.actorUserId,
         env: args.env,
+        workProductId: args.workProductId,
+        workspaceId: args.workspaceId,
+      })
+    case 'save_to_files':
+      return saveWorkProductToFiles({
+        actorUserId: args.actorUserId,
+        env: args.env,
+        folderId: args.input.folder_id,
+        waitUntil: args.waitUntil,
         workProductId: args.workProductId,
         workspaceId: args.workspaceId,
       })

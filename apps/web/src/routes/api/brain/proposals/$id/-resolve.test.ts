@@ -40,6 +40,7 @@ vi.mock('@garden/brain/services/web', async () => {
           addText: (input) => mockAddText(input),
           updateIndexStatus: () => Effect.die('unused updateIndexStatus'),
           deleteFile: () => Effect.die('unused deleteFile'),
+          replaceFileContent: () => Effect.die('unused replaceFileContent'),
           updateItemMetadata: () => Effect.die('unused updateItemMetadata'),
           index: () => Effect.die('unused index'),
           read: () => Effect.die('unused read'),
