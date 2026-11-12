@@ -4,9 +4,21 @@
  * the sandbox id scheme and terminal-status set cannot drift between agents.
  */
 
-/** Message text for any thrown value. */
-export function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
+/**
+ * Message text for any thrown value, followed by its `cause` chain.
+ *
+ * Drizzle wraps driver failures in `DrizzleQueryError`, whose message is only
+ * "Failed query: <sql> params: ..."; the Postgres reason (for example "could
+ * not determine data type of parameter $7") lives on `error.cause`. Before,
+ * tool errors showed only the SQL, so FLO-150's revise_work_product failure
+ * was undiagnosable from the run log. Now each cause message is appended.
+ */
+export function errorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return String(error)
+  const cause = error.cause
+  return cause === undefined || cause === error
+    ? error.message
+    : `${error.message} (cause: ${errorMessage(cause)})`
 }
 
 /**
