@@ -29,6 +29,9 @@ export function canReceiveRealtimeEvent(
     case 'team:deleted':
     case 'team_member:added':
     case 'team_member:removed':
+    // Identifiers only. Members include the Team owner, who reads the policy;
+    // other members never hold the policy query, so their refetch is a no-op.
+    case 'team:policy_updated':
       return profile.teamIds.includes(event.payload.team_id)
     case 'issue:created':
     case 'issue:updated':
