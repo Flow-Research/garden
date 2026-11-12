@@ -339,6 +339,7 @@ describe('default agent recovery (Postgres and Better Auth)', () => {
           }),
         addItem: unused,
         addText: unused,
+        replaceFileContent: () => Effect.die('unused replaceFileContent'),
         updateItemMetadata: unused,
         deleteFile: unused,
         read: unused,

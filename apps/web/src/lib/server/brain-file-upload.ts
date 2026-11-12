@@ -1,4 +1,4 @@
-import { Effect, Layer, Result as EffectResult } from 'effect'
+import { DateTime, Effect, Layer, Result as EffectResult } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import {
   buildContentDisposition,
@@ -110,7 +110,8 @@ export async function saveBrainFileUpload(args: {
  * (#381 re-save). Before, a revised and re-approved work product could only
  * be saved as a second file, leaving the stale copy searchable. Now the same
  * file id and R2 key get the new body, and `indexAndAudit` re-extracts from
- * R2 and replaces the file's sections. Returns `null` when the file no longer
+ * R2 and replaces the file's sections. `replaceFileContent` records the new
+ * byte size and update time so Files does not show the old size. Returns `null` when the file no longer
  * exists in this workspace (deleted from Files), so the caller saves anew.
  */
 export async function overwriteBrainFile(args: {
@@ -154,9 +155,10 @@ export async function overwriteBrainFile(args: {
   if (item === null || item.r2Key === undefined) return Result.ok(null)
 
   const r2Key = item.r2Key
+  const bytes = new TextEncoder().encode(args.body)
   const put = await Result.tryPromise({
     try: () =>
-      args.env.BRAIN_FILES.put(r2Key, args.body, {
+      args.env.BRAIN_FILES.put(r2Key, bytes, {
         httpMetadata: {
           contentType: 'text/markdown',
           contentDisposition: buildContentDisposition('inline', item.label),
@@ -166,13 +168,31 @@ export async function overwriteBrainFile(args: {
   })
   if (put.isErr()) return Result.err(put.error)
 
+  const at = await Effect.runPromise(DateTime.now)
+  const replaced = await Effect.runPromise(
+    Effect.result(
+      Effect.flatMap(Brain, (brain) =>
+        brain.replaceFileContent({
+          itemId: item.id,
+          tenantId: WorkspaceId.make(args.workspaceId),
+          sizeBytes: bytes.byteLength,
+          at,
+        }),
+      ).pipe(Effect.provide(brainLive)),
+    ),
+  )
+  if (EffectResult.isFailure(replaced)) {
+    return Result.err(failed(replaced.failure))
+  }
+  if (replaced.success === null) return Result.ok(null)
+
   scheduleIndex({
     itemId: item.id,
     ownerUserId: args.ownerUserId,
     waitUntil: args.waitUntil,
     workspaceId: args.workspaceId,
   })
-  return Result.ok(item)
+  return Result.ok(replaced.success)
 }
 
 /**
