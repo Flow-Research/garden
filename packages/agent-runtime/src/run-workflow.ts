@@ -215,8 +215,12 @@ export class RunWorkflow extends AgentWorkflow<
         return { runId, status: result.status }
       }
 
+      // A status that is neither terminal nor awaiting means the run row is
+      // still live. Before, the Workflow completed here with `running` and
+      // stranded the row (FLO-150); now the run is failed first, so the
+      // instance never ends while its run looks in progress.
       if (!AWAITING_RUN_STATUSES.has(result.status)) {
-        workflowLogger.info('run_workflow.completed', {
+        workflowLogger.error('run_workflow.ended_with_live_run', {
           kind: event.payload.kind,
           runId,
           turn,
@@ -225,8 +229,26 @@ export class RunWorkflow extends AgentWorkflow<
             ? { issueId: event.payload.issueId }
             : {}),
         })
-        await step.reportComplete({ runId, status: result.status })
-        return { runId, status: result.status }
+        const failed = await step.do<{ status: string }>(
+          `turn-${turn}-live-run-failed`,
+          { retries: TURN_RETRIES },
+          async () => {
+            const reason = 'workflow_ended_with_live_run'
+            return event.payload.kind === 'automation'
+              ? disposeRpcResult(
+                  await this.agent.failAutomationRunTurn({ runId, reason }),
+                )
+              : disposeRpcResult(
+                  await this.agent.failRunTurn({
+                    runId,
+                    issueId: event.payload.issueId,
+                    reason,
+                  }),
+                )
+          },
+        )
+        await step.reportComplete({ runId, status: failed.status })
+        return { runId, status: failed.status }
       }
 
       const resumed = await step

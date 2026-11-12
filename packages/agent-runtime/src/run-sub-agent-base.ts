@@ -76,6 +76,7 @@ import {
   errorMessage,
   isTerminalSubmissionStatus,
   operationFailedMessage,
+  unresolvedSettledTurnReason,
 } from './runtime-utils'
 
 /**
@@ -846,18 +847,54 @@ export abstract class RunSubAgentBase<
       await this.forceCloseFailed(input.runId, statusResult.error.message)
       throw statusResult.error
     }
-    const turnSummary = await this.readWorkflowTurnSummary(input.runId)
     const waitingOn = await this.readWorkflowWait(
       input.runId,
       statusResult.value,
     )
+    const status = await this.closeUnresolvedSettledTurn({
+      runId: input.runId,
+      submissionStatus: inspection.status,
+      runStatus: statusResult.value,
+      waiting: waitingOn !== null,
+    })
+    const turnSummary = await this.readWorkflowTurnSummary(input.runId)
     return {
-      status: statusResult.value,
+      status,
       workspaceId: turnSummary.workspaceId,
       ownerUserId: turnSummary.ownerUserId,
       summary: turnSummary.summary,
       ...(waitingOn === null ? {} : { waitingOn }),
     }
+  }
+
+  /**
+   * Fails a run whose Think turn completed without settling it, and returns
+   * the run status the Workflow should act on. Before, `completeWorkflowTurn`
+   * returned the still-live `running` status and the Workflow completed,
+   * stranding the run row (FLO-150). The policy lives in
+   * `unresolvedSettledTurnReason`; `forceCloseFailed` writes the failed row
+   * and its `issue_run:failed` / automation failure event.
+   */
+  private async closeUnresolvedSettledTurn(input: {
+    runId: string
+    submissionStatus: string
+    runStatus: string
+    waiting: boolean
+  }) {
+    const reason = unresolvedSettledTurnReason(input)
+    if (reason === null) return input.runStatus
+
+    this.logRunWarning('turn_ended_without_resolution', {
+      runId: input.runId,
+      runStatus: input.runStatus,
+    })
+    const failedResult = await this.forceCloseFailed(input.runId, reason)
+    if (failedResult.isErr()) throw failedResult.error
+    this.clearTurnState()
+
+    const statusResult = await this.readRunStatus(input.runId)
+    if (statusResult.isErr()) throw statusResult.error
+    return statusResult.value
   }
 
   /**
