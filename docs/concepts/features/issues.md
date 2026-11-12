@@ -2,7 +2,7 @@
 title: Issues are the shared ledger of work for people and agents
 description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
 status: current
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-03
 ---
 
@@ -48,6 +48,10 @@ An issue can carry source bindings. `packages/server/src/issues/source-binding.t
 The run returns its results as work products. The `create_work_product` and `revise_work_product` tools write `issue_work_product` rows. A work product is a reviewable deliverable such as a report, checklist, plan, or proposed change. `apps/web/src/lib/server/work-products.ts` handles review and apply.
 
 Approving a work product offers two choices, and the review request must name one through the required `close_issue` flag. **Approve** (`close_issue: false`) marks the work product approved and moves an `in_review` issue back to `in_progress`, so the issue stays open and a later `@Garden` comment can start a follow-up run. **Approve and close** (`close_issue: true`) moves an `in_review` issue to `done`. Comment wakeups skip `done` issues, so closing ends agent follow-ups until someone reopens the issue. Both choices leave an issue in any other status unchanged.
+
+Apply sends an approved work product out of Garden. **Apply** posts the body as a comment on the bound GitHub issue. **Apply as PR** (`action: 'apply_pr'`) turns the body into a repository file. It needs `payload.pr_target`, a typed object (`workProductPrTargetSchema` in `packages/core/src/issues/work-product-pr-target.ts`) with `repository` (`owner/repo`), a repo-relative `path`, and an optional `base_branch` that defaults to `dev`. The agent sets it through `create_work_product`; it lives in the existing `payload` column because only the apply path reads it. The repository must be linked to the issue's Team in `team_repository`, or the request fails before any GitHub call.
+
+The server then reads the head of the base branch, creates `garden/work-product-<id>`, writes the body to the file (updating it when it already exists), and opens a pull request into the base branch. Each call runs through the workspace GitHub App installation, with the approving person as actor, through the same approval gate as the comment path. The PR body fills `.github/pull_request_template.md` so `scripts/verify-pr-contract.mjs` passes, and it says `Closes #N` when the bound GitHub issue is in the same repository, which lets the PR webhook move the board card. Garden records the PR URL and number as `applied_external_url` and `applied_external_id` and appends `issue_run:work_product_applied`. Apply as PR is safe to retry after a partial failure: an existing `garden/work-product-<id>` branch is reused, and an open PR from it is recorded instead of opening a second one. Merging stays a human step on GitHub. The work-product card shows **Apply as PR** next to Apply when a target is set, and **View pull request** afterwards.
 
 ## Chat and issues link in both directions
 

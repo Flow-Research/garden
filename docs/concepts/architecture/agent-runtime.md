@@ -87,6 +87,8 @@ Issue and automation runs (`RunSubAgentBase.configureSession`) use these layers:
 2. A run-specific context: `issue-interaction` for issues, which uses the bundled skill in `packages/agent-runtime/src/skills/issue-interaction/`, or `automation-run` for automations.
 3. Assigned skills from `getSkills()`.
 
+The per-run issue context opens with the trigger line from `issue-run-trigger.ts`. For comment and mention runs it states the comment's request as the run's whole task and says that outside actions (opening PRs, GitHub writes, sending messages) need a person's request or approval; the issue's "Done when" line is the goal, not permission. Connector writes still pause for approval through the `send_external` gate.
+
 Keep prompt text stable so the cached prompt stays valid. Expose changing capability state through bounded tools instead.
 
 ## Codemode and the sandbox are separate
