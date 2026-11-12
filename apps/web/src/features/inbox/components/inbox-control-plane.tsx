@@ -310,6 +310,9 @@ function WorkProductInboxAction({
       onApply={() =>
         reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply' })
       }
+      onApplyPr={() =>
+        reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply_pr' })
+      }
     />
   )
 }
@@ -466,6 +469,9 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
             }
             onApply={(id) =>
               reviewMutation.mutateAsync({ id, action: 'apply' })
+            }
+            onApplyPr={(id) =>
+              reviewMutation.mutateAsync({ id, action: 'apply_pr' })
             }
           />
         </div>

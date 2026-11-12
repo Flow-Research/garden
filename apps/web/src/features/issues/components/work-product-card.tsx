@@ -1,3 +1,4 @@
+import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
 import { useEffect, useRef, useState } from 'react'
 import {
   Check,
@@ -59,6 +60,8 @@ export interface WorkProductCardProps {
     title: string
     body: string
     applied_external_url: string | null
+    /** Carries `pr_target` when the work product can be applied as a PR. */
+    payload?: Record<string, unknown> | null
     previous_versions_count: number
     updated_at: string
   }
@@ -79,6 +82,8 @@ export interface WorkProductCardProps {
    * stays open on failure, for a retry).
    */
   onApply?: () => Promise<unknown>
+  /** Opens a PR writing the body to `payload.pr_target`; confirmed first. */
+  onApplyPr?: () => Promise<unknown>
   onShowDiff?: () => void
 }
 
@@ -156,10 +161,13 @@ export function WorkProductCard({
   onApproveAndClose,
   onRequestChanges,
   onApply,
+  onApplyPr,
   onShowDiff,
 }: WorkProductCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [confirmApply, setConfirmApply] = useState(false)
+  const [confirmApplyPr, setConfirmApplyPr] = useState(false)
+  const prTarget = parseWorkProductPrTarget(workProduct.payload)
   const busy = pendingAction !== null
   const connectorName = connectorId
     ? (CONNECTOR_NAME[connectorId] ?? 'the connector')
@@ -171,10 +179,10 @@ export function WorkProductCard({
 
   const showReviewActions =
     workProduct.status === 'review' && workProduct.review_state === 'pending'
-  const showApply =
-    workProduct.status === 'approved' &&
-    !workProduct.applied_external_url &&
-    connectorId
+  const applyable =
+    workProduct.status === 'approved' && !workProduct.applied_external_url
+  const showApply = applyable && connectorId
+  const showApplyPr = applyable && prTarget !== null && onApplyPr
 
   useEffect(() => {
     if (!pulseOnMount) return
@@ -287,21 +295,49 @@ export function WorkProductCard({
         </div>
       )}
 
-      {showApply && (
+      {(showApply || showApplyPr) && (
         <div className="flex items-center gap-2 border-t border-info/15 px-4 py-2.5">
-          <Button
-            size="sm"
-            className="h-7"
-            disabled={busy}
-            onClick={() => setConfirmApply(true)}
-          >
-            <Send className="size-3.5 mr-1" />
-            Apply{connectorId === 'github' ? ' to GitHub' : ''}
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            Posts to the connector under your account.
+          {showApply && (
+            <Button
+              size="sm"
+              className="h-7"
+              disabled={busy}
+              onClick={() => setConfirmApply(true)}
+            >
+              <Send className="size-3.5 mr-1" />
+              Apply{connectorId === 'github' ? ' to GitHub' : ''}
+            </Button>
+          )}
+          {showApplyPr && (
+            <Button
+              size="sm"
+              variant={showApply ? 'outline' : 'default'}
+              className="h-7"
+              disabled={busy}
+              onClick={() => setConfirmApplyPr(true)}
+            >
+              <GitPullRequest className="size-3.5 mr-1" />
+              {pendingAction === 'apply_pr' ? 'Opening PR…' : 'Apply as PR'}
+            </Button>
+          )}
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {showApplyPr && prTarget
+              ? `PR to ${prTarget.repository}: ${prTarget.path}`
+              : 'Posts to the connector under your account.'}
           </span>
         </div>
+      )}
+
+      {prTarget && (
+        <ConfirmDialog
+          open={confirmApplyPr}
+          onOpenChange={setConfirmApplyPr}
+          title="Open a pull request?"
+          description={`Garden will create a branch from ${prTarget.base_branch} in ${prTarget.repository}, write “${workProduct.title}” to ${prTarget.path}, and open a pull request under your approval. Merging stays on GitHub.`}
+          confirmLabel="Open PR"
+          pendingLabel="Opening…"
+          onConfirm={() => (onApplyPr ? onApplyPr() : Promise.resolve())}
+        />
       )}
 
       <ConfirmDialog
@@ -323,7 +359,7 @@ export function WorkProductCard({
             rel="noreferrer"
             className="text-xs text-success hover:underline inline-flex items-center gap-1"
           >
-            View on connector
+            {prTarget ? 'View pull request' : 'View on connector'}
             <ExternalLink className="size-3" />
           </a>
         </div>
@@ -353,6 +389,7 @@ interface WorkProductListProps {
   onApproveAndClose?: (id: string) => void
   onRequestChanges?: (id: string) => void
   onApply?: (id: string) => Promise<unknown>
+  onApplyPr?: (id: string) => Promise<unknown>
 }
 
 export function WorkProductList({
@@ -364,6 +401,7 @@ export function WorkProductList({
   onApproveAndClose,
   onRequestChanges,
   onApply,
+  onApplyPr,
 }: WorkProductListProps) {
   if (workProducts.length === 0) return null
 
@@ -380,6 +418,7 @@ export function WorkProductList({
           onApproveAndClose={() => onApproveAndClose?.(wp.id)}
           onRequestChanges={() => onRequestChanges?.(wp.id)}
           onApply={() => (onApply ? onApply(wp.id) : Promise.resolve())}
+          onApplyPr={onApplyPr ? () => onApplyPr(wp.id) : undefined}
         />
       ))}
     </div>

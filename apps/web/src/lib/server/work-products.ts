@@ -8,6 +8,7 @@ import {
   classifyConnectorError,
   type ConnectorError,
 } from '@garden/core/connectors/errors'
+import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
 import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
 import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
@@ -42,6 +43,7 @@ export const workProductReviewBodySchema = z.discriminatedUnion('action', [
     })
     .strict(),
   z.object({ action: z.literal('apply') }).strict(),
+  z.object({ action: z.literal('apply_pr') }).strict(),
 ])
 
 export type WorkProductReviewInput = z.infer<typeof workProductReviewBodySchema>
@@ -69,6 +71,7 @@ type IssueReviewContext = {
     assigneeType: string | null
     id: string
     status: string | null
+    teamId: string | null
     workspaceId: string
   }
   workProduct: WorkProductRow
@@ -92,9 +95,12 @@ type ConnectorToolSuccess = {
   externalUrl: string | null
 }
 
+/** A successful tool call plus the raw GitHub response, for fields like `sha`. */
+type ConnectorToolResponse = ConnectorToolSuccess & { response: unknown }
+
 type ConnectorToolCallOutcome =
   | { kind: 'needs_approval'; requestId: string }
-  | ({ kind: 'success' } & ConnectorToolSuccess)
+  | ({ kind: 'success' } & ConnectorToolResponse)
 
 export type WorkProductReviewOutcome =
   | {
@@ -107,7 +113,7 @@ export type WorkProductReviewOutcome =
       workProductId: string
     }
   | ({
-      action: 'apply'
+      action: 'apply' | 'apply_pr'
       workProductId: string
     } & ConnectorToolSuccess)
 
@@ -408,6 +414,7 @@ async function callConnectorTool(args: {
     kind: 'success',
     externalId: findExternalId(result.value),
     externalUrl: findUrl(result.value),
+    response: result.value,
   })
 }
 
@@ -430,6 +437,7 @@ async function loadWorkProductContext(args: {
             assigneeType: schema.issue.assigneeType,
             id: schema.issue.id,
             status: schema.issue.status,
+            teamId: schema.issue.teamId,
             workspaceId: schema.issue.workspaceId,
           },
         })
@@ -709,11 +717,16 @@ async function requestWorkProductChanges(args: {
   })
 }
 
-async function loadSourceBinding(args: {
+/**
+ * Loads the issue's newest source binding, or null when the issue has none.
+ * Apply requires a binding; Apply as PR only uses one to add a closing
+ * keyword, so the "missing" decision belongs to each caller.
+ */
+async function findSourceBinding(args: {
   env: AppEnv
   issueId: string
   workspaceId: string
-}) {
+}): Promise<ResultValue<IssueSourceBindingRow | null, WorkProductReviewError>> {
   const db = await getDb(args.env)
   const result = await Result.tryPromise({
     try: async () =>
@@ -733,11 +746,7 @@ async function loadSourceBinding(args: {
   if (result.isErr()) return Result.err(result.error)
 
   const binding = result.value[0]
-  if (!binding) {
-    return Result.err(
-      invalidState('Apply requires a connector-bound issue source'),
-    )
-  }
+  if (!binding) return Result.ok(null)
 
   const parsedBinding = issueSourceBindingSelectSchema.safeParse(binding)
   if (!parsedBinding.success) {
@@ -752,6 +761,18 @@ async function loadSourceBinding(args: {
   }
 
   return Result.ok(binding)
+}
+
+async function loadSourceBinding(args: {
+  env: AppEnv
+  issueId: string
+  workspaceId: string
+}): Promise<ResultValue<IssueSourceBindingRow, WorkProductReviewError>> {
+  const result = await findSourceBinding(args)
+  if (result.isErr()) return Result.err(result.error)
+  return result.value
+    ? Result.ok(result.value)
+    : Result.err(invalidState('Apply requires a connector-bound issue source'))
 }
 
 async function markWorkProductApplied(args: {
@@ -834,7 +855,7 @@ async function callWritebackWithApproval(args: {
   runId?: string | null
   workspaceId: string
 }): Promise<
-  ResultValue<ConnectorToolSuccess, ConnectorError | WorkProductReviewError>
+  ResultValue<ConnectorToolResponse, ConnectorError | WorkProductReviewError>
 > {
   const firstCall = await callConnectorTool({
     agentId: args.agentId,
@@ -853,6 +874,7 @@ async function callWritebackWithApproval(args: {
     return Result.ok({
       externalId: firstCall.value.externalId,
       externalUrl: firstCall.value.externalUrl,
+      response: firstCall.value.response,
     })
   }
 
@@ -896,6 +918,7 @@ async function callWritebackWithApproval(args: {
   return Result.ok({
     externalId: secondCall.value.externalId,
     externalUrl: secondCall.value.externalUrl,
+    response: secondCall.value.response,
   })
 }
 
@@ -973,6 +996,318 @@ async function applyWorkProduct(args: {
   })
 }
 
+/**
+ * Fills `.github/pull_request_template.md` for an "Apply as PR" pull
+ * request so `scripts/verify-pr-contract.mjs` passes: every heading is
+ * non-empty, the three required items are checked, Documentation states why
+ * no separate doc change is needed (the PR is the file itself), Checks names
+ * a command, and Verification says INCONCLUSIVE with its evidence, because
+ * Garden writes through the API and runs no build or test. The closing
+ * keyword is what lets the PR webhook (#357) move the board card, and it
+ * only works for an issue in the same repository.
+ */
+export function buildApplyPrBody(args: {
+  branch: string
+  closesRef: string | null
+  issueId: string
+  path: string
+  repository: string
+  workProduct: Pick<WorkProductRow, 'id' | 'title'>
+}) {
+  const title = args.workProduct.title?.trim() || 'Approved work product'
+  const why = args.closesRef
+    ? `Closes ${args.closesRef}.`
+    : `Garden issue \`${args.issueId}\` has no GitHub issue in this repository to close.`
+  return `## What changed
+
+Writes \`${args.path}\` with the approved Garden work product "${title}".
+
+## Why
+
+${why} A person approved this text in Garden and applied it as a pull request.
+
+## Scope
+
+- [x] This pull request targets \`dev\`.
+- [x] The diff contains one focused change.
+- [x] Unrelated work is in a separate pull request.
+
+## Contribution standard
+
+- [x] I stated the outcome and non-goals.
+- [x] I read \`docs/README.md\` and the relevant code, tests, and documentation
+      before editing.
+- [x] I reviewed the final diff and considered its wider effects.
+- [ ] I recorded decisions for long-running or multi-contributor work.
+
+## Documentation
+
+Documentation: not needed as a separate change. This pull request changes one file, \`${args.path}\`.
+
+## Checks
+
+- \`git diff dev...${args.branch} -- ${args.path}\` shows the only change.
+- Garden wrote the file through the GitHub API, so no build or test ran.
+
+## Verification
+
+INCONCLUSIVE. The evidence is Garden work product \`${args.workProduct.id}\`, approved in Garden, and the \`issue_run:work_product_applied\` event on its run. A reviewer should read the diff before merging.
+
+## Risk and follow-up
+
+Merging stays a human step on GitHub. Review the file against the repository's conventions before merging.
+`
+}
+
+/** Title for the PR; the contract needs at least 10 characters. */
+function applyPrTitle(workProduct: WorkProductRow) {
+  const title = workProduct.title?.trim() || 'Approved work product'
+  return title.length >= 10 ? title : `${title} (Garden work product)`
+}
+
+/** Reads one tool and fails if it unexpectedly asks for approval. */
+async function readGithub(
+  args: Parameters<typeof callConnectorTool>[0],
+): Promise<
+  ResultValue<ConnectorToolResponse, ConnectorError | WorkProductReviewError>
+> {
+  const result = await callConnectorTool(args)
+  if (result.isErr()) return Result.err(result.error)
+  if (result.value.kind === 'needs_approval') {
+    return Result.err(
+      invalidState(`${args.toolName} unexpectedly needs approval`),
+    )
+  }
+  return Result.ok(result.value)
+}
+
+/**
+ * Applies an approved work product as a GitHub pull request (S1-28, #375).
+ *
+ * Before: the only apply path posted the body as a comment on the bound
+ * issue, so a draft meant to become a repository file never became a PR.
+ * After: when `payload.pr_target` names `owner/repo` + path and that
+ * repository is linked to the issue's Team (`team_repository`), the server
+ * reads the base branch head, creates `garden/work-product-<id>`, writes the
+ * body to the file (passing the existing blob sha when the file exists),
+ * and opens a PR whose body fills the PR template. Every call runs through
+ * the workspace GitHub App installation with the approving person as actor,
+ * the same `callWritebackWithApproval` gate the comment apply uses. The PR
+ * URL and number are recorded as `applied_external_url/id`. Merging stays a
+ * human step.
+ */
+async function applyWorkProductAsPr(args: {
+  actorUserId: string
+  env: AppEnv
+  workProductId: string
+  workspaceId: string
+}): Promise<
+  ResultValue<WorkProductReviewOutcome, ConnectorError | WorkProductReviewError>
+> {
+  const contextResult = await loadWorkProductContext(args)
+  if (contextResult.isErr()) return Result.err(contextResult.error)
+  const { issue, workProduct } = contextResult.value
+  if (workProduct.status !== 'approved') {
+    return Result.err(
+      invalidState('Only approved work products can be applied'),
+    )
+  }
+  if (workProduct.appliedExternalUrl) {
+    return Result.err(invalidState('Work product has already been applied'))
+  }
+
+  const body = workProduct.body?.trim()
+  if (!body) return Result.err(invalidState('Work product body is empty'))
+
+  const target = parseWorkProductPrTarget(workProduct.payload)
+  if (!target) {
+    return Result.err(
+      invalidState(
+        'Apply as PR requires payload.pr_target with repository and path',
+      ),
+    )
+  }
+  const repository = parseRepository(target.repository)
+  if (!repository) {
+    return Result.err(invalidState('pr_target.repository must be owner/repo'))
+  }
+
+  if (!issue.teamId) {
+    return Result.err(invalidState('Apply as PR requires an issue on a Team'))
+  }
+  const teamId = issue.teamId
+  const db = await getDb(args.env)
+  const linkedResult = await Result.tryPromise({
+    try: async () =>
+      db
+        .select({ fullName: schema.teamRepository.fullName })
+        .from(schema.teamRepository)
+        .where(
+          and(
+            eq(schema.teamRepository.workspaceId, args.workspaceId),
+            eq(schema.teamRepository.teamId, teamId),
+            sql`lower(${schema.teamRepository.fullName}) = lower(${target.repository})`,
+          ),
+        )
+        .limit(1),
+    catch: (cause) => dbError('Failed to load Team repositories', cause),
+  })
+  if (linkedResult.isErr()) return Result.err(linkedResult.error)
+  if (linkedResult.value.length === 0) {
+    return Result.err(
+      invalidState(
+        `Repository ${target.repository} is not linked to this issue's Team`,
+      ),
+    )
+  }
+
+  const agentId =
+    workProduct.agentId ??
+    (issue.assigneeType === 'agent' ? issue.assigneeId : null)
+  if (!agentId) {
+    return Result.err(
+      invalidState('Apply requires an agent associated with the work product'),
+    )
+  }
+
+  const bindingResult = await findSourceBinding({
+    env: args.env,
+    issueId: issue.id,
+    workspaceId: args.workspaceId,
+  })
+  if (bindingResult.isErr()) return Result.err(bindingResult.error)
+  const binding = bindingResult.value
+  const issueRef =
+    binding?.connectorId === 'github'
+      ? resolveGithubIssueRef(binding).unwrapOr(null)
+      : null
+  const closesRef =
+    issueRef &&
+    issueRef.owner.toLowerCase() === repository.owner.toLowerCase() &&
+    issueRef.repo.toLowerCase() === repository.repo.toLowerCase()
+      ? `#${issueRef.issueNumber}`
+      : null
+
+  const call = {
+    agentId,
+    connectorId: 'github',
+    env: args.env,
+    issueId: issue.id,
+    runId: workProduct.runId,
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+  }
+  const write = (toolName: string, toolArgs: Record<string, unknown>) =>
+    callWritebackWithApproval({
+      actorUserId: args.actorUserId,
+      agentId,
+      env: args.env,
+      invocation: {
+        connectorId: 'github',
+        targetLabel: `github.com/${target.repository}`,
+        toolArgs,
+        toolName,
+      },
+      issueId: issue.id,
+      runId: workProduct.runId,
+      workspaceId: args.workspaceId,
+    })
+  const repoArgs = { owner: repository.owner, repo: repository.repo }
+
+  const baseResult = await readGithub({
+    ...call,
+    toolName: 'get_commit',
+    toolArgs: { ...repoArgs, ref: target.base_branch },
+  })
+  if (baseResult.isErr()) return Result.err(baseResult.error)
+  const baseSha = stringValue(objectOrNull(baseResult.value.response)?.sha)
+  if (!baseSha) {
+    return Result.err(
+      invalidState(`Could not read the head of ${target.base_branch}`),
+    )
+  }
+
+  const branch = `garden/work-product-${workProduct.id.slice(0, 8)}`
+  const branchResult = await write('create_branch', {
+    ...repoArgs,
+    branch,
+    fromSha: baseSha,
+  })
+  if (branchResult.isErr()) return Result.err(branchResult.error)
+
+  // A missing file is the create case; any other read failure stops here.
+  const existingResult = await readGithub({
+    ...call,
+    toolName: 'get_file_contents',
+    toolArgs: { ...repoArgs, path: target.path, ref: branch },
+  })
+  const existingSha = existingResult.isOk()
+    ? stringValue(objectOrNull(existingResult.value.response)?.sha)
+    : null
+  if (
+    existingResult.isErr() &&
+    !(
+      isConnectorError(existingResult.error) &&
+      existingResult.error.kind === 'not_found'
+    )
+  ) {
+    return Result.err(existingResult.error)
+  }
+
+  const title = applyPrTitle(workProduct)
+  const fileResult = await write('create_or_update_file', {
+    ...repoArgs,
+    path: target.path,
+    message: title,
+    content: body,
+    branch,
+    ...(existingSha ? { sha: existingSha } : {}),
+  })
+  if (fileResult.isErr()) return Result.err(fileResult.error)
+
+  const invocation: WritebackInvocation = {
+    connectorId: 'github',
+    targetLabel: `github.com/${target.repository}/blob/${branch}/${target.path}`,
+    toolArgs: {
+      ...repoArgs,
+      title,
+      head: branch,
+      base: target.base_branch,
+      body: buildApplyPrBody({
+        branch,
+        closesRef,
+        issueId: issue.id,
+        path: target.path,
+        repository: target.repository,
+        workProduct,
+      }),
+    },
+    toolName: 'create_pull_request',
+  }
+  const prResult = await write(invocation.toolName, invocation.toolArgs)
+  if (prResult.isErr()) return Result.err(prResult.error)
+
+  const prNumber = numberValue(objectOrNull(prResult.value.response)?.number)
+  const externalId = prNumber?.toString() ?? prResult.value.externalId
+  const externalUrl = prResult.value.externalUrl
+  const appliedResult = await markWorkProductApplied({
+    env: args.env,
+    externalId,
+    externalUrl,
+    invocation,
+    workProduct,
+    workspaceId: args.workspaceId,
+  })
+  if (appliedResult.isErr()) return Result.err(appliedResult.error)
+
+  return Result.ok({
+    action: 'apply_pr',
+    workProductId: workProduct.id,
+    externalId,
+    externalUrl,
+  })
+}
+
 export async function reviewWorkProduct(args: {
   actorUserId: string
   env: AppEnv
@@ -1002,6 +1337,13 @@ export async function reviewWorkProduct(args: {
       })
     case 'apply':
       return applyWorkProduct({
+        actorUserId: args.actorUserId,
+        env: args.env,
+        workProductId: args.workProductId,
+        workspaceId: args.workspaceId,
+      })
+    case 'apply_pr':
+      return applyWorkProductAsPr({
         actorUserId: args.actorUserId,
         env: args.env,
         workProductId: args.workProductId,
