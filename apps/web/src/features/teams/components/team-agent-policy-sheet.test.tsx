@@ -19,7 +19,11 @@ const apiMocks = vi.hoisted(() => ({
   updateTeamAgentPolicy: vi.fn(),
 }))
 
-vi.mock('@/lib/api', () => ({ api: apiMocks, getApi: () => apiMocks }))
+vi.mock('@/lib/api', () => ({
+  api: apiMocks,
+  getApi: () => apiMocks,
+  listConnections: () => Promise.resolve({ integrations: [] }),
+}))
 
 function response(
   overrides: Partial<TeamAgentPolicyResponse> = {},
@@ -70,8 +74,10 @@ describe('TeamAgentPolicySheet', () => {
     )
     const { queryClient, onOpenChange } = renderSheet()
 
-    const knowledge = await screen.findByRole('switch', { name: 'Knowledge' })
-    const save = screen.getByRole('button', { name: 'Save changes' })
+    const knowledge = await screen.findByRole('checkbox', {
+      name: 'Knowledge',
+    })
+    const save = screen.getByRole('button', { name: 'Save Changes' })
     expect(save).toBeDisabled()
 
     fireEvent.click(knowledge)
@@ -109,10 +115,10 @@ describe('TeamAgentPolicySheet', () => {
     const { queryClient } = renderSheet()
 
     fireEvent.click(
-      await screen.findByRole('tab', { name: 'Connector access' }),
+      await screen.findByRole('tab', { name: 'Connector Grants' }),
     )
     fireEvent.click(await screen.findByRole('switch', { name: 'GitHub' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
 
     await waitFor(() => expect(toast.error).toHaveBeenCalled())
     expect(
@@ -131,11 +137,11 @@ describe('TeamAgentPolicySheet', () => {
         'Only workspace owners and admins can change this policy.',
       ),
     ).toBeInTheDocument()
-    expect(screen.getByRole('switch', { name: 'Tasks' })).toHaveAttribute(
+    expect(screen.getByRole('checkbox', { name: 'Tasks' })).toHaveAttribute(
       'aria-disabled',
       'true',
     )
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
   })
 
   it('renders unbacked design controls disabled with a Coming soon badge', async () => {
@@ -150,16 +156,59 @@ describe('TeamAgentPolicySheet', () => {
       'Read locked files',
     ]) {
       expect(
-        await screen.findByRole('switch', { name: label }),
+        await screen.findByRole('checkbox', { name: label }),
       ).toHaveAttribute('aria-disabled', 'true')
     }
     expect(screen.getByRole('tab', { name: /Admin Policy/ })).toHaveAttribute(
       'aria-disabled',
       'true',
     )
+    expect(screen.getByRole('combobox', { name: 'Team Role' })).toHaveAttribute(
+      'data-disabled',
+    )
     expect(screen.getAllByText('Coming soon').length).toBeGreaterThanOrEqual(7)
 
-    fireEvent.click(screen.getByRole('switch', { name: 'Chats' }))
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Chats' }))
+    expect(screen.getByRole('button', { name: 'Save Changes' })).toBeDisabled()
+  })
+
+  it('blocks a risk class from a Restricted card', async () => {
+    apiMocks.getTeamAgentPolicy.mockResolvedValue(response())
+    apiMocks.updateTeamAgentPolicy.mockResolvedValue(response())
+    renderSheet()
+
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Destructive actions' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+
+    await waitFor(() =>
+      expect(apiMocks.updateTeamAgentPolicy).toHaveBeenCalledWith('team-1', {
+        ...DEFAULT_TEAM_AGENT_POLICY,
+        blocked_risk_classes: ['destructive'],
+      }),
+    )
+  })
+
+  it('shows approval rules as selects with the Team owner as approver', async () => {
+    apiMocks.getTeamAgentPolicy.mockResolvedValue(
+      response({
+        policy: { ...DEFAULT_TEAM_AGENT_POLICY, approval_required: ['write'] },
+      }),
+    )
+    renderSheet()
+
+    fireEvent.click(
+      await screen.findByRole('tab', { name: 'Task Approval Rules' }),
+    )
+    expect(
+      await screen.findByRole('combobox', { name: 'Write changes' }),
+    ).toHaveTextContent('Approval required')
+    expect(
+      screen.getByRole('combobox', { name: 'Destructive actions' }),
+    ).toHaveTextContent('Follow agent settings')
+    const approver = screen.getByRole('combobox', { name: 'Default Approver' })
+    expect(approver).toHaveTextContent('Team owner')
+    expect(approver).toHaveAttribute('data-disabled')
   })
 })
