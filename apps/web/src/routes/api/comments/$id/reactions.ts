@@ -1,24 +1,19 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
 import {
   parseJsonBody,
   reactionBodySchema,
 } from '@/lib/server/validation/issues'
 import { badRequest, notFound } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
+import { getCommentIssueId } from '@/lib/server/queries/issues'
 
 async function loadCommentIssueId(
   appContext: ReturnType<typeof requireAppRequestContext>,
   commentId: string,
 ) {
   const db = await appContext.db()
-  const [comment] = await db
-    .select({ issueId: schema.issueComment.issueId })
-    .from(schema.issueComment)
-    .where(eq(schema.issueComment.id, commentId))
-  return comment?.issueId ?? null
+  return await getCommentIssueId(db, commentId)
 }
 
 export const Route = createFileRoute('/api/comments/$id/reactions')({
