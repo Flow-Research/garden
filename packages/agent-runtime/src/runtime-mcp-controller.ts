@@ -1505,6 +1505,7 @@ export class RuntimeMcpController {
             argsJson: schema.permissionRequest.argsJson,
             resolvedAt: schema.permissionRequest.resolvedAt,
             status: schema.permissionRequest.status,
+            runId: schema.permissionRequest.runId,
           })
           .from(schema.permissionRequest)
           .where(
@@ -1533,6 +1534,11 @@ export class RuntimeMcpController {
       if (request.status !== 'approved' || !request.resolvedAt) {
         return false
       }
+      // An issue run acts on its own member's accounts (#383), so an approval
+      // from another run may cover a different person's account. Reuse only
+      // approvals granted inside the same run.
+      const runId = identityResult.value.runId
+      if (runId !== undefined && request.runId !== runId) return false
 
       return (
         Date.now() - request.resolvedAt.getTime() <=
