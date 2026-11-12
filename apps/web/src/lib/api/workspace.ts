@@ -77,6 +77,13 @@ export function createMember(
   })
 }
 
+/** Clears the caller's own GitHub identity (self-serve unlink). */
+export function unlinkOwnGithubIdentity(): Promise<{ ok: true }> {
+  return getApiTransport().request('/api/github/identity/unlink', {
+    method: 'POST',
+  })
+}
+
 export function updateMember(
   workspaceId: string,
   memberId: string,

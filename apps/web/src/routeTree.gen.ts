@@ -120,6 +120,9 @@ import { Route as ApiInternalExecutorCatalogRouteImport } from './routes/api/int
 import { Route as ApiInboxIdReadRouteImport } from './routes/api/inbox/$id/read'
 import { Route as ApiInboxIdArchiveRouteImport } from './routes/api/inbox/$id/archive'
 import { Route as ApiGmailDraftsDraftIdRouteImport } from './routes/api/gmail/drafts/$draftId'
+import { Route as ApiGithubIdentityUnlinkRouteImport } from './routes/api/github/identity/unlink'
+import { Route as ApiGithubIdentityStartRouteImport } from './routes/api/github/identity/start'
+import { Route as ApiGithubIdentityCompleteRouteImport } from './routes/api/github/identity/complete'
 import { Route as ApiExecutorOauthStartRouteImport } from './routes/api/executor/oauth/start'
 import { Route as ApiExecutorDecideDiagnoseRouteImport } from './routes/api/executor/decide/diagnose'
 import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documents/$id/versions'
@@ -741,6 +744,22 @@ const ApiGmailDraftsDraftIdRoute = ApiGmailDraftsDraftIdRouteImport.update({
   path: '/$draftId',
   getParentRoute: () => ApiGmailDraftsRoute,
 } as any)
+const ApiGithubIdentityUnlinkRoute = ApiGithubIdentityUnlinkRouteImport.update({
+  id: '/api/github/identity/unlink',
+  path: '/api/github/identity/unlink',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubIdentityStartRoute = ApiGithubIdentityStartRouteImport.update({
+  id: '/api/github/identity/start',
+  path: '/api/github/identity/start',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubIdentityCompleteRoute =
+  ApiGithubIdentityCompleteRouteImport.update({
+    id: '/api/github/identity/complete',
+    path: '/api/github/identity/complete',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiExecutorOauthStartRoute = ApiExecutorOauthStartRouteImport.update({
   id: '/api/executor/oauth/start',
   path: '/api/executor/oauth/start',
@@ -1085,6 +1104,9 @@ export interface FileRoutesByFullPath {
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
+  '/api/github/identity/complete': typeof ApiGithubIdentityCompleteRoute
+  '/api/github/identity/start': typeof ApiGithubIdentityStartRoute
+  '/api/github/identity/unlink': typeof ApiGithubIdentityUnlinkRoute
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
@@ -1234,6 +1256,9 @@ export interface FileRoutesByTo {
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
+  '/api/github/identity/complete': typeof ApiGithubIdentityCompleteRoute
+  '/api/github/identity/start': typeof ApiGithubIdentityStartRoute
+  '/api/github/identity/unlink': typeof ApiGithubIdentityUnlinkRoute
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
@@ -1391,6 +1416,9 @@ export interface FileRoutesById {
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
   '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
+  '/api/github/identity/complete': typeof ApiGithubIdentityCompleteRoute
+  '/api/github/identity/start': typeof ApiGithubIdentityStartRoute
+  '/api/github/identity/unlink': typeof ApiGithubIdentityUnlinkRoute
   '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
@@ -1547,6 +1575,9 @@ export interface FileRouteTypes {
     | '/api/documents/$id/versions'
     | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
+    | '/api/github/identity/complete'
+    | '/api/github/identity/start'
+    | '/api/github/identity/unlink'
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
@@ -1696,6 +1727,9 @@ export interface FileRouteTypes {
     | '/api/documents/$id/versions'
     | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
+    | '/api/github/identity/complete'
+    | '/api/github/identity/start'
+    | '/api/github/identity/unlink'
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
@@ -1852,6 +1886,9 @@ export interface FileRouteTypes {
     | '/api/documents/$id/versions'
     | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
+    | '/api/github/identity/complete'
+    | '/api/github/identity/start'
+    | '/api/github/identity/unlink'
     | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
@@ -1959,6 +1996,9 @@ export interface RootRouteChildren {
   ApiDocumentsIdVersionsRoute: typeof ApiDocumentsIdVersionsRoute
   ApiExecutorDecideDiagnoseRoute: typeof ApiExecutorDecideDiagnoseRoute
   ApiExecutorOauthStartRoute: typeof ApiExecutorOauthStartRoute
+  ApiGithubIdentityCompleteRoute: typeof ApiGithubIdentityCompleteRoute
+  ApiGithubIdentityStartRoute: typeof ApiGithubIdentityStartRoute
+  ApiGithubIdentityUnlinkRoute: typeof ApiGithubIdentityUnlinkRoute
   ApiInternalExecutorCatalogRoute: typeof ApiInternalExecutorCatalogRoute
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
   ApiWorkProductsIdReviewRoute: typeof ApiWorkProductsIdReviewRoute
@@ -2743,6 +2783,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/gmail/drafts/$draftId'
       preLoaderRoute: typeof ApiGmailDraftsDraftIdRouteImport
       parentRoute: typeof ApiGmailDraftsRoute
+    }
+    '/api/github/identity/unlink': {
+      id: '/api/github/identity/unlink'
+      path: '/api/github/identity/unlink'
+      fullPath: '/api/github/identity/unlink'
+      preLoaderRoute: typeof ApiGithubIdentityUnlinkRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/identity/start': {
+      id: '/api/github/identity/start'
+      path: '/api/github/identity/start'
+      fullPath: '/api/github/identity/start'
+      preLoaderRoute: typeof ApiGithubIdentityStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/identity/complete': {
+      id: '/api/github/identity/complete'
+      path: '/api/github/identity/complete'
+      fullPath: '/api/github/identity/complete'
+      preLoaderRoute: typeof ApiGithubIdentityCompleteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/executor/oauth/start': {
       id: '/api/executor/oauth/start'
@@ -3686,6 +3747,9 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDocumentsIdVersionsRoute: ApiDocumentsIdVersionsRoute,
   ApiExecutorDecideDiagnoseRoute: ApiExecutorDecideDiagnoseRoute,
   ApiExecutorOauthStartRoute: ApiExecutorOauthStartRoute,
+  ApiGithubIdentityCompleteRoute: ApiGithubIdentityCompleteRoute,
+  ApiGithubIdentityStartRoute: ApiGithubIdentityStartRoute,
+  ApiGithubIdentityUnlinkRoute: ApiGithubIdentityUnlinkRoute,
   ApiInternalExecutorCatalogRoute: ApiInternalExecutorCatalogRoute,
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,
   ApiWorkProductsIdReviewRoute: ApiWorkProductsIdReviewRoute,
@@ -3694,13 +3758,3 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { startInstance } from './start.ts'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-    config: Awaited<ReturnType<typeof startInstance.getOptions>>
-  }
-}
