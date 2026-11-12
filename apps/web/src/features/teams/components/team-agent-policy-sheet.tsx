@@ -100,9 +100,9 @@ const APPROVAL_LABELS = {
   agent: 'Follow agent settings',
 } as const
 
-function ComingSoon() {
+function ComingSoon({ className }: { className?: string }) {
   return (
-    <Badge className="font-normal" variant="secondary">
+    <Badge className={cn('font-normal', className)} variant="secondary">
       Coming soon
     </Badge>
   )
@@ -244,7 +244,7 @@ function toggle<T>(list: readonly T[], value: T, present: boolean): T[] {
 }
 
 const TAB_TRIGGER_CLASS =
-  'h-10 flex-1 gap-2 rounded-none px-3 text-sm font-normal text-text-secondary after:bg-text-brand-secondary data-active:text-foreground'
+  'h-10 min-w-0 flex-1 gap-1.5 rounded-none px-2 text-sm font-normal text-text-secondary after:bg-text-brand-secondary data-active:text-foreground'
 
 /**
  * Team agent policy side sheet ("Team settings"), opened from the Team detail
@@ -318,14 +318,14 @@ export function TeamAgentPolicySheet({
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
       <SheetContent className="w-full gap-0 bg-background data-[side=right]:sm:max-w-3xl [&>[data-slot=sheet-close]]:top-6 [&>[data-slot=sheet-close]]:right-6">
-        <SheetHeader className="gap-2 px-8 pt-10 pb-8">
+        <SheetHeader className="gap-3 px-8 pt-11 pb-8">
           <div className="flex items-center gap-3">
             <Settings
               aria-hidden
               className="size-7 text-text-secondary"
               strokeWidth={1.5}
             />
-            <SheetTitle className="text-2xl font-medium">
+            <SheetTitle className="text-xl font-medium">
               Team settings
             </SheetTitle>
             <Badge
@@ -349,7 +349,7 @@ export function TeamAgentPolicySheet({
         {policy ? (
           <Tabs className="min-h-0 flex-1 gap-0 px-8" defaultValue="agents">
             <TabsList
-              className="h-10! w-full gap-0 border-b border-border-default bg-muted p-0"
+              className="h-10! w-full justify-start gap-0 border-b border-border-default bg-muted p-0"
               variant="line"
             >
               <TabsTrigger className={TAB_TRIGGER_CLASS} value="agents">
@@ -359,7 +359,7 @@ export function TeamAgentPolicySheet({
               <TabsTrigger className={TAB_TRIGGER_CLASS} disabled value="admin">
                 <UserRoundCog aria-hidden />
                 Admin Policy
-                <ComingSoon />
+                <ComingSoon className="h-4 px-1.5 text-[11px]" />
               </TabsTrigger>
               <TabsTrigger className={TAB_TRIGGER_CLASS} value="connectors">
                 <Plug aria-hidden />
@@ -421,7 +421,7 @@ export function TeamAgentPolicySheet({
                   hint="Define what agents are restricted from doing"
                   title="Restricted"
                 />
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   {RESTRICTED_CARDS.map(({ riskClass, label }) => (
                     <CheckTile
                       checked={
