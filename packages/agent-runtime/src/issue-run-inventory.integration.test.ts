@@ -75,6 +75,7 @@ describe('list_workspace_inventory in an issue run (integration)', () => {
         workspaceId,
         agentId,
         ownerUserId: ownerId,
+        connectorUserId: ownerId,
       }),
     }
   }

@@ -1,3 +1,4 @@
+import { executorSubjectFor } from './runtime-mcp-controller'
 import {
   createWorkspaceStateBackend,
   type WorkspaceFsLike,
@@ -434,6 +435,8 @@ export type ChatToolRunIdentity = {
   workspaceId: string
   agentId: string
   ownerUserId: string
+  /** Member whose per-member connections the run uses; null for none (#383). */
+  connectorUserId: string | null
 }
 
 type ReadRunToolContext = {
@@ -462,6 +465,11 @@ type ChatIssueIdentity = {
   threadId: string
   workspaceId: string
   ownerUserId: string
+  /**
+   * Member whose per-member connections apply: the chat thread owner, or the
+   * issue run's recorded connector member (null when none, #383).
+   */
+  connectorUserId: string | null
   agentId: string
   isDefault: boolean
   issuePrefix: string
@@ -557,7 +565,10 @@ async function loadChatThreadContext(context: {
   const db = getReadRunDb(context.databaseUrl)
   const runIdentity = context.getRunIdentity?.()
   if (runIdentity) return await loadRunIdentityContext(db, context, runIdentity)
-  const result = await Result.tryPromise<ChatIssueIdentity | null, string>({
+  const result = await Result.tryPromise<
+    Omit<ChatIssueIdentity, 'connectorUserId'> | null,
+    string
+  >({
     try: async () => {
       const [row] = await db
         .select({
@@ -587,7 +598,11 @@ async function loadChatThreadContext(context: {
   })
   if (result.isErr()) return Result.err(result.error)
   return result.value
-    ? Result.ok({ db, ...result.value })
+    ? Result.ok({
+        db,
+        ...result.value,
+        connectorUserId: result.value.ownerUserId,
+      })
     : Result.err('chat thread not found.')
 }
 
@@ -630,6 +645,7 @@ async function loadRunIdentityContext(
         threadId: context.threadId,
         workspaceId: identity.workspaceId,
         ownerUserId: identity.ownerUserId,
+        connectorUserId: identity.connectorUserId,
         agentId: identity.agentId,
         ...result.value,
       })
@@ -670,6 +686,7 @@ async function loadChatIssueIdentity(
     threadId: result.value.threadId,
     workspaceId: result.value.workspaceId,
     ownerUserId: result.value.ownerUserId,
+    connectorUserId: result.value.connectorUserId,
     agentId: result.value.agentId,
     isDefault: result.value.isDefault,
     issuePrefix: result.value.issuePrefix,
@@ -1398,6 +1415,7 @@ async function assignIssueFromChat(
     agentId: assigneeAgentId,
     source: 'assignment',
     actor: { type: 'agent', id: identity.agentId },
+    onBehalfOfUserId: identity.connectorUserId,
   })
   if (startResult.isErr()) return issueToolErr(startResult.error.message)
   const run: AssignIssueToolResult['run'] =
@@ -1498,6 +1516,7 @@ async function updateIssueStatusFromChat(
       agentId: issue.assigneeId,
       source: 'manual',
       actor: { type: 'agent', id: identity.agentId },
+      onBehalfOfUserId: identity.connectorUserId,
     })
     if (startResult.isErr()) return issueToolErr(startResult.error.message)
   }
@@ -1645,7 +1664,7 @@ export async function listWorkspaceInventoryFromChat(
         includeConnectors
           ? listAvailableConnectorBindings({
               db,
-              userId: identity.ownerUserId,
+              userId: identity.connectorUserId,
               workspaceId: identity.workspaceId,
             })
           : [],
@@ -1666,10 +1685,12 @@ export async function listWorkspaceInventoryFromChat(
                 ),
               )
           : [],
+        // The catalog is read under the same Executor subject the run's
+        // session uses: org connections plus the member's own (#383).
         includeConnectors && context.loadExecutorCatalog
           ? context.loadExecutorCatalog({
               workspaceId: identity.workspaceId,
-              userId: identity.ownerUserId,
+              userId: executorSubjectFor(identity),
             })
           : null,
       ])

@@ -26,6 +26,7 @@ import {
 import type { IssueStatus } from '@garden/core/types/issue'
 import type { IssueRunStatus } from '@garden/core/types/issue-run'
 import * as schema from '@garden/db/schema'
+import { readRunConnectorIdentity } from '@garden/server/issues/run-connector-identity'
 import issueInteractionSkillMarkdown from './skills/issue-interaction/SKILL.md?raw'
 import { createAskQuestionTool } from './agent-tools/ask-question'
 import { createAttachSourceBindingTool } from './agent-tools/attach-source-binding'
@@ -404,6 +405,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
                 workspaceId: run.workspaceId,
                 agentId: run.agentId,
                 ownerUserId: run.agentOwnerUserId,
+                connectorUserId: run.connectorUserId,
               }
         },
         brain: {
@@ -699,6 +701,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             agentId: schema.issueRun.agentId,
             agentOwnerUserId: schema.agent.ownerUserId,
             hostName: schema.issueRun.hostName,
+            contextSnapshot: schema.issueRun.contextSnapshot,
           })
           .from(schema.issueRun)
           .innerJoin(schema.agent, eq(schema.agent.id, schema.issueRun.agentId))
@@ -717,7 +720,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         }),
       )
     }
-    return Result.ok(result.value)
+    const { contextSnapshot, ...runState } = result.value
+    return Result.ok({
+      ...runState,
+      connectorUserId: readRunConnectorIdentity(contextSnapshot).userId,
+    })
   }
 
   protected async loadTurnContext(
@@ -856,6 +863,8 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       issueId: row.runRow.run.issueId,
       agentId: row.runRow.run.agentId,
       agentOwnerUserId: row.runRow.agent.ownerUserId,
+      connectorUserId: readRunConnectorIdentity(row.runRow.run.contextSnapshot)
+        .userId,
       hostName: row.runRow.run.hostName,
     }
 
@@ -1628,6 +1637,13 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     this.resolutionActions.clear()
   }
 
+  /**
+   * Runtime identity for this run's connectors. Before #383 the whole identity
+   * was the agent owner, so per-member OAuth accounts and the Executor session
+   * belonged to the owner whoever triggered the run. `userId` still names the
+   * owner (team agent policy, logs); `connectorUserId` is the member recorded
+   * on the run at queue time, or null when no member is behind it.
+   */
   protected async resolveMcpIdentity(): Promise<
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   > {
@@ -1649,6 +1665,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             issueId: schema.issueRun.issueId,
             userId: schema.agent.ownerUserId,
             agentId: schema.issueRun.agentId,
+            contextSnapshot: schema.issueRun.contextSnapshot,
           })
           .from(schema.issueRun)
           .innerJoin(schema.agent, eq(schema.agent.id, schema.issueRun.agentId))
@@ -1682,6 +1699,8 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       threadId: this.name,
       workspaceId: result.value.workspaceId,
       userId: result.value.userId,
+      connectorUserId: readRunConnectorIdentity(result.value.contextSnapshot)
+        .userId,
       agentId: result.value.agentId,
       issueId: result.value.issueId,
       runId,

@@ -54,11 +54,46 @@ Two runtimes with different identities therefore never share an Executor session
 
 GitHub tools in a run come from the workspace GitHub App installation. They do not come from the member who triggered the run, and they do not come from the agent owner's personal GitHub account.
 
-The runtime identity for an issue run names the agent owner as `userId`. `IssueRunSubAgent.resolveMcpIdentity` in `packages/agent-runtime/src/issue-run-sub-agent.ts` reads `schema.agent.ownerUserId` for the run's agent. The triggering member is never part of that identity. When Abiola comments on or assigns an issue, the run still acts as the agent and its owner.
-
-That `userId` matters only for OAuth MCP connectors. `listAvailableConnectorBindings` in `packages/server/src/connectors/availability.ts` filters OAuth `account` rows by workspace and user, but it filters `github_app_installation` rows by workspace alone. The GitHub binding's `accountId` is the installation id. `RuntimeMcpController.refreshGitHubHostedMcpTools` passes that installation id to the hosted GitHub MCP client, and native GitHub tools authenticate as the same installation. GitHub therefore sees every run as the Garden App acting on the workspace installation, with whatever repositories that installation can reach.
+The GitHub binding does not depend on who triggered the run. `listAvailableConnectorBindings` in `packages/server/src/connectors/availability.ts` filters OAuth `account` rows by workspace and user, but it filters `github_app_installation` rows by workspace alone. The GitHub binding's `accountId` is the installation id. `RuntimeMcpController.refreshGitHubHostedMcpTools` passes that installation id to the hosted GitHub MCP client, and native GitHub tools authenticate as the same installation. GitHub therefore sees every run as the Garden App acting on the workspace installation, with whatever repositories that installation can reach.
 
 Per-agent permission grants still decide which of those tools an agent may call. Member GitHub logins (`github_identity`) are used only to map Garden people to GitHub assignees, not to authenticate.
+
+## Whose personal connections a run uses
+
+Executor connections for Google Drive, Docs, Calendar, Meet, Gmail, Slack, and similar services carry an owner. An `org` connection is the workspace's deliberate company account. A `user` connection is one member's personal account. Before issue #383, every issue run read both kinds through the agent owner. On FLO-150, Samuel asked Garden for a Google Doc, and the run looked up Konan's personal connections instead of his.
+
+The rules are now:
+
+- **Org connections** are usable by every run in the workspace, whoever triggered it.
+- **User connections** come from the member behind the run. A run never uses the agent owner's user connections, or any other person's, as a stand-in.
+- **GitHub App and Discord installs** are workspace-wide and unchanged.
+
+Executor enforces the first two rules through the session subject. Its storage layer shows a session every `org` row in the tenant plus the `user` rows whose subject matches (`ownerVisibilityCondition` in `@executor-js/sdk` 1.5.40). Garden only mirrors `user` connections into `auth_account` (`apps/web/src/routes/api/oauth/callback.ts`), so `listAvailableConnectorBindings` filters those rows by member and never needs to see org connections.
+
+When an integration has both an org and a user connection, Executor exposes both, under different tool addresses such as `tools.google_drive.org.<name>` and `tools.google_drive.user.<name>`. The agent instructions in `packages/agent-runtime/src/instructions/foundation.md` tell the agent to use the org connection by default. It uses the user connection only when the requester explicitly asks for their own account, such as "my Drive." Org is the default because issue output is shared with the workspace, and the org connection is the account the workspace chose for shared work. Inferring "personal" from looser wording would put a member's private files behind shared output.
+
+Garden decides which member is behind an issue run as follows.
+
+`startIssueRun` in `packages/server/src/issues/run-service.ts` decides the member once, at queue time. `resolveRunConnectorIdentity` in `packages/server/src/issues/run-connector-identity.ts` applies three rules:
+
+- **Triggering member.** A member actor uses their own connections. This covers a comment or mention author, the member who assigned the issue, and the member who started or retried the run.
+- **Delegating member.** An agent actor uses the member it was acting for. A chat delegation (`assign_issue` or a status change to `in_progress`) acts for the chat owner. A child issue from `create_child_issue` acts for the parent run's member.
+- **No member.** System actors (GitHub webhook, automation triggers) and agent work with no member upstream get no user connections. They still get org connections. When a service has only user connections, the run reports it as unavailable instead of borrowing anyone's account.
+
+The run records its choice as `connectorIdentity` on `issue_run.context_snapshot` and as `connector_identity` on the `issue_run:queued` event, so a person can see which member's accounts a run used. A run that resumes after a question keeps the member it was queued with, even when someone else answers. A run without a recorded identity resolves to no member.
+
+`ThreadRuntimeIdentity.connectorUserId` carries the member into the runtime, and `userId` keeps naming the agent owner. Each consumer reads one of them:
+
+| Consumer                                                        | Reads                                                             | Reason                                                                                                                                                           |
+| --------------------------------------------------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `listAvailableConnectorBindings` (mirrored user `account` rows) | `connectorUserId`                                                 | These are personal accounts. `null` returns workspace installs and keyless connectors only.                                                                      |
+| Executor MCP session subject and `buildExecutorMcpServerName`   | `executorSubjectFor`: `connectorUserId`, or `no-member:<agentId>` | The subject selects which user connections are visible; org connections are visible to every subject. The session name is an address, so it follows the subject. |
+| Capability sync                                                 | `connectorUserId`                                                 | It lists tools with a member's credentials. A no-member run skips it.                                                                                            |
+| `list_workspace_inventory` connectors and Executor catalog      | `connectorUserId` / `executorSubjectFor`                          | It reports what this run can actually reach.                                                                                                                     |
+| `loadTeamAgentPolicyForUser`                                    | `userId` (owner)                                                  | Team policy governs the agent, and it can only add approvals.                                                                                                    |
+| Brain write credit, logs                                        | `userId` (owner)                                                  | Attribution, not access. Issue runs still read org Brain only.                                                                                                   |
+
+Automation runs still use the agent owner for both fields. Whether an automation should act as its creator is a separate decision.
 
 ## Decide takes a direct path
 

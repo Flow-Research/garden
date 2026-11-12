@@ -241,7 +241,18 @@ export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
 export type ThreadRuntimeIdentity = {
   threadId: string
   workspaceId: string
+  /**
+   * The member the runtime is attributed to: the chat thread owner, or the
+   * agent owner for issue and automation runs. Team agent policy reads this.
+   */
   userId: string
+  /**
+   * The member whose per-member connections (OAuth accounts, Executor
+   * credentials) the runtime may use. Chat uses the thread owner. Issue runs
+   * use the triggering member, or `null` when no member is behind the run
+   * (#383). It is never filled with another person as a stand-in.
+   */
+  connectorUserId: string | null
   agentId: string
   issueId?: string
   runId?: string
@@ -261,12 +272,27 @@ export function buildExecutorMcpServerName(identity: ThreadRuntimeIdentity) {
   return [
     'executor',
     identity.workspaceId,
-    identity.userId,
+    executorSubjectFor(identity),
     identity.agentId,
     identity.threadId,
     identity.issueId ?? 'chat',
     identity.runId ?? 'session',
   ].join(':')
+}
+
+/**
+ * Executor subject for a runtime. Executor shows a session every `org`
+ * connection in its tenant plus the `user` connections whose subject matches
+ * (`ownerVisibilityCondition` in @executor-js/sdk 1.5.40). The subject
+ * therefore decides whose personal credentials a tool call can reach. Before
+ * #383 issue runs used the agent owner here. A run with no member behind it
+ * now gets an agent-scoped subject that owns no connections, so it keeps the
+ * workspace's org connections and sees no person's user connections.
+ */
+export function executorSubjectFor(
+  identity: Pick<ThreadRuntimeIdentity, 'connectorUserId' | 'agentId'>,
+) {
+  return identity.connectorUserId ?? `no-member:${identity.agentId}`
 }
 
 type StoredConnectorServerRowRecord = {
@@ -1680,6 +1706,7 @@ export class RuntimeMcpController {
       threadId,
       workspaceId: thread.workspaceId,
       userId: thread.userId,
+      connectorUserId: thread.userId,
       agentId: thread.agentId,
     } satisfies ThreadRuntimeIdentity)
   }
@@ -1701,7 +1728,7 @@ export class RuntimeMcpController {
             const value = (this.host.env as Record<string, unknown>)[name]
             return typeof value === 'string' ? value : undefined
           },
-          userId: identity.userId,
+          userId: identity.connectorUserId,
           workspaceId: identity.workspaceId,
         }),
       catch: (cause) =>
@@ -1832,7 +1859,7 @@ export class RuntimeMcpController {
         props: {
           session: {
             organizationId: identityResult.value.workspaceId,
-            userId: identityResult.value.userId,
+            userId: executorSubjectFor(identityResult.value),
             elicitationMode: 'model',
             resource: { kind: 'default' },
             ...(this.host.env.BETTER_AUTH_URL
@@ -1916,6 +1943,11 @@ export class RuntimeMcpController {
 
     const identityResult = await this.resolveRuntimeIdentity()
     if (identityResult.isErr()) return identityResult
+    // Capability sync lists tools with a member's Executor credentials and
+    // records that member as the grantor. A run with no member behind it has
+    // neither, so it leaves the catalog to member-backed runtimes (#383).
+    const connectorUserId = identityResult.value.connectorUserId
+    if (connectorUserId === null) return Result.ok(undefined)
 
     const endpoint = new URL(
       '/api/internal/capability-sync',
@@ -1935,7 +1967,7 @@ export class RuntimeMcpController {
               },
               body: JSON.stringify({
                 connectorId,
-                userId: identityResult.value.userId,
+                userId: connectorUserId,
                 workspaceId: identityResult.value.workspaceId,
               }),
             })
