@@ -110,7 +110,16 @@ import {
   stopAfterDecideAnalysisStarts,
 } from './decide-analysis-chat'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
-import { isChatToolAllowed } from './chat-permissions'
+import {
+  evaluateExecutorCallTeamPolicy,
+  isChatToolAllowed,
+  isTeamToolAllowed,
+} from './chat-permissions'
+import {
+  NO_TEAM_AGENT_POLICY,
+  type EffectiveTeamAgentPolicy,
+} from '@garden/core/teams/agent-policy'
+import { loadTeamAgentPolicyForUser } from '@garden/core/teams/agent-policy-store'
 import {
   getDocumentBytes,
   getDocumentVersionBytes,
@@ -1573,6 +1582,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override classifyChatError = classifyGardenContextOverflow
   private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private currentPermissions: AgentPermissions | null = null
+  /** Team policies of the thread owner, reloaded every turn. */
+  private currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   private currentIntegrationRoute: IntegrationRouteDecision | null = null
   private currentIntegrationFailure: ExecutorToolFailure | null = null
   private mcpController: RuntimeMcpController | null = null
@@ -2101,6 +2112,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     this.currentPermissions = identity
       ? derivePermissions({ agent: { permissions: identity.agentPermissions } })
       : null
+    // The thread owner is the acting user; their Teams cap this turn's tools.
+    this.currentTeamPolicy = identity
+      ? await loadTeamAgentPolicyForUser(this.getDb(), {
+          workspaceId: identity.workspaceId,
+          userId: identity.ownerUserId,
+        })
+      : NO_TEAM_AGENT_POLICY
     if (identity) {
       this.aiObservation.startTurn(
         {
@@ -2228,8 +2246,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       stableMcpTools,
     })
     const isToolVisible = (key: string) =>
-      key.startsWith(EXECUTOR_TOOL_KEY_PREFIX) ||
-      isChatToolAllowed(this.currentPermissions, key)
+      key.startsWith(EXECUTOR_TOOL_KEY_PREFIX)
+        ? isTeamToolAllowed(this.currentTeamPolicy, key)
+        : isChatToolAllowed(
+            this.currentPermissions,
+            this.currentTeamPolicy,
+            key,
+          )
     const visibleTools = Object.fromEntries(
       Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
     ) as ToolSet
@@ -2277,10 +2300,28 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeToolCall(ctx: ToolCallContext) {
-    if (!isChatToolAllowed(this.currentPermissions, ctx.toolName)) {
+    const isExecutorCall = ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)
+    if (
+      isExecutorCall
+        ? !isTeamToolAllowed(this.currentTeamPolicy, ctx.toolName)
+        : !isChatToolAllowed(
+            this.currentPermissions,
+            this.currentTeamPolicy,
+            ctx.toolName,
+          )
+    ) {
       throw new ChatToolDeniedError({
         message: `Tool ${ctx.toolName} is not allowed for this agent.`,
       })
+    }
+    if (isExecutorCall) {
+      const executorDecision = evaluateExecutorCallTeamPolicy(
+        this.currentTeamPolicy,
+        ctx.input,
+      )
+      if (!executorDecision.allowed) {
+        throw new ChatToolDeniedError({ message: executorDecision.reason })
+      }
     }
     const selectedRoute = this.currentIntegrationRoute?.routes[0]
     if (selectedRoute && this.currentIntegrationFailure) {

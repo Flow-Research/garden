@@ -450,7 +450,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     const activeResult = await this.assertRunActiveForTool(run.runId)
     if (activeResult.isErr()) throw activeResult.error
 
-    const gateResult = this.assertToolAllowed(ctx.toolName)
+    const gateResult = this.assertToolAllowed(ctx.toolName, ctx.input)
     if (gateResult.isErr()) throw gateResult.error
 
     this.aiObservation.beforeToolCall(ctx)

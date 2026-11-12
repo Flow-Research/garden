@@ -66,6 +66,7 @@ export type WSEventType =
   | 'team:created'
   | 'team:updated'
   | 'team:deleted'
+  | 'team:policy_updated'
   | 'team_member:added'
   | 'team_member:removed'
   | 'team_member:updated'
@@ -99,6 +100,7 @@ export type RealtimePublishableEvent =
   | { type: 'team:created'; payload: TeamCreatedPayload }
   | { type: 'team:updated'; payload: TeamUpdatedPayload }
   | { type: 'team:deleted'; payload: TeamDeletedPayload }
+  | { type: 'team:policy_updated'; payload: TeamPolicyUpdatedPayload }
   | { type: 'team_member:added'; payload: TeamMemberAddedPayload }
   | { type: 'team_member:removed'; payload: TeamMemberRemovedPayload }
   | { type: 'issue:created'; payload: IssueCreatedPayload }
@@ -354,6 +356,15 @@ export interface TeamCreatedPayload {
 }
 
 export interface TeamUpdatedPayload {
+  workspace_id: string
+  team_id: string
+}
+
+/**
+ * A Team's agent policy changed. IDs only: the policy is visible to workspace
+ * managers and the Team owner, who refetch it.
+ */
+export interface TeamPolicyUpdatedPayload {
   workspace_id: string
   team_id: string
 }

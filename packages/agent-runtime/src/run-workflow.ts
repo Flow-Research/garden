@@ -107,8 +107,18 @@ export type RunWorkflowTurnCompleteEvent = {
 export const RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX =
   'run-turn-complete' as const
 
+/**
+ * Builds the Workflow event type both `waitForEvent` and `sendEvent` use for a
+ * turn. Cloudflare Workflows only accepts `^[a-zA-Z0-9_][a-zA-Z0-9-_]*$` (max
+ * 100 chars) for event types. Before: the type embedded the raw submission id
+ * (`issue-run:<runId>:<turn>:<mode>`), so production `sendEvent` rejected it
+ * and every turn waited out the status-check interval. Local miniflare skips
+ * this validation, which hid the failure. After: each disallowed character is
+ * mapped to `_`, so the type is valid and still unique per submission. Ref:
+ * developers.cloudflare.com/workflows/build/events-and-parameters/.
+ */
 export function getRunWorkflowTurnCompleteEventType(submissionId: string) {
-  return `${RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX}:${submissionId}`
+  return `${RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX}-${submissionId.replace(/[^a-zA-Z0-9_-]/g, '_')}`
 }
 
 export class RunWorkflow extends AgentWorkflow<
