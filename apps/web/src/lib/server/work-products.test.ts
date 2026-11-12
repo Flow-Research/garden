@@ -548,6 +548,9 @@ const filesState = vi.hoisted(() => ({
     workspaceId: string
   }>,
   memberships: [] as Array<{ folderId: string; fileId: string }>,
+  /** Files that still exist in Brain; overwrite returns null for others. */
+  existingFiles: [] as string[],
+  overwrites: [] as Array<{ fileId: string; text: string }>,
 }))
 
 vi.mock('./brain-folders', () => ({
@@ -581,6 +584,13 @@ vi.mock('./brain-file-upload', async () => {
       })
       return Result.ok({ id: savedFileId, label: args.file.name })
     },
+    overwriteBrainFile: async (args: { fileId: string; body: string }) => {
+      if (!filesState.existingFiles.includes(args.fileId)) {
+        return Result.ok(null)
+      }
+      filesState.overwrites.push({ fileId: args.fileId, text: args.body })
+      return Result.ok({ id: args.fileId, label: 'workstream-task-guide.md' })
+    },
   }
 })
 
@@ -598,6 +608,8 @@ describe('reviewWorkProduct save_to_files', () => {
     filesState.folders = [{ id: folderId, workspaceId, name: 'Guides' }]
     filesState.uploads = []
     filesState.memberships = []
+    filesState.existingFiles = []
+    filesState.overwrites = []
   })
 
   it('saves the approved body as Markdown in the folder through the upload path and records the link', async () => {
@@ -686,5 +698,62 @@ describe('reviewWorkProduct save_to_files', () => {
     expect(result.isErr() && result.error.message).toBe('Folder not found')
     expect(filesState.uploads).toEqual([])
     expect(inserts).toEqual([])
+  })
+
+  const previousFileId = '00000000-0000-4000-8000-00000000000b'
+  const previouslySaved = () =>
+    approvedWorkProduct({
+      saved_file: {
+        file_id: previousFileId,
+        file_name: 'workstream-task-guide.md',
+        folder_id: folderId,
+        url: `/api/brain/files/${previousFileId}/content`,
+        saved_by: actorUserId,
+        saved_at: '2026-11-01T00:00:00.000Z',
+      },
+    })
+
+  it('re-saving a revised, re-approved work product overwrites the same file', async () => {
+    filesState.existingFiles = [previousFileId]
+    const { db, inserts, sets } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: previouslySaved(),
+    })
+    state.db = db
+
+    const result = await saveToFiles()
+
+    expect(result.isOk() && result.value.externalId).toBe(previousFileId)
+    expect(filesState.uploads).toEqual([])
+    expect(filesState.overwrites).toEqual([
+      {
+        fileId: previousFileId,
+        text: '# Workstream task guide\n\nApproved text.',
+      },
+    ])
+    expect(sets.find((values) => 'payload' in values)?.payload).toMatchObject({
+      saved_file: { file_id: previousFileId },
+    })
+    expect(
+      inserts.find(
+        (row) => row.eventType === 'issue_run:work_product_saved_to_files',
+      )?.payload,
+    ).toMatchObject({ file_id: previousFileId, overwritten: true })
+  })
+
+  it('creates and records a new file when the previously saved one was deleted', async () => {
+    const { db, sets } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: previouslySaved(),
+    })
+    state.db = db
+
+    const result = await saveToFiles()
+
+    expect(result.isOk() && result.value.externalId).toBe(savedFileId)
+    expect(filesState.uploads).toHaveLength(1)
+    expect(sets.find((values) => 'payload' in values)?.payload).toMatchObject({
+      saved_file: { file_id: savedFileId },
+    })
   })
 })

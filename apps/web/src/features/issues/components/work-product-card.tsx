@@ -416,6 +416,13 @@ export function WorkProductCard({
                 <Download className="size-3" />
                 Markdown
               </a>
+              <a
+                href={savedFile.url.replace(/\/content$/, '/docx')}
+                className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+              >
+                <Download className="size-3" />
+                Word
+              </a>
             </>
           ) : (
             <span className="min-w-0 truncate text-xs text-muted-foreground">

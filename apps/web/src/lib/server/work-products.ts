@@ -9,7 +9,10 @@ import {
   type ConnectorError,
 } from '@garden/core/connectors/errors'
 import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
-import type { WorkProductSavedFile } from '@garden/core/issues/work-product-saved-file'
+import {
+  parseWorkProductSavedFile,
+  type WorkProductSavedFile,
+} from '@garden/core/issues/work-product-saved-file'
 import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
 import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
@@ -20,7 +23,7 @@ import type { AppEnv } from './env'
 import { getDb, schema } from './db'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 import { addBrainFolderFile, getBrainFolder } from './brain-folders'
-import { saveBrainFileUpload } from './brain-file-upload'
+import { overwriteBrainFile, saveBrainFileUpload } from './brain-file-upload'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
 
@@ -1426,15 +1429,32 @@ async function saveWorkProductToFiles(args: {
     )
   }
 
-  const saved = await saveBrainFileUpload({
-    env: args.env,
-    file: new File([body], savedFileName(workProduct), {
-      type: 'text/markdown',
-    }),
-    ownerUserId: args.actorUserId,
-    waitUntil: args.waitUntil,
-    workspaceId: args.workspaceId,
-  })
+  // A re-save after revise → re-approve overwrites the recorded file so
+  // Files keeps one current copy; if that file was deleted, save a new one.
+  const previous = parseWorkProductSavedFile(workProduct.payload)
+  const overwritten = previous
+    ? await overwriteBrainFile({
+        env: args.env,
+        fileId: previous.file_id,
+        body,
+        ownerUserId: args.actorUserId,
+        waitUntil: args.waitUntil,
+        workspaceId: args.workspaceId,
+      })
+    : Result.ok(null)
+  const saved = await overwritten.andThenAsync(async (item) =>
+    item
+      ? Result.ok(item)
+      : saveBrainFileUpload({
+          env: args.env,
+          file: new File([body], savedFileName(workProduct), {
+            type: 'text/markdown',
+          }),
+          ownerUserId: args.actorUserId,
+          waitUntil: args.waitUntil,
+          workspaceId: args.workspaceId,
+        }),
+  )
   if (saved.isErr()) {
     return Result.err(
       new WorkProductReviewError({
@@ -1446,6 +1466,7 @@ async function saveWorkProductToFiles(args: {
   }
   const fileId = saved.value.id
   const fileName = saved.value.label
+  const isOverwrite = overwritten.isOk() && overwritten.value !== null
   const fileUrl = `/api/brain/files/${encodeURIComponent(fileId)}/content`
 
   const db = await getDb(args.env)
@@ -1500,13 +1521,14 @@ async function saveWorkProductToFiles(args: {
           eventType: 'issue_run:work_product_saved_to_files',
           stream: 'system',
           level: 'info',
-          message: `Work product saved to Files as ${fileName}`,
+          message: `Work product ${isOverwrite ? 'updated in' : 'saved to'} Files as ${fileName}`,
           payload: {
             actor_user_id: args.actorUserId,
             external_url: fileUrl,
             file_id: fileId,
             file_name: fileName,
             folder_id: args.folderId,
+            overwritten: isOverwrite,
             work_product_id: workProduct.id,
           },
         })
