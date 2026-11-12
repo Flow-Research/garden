@@ -1,5 +1,13 @@
 import { useState, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Option } from 'effect'
+import {
+  CheckCheck,
+  Database,
+  Plug,
+  Settings,
+  UserRoundCog,
+} from 'lucide-react'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { connectorRegistry } from '@garden/connectors'
 import type {
@@ -10,6 +18,14 @@ import type {
 } from '@garden/core/teams/agent-policy'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
+import { Checkbox } from '@garden/ui/components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@garden/ui/components/ui/select'
 import {
   Sheet,
   SheetContent,
@@ -25,43 +41,74 @@ import {
   TabsList,
   TabsTrigger,
 } from '@garden/ui/components/ui/tabs'
+import { cn } from '@garden/ui/lib/utils'
 import { toast } from 'sonner'
+import { statusLabelFor } from '@/features/connections/components/connection-helpers'
+import { ProviderIcon } from '@/features/connections/components/provider-icon'
+import { connectionListOptions } from '@/lib/workspace/queries'
 import { useUpdateTeamAgentPolicy } from '../mutations'
 import { teamAgentPolicyOptions } from '../queries'
 
-const AREAS: readonly { value: TeamAgentArea; label: string; hint: string }[] =
-  [
-    { value: 'tasks', label: 'Tasks', hint: 'Create, read, and update issues' },
-    { value: 'knowledge', label: 'Knowledge', hint: 'Search and add to Brain' },
-    { value: 'inbox', label: 'Inbox', hint: 'Inbox tools' },
-    {
-      value: 'connections',
-      label: 'Connections',
-      hint: 'Connector tools, including Executor',
-    },
-    { value: 'workflows', label: 'Workflows', hint: 'Automation tools' },
-    { value: 'skills', label: 'Skills', hint: 'Activate and run skills' },
-  ]
+/** One Access chip. `area: null` is a design area Garden cannot back. */
+const ACCESS_CHIPS: readonly { area: TeamAgentArea | null; label: string }[] = [
+  { area: null, label: 'Chats' },
+  { area: 'tasks', label: 'Tasks' },
+  { area: 'knowledge', label: 'Knowledge' },
+  { area: 'inbox', label: 'Inbox' },
+  { area: 'connections', label: 'Connections' },
+  { area: 'workflows', label: 'Workflows' },
+  { area: 'skills', label: 'Skills' },
+  { area: null, label: 'Home' },
+]
 
-const RESTRICTIONS: readonly {
-  value: TeamBlockableRiskClass
+/** One Restricted card. `riskClass: null` has no Garden capability yet. */
+const RESTRICTED_CARDS: readonly {
+  riskClass: TeamBlockableRiskClass | null
   label: string
 }[] = [
-  { value: 'destructive', label: 'Destructive actions' },
-  { value: 'send_external', label: 'Sending outside the workspace' },
+  { riskClass: 'destructive', label: 'Destructive actions' },
+  { riskClass: 'send_external', label: 'Sending outside the workspace' },
+  { riskClass: null, label: 'Delete projects' },
+  { riskClass: null, label: 'Manage billing' },
+  { riskClass: null, label: 'Read locked files' },
 ]
 
-const APPROVAL_CLASSES: readonly { value: TeamRiskClass; label: string }[] = [
-  { value: 'write', label: 'Write' },
-  { value: 'send_external', label: 'Sending outside the workspace' },
-  { value: 'destructive', label: 'Destructive' },
+const APPROVAL_ROWS: readonly {
+  riskClass: TeamRiskClass
+  label: string
+  hint: string
+}[] = [
+  {
+    riskClass: 'write',
+    label: 'Write changes',
+    hint: 'Creating or editing anything in the workspace',
+  },
+  {
+    riskClass: 'send_external',
+    label: 'Sending outside the workspace',
+    hint: 'Emails, messages, and posts to other services',
+  },
+  {
+    riskClass: 'destructive',
+    label: 'Destructive actions',
+    hint: 'Deleting or overwriting data',
+  },
 ]
+
+const APPROVAL_LABELS = {
+  required: 'Approval required',
+  agent: 'Follow agent settings',
+} as const
 
 function ComingSoon() {
-  return <Badge variant="secondary">Coming soon</Badge>
+  return (
+    <Badge className="font-normal" variant="secondary">
+      Coming soon
+    </Badge>
+  )
 }
 
-/** One labelled row with its control on the right. */
+/** A labelled settings row: label and hint left, control right, divider below. */
 function PolicyRow({
   label,
   hint,
@@ -69,99 +116,124 @@ function PolicyRow({
   disabled = false,
 }: {
   label: string
-  hint?: string
+  hint: string
   control: ReactNode
   disabled?: boolean
 }) {
   return (
     <div
-      className="flex items-center justify-between gap-4 py-3"
+      className="flex items-center justify-between gap-6 border-b border-border-default py-4 first:pt-0 last:border-b-0"
       data-disabled={disabled || undefined}
     >
-      <div className="flex min-w-0 flex-col gap-0.5">
+      <div className="flex min-w-0 flex-col gap-1.5">
         <span
-          className={
-            disabled
-              ? 'text-sm text-text-secondary'
-              : 'text-sm font-medium text-foreground'
-          }
+          className={cn(
+            'flex items-center gap-2 text-base',
+            disabled ? 'text-text-secondary' : 'text-foreground',
+          )}
         >
           {label}
+          {disabled ? <ComingSoon /> : null}
         </span>
-        {hint ? (
-          <span className="text-xs text-text-secondary">{hint}</span>
-        ) : null}
+        <span className="text-sm text-text-secondary">{hint}</span>
       </div>
       {control}
     </div>
   )
 }
 
-/** A design control Garden cannot back yet: shown, disabled, stores nothing. */
-function ComingSoonRow({ label }: { label: string }) {
+/** A section heading with its hint, as in the Access and Restricted blocks. */
+function SectionHeading({ title, hint }: { title: string; hint: string }) {
   return (
-    <PolicyRow
-      disabled
-      label={label}
-      control={
-        <span className="flex items-center gap-2">
-          <ComingSoon />
-          <Switch aria-label={label} checked={false} disabled />
-        </span>
-      }
-    />
+    <div className="flex flex-col gap-1.5">
+      <h3 className="text-base font-normal text-foreground">{title}</h3>
+      <p className="text-sm text-text-secondary">{hint}</p>
+    </div>
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="flex flex-col">
-      <h3 className="pb-1 text-xs font-medium tracking-wide text-text-secondary uppercase">
-        {title}
-      </h3>
-      <div className="flex flex-col divide-y divide-border-default">
-        {children}
-      </div>
-    </section>
-  )
-}
-
-/** Two-option control for an approval row: agent settings or approval. */
-function ApprovalChoice({
+/**
+ * A bordered checkbox tile used for both Access chips and Restricted cards.
+ * Unbacked design options pass `checked: null` and render disabled with a
+ * Coming soon badge so they can never reach the draft. Base UI names the
+ * checkbox from the wrapping label, so the badge is hidden from that name.
+ */
+function CheckTile({
   label,
-  required,
+  checked,
+  locked,
+  onChange,
+  className,
+}: {
+  label: string
+  checked: boolean | null
+  locked: boolean
+  onChange: (checked: boolean) => void
+  className?: string
+}) {
+  const soon = checked === null
+  return (
+    <label
+      className={cn(
+        'flex h-10 items-center gap-2.5 rounded-md border border-border-default px-3 text-sm whitespace-nowrap text-foreground',
+        soon || locked ? 'cursor-not-allowed' : 'cursor-pointer',
+        soon && 'text-text-secondary',
+        className,
+      )}
+    >
+      <Checkbox
+        checked={checked ?? false}
+        disabled={soon || locked}
+        onCheckedChange={onChange}
+      />
+      <span className="truncate">{label}</span>
+      {soon ? (
+        <span aria-hidden className="contents">
+          <ComingSoon />
+        </span>
+      ) : null}
+    </label>
+  )
+}
+
+/** Bordered select matching the design's right-aligned row control. */
+function RowSelect({
+  label,
+  value,
+  options,
   disabled,
   onChange,
 }: {
   label: string
-  required: boolean
+  value: string
+  options: readonly { value: string; label: string }[]
   disabled: boolean
-  onChange: (required: boolean) => void
+  onChange?: (value: string) => void
 }) {
-  const options = [
-    { value: false, text: 'Follow agent settings' },
-    { value: true, text: 'Approval required' },
-  ]
   return (
-    <div
-      aria-label={label}
-      className="inline-flex rounded-md border border-border-default p-0.5"
-      role="radiogroup"
+    <Select
+      disabled={disabled}
+      onValueChange={(next) => onChange?.(String(next))}
+      value={value}
     >
-      {options.map((option) => (
-        <button
-          aria-checked={required === option.value}
-          className="rounded-[5px] px-2 py-1 text-xs text-text-secondary transition-colors aria-checked:bg-secondary aria-checked:font-medium aria-checked:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={disabled}
-          key={option.text}
-          onClick={() => onChange(option.value)}
-          role="radio"
-          type="button"
-        >
-          {option.text}
-        </button>
-      ))}
-    </div>
+      <SelectTrigger
+        aria-label={label}
+        className="h-10! shrink-0 gap-6 rounded-md bg-background px-3 text-sm"
+      >
+        <SelectValue>
+          {(current: string) =>
+            options.find((option) => option.value === current)?.label ?? current
+          }
+        </SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
@@ -171,12 +243,23 @@ function toggle<T>(list: readonly T[], value: T, present: boolean): T[] {
   return present ? [...without, value] : without
 }
 
+const TAB_TRIGGER_CLASS =
+  'h-10 flex-1 gap-2 rounded-none px-3 text-sm font-normal text-text-secondary after:bg-text-brand-secondary data-active:text-foreground'
+
 /**
- * Team agent policy side sheet, opened from the Team detail overflow menu.
- * Workspace managers edit; the Team owner reads it. Edits stay in a local
- * draft until Save changes, which writes optimistically through TanStack
- * Query. Design controls Garden cannot back render disabled with a Coming
- * soon badge and never reach the draft. See docs/concepts/features/teams.md.
+ * Team agent policy side sheet ("Team settings"), opened from the Team detail
+ * actions menu. Workspace managers edit; the Team owner reads it. Edits stay
+ * in a local draft until Save Changes, which writes optimistically through
+ * TanStack Query and rolls back on failure. Design controls Garden cannot
+ * back render disabled with a Coming soon badge and never reach the draft.
+ *
+ * Before: the tab strip rendered as a full-height column and the panels were
+ * invisible, because the shared Tabs primitive keyed its layout on
+ * `data-horizontal`, an attribute Base UI never sets (it sets
+ * `data-orientation`). After: the primitive matches `data-orientation`, and
+ * this sheet follows the admin design frames 34-37 (771px panel, underline
+ * tabs on a muted strip, label/hint rows, checkbox tiles, connector cards,
+ * full-width footer). Copy decisions: docs/archive/specs/2026-11-team-agent-policy.md.
  */
 export function TeamAgentPolicySheet({
   teamId,
@@ -194,6 +277,10 @@ export function TeamAgentPolicySheet({
     ...teamAgentPolicyOptions(wsId, teamId),
     enabled: open,
   })
+  const connections = useQuery({
+    ...connectionListOptions(wsId),
+    enabled: open,
+  })
   const save = useUpdateTeamAgentPolicy(teamId)
   const [draft, setDraft] = useState<TeamAgentPolicy | null>(null)
 
@@ -208,6 +295,11 @@ export function TeamAgentPolicySheet({
   const update = (next: (current: TeamAgentPolicy) => TeamAgentPolicy) => {
     if (policy) setDraft(next(policy))
   }
+  const integrationFor = (connectorId: string) =>
+    connections.data?.integrations.find(
+      (integration) =>
+        Option.getOrUndefined(integration.gardenConnectorId) === connectorId,
+    )
 
   const handleSave = () => {
     if (!draft) return
@@ -225,212 +317,272 @@ export function TeamAgentPolicySheet({
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
-      <SheetContent className="w-full gap-0 data-[side=right]:sm:max-w-lg">
-        <SheetHeader className="border-b border-border-default">
-          <SheetTitle>Agent policy</SheetTitle>
-          <SheetDescription>
-            Limits for agents acting for members of {teamName}. A Team policy
-            can only remove abilities and add approvals.
+      <SheetContent className="w-full gap-0 bg-background data-[side=right]:sm:max-w-3xl [&>[data-slot=sheet-close]]:top-6 [&>[data-slot=sheet-close]]:right-6">
+        <SheetHeader className="gap-2 px-8 pt-10 pb-8">
+          <div className="flex items-center gap-3">
+            <Settings
+              aria-hidden
+              className="size-7 text-text-secondary"
+              strokeWidth={1.5}
+            />
+            <SheetTitle className="text-2xl font-medium">
+              Team settings
+            </SheetTitle>
+            <Badge
+              className="h-6 rounded-md px-2 text-sm font-normal tracking-wide text-text-secondary uppercase"
+              variant="secondary"
+            >
+              {teamName}
+            </Badge>
+          </div>
+          <SheetDescription className="text-sm text-text-secondary">
+            Define what agents can do when they act for this Team&apos;s
+            members.
           </SheetDescription>
           {query.data && !canEdit ? (
-            <p className="text-xs text-text-secondary" role="note">
+            <p className="text-sm text-text-secondary" role="note">
               Only workspace owners and admins can change this policy.
             </p>
           ) : null}
         </SheetHeader>
 
         {policy ? (
-          <Tabs className="min-h-0 flex-1 gap-4 p-4" defaultValue="agents">
-            <TabsList>
-              <TabsTrigger value="agents">Agent access</TabsTrigger>
-              <TabsTrigger value="connectors">Connector access</TabsTrigger>
-              <TabsTrigger value="approvals">Approval rules</TabsTrigger>
-              <TabsTrigger disabled value="admin">
+          <Tabs className="min-h-0 flex-1 gap-0 px-8" defaultValue="agents">
+            <TabsList
+              className="h-10! w-full gap-0 border-b border-border-default bg-muted p-0"
+              variant="line"
+            >
+              <TabsTrigger className={TAB_TRIGGER_CLASS} value="agents">
+                <Database aria-hidden />
+                Agent Permissions
+              </TabsTrigger>
+              <TabsTrigger className={TAB_TRIGGER_CLASS} disabled value="admin">
+                <UserRoundCog aria-hidden />
                 Admin Policy
                 <ComingSoon />
               </TabsTrigger>
+              <TabsTrigger className={TAB_TRIGGER_CLASS} value="connectors">
+                <Plug aria-hidden />
+                Connector Grants
+              </TabsTrigger>
+              <TabsTrigger className={TAB_TRIGGER_CLASS} value="approvals">
+                <CheckCheck aria-hidden />
+                Task Approval Rules
+              </TabsTrigger>
             </TabsList>
 
-            <TabsContent
-              className="flex flex-col gap-6 overflow-y-auto"
-              value="agents"
-            >
-              <Section title="Areas">
-                {AREAS.map((area) => (
-                  <PolicyRow
-                    control={
-                      <Switch
-                        aria-label={area.label}
-                        checked={policy.allowed_areas.includes(area.value)}
-                        disabled={locked}
-                        onCheckedChange={(checked) =>
-                          update((current) => ({
-                            ...current,
-                            allowed_areas: toggle(
-                              current.allowed_areas,
-                              area.value,
-                              checked,
-                            ),
-                          }))
-                        }
-                      />
-                    }
-                    hint={area.hint}
-                    key={area.value}
-                    label={area.label}
+            <TabsContent className="overflow-y-auto pt-8 pb-4" value="agents">
+              <PolicyRow
+                control={
+                  <RowSelect
+                    disabled
+                    label="Team Role"
+                    options={[{ value: 'member', label: 'Member' }]}
+                    value="member"
                   />
-                ))}
-                <ComingSoonRow label="Chats" />
-                <ComingSoonRow label="Home" />
-              </Section>
-
-              <Section title="Restricted">
-                {RESTRICTIONS.map((restriction) => (
-                  <PolicyRow
-                    control={
-                      <Switch
-                        aria-label={`Block ${restriction.label}`}
-                        checked={policy.blocked_risk_classes.includes(
-                          restriction.value,
-                        )}
-                        disabled={locked}
-                        onCheckedChange={(checked) =>
-                          update((current) => ({
-                            ...current,
-                            blocked_risk_classes: toggle(
-                              current.blocked_risk_classes,
-                              restriction.value,
-                              checked,
-                            ),
-                          }))
-                        }
-                      />
-                    }
-                    key={restriction.value}
-                    label={restriction.label}
-                  />
-                ))}
-                <ComingSoonRow label="Delete projects" />
-                <ComingSoonRow label="Manage billing" />
-                <ComingSoonRow label="Read locked files" />
-              </Section>
-
-              <Section title="Members">
-                <PolicyRow
-                  control={
-                    <span className="flex items-center gap-2">
-                      <ComingSoon />
-                      <Button disabled size="sm" variant="outline">
-                        Team role
-                      </Button>
-                    </span>
-                  }
-                  disabled
-                  hint="Per-member roles beyond the Team owner"
-                  label="Team role"
+                }
+                disabled
+                hint="Choose the exact role for the team"
+                label="Team Role"
+              />
+              <div className="flex flex-col gap-6 border-b border-border-default py-4">
+                <SectionHeading
+                  hint="Select the areas agents can use for this Team"
+                  title="Access"
                 />
-              </Section>
+                <div className="flex flex-wrap gap-2">
+                  {ACCESS_CHIPS.map(({ area, label }) => (
+                    <CheckTile
+                      checked={
+                        area === null
+                          ? null
+                          : policy.allowed_areas.includes(area)
+                      }
+                      key={label}
+                      label={label}
+                      locked={locked}
+                      onChange={(checked) =>
+                        area &&
+                        update((current) => ({
+                          ...current,
+                          allowed_areas: toggle(
+                            current.allowed_areas,
+                            area,
+                            checked,
+                          ),
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="flex flex-col gap-6 py-4">
+                <SectionHeading
+                  hint="Define what agents are restricted from doing"
+                  title="Restricted"
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  {RESTRICTED_CARDS.map(({ riskClass, label }) => (
+                    <CheckTile
+                      checked={
+                        riskClass === null
+                          ? null
+                          : policy.blocked_risk_classes.includes(riskClass)
+                      }
+                      key={label}
+                      label={label}
+                      locked={locked}
+                      onChange={(checked) =>
+                        riskClass &&
+                        update((current) => ({
+                          ...current,
+                          blocked_risk_classes: toggle(
+                            current.blocked_risk_classes,
+                            riskClass,
+                            checked,
+                          ),
+                        }))
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
             </TabsContent>
 
             <TabsContent
-              className="flex flex-col gap-6 overflow-y-auto"
+              className="flex flex-col gap-2 overflow-y-auto pt-8 pb-4"
               value="connectors"
             >
-              <Section title="Connectors">
-                {connectorRegistry.map((connector) => (
-                  <PolicyRow
-                    control={
-                      <Switch
-                        aria-label={connector.label}
-                        checked={
-                          !policy.blocked_connector_ids.includes(connector.id)
-                        }
-                        disabled={locked}
-                        onCheckedChange={(checked) =>
-                          update((current) => ({
-                            ...current,
-                            blocked_connector_ids: toggle(
-                              current.blocked_connector_ids,
-                              connector.id,
-                              !checked,
-                            ),
-                          }))
-                        }
-                      />
-                    }
+              {connectorRegistry.map((connector) => {
+                const integration = integrationFor(connector.id)
+                return (
+                  <div
+                    className="flex items-center gap-4 rounded-lg bg-muted px-6 py-4"
                     key={connector.id}
-                    label={connector.label}
-                  />
-                ))}
-              </Section>
+                  >
+                    <ProviderIcon
+                      className="size-8 shrink-0 object-contain text-text-secondary"
+                      icon={integration?.icon ?? Option.none()}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                      <span className="text-base text-foreground">
+                        {connector.label}
+                      </span>
+                      <span className="text-sm text-text-secondary">
+                        {integration
+                          ? statusLabelFor(integration.status)
+                          : 'Not set up in this workspace'}
+                      </span>
+                    </div>
+                    <Switch
+                      aria-label={connector.label}
+                      checked={
+                        !policy.blocked_connector_ids.includes(connector.id)
+                      }
+                      className="data-[size=default]:h-6 data-[size=default]:w-10 [&>span]:group-data-[size=default]/switch:size-5"
+                      disabled={locked}
+                      onCheckedChange={(checked) =>
+                        update((current) => ({
+                          ...current,
+                          blocked_connector_ids: toggle(
+                            current.blocked_connector_ids,
+                            connector.id,
+                            !checked,
+                          ),
+                        }))
+                      }
+                    />
+                  </div>
+                )
+              })}
             </TabsContent>
 
             <TabsContent
-              className="flex flex-col gap-6 overflow-y-auto"
+              className="overflow-y-auto pt-8 pb-4"
               value="approvals"
             >
-              <Section title="Approval rules">
-                {APPROVAL_CLASSES.map((riskClass) => (
-                  <PolicyRow
-                    control={
-                      <ApprovalChoice
-                        disabled={locked}
-                        label={riskClass.label}
-                        onChange={(required) =>
-                          update((current) => ({
-                            ...current,
-                            approval_required: toggle(
-                              current.approval_required,
-                              riskClass.value,
-                              required,
-                            ),
-                          }))
-                        }
-                        required={policy.approval_required.includes(
-                          riskClass.value,
-                        )}
-                      />
-                    }
-                    key={riskClass.value}
-                    label={riskClass.label}
+              {APPROVAL_ROWS.map((row) => (
+                <PolicyRow
+                  control={
+                    <RowSelect
+                      disabled={locked}
+                      label={row.label}
+                      onChange={(value) =>
+                        update((current) => ({
+                          ...current,
+                          approval_required: toggle(
+                            current.approval_required,
+                            row.riskClass,
+                            value === 'required',
+                          ),
+                        }))
+                      }
+                      options={[
+                        { value: 'required', label: APPROVAL_LABELS.required },
+                        { value: 'agent', label: APPROVAL_LABELS.agent },
+                      ]}
+                      value={
+                        policy.approval_required.includes(row.riskClass)
+                          ? 'required'
+                          : 'agent'
+                      }
+                    />
+                  }
+                  hint={row.hint}
+                  key={row.riskClass}
+                  label={row.label}
+                />
+              ))}
+              {['Deploy changes', 'Create documents'].map((label) => (
+                <PolicyRow
+                  control={
+                    <RowSelect
+                      disabled
+                      label={label}
+                      options={[
+                        { value: 'agent', label: APPROVAL_LABELS.agent },
+                      ]}
+                      value="agent"
+                    />
+                  }
+                  disabled
+                  hint="No matching action in Garden yet"
+                  key={label}
+                  label={label}
+                />
+              ))}
+              <PolicyRow
+                control={
+                  <RowSelect
+                    disabled
+                    label="Default Approver"
+                    options={[{ value: 'owner', label: 'Team owner' }]}
+                    value="owner"
                   />
-                ))}
-                <PolicyRow
-                  control={<ComingSoon />}
-                  disabled
-                  label="Deploy changes"
-                />
-                <PolicyRow
-                  control={<ComingSoon />}
-                  disabled
-                  label="Create documents"
-                />
-              </Section>
-              <Section title="Approver">
-                <PolicyRow
-                  control={null}
-                  label="The Team owner, or any workspace admin."
-                />
-              </Section>
+                }
+                hint="Workspace admins can also approve"
+                label="Default Approver"
+              />
             </TabsContent>
           </Tabs>
         ) : (
-          <div className="flex-1 p-4 text-sm text-text-secondary">
+          <div className="flex-1 px-8 text-sm text-text-secondary">
             {query.isError
               ? 'Agent policy could not be loaded.'
               : 'Loading agent policy…'}
           </div>
         )}
 
-        <SheetFooter className="flex-row justify-end border-t border-border-default">
-          <Button onClick={close} variant="outline">
+        <SheetFooter className="grid grid-cols-2 gap-2 px-8 pt-6 pb-14">
+          <Button className="h-10" onClick={close} variant="outline">
             Cancel
           </Button>
           <Button
+            className="h-10"
             disabled={!canEdit || !draft || save.isPending}
             onClick={handleSave}
           >
-            {save.isPending ? 'Saving…' : 'Save changes'}
+            {save.isPending ? 'Saving…' : 'Save Changes'}
           </Button>
         </SheetFooter>
       </SheetContent>

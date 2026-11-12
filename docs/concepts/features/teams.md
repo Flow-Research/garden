@@ -151,11 +151,11 @@ Garden has one shared agent per workspace, so a Team cannot have its own agent. 
 
 A policy is a ceiling. It can switch tools off and add approvals. It never grants a tool the agent's own permissions lack. A person on two Teams gets the stricter rule from each, so blocks and approvals are unions.
 
-| Tab              | What the admin sets                                                                                                                                                                    | Stored as                                                                |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Agent access     | Which areas agents may use: Tasks, Knowledge, Inbox, Connections, Workflows, Skills. Below them, **Restricted** blocks the Destructive and Sending outside the workspace risk classes. | `allowed_areas`, `blocked_risk_classes`                                  |
-| Connector access | A switch per connector. All are on until an admin turns one off.                                                                                                                       | `blocked_connector_ids` (a blocklist, so a new connector starts allowed) |
-| Approval rules   | Write, Sending outside the workspace, and Destructive are each **Follow agent settings** or **Approval required**. The approver is the Team owner or any workspace admin.              | `approval_required`                                                      |
+| Tab                 | What the admin sets                                                                                                                                                                                                                     | Stored as                                                                |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Agent Permissions   | **Access** checkboxes for the areas agents may use: Tasks, Knowledge, Inbox, Connections, Workflows, Skills. Below them, **Restricted** checkboxes block the Destructive actions and Sending outside the workspace risk classes.        | `allowed_areas`, `blocked_risk_classes`                                  |
+| Connector Grants    | A card with the connector's logo, its workspace setup status, and a switch. All are on until an admin turns one off.                                                                                                                    | `blocked_connector_ids` (a blocklist, so a new connector starts allowed) |
+| Task Approval Rules | Write changes, Sending outside the workspace, and Destructive actions are each **Follow agent settings** or **Approval required** in a select. **Default Approver** shows the Team owner, read-only; workspace admins can also approve. | `approval_required`                                                      |
 
 `TeamAgentPolicySchema` in `packages/core/src/teams/agent-policy.ts` is the one shape for the API, the database, and the runtime. It is strict, so an unknown key or value fails validation. The `team_agent_policy` table holds one row per Team. No row means no limits.
 
@@ -167,9 +167,9 @@ A policy is a ceiling. It can switch tools off and add approvals. It never grant
 | Team owner               | Read it. The panel is read-only and says only workspace admins can change it. |
 | Team member              | Nothing. `GET` returns 403.                                                   |
 
-The Team detail page's actions menu has **Agent policy** for workspace managers and the Team owner. It opens a side sheet with the three tabs, **Cancel**, and **Save changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
+The Team detail page's actions menu has **Agent policy** for workspace managers and the Team owner. It opens a **Team settings** side sheet with the three tabs, **Cancel**, and **Save Changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
 
-Design controls with no backing in Garden still render, disabled, with a **Coming soon** badge: the Chats and Home areas; the Delete projects, Manage billing, and Read locked files restrictions; the Deploy changes and Create documents approval rows; the per-member Team role control; and the Admin Policy tab. They store nothing, and the schema rejects them if a client sends them.
+Design controls with no backing in Garden still render, disabled, with a **Coming soon** badge: the Chats and Home areas; the Delete projects, Manage billing, and Read locked files restrictions; the Deploy changes and Create documents approval rows; the per-member Team Role select; and the Admin Policy tab. They store nothing, and the schema rejects them if a client sends them.
 
 ### How the runtime applies it
 

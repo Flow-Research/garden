@@ -87,6 +87,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({
   api: apiMocks,
   getApi: () => apiMocks,
+  listConnections: () => Promise.resolve({ integrations: [] }),
 }))
 
 const mockAuthUser = { id: 'user-1', email: 'owner@test.com', name: 'Owner' }
@@ -898,10 +899,10 @@ describe('teams UI', () => {
     )
 
     expect(
-      await screen.findByRole('dialog', { name: 'Agent policy' }),
+      await screen.findByRole('dialog', { name: 'Team settings' }),
     ).toBeInTheDocument()
     expect(
-      await screen.findByRole('switch', { name: 'Tasks' }),
+      await screen.findByRole('checkbox', { name: 'Tasks' }),
     ).toBeInTheDocument()
     expect(apiMocks.getTeamAgentPolicy).toHaveBeenCalledWith('team-1')
   })
