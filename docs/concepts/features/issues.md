@@ -57,7 +57,7 @@ A chat thread can also point at one issue. `chat_thread.primary_issue_id` stores
 
 ## The Inbox is computed, not stored
 
-The Inbox has no table of items. `apps/web/src/lib/server/inbox-compute.ts` computes it on each request from approvals, mentions, blockers, and failed runs. It includes agent comments and comments by other users, and leaves out your own. Permission requests join through `agent.workspace_id`, so each workspace sees only its own approvals. Mentions match with `commentMentionsUserSql()`, a JSON containment query on `issue_comment.mentions` backed by the `issue_comment_mentions_gin` index. Dismissing an item writes an `inbox_dismissal` row.
+The Inbox has no table of items. `apps/web/src/lib/server/inbox-compute.ts` computes it on each request from approvals, mentions, blockers, and failed runs. It includes agent comments and comments by other users, and leaves out your own. Permission requests join through `agent.workspace_id`, so each workspace sees only its own approvals. Mentions match with `commentMentionsUserSql()`, a JSON containment query on `issue_comment.mentions` backed by the `issue_comment_mentions_gin` index. `matchMentions()` in `packages/server/src/issues/server.ts` fills that column: composer links (`mention://member/<id>`, `mention://user/<id>`, `mention://agent/<id>`) resolve by id, limited to members and active or pending agents of the workspace, and typed `@name` tokens still match by name or email alias. Dismissing an item writes an `inbox_dismissal` row.
 
 Computing the Inbox keeps it consistent with the data it summarizes. An item disappears when its cause is resolved, with no second record to clean up.
 
