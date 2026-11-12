@@ -12,6 +12,7 @@ import {
 import { agent } from './agents.js'
 import { chatThread } from './chat.js'
 import { issue, issueRun } from './issues.js'
+import { team } from './teams.js'
 import { user } from './users.js'
 
 export const capability = pgTable(
@@ -127,6 +128,9 @@ export const permissionRequest = pgTable(
     threadId: uuid('thread_id').references(() => chatThread.id, {
       onDelete: 'set null',
     }),
+    // Team whose agent policy required this approval. Its owner may decide
+    // the request; the owner is read at decision time so transfers carry over.
+    teamId: uuid('team_id').references(() => team.id, { onDelete: 'set null' }),
     argsJson: jsonb('args_json'),
     toolCallId: text('tool_call_id').notNull().default(''),
     requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'date' })

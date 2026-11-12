@@ -1,15 +1,13 @@
-import { and, eq, isNotNull, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
 import {
   requireSession,
   requireWorkspaceAccess,
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { teamIssueVisibilityCondition } from '@garden/db/team-issue-visibility'
 import { isWorkspaceManager } from '@/lib/server/team-access'
+import { listChildIssueProgress } from '@/lib/server/queries/issues'
 
 export const Route = createFileRoute('/api/issues/child-progress')({
   server: {
@@ -31,27 +29,12 @@ export const Route = createFileRoute('/api/issues/child-progress')({
         )
         if (workspaceAccess instanceof Response) return workspaceAccess
 
-        // Count children per parent in the database rather than loading every
-        // issue in the workspace to tally them in memory.
         const db = await appContext.db()
-        const rows = await db
-          .select({
-            parentId: schema.issue.parentId,
-            total: sql<number>`cast(count(*) as int)`,
-            done: sql<number>`cast(count(*) filter (where ${schema.issue.status} = 'done') as int)`,
-          })
-          .from(schema.issue)
-          .where(
-            and(
-              eq(schema.issue.workspaceId, workspaceId),
-              isNotNull(schema.issue.parentId),
-              teamIssueVisibilityCondition({
-                viewerId: session.user.id,
-                manager: isWorkspaceManager(workspaceAccess.membership.role),
-              }),
-            ),
-          )
-          .groupBy(schema.issue.parentId)
+        const rows = await listChildIssueProgress(db, {
+          workspaceId,
+          viewerId: session.user.id,
+          manager: isWorkspaceManager(workspaceAccess.membership.role),
+        })
 
         const progress = rows.flatMap((row) =>
           row.parentId

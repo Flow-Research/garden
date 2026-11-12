@@ -1,7 +1,5 @@
-import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { notFound } from '@/lib/server/control-plane'
 import { serviceErrorResponse } from '@/lib/server/service-error-response'
@@ -10,6 +8,7 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { getIssueSourceBindingWorkspaceId } from '@/lib/server/queries/issues'
 import { removeSourceBinding } from '@garden/server/issues/source-binding'
 
 export const Route = createFileRoute(
@@ -21,23 +20,16 @@ export const Route = createFileRoute(
         const appContext = requireAppRequestContext(context)
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
-        const db = access.db
-        const [binding] = await db
-          .select({ workspaceId: schema.issueSourceBinding.workspaceId })
-          .from(schema.issueSourceBinding)
-          .where(
-            and(
-              eq(schema.issueSourceBinding.id, params.bindingId),
-              eq(schema.issueSourceBinding.issueId, params.id),
-            ),
-          )
-          .limit(1)
-        if (!binding) return notFound('Source binding not found')
+        const workspaceId = await getIssueSourceBindingWorkspaceId(access.db, {
+          issueId: params.id,
+          bindingId: params.bindingId,
+        })
+        if (!workspaceId) return notFound('Source binding not found')
 
         const permission = await requireWorkspacePermission({
           appContext,
           request: appContext.request,
-          workspaceId: binding.workspaceId,
+          workspaceId,
           permissions: workspacePermissions.issueManage,
         })
         if (permission) return permission

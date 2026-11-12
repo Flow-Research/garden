@@ -100,6 +100,7 @@ import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-p
 import { Route as ApiTeamsTeamIdRepositoriesRouteImport } from './routes/api/teams/$teamId/repositories'
 import { Route as ApiTeamsTeamIdOwnerRouteImport } from './routes/api/teams/$teamId/owner'
 import { Route as ApiTeamsTeamIdMembersRouteImport } from './routes/api/teams/$teamId/members'
+import { Route as ApiTeamsTeamIdAgentPolicyRouteImport } from './routes/api/teams/$teamId/agent-policy'
 import { Route as ApiPermissionRequestsIdResolveRouteImport } from './routes/api/permission-requests/$id/resolve'
 import { Route as ApiIssuesIdWorkProductsRouteImport } from './routes/api/issues/$id/work-products'
 import { Route as ApiIssuesIdUsageRouteImport } from './routes/api/issues/$id/usage'
@@ -635,6 +636,12 @@ const ApiTeamsTeamIdMembersRoute = ApiTeamsTeamIdMembersRouteImport.update({
   path: '/members',
   getParentRoute: () => ApiTeamsTeamIdRoute,
 } as any)
+const ApiTeamsTeamIdAgentPolicyRoute =
+  ApiTeamsTeamIdAgentPolicyRouteImport.update({
+    id: '/agent-policy',
+    path: '/agent-policy',
+    getParentRoute: () => ApiTeamsTeamIdRoute,
+  } as any)
 const ApiPermissionRequestsIdResolveRoute =
   ApiPermissionRequestsIdResolveRouteImport.update({
     id: '/api/permission-requests/$id/resolve',
@@ -1097,6 +1104,7 @@ export interface FileRoutesByFullPath {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/agent-policy': typeof ApiTeamsTeamIdAgentPolicyRoute
   '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
   '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
   '/api/teams/$teamId/repositories': typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
@@ -1245,6 +1253,7 @@ export interface FileRoutesByTo {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/agent-policy': typeof ApiTeamsTeamIdAgentPolicyRoute
   '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
   '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
   '/api/teams/$teamId/repositories': typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
@@ -1401,6 +1410,7 @@ export interface FileRoutesById {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/agent-policy': typeof ApiTeamsTeamIdAgentPolicyRoute
   '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
   '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
   '/api/teams/$teamId/repositories': typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
@@ -1556,6 +1566,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/agent-policy'
     | '/api/teams/$teamId/members'
     | '/api/teams/$teamId/owner'
     | '/api/teams/$teamId/repositories'
@@ -1704,6 +1715,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/agent-policy'
     | '/api/teams/$teamId/members'
     | '/api/teams/$teamId/owner'
     | '/api/teams/$teamId/repositories'
@@ -1859,6 +1871,7 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/agent-policy'
     | '/api/teams/$teamId/members'
     | '/api/teams/$teamId/owner'
     | '/api/teams/$teamId/repositories'
@@ -2589,6 +2602,13 @@ declare module '@tanstack/react-router' {
       path: '/members'
       fullPath: '/api/teams/$teamId/members'
       preLoaderRoute: typeof ApiTeamsTeamIdMembersRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRoute
+    }
+    '/api/teams/$teamId/agent-policy': {
+      id: '/api/teams/$teamId/agent-policy'
+      path: '/agent-policy'
+      fullPath: '/api/teams/$teamId/agent-policy'
+      preLoaderRoute: typeof ApiTeamsTeamIdAgentPolicyRouteImport
       parentRoute: typeof ApiTeamsTeamIdRoute
     }
     '/api/permission-requests/$id/resolve': {
@@ -3419,12 +3439,14 @@ const ApiTeamsTeamIdRepositoriesRouteWithChildren =
   )
 
 interface ApiTeamsTeamIdRouteChildren {
+  ApiTeamsTeamIdAgentPolicyRoute: typeof ApiTeamsTeamIdAgentPolicyRoute
   ApiTeamsTeamIdMembersRoute: typeof ApiTeamsTeamIdMembersRouteWithChildren
   ApiTeamsTeamIdOwnerRoute: typeof ApiTeamsTeamIdOwnerRoute
   ApiTeamsTeamIdRepositoriesRoute: typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
 }
 
 const ApiTeamsTeamIdRouteChildren: ApiTeamsTeamIdRouteChildren = {
+  ApiTeamsTeamIdAgentPolicyRoute: ApiTeamsTeamIdAgentPolicyRoute,
   ApiTeamsTeamIdMembersRoute: ApiTeamsTeamIdMembersRouteWithChildren,
   ApiTeamsTeamIdOwnerRoute: ApiTeamsTeamIdOwnerRoute,
   ApiTeamsTeamIdRepositoriesRoute: ApiTeamsTeamIdRepositoriesRouteWithChildren,
