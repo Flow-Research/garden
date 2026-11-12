@@ -1,3 +1,4 @@
+import { isAgentDoPath } from '@/lib/server/agent-do-path'
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
 import {
@@ -364,7 +365,7 @@ export default {
       )
     }
 
-    if (url.pathname.startsWith('/agents/')) {
+    if (isAgentDoPath(url.pathname)) {
       const agentAuth = await authorizeAgentRequest(request, env, logger)
       if (agentAuth.response) {
         const response = withRequestIdHeader(
