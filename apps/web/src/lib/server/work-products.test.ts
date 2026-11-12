@@ -533,3 +533,158 @@ describe('reviewWorkProduct apply_pr', () => {
     expect(githubCalls).toEqual([])
   })
 })
+
+const folderId = '00000000-0000-4000-8000-000000000009'
+const savedFileId = '00000000-0000-4000-8000-00000000000a'
+const actorUserId = '00000000-0000-4000-8000-000000000005'
+
+/** Files & Folders stubs: the folder lookup and the shared upload path. */
+const filesState = vi.hoisted(() => ({
+  folders: [] as Array<{ id: string; workspaceId: string; name: string }>,
+  uploads: [] as Array<{
+    name: string
+    text: string
+    ownerUserId: string
+    workspaceId: string
+  }>,
+  memberships: [] as Array<{ folderId: string; fileId: string }>,
+}))
+
+vi.mock('./brain-folders', () => ({
+  getBrainFolder: async (args: { folderId: string; workspaceId: string }) =>
+    filesState.folders.find(
+      (folder) =>
+        folder.id === args.folderId && folder.workspaceId === args.workspaceId,
+    ) ?? null,
+  addBrainFolderFile: async (args: { folderId: string; fileId: string }) => {
+    filesState.memberships.push({
+      folderId: args.folderId,
+      fileId: args.fileId,
+    })
+    return true
+  },
+}))
+
+vi.mock('./brain-file-upload', async () => {
+  const { Result } = await import('better-result')
+  return {
+    saveBrainFileUpload: async (args: {
+      file: File
+      ownerUserId: string
+      workspaceId: string
+    }) => {
+      filesState.uploads.push({
+        name: args.file.name,
+        text: await args.file.text(),
+        ownerUserId: args.ownerUserId,
+        workspaceId: args.workspaceId,
+      })
+      return Result.ok({ id: savedFileId, label: args.file.name })
+    },
+  }
+})
+
+const saveToFiles = () =>
+  reviewWorkProduct({
+    actorUserId,
+    env: {} as never,
+    input: { action: 'save_to_files', folder_id: folderId },
+    workProductId,
+    workspaceId,
+  })
+
+describe('reviewWorkProduct save_to_files', () => {
+  beforeEach(() => {
+    filesState.folders = [{ id: folderId, workspaceId, name: 'Guides' }]
+    filesState.uploads = []
+    filesState.memberships = []
+  })
+
+  it('saves the approved body as Markdown in the folder through the upload path and records the link', async () => {
+    const { db, inserts, sets } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: approvedWorkProduct({}),
+    })
+    state.db = db
+
+    const result = await saveToFiles()
+
+    expect(result.isOk()).toBe(true)
+    expect(filesState.uploads).toEqual([
+      {
+        name: 'workstream-task-guide.md',
+        text: '# Workstream task guide\n\nApproved text.',
+        ownerUserId: actorUserId,
+        workspaceId,
+      },
+    ])
+    expect(filesState.memberships).toEqual([{ folderId, fileId: savedFileId }])
+    const fileUrl = `/api/brain/files/${savedFileId}/content`
+    expect(result.isOk() && result.value).toMatchObject({
+      action: 'save_to_files',
+      externalId: savedFileId,
+      externalUrl: fileUrl,
+    })
+    // Saving is not an apply: status stays approved so Apply / Apply as PR
+    // remain available, and the link lives in payload.saved_file.
+    const update = sets.find((values) => 'payload' in values)
+    expect(update?.status).toBeUndefined()
+    expect(update?.appliedExternalUrl).toBeUndefined()
+    expect(update?.payload).toMatchObject({
+      saved_file: {
+        file_id: savedFileId,
+        folder_id: folderId,
+        url: fileUrl,
+        saved_by: actorUserId,
+      },
+    })
+    const event = inserts.find(
+      (row) => row.eventType === 'issue_run:work_product_saved_to_files',
+    )
+    expect(event?.payload).toMatchObject({
+      work_product_id: workProductId,
+      file_id: savedFileId,
+      folder_id: folderId,
+      external_url: fileUrl,
+      actor_user_id: actorUserId,
+    })
+  })
+
+  it('rejects a work product that is not approved without saving anything', async () => {
+    const { db, inserts } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: { ...approvedWorkProduct({}), status: 'review' },
+    })
+    state.db = db
+
+    const result = await saveToFiles()
+
+    expect(result.isErr() && result.error.message).toBe(
+      'Only approved work products can be saved to Files',
+    )
+    expect(filesState.uploads).toEqual([])
+    expect(inserts).toEqual([])
+  })
+
+  it('rejects a folder that is missing or in another workspace', async () => {
+    filesState.folders = [
+      {
+        id: folderId,
+        workspaceId: '00000000-0000-4000-8000-0000000000ff',
+        name: 'Elsewhere',
+      },
+    ]
+    const { db, inserts } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: approvedWorkProduct({}),
+    })
+    state.db = db
+
+    const result = await saveToFiles()
+
+    expect(result.isErr() && result.error.status).toBe(404)
+    expect(result.isErr() && result.error.message).toBe('Folder not found')
+    expect(filesState.uploads).toEqual([])
+    expect(inserts).toEqual([])
+  })
+})

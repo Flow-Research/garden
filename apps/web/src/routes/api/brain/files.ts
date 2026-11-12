@@ -1,12 +1,10 @@
-import { Effect, Layer, Result as EffectResult } from 'effect'
+import { Effect, Result as EffectResult } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { MAX_FILE_SIZE } from '@garden/core/constants/upload'
-import { normalizeDownloadFilename } from '@garden/agent-runtime'
 import { WorkspaceId } from '@garden/brain/domain'
 import { Brain } from '@garden/brain/services/brain'
 import { makeWebBrainLive } from '@garden/brain/services/web'
 import { formatOf } from '@garden/brain/services/extractor'
-import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import {
   BrainFileListResponseSchema,
   BrainFileResponseSchema,
@@ -24,30 +22,7 @@ import {
   multipartErrorResponse,
   readMultipartForm,
 } from '@/lib/server/multipart'
-import { makeBrainAuditClientLayer } from '@/lib/server/brain-audit-runtime'
-import {
-  BrainFileIngestion,
-  makeBrainFileIngestionLayer,
-} from '@/lib/server/brain-file-ingestion'
-
-const brainFilesLogger = createGardenLogger({
-  service: 'garden-staging',
-  component: 'brain-files-api',
-})
-
-function brainStorageKey(input: {
-  workspaceId: string
-  itemId: string
-  filename: string
-}) {
-  return [
-    'brain',
-    'workspaces',
-    input.workspaceId,
-    input.itemId,
-    normalizeDownloadFilename(input.filename),
-  ].join('/')
-}
+import { saveBrainFileUpload } from '@/lib/server/brain-file-upload'
 
 /**
  * Lists files stored in the active workspace. The response exposes only fields
@@ -146,63 +121,19 @@ export const postBrainFileUpload = async ({
   if (formatOf(file.name) === null)
     return badRequest(`Unsupported file type: ${file.name}`)
 
-  const itemId = crypto.randomUUID()
-  const r2Key = brainStorageKey({
+  const savedResult = await saveBrainFileUpload({
+    env,
+    file,
+    ownerUserId: workspaceContext.session.user.id,
+    waitUntil: appContext.waitUntil,
     workspaceId: workspaceContext.workspaceId,
-    itemId,
-    filename: file.name,
   })
-  const brainLive = makeWebBrainLive({
-    baseUrl: helixUrl,
-    apiKey: env.HELIX_API_KEY,
-    ai: env.AI,
-    files: env.BRAIN_FILES,
-  })
-  const ingestionLive = makeBrainFileIngestionLayer(env).pipe(
-    Layer.provide(
-      Layer.merge(brainLive, makeBrainAuditClientLayer(env.AgentDO)),
-    ),
-  )
-  const stageResult = await Effect.runPromise(
-    Effect.result(
-      Effect.flatMap(BrainFileIngestion, (ingestion) =>
-        ingestion.stage({
-          file,
-          itemId,
-          ownerUserId: workspaceContext.session.user.id,
-          r2Key,
-          workspaceId: workspaceContext.workspaceId,
-        }),
-      ).pipe(Effect.provide(ingestionLive)),
-    ),
-  )
-  if (EffectResult.isFailure(stageResult)) {
-    brainFilesLogger.error('brain file staging failed', {
-      operation: stageResult.failure.operation,
-      workspaceId: workspaceContext.workspaceId,
-      ...errorFields(stageResult.failure),
-    })
-    return Response.json(
-      { error: 'Brain upload is unavailable' },
-      { status: 503 },
-    )
+  if (savedResult.isErr()) {
+    return savedResult.error.code === 'brain_unconfigured'
+      ? badRequest(savedResult.error.message)
+      : Response.json({ error: savedResult.error.message }, { status: 503 })
   }
-  const added = stageResult.success
-
-  if (!added.indexed) {
-    const waitUntil = appContext.waitUntil ?? (() => {})
-    waitUntil(
-      Effect.runPromise(
-        Effect.flatMap(BrainFileIngestion, (ingestion) =>
-          ingestion.indexAndAudit({
-            itemId: added.id,
-            ownerUserId: workspaceContext.session.user.id,
-            workspaceId: workspaceContext.workspaceId,
-          }),
-        ).pipe(Effect.provide(ingestionLive)),
-      ),
-    )
-  }
+  const added = savedResult.value
 
   const body = BrainFileResponseSchema.parse({
     item: brainFileSummaryOf(added),
