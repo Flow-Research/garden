@@ -20,13 +20,29 @@ import { resolveConnectorWritePermissionRequests } from './permission-request'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
 
-export const workProductReviewBodySchema = z
-  .object({
-    action: z.enum(['approve', 'request_changes', 'apply']),
-    edited_body: z.string().optional(),
-    comment: z.string().optional(),
-  })
-  .strict()
+/**
+ * Review request body. Before FLO-150, `approve` always moved an in_review
+ * issue to done, so a follow-up @Garden comment started no run (comment
+ * wakeups skip done issues). Approval now carries a required `close_issue`
+ * flag: the caller states whether approving also finishes the issue. There
+ * is no default, so a client cannot close an issue without saying so.
+ */
+export const workProductReviewBodySchema = z.discriminatedUnion('action', [
+  z
+    .object({
+      action: z.literal('approve'),
+      close_issue: z.boolean(),
+      edited_body: z.string().optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('request_changes'),
+      comment: z.string().optional(),
+    })
+    .strict(),
+  z.object({ action: z.literal('apply') }).strict(),
+])
 
 export type WorkProductReviewInput = z.infer<typeof workProductReviewBodySchema>
 
@@ -486,8 +502,17 @@ export async function loadWorkProductWorkspace(args: {
   })
 }
 
+/**
+ * Approves a work product and, in the same transaction, moves the issue out
+ * of in_review. `closeIssue: true` moves it to done (the review finished the
+ * work). `closeIssue: false` moves it back to in_progress so the issue stays
+ * open and comment wakeups can start follow-up runs. Issues in any other
+ * status are left unchanged in both cases: the conditional update only
+ * claims rows still in_review, so a concurrent status change wins.
+ */
 async function approveWorkProduct(args: {
   actorUserId: string
+  closeIssue: boolean
   editedBody?: string
   env: AppEnv
   workProductId: string
@@ -503,6 +528,7 @@ async function approveWorkProduct(args: {
   const db = await getDb(args.env)
   const now = new Date()
   const editedBody = args.editedBody
+  const nextStatus = args.closeIssue ? 'done' : 'in_progress'
   const result = await Result.tryPromise({
     try: async () => {
       await db.transaction(async (tx) => {
@@ -566,7 +592,7 @@ async function approveWorkProduct(args: {
         })
         const [moved] = await tx
           .update(schema.issue)
-          .set({ status: 'done', updatedAt: now })
+          .set({ status: nextStatus, updatedAt: now })
           .where(
             and(
               eq(schema.issue.id, issue.id),
@@ -584,8 +610,8 @@ async function approveWorkProduct(args: {
             eventType: 'issue_run:message',
             stream: 'system',
             level: 'info',
-            message: 'Issue moved to done after review',
-            payload: { from: 'in_review', to: 'done' },
+            message: `Issue moved to ${nextStatus} after review`,
+            payload: { from: 'in_review', to: nextStatus },
           })
         }
       })
@@ -957,6 +983,7 @@ export async function reviewWorkProduct(args: {
     case 'approve':
       return approveWorkProduct({
         actorUserId: args.actorUserId,
+        closeIssue: args.input.close_issue,
         editedBody: args.input.edited_body,
         env: args.env,
         workProductId: args.workProductId,

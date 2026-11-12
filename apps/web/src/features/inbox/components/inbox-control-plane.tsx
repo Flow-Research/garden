@@ -305,6 +305,7 @@ function WorkProductInboxAction({
       connectorId={connectorId}
       pendingAction={pending}
       onApprove={() => review('approve')}
+      onApproveAndClose={() => review('approve_and_close')}
       onRequestChanges={() => review('request_changes')}
       onApply={() =>
         reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply' })
@@ -457,6 +458,9 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
             connectorId={connectorId}
             pending={reviewMutation.isPending ? reviewMutation.variables : null}
             onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}
+            onApproveAndClose={(id) =>
+              reviewMutation.mutate({ id, action: 'approve_and_close' })
+            }
             onRequestChanges={(id) =>
               reviewMutation.mutate({ id, action: 'request_changes' })
             }

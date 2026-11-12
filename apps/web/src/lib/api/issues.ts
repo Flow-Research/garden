@@ -16,6 +16,7 @@ import type {
   TimelineEntry,
   UpdateIssueRequest,
 } from '@garden/core/types'
+import type { WorkProductReviewInput } from '@/lib/server/work-products'
 import { getApiTransport } from './state'
 
 export function listIssues(
@@ -317,10 +318,7 @@ export function getIssueUsage(issueId: string): Promise<IssueUsageSummary> {
 
 export function reviewWorkProduct(
   workProductId: string,
-  data: {
-    action: 'approve' | 'request_changes' | 'apply'
-    note?: string
-  },
+  data: WorkProductReviewInput,
 ): Promise<IssueWorkProduct> {
   return getApiTransport().request(
     `/api/work-products/${workProductId}/review`,

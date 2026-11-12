@@ -68,7 +68,10 @@ export interface WorkProductCardProps {
   pulseOnMount?: boolean
   /** The review action in flight for this card; disables its actions. */
   pendingAction?: WorkProductReviewAction | null
+  /** Approves and keeps the issue open so follow-up comments can start runs. */
   onApprove?: () => void
+  /** Approves and moves the issue to done. */
+  onApproveAndClose?: () => void
   onRequestChanges?: () => void
   /**
    * Posts the work product to the connector. Confirmed first; return the
@@ -150,6 +153,7 @@ export function WorkProductCard({
   pulseOnMount = false,
   pendingAction = null,
   onApprove,
+  onApproveAndClose,
   onRequestChanges,
   onApply,
   onShowDiff,
@@ -263,6 +267,17 @@ export function WorkProductCard({
             variant="outline"
             className="h-7"
             disabled={busy}
+            onClick={onApproveAndClose}
+          >
+            {pendingAction === 'approve_and_close'
+              ? 'Closing…'
+              : 'Approve and close'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7"
+            disabled={busy}
             onClick={onRequestChanges}
           >
             {pendingAction === 'request_changes'
@@ -335,6 +350,7 @@ interface WorkProductListProps {
   /** The review in flight, if any; only the matching card is disabled. */
   pending?: { id: string; action: WorkProductReviewAction } | null
   onApprove?: (id: string) => void
+  onApproveAndClose?: (id: string) => void
   onRequestChanges?: (id: string) => void
   onApply?: (id: string) => Promise<unknown>
 }
@@ -345,6 +361,7 @@ export function WorkProductList({
   pulseId,
   pending = null,
   onApprove,
+  onApproveAndClose,
   onRequestChanges,
   onApply,
 }: WorkProductListProps) {
@@ -360,6 +377,7 @@ export function WorkProductList({
           pulseOnMount={pulseId === wp.id}
           pendingAction={pending?.id === wp.id ? pending.action : null}
           onApprove={() => onApprove?.(wp.id)}
+          onApproveAndClose={() => onApproveAndClose?.(wp.id)}
           onRequestChanges={() => onRequestChanges?.(wp.id)}
           onApply={() => (onApply ? onApply(wp.id) : Promise.resolve())}
         />
