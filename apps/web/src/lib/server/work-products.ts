@@ -539,16 +539,19 @@ async function approveWorkProduct(args: {
         }
         if (editedBody !== undefined) {
           update.body = editedBody
+          // One ::jsonb param: untyped binds inside jsonb_build_object make
+          // Postgres fail with "could not determine data type of parameter".
+          const previousVersion = {
+            body: workProduct.body ?? '',
+            replaced_at: now.toISOString(),
+            actor_user_id: args.actorUserId,
+          }
           update.payload = sql`
             jsonb_set(
               coalesce(${schema.issueWorkProduct.payload}, '{}'::jsonb),
               '{previous_versions}',
               coalesce(${schema.issueWorkProduct.payload}->'previous_versions', '[]'::jsonb) ||
-                jsonb_build_array(jsonb_build_object(
-                  'body', ${workProduct.body ?? ''},
-                  'replaced_at', ${now.toISOString()},
-                  'actor_user_id', ${args.actorUserId}
-                )),
+                jsonb_build_array(${JSON.stringify(previousVersion)}::jsonb),
               true
             )
           ` as never
