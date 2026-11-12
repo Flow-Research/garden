@@ -245,12 +245,14 @@ const prTarget = {
  * awaiting it (or `.limit()`) resolves to `rows`.
  */
 function queryRows(rows: unknown[]) {
-  const chain: Record<string, unknown> = {}
+  const chain: Promise<unknown[]> & Record<string, unknown> = Object.assign(
+    Promise.resolve(rows),
+    {},
+  )
   for (const method of ['from', 'where', 'orderBy', 'innerJoin']) {
     chain[method] = () => chain
   }
   chain.limit = async () => rows
-  chain.then = (resolve: (value: unknown[]) => unknown) => resolve(rows)
   return chain
 }
 
