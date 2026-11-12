@@ -17,10 +17,12 @@ const mockUseAuthStore = vi.hoisted(() => vi.fn())
 const mockUseWorkspaceStore = vi.hoisted(() => vi.fn())
 const mockUseWorkspaceId = vi.hoisted(() => vi.fn())
 const mockUseQuery = vi.hoisted(() => vi.fn())
+const mockUnlinkOwnGithubIdentity = vi.hoisted(() => vi.fn())
 
 vi.mock('@/lib/api', () => ({
   api: {
     updateMember: mockUpdateMember,
+    unlinkOwnGithubIdentity: mockUnlinkOwnGithubIdentity,
   },
 }))
 
@@ -50,6 +52,7 @@ vi.mock('@tanstack/react-query', async () => {
   return {
     ...actual,
     useQuery: mockUseQuery,
+    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
   }
 })
 
@@ -149,14 +152,44 @@ describe('GithubWorkspaceIdentitySection', () => {
     mockUpdateMember.mockResolvedValue({})
   })
 
-  it('shows the identity read-only with no self-link control', () => {
+  it('offers Link with GitHub, which starts the GitHub sign-in', () => {
     renderSection()
 
     expect(screen.getByText('Not linked')).toBeInTheDocument()
     expect(
-      screen.getByText(/workspace owner or admin links it from members/i),
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+      screen.getByRole('link', { name: /link with github/i }),
+    ).toHaveAttribute('href', '/api/github/identity/start')
+    // No typed-login self-link: ownership is proven by GitHub, not by input.
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument()
+  })
+
+  it('lets a linked member unlink their own GitHub account', async () => {
+    mockUseQuery.mockReturnValue({
+      data: [
+        {
+          id: 'mem-1',
+          workspace_id: 'ws-1',
+          user_id: 'user-1',
+          role: 'member',
+          github_user_id: '583231',
+          github_login: 'octocat',
+          created_at: '2026-01-01T00:00:00.000Z',
+          name: 'Ada',
+          email: 'ada@example.com',
+          avatar_url: null,
+        },
+      ],
+      isPending: false,
+    })
+    mockUnlinkOwnGithubIdentity.mockResolvedValue({ ok: true })
+    const user = userEvent.setup()
+    renderSection()
+
+    expect(screen.getByText('@octocat')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /unlink/i }))
+
+    expect(mockUnlinkOwnGithubIdentity).toHaveBeenCalledTimes(1)
+    expect(mockToastSuccess).toHaveBeenCalledWith('GitHub unlinked')
   })
 })
 

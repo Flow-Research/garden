@@ -138,8 +138,9 @@ export async function readActorWorkspaceRole(args: {
  * Only workspace owners/admins may link, change, or unlink a member's GitHub
  * identity, their own row included. Before: members could self-link any id,
  * and admins could unlink an owner and claim the owner's GitHub id. Now an
- * owner's row needs an owner, the same rule role edits use. Self-serve returns
- * once Garden verifies ownership via GitHub OAuth (docs/reference/known-gaps.md).
+ * owner's row needs an owner, the same rule role edits use. Members link their
+ * own row through GitHub's sign-in instead (`lib/server/github-identity.ts`),
+ * which proves ownership; this rule covers editing by hand.
  */
 export function canEditMemberGithubIdentity(args: {
   actorRole: string | null
