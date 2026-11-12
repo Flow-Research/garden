@@ -173,6 +173,13 @@ const githubCalls = vi.hoisted(
   () => [] as Array<{ name: string; input: Record<string, unknown> }>,
 )
 
+/** What already exists on GitHub, to replay an apply that failed midway. */
+const githubState = vi.hoisted(() => ({
+  branchExists: false,
+  fileExists: false,
+  openPrs: [] as unknown[],
+}))
+
 vi.mock('@garden/connectors/github/rest-client', async () => {
   const { Layer } = await import('effect')
   return { makeGitHubBaseLayer: () => Layer.empty }
@@ -185,6 +192,7 @@ vi.mock('@garden/connectors/github/tools', async () => {
       get_commit: () => ({ sha: 'base-sha' }),
       create_branch: (input) => ({ ref: `refs/heads/${String(input.branch)}` }),
       get_file_contents: () => null,
+      list_pull_requests: () => githubState.openPrs,
       create_or_update_file: () => ({ content: { sha: 'file-sha' } }),
       create_pull_request: () => ({
         id: 9001,
@@ -197,8 +205,27 @@ vi.mock('@garden/connectors/github/tools', async () => {
       name,
       execute: (input: Record<string, unknown>) => {
         githubCalls.push({ name, input })
+        const notFound = Effect.fail({
+          kind: 'not_found',
+          message: 'Not Found',
+        })
         if (name === 'get_file_contents') {
-          return Effect.fail({ kind: 'not_found', message: 'Not Found' })
+          return githubState.fileExists
+            ? Effect.succeed({ sha: 'existing-file-sha' })
+            : notFound
+        }
+        if (
+          name === 'get_commit' &&
+          String(input.ref).startsWith('garden/') &&
+          !githubState.branchExists
+        ) {
+          return notFound
+        }
+        if (name === 'create_branch' && githubState.branchExists) {
+          return Effect.fail({
+            kind: 'unknown',
+            message: 'Reference already exists',
+          })
         }
         return Effect.succeed(responses[name]?.(input))
       },
@@ -358,6 +385,9 @@ describe('reviewWorkProduct apply_pr', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     githubCalls.length = 0
+    githubState.branchExists = false
+    githubState.fileExists = false
+    githubState.openPrs = []
   })
 
   it('branches from dev, writes the file, opens a contract-passing PR, and records its URL', async () => {
@@ -415,6 +445,46 @@ describe('reviewWorkProduct apply_pr', () => {
       inserts.find((row) => row.eventType === 'issue_run:work_product_applied')
         ?.payload,
     ).toMatchObject({ tool: 'create_pull_request' })
+  })
+
+  it('reuses the branch and records the open PR when retried after a partial failure', async () => {
+    githubState.branchExists = true
+    githubState.fileExists = true
+    githubState.openPrs = [
+      {
+        id: 9002,
+        number: 41,
+        html_url: 'https://github.com/Flow-Research/garden/pull/41',
+      },
+    ]
+    const { db, sets } = await makeApplyDb({
+      linkedRepos: [{ fullName: 'Flow-Research/garden' }],
+      workProduct: approvedWorkProduct({ pr_target: prTarget }),
+    })
+    state.db = db
+
+    const result = await applyPr()
+
+    expect(result.isErr() ? result.error : null).toBeNull()
+    const names = githubCalls.map((call) => call.name)
+    expect(names).not.toContain('create_branch')
+    expect(names).not.toContain('create_pull_request')
+    expect(
+      githubCalls.find((call) => call.name === 'list_pull_requests')?.input,
+    ).toMatchObject({
+      state: 'open',
+      head: `Flow-Research:garden/work-product-${workProductId.slice(0, 8)}`,
+    })
+    expect(
+      githubCalls.find((call) => call.name === 'create_or_update_file')?.input,
+    ).toMatchObject({ sha: 'existing-file-sha' })
+    expect(sets).toContainEqual(
+      expect.objectContaining({
+        status: 'applied',
+        appliedExternalId: '41',
+        appliedExternalUrl: 'https://github.com/Flow-Research/garden/pull/41',
+      }),
+    )
   })
 
   it('rejects a work product that is not approved', async () => {

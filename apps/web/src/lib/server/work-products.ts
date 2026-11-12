@@ -1065,6 +1065,10 @@ function applyPrTitle(workProduct: WorkProductRow) {
   return title.length >= 10 ? title : `${title} (Garden work product)`
 }
 
+function isNotFound(error: ConnectorError | WorkProductReviewError) {
+  return isConnectorError(error) && error.kind === 'not_found'
+}
+
 /** Reads one tool and fails if it unexpectedly asks for approval. */
 async function readGithub(
   args: Parameters<typeof callConnectorTool>[0],
@@ -1090,7 +1094,9 @@ async function readGithub(
  * repository is linked to the issue's Team (`team_repository`), the server
  * reads the base branch head, creates `garden/work-product-<id>`, writes the
  * body to the file (passing the existing blob sha when the file exists),
- * and opens a PR whose body fills the PR template. Every call runs through
+ * and opens a PR whose body fills the PR template. Retrying after a partial
+ * failure is safe: an existing branch is reused and an open PR from it is
+ * recorded instead of opening a second one. Every call runs through
  * the workspace GitHub App installation with the approving person as actor,
  * the same `callWritebackWithApproval` gate the comment apply uses. The PR
  * URL and number are recorded as `applied_external_url/id`. Merging stays a
@@ -1227,13 +1233,24 @@ async function applyWorkProductAsPr(args: {
     )
   }
 
+  // The branch name is fixed per work product, so a retry after a partial
+  // failure finds the branch an earlier attempt created and reuses it
+  // instead of failing on "reference already exists".
   const branch = `garden/work-product-${workProduct.id.slice(0, 8)}`
-  const branchResult = await write('create_branch', {
-    ...repoArgs,
-    branch,
-    fromSha: baseSha,
+  const branchHead = await readGithub({
+    ...call,
+    toolName: 'get_commit',
+    toolArgs: { ...repoArgs, ref: branch },
   })
-  if (branchResult.isErr()) return Result.err(branchResult.error)
+  if (branchHead.isErr()) {
+    if (!isNotFound(branchHead.error)) return Result.err(branchHead.error)
+    const branchResult = await write('create_branch', {
+      ...repoArgs,
+      branch,
+      fromSha: baseSha,
+    })
+    if (branchResult.isErr()) return Result.err(branchResult.error)
+  }
 
   // A missing file is the create case; any other read failure stops here.
   const existingResult = await readGithub({
@@ -1244,13 +1261,7 @@ async function applyWorkProductAsPr(args: {
   const existingSha = existingResult.isOk()
     ? stringValue(objectOrNull(existingResult.value.response)?.sha)
     : null
-  if (
-    existingResult.isErr() &&
-    !(
-      isConnectorError(existingResult.error) &&
-      existingResult.error.kind === 'not_found'
-    )
-  ) {
+  if (existingResult.isErr() && !isNotFound(existingResult.error)) {
     return Result.err(existingResult.error)
   }
 
@@ -1284,12 +1295,39 @@ async function applyWorkProductAsPr(args: {
     },
     toolName: 'create_pull_request',
   }
-  const prResult = await write(invocation.toolName, invocation.toolArgs)
-  if (prResult.isErr()) return Result.err(prResult.error)
+  // A retry whose earlier attempt already opened the PR records that PR
+  // rather than opening a second one from the same branch.
+  const openPrs = await readGithub({
+    ...call,
+    toolName: 'list_pull_requests',
+    toolArgs: {
+      ...repoArgs,
+      state: 'open',
+      head: `${repository.owner}:${branch}`,
+      base: target.base_branch,
+    },
+  })
+  if (openPrs.isErr()) return Result.err(openPrs.error)
+  const existingPr = Array.isArray(openPrs.value.response)
+    ? objectOrNull(openPrs.value.response[0])
+    : null
 
-  const prNumber = numberValue(objectOrNull(prResult.value.response)?.number)
-  const externalId = prNumber?.toString() ?? prResult.value.externalId
-  const externalUrl = prResult.value.externalUrl
+  let pr: ConnectorToolResponse
+  if (existingPr) {
+    pr = {
+      externalId: findExternalId(existingPr),
+      externalUrl: findUrl(existingPr),
+      response: existingPr,
+    }
+  } else {
+    const prResult = await write(invocation.toolName, invocation.toolArgs)
+    if (prResult.isErr()) return Result.err(prResult.error)
+    pr = prResult.value
+  }
+
+  const prNumber = numberValue(objectOrNull(pr.response)?.number)
+  const externalId = prNumber?.toString() ?? pr.externalId
+  const externalUrl = pr.externalUrl
   const appliedResult = await markWorkProductApplied({
     env: args.env,
     externalId,
