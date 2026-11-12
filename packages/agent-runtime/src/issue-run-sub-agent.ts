@@ -394,6 +394,17 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         loader: this.env.LOADER,
         getSandbox: () => this.getAgentSandbox(),
         issueRunEnv: this.env,
+        // Facet is named by run, not chat thread; resolve tools from the run (#376).
+        getRunIdentity: () => {
+          const run = this.currentRunState
+          return run === null
+            ? null
+            : {
+                workspaceId: run.workspaceId,
+                agentId: run.agentId,
+                ownerUserId: run.agentOwnerUserId,
+              }
+        },
         brain: {
           ...(this.env.HELIX_URL === undefined
             ? {}

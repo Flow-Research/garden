@@ -88,6 +88,8 @@ type ChatSubAgentToolsInput = {
   }) => Promise<ExecutorCatalog | null>
   getSandbox: () => SandboxDO
   issueRunEnv: IssueRunEnv
+  /** Run-scoped identity; when set, tools skip the chat-thread lookup. */
+  getRunIdentity?: () => ChatToolRunIdentity | null
   cancelIssueRun?: (input: { issueId: string; runId: string }) => Promise<void>
   brain: {
     helixUrl?: string
@@ -424,10 +426,21 @@ type ReadRunToolResult = {
   }>
 }
 
+/**
+ * Authoritative actor for non-chat runtimes. Issue-run facets are named by run,
+ * so the chat-thread lookup cannot find them (issue #376).
+ */
+export type ChatToolRunIdentity = {
+  workspaceId: string
+  agentId: string
+  ownerUserId: string
+}
+
 type ReadRunToolContext = {
   databaseUrl: string
   threadId: string
   issueRunEnv?: IssueRunEnv
+  getRunIdentity?: () => ChatToolRunIdentity | null
 }
 
 type ChatIssueToolContext = {
@@ -435,6 +448,7 @@ type ChatIssueToolContext = {
   threadId: string
   issueRunEnv: IssueRunEnv
   loadExecutorCatalog?: ChatSubAgentToolsInput['loadExecutorCatalog']
+  getRunIdentity?: () => ChatToolRunIdentity | null
 }
 
 const COMPACT_EXECUTE_DESCRIPTION =
@@ -529,11 +543,20 @@ async function readRunRows<TRow extends Record<string, unknown>>(
   })
 }
 
+/**
+ * Resolves tool identity for the shared chat/issue tools. Before #376 every
+ * caller was resolved as a chat thread, so issue-run facets (named by run) got
+ * "chat thread not found." Runtimes with their own run identity now resolve the
+ * workspace and agent from it; chat keeps the thread lookup.
+ */
 async function loadChatThreadContext(context: {
   databaseUrl: string
   threadId: string
+  getRunIdentity?: () => ChatToolRunIdentity | null
 }): Promise<ResultValue<{ db: ReadRunDb } & ChatIssueIdentity, string>> {
   const db = getReadRunDb(context.databaseUrl)
+  const runIdentity = context.getRunIdentity?.()
+  if (runIdentity) return await loadRunIdentityContext(db, context, runIdentity)
   const result = await Result.tryPromise<ChatIssueIdentity | null, string>({
     try: async () => {
       const [row] = await db
@@ -566,6 +589,51 @@ async function loadChatThreadContext(context: {
   return result.value
     ? Result.ok({ db, ...result.value })
     : Result.err('chat thread not found.')
+}
+
+/** Loads agent and workspace facts for a run identity (issue #376). */
+async function loadRunIdentityContext(
+  db: ReadRunDb,
+  context: { threadId: string },
+  identity: ChatToolRunIdentity,
+): Promise<ResultValue<{ db: ReadRunDb } & ChatIssueIdentity, string>> {
+  const result = await Result.tryPromise<
+    { isDefault: boolean; issuePrefix: string } | null,
+    string
+  >({
+    try: async () => {
+      const [row] = await db
+        .select({
+          isDefault: schema.agent.isDefault,
+          issuePrefix: schema.organization.issuePrefix,
+        })
+        .from(schema.agent)
+        .innerJoin(
+          schema.organization,
+          eq(schema.organization.id, schema.agent.workspaceId),
+        )
+        .where(
+          and(
+            eq(schema.agent.id, identity.agentId),
+            eq(schema.agent.workspaceId, identity.workspaceId),
+          ),
+        )
+        .limit(1)
+      return row ?? null
+    },
+    catch: errorMessage,
+  })
+  if (result.isErr()) return Result.err(result.error)
+  return result.value
+    ? Result.ok({
+        db,
+        threadId: context.threadId,
+        workspaceId: identity.workspaceId,
+        ownerUserId: identity.ownerUserId,
+        agentId: identity.agentId,
+        ...result.value,
+      })
+    : Result.err('run agent not found in workspace.')
 }
 
 async function loadReadRunWorkspace(context: ReadRunToolContext): Promise<
@@ -1475,7 +1543,7 @@ async function updateIssueStatusFromChat(
   })
 }
 
-async function listWorkspaceInventoryFromChat(
+export async function listWorkspaceInventoryFromChat(
   context: ChatIssueToolContext,
   input: z.infer<typeof listWorkspaceInventoryInputSchema>,
 ): Promise<ResultValue<WorkspaceInventoryToolResult, string>> {
@@ -1892,6 +1960,7 @@ export function createChatSubAgentTools({
   loadExecutorCatalog,
   getSandbox,
   issueRunEnv,
+  getRunIdentity,
   cancelIssueRun,
   brain,
 }: ChatSubAgentToolsInput): ToolSet {
@@ -1905,7 +1974,9 @@ export function createChatSubAgentTools({
         }
       : null
   const readRunContext = (): ReadRunToolContext | null =>
-    databaseUrl && threadId ? { databaseUrl, threadId, issueRunEnv } : null
+    databaseUrl && threadId
+      ? { databaseUrl, threadId, issueRunEnv, getRunIdentity }
+      : null
   const chatIssueContext = (): ChatIssueToolContext | null =>
     databaseUrl && threadId && issueRunEnv
       ? {
@@ -1913,6 +1984,7 @@ export function createChatSubAgentTools({
           threadId,
           issueRunEnv,
           loadExecutorCatalog,
+          getRunIdentity,
         }
       : null
 
