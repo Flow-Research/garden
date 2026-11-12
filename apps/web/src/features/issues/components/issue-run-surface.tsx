@@ -235,6 +235,9 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
           reviewMutation.mutate({ id, action: 'request_changes' })
         }
         onApply={(id) => reviewMutation.mutateAsync({ id, action: 'apply' })}
+        onApplyPr={(id) =>
+          reviewMutation.mutateAsync({ id, action: 'apply_pr' })
+        }
       />
     </OutputSection>
   )

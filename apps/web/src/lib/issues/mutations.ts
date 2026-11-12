@@ -765,6 +765,7 @@ export type WorkProductReviewAction =
   | 'approve_and_close'
   | 'request_changes'
   | 'apply'
+  | 'apply_pr'
 
 /** Maps a UI review action to the review endpoint's request body. */
 function reviewRequestBody(
@@ -779,6 +780,8 @@ function reviewRequestBody(
       return { action: 'request_changes' }
     case 'apply':
       return { action: 'apply' }
+    case 'apply_pr':
+      return { action: 'apply_pr' }
   }
 }
 
