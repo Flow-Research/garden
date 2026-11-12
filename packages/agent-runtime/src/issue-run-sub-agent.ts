@@ -56,6 +56,7 @@ import {
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
+import { renderCommentTriggerReason } from './issue-run-trigger'
 import { objectOrNull } from './runtime-utils'
 import {
   RunSubAgentBase,
@@ -927,13 +928,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         users: input.users,
         agents: input.agents,
       })
-      const body =
-        comment.body.length > 500
-          ? `${comment.body.slice(0, 500).trimEnd()}...`
-          : comment.body
-      return input.source === 'mention'
-        ? `${authorName} mentioned you in a comment: "${body}"`
-        : `${authorName} replied: "${body}"`
+      return renderCommentTriggerReason({
+        source: input.source,
+        authorName,
+        body: comment.body,
+      })
     }
 
     return `This run was triggered by ${input.source}.`
