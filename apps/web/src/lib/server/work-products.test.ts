@@ -245,10 +245,8 @@ const prTarget = {
  * awaiting it (or `.limit()`) resolves to `rows`.
  */
 function queryRows(rows: unknown[]) {
-  const chain: Promise<unknown[]> & Record<string, unknown> = Object.assign(
-    Promise.resolve(rows),
-    {},
-  )
+  const chain = Promise.resolve(rows) as Promise<unknown[]> &
+    Record<string, unknown>
   for (const method of ['from', 'where', 'orderBy', 'innerJoin']) {
     chain[method] = () => chain
   }
@@ -501,7 +499,7 @@ describe('reviewWorkProduct apply_pr', () => {
 
     const result = await applyPr()
 
-    expect(result.isErr() && result.error.message).toBe(
+    expect(result.isErr() && String(result.error)).toContain(
       'Only approved work products can be applied',
     )
     expect(githubCalls).toEqual([])
@@ -516,7 +514,7 @@ describe('reviewWorkProduct apply_pr', () => {
 
     const result = await applyPr()
 
-    expect(result.isErr() && result.error.message).toMatch(/pr_target/)
+    expect(result.isErr() && String(result.error)).toMatch(/pr_target/)
     expect(githubCalls).toEqual([])
   })
 
@@ -529,7 +527,7 @@ describe('reviewWorkProduct apply_pr', () => {
 
     const result = await applyPr()
 
-    expect(result.isErr() && result.error.message).toMatch(
+    expect(result.isErr() && String(result.error)).toMatch(
       /not linked to this issue's Team/,
     )
     expect(githubCalls).toEqual([])
