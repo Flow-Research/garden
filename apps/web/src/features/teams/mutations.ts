@@ -8,6 +8,10 @@ import type {
   UpdateTeamRequest,
   WorkspaceTeamSettings,
 } from '@garden/core/types'
+import type {
+  TeamAgentPolicy,
+  TeamAgentPolicyResponse,
+} from '@garden/core/teams/agent-policy'
 import { api } from '@/lib/api'
 import { teamKeys } from './queries'
 
@@ -99,6 +103,33 @@ export function useTransferTeamOwner() {
       qc.setQueryData(teamKeys.detail(wsId, team.id), team)
       qc.invalidateQueries({ queryKey: teamKeys.members(wsId, team.id) })
       qc.invalidateQueries({ queryKey: teamKeys.list(wsId) })
+    },
+  })
+}
+
+/**
+ * Saves a Team's agent policy optimistically: the cache shows the new policy
+ * at once, rolls back if the server refuses it, and takes the server's copy on
+ * success so `updated_at` is authoritative.
+ */
+export function useUpdateTeamAgentPolicy(teamId: string) {
+  const qc = useQueryClient()
+  const wsId = useWorkspaceId()
+  const queryKey = teamKeys.agentPolicy(wsId, teamId)
+  return useMutation({
+    mutationFn: (policy: TeamAgentPolicy) =>
+      api.updateTeamAgentPolicy(teamId, policy),
+    onMutate: async (policy) => {
+      await qc.cancelQueries({ queryKey })
+      const previous = qc.getQueryData<TeamAgentPolicyResponse>(queryKey)
+      if (previous) qc.setQueryData(queryKey, { ...previous, policy })
+      return { previous }
+    },
+    onError: (_error, _policy, context) => {
+      if (context?.previous) qc.setQueryData(queryKey, context.previous)
+    },
+    onSuccess: (saved) => {
+      qc.setQueryData(queryKey, saved)
     },
   })
 }

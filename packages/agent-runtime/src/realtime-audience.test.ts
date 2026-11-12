@@ -180,3 +180,16 @@ describe('applyRealtimeProfileUpdate', () => {
     expect(updated.teamIds).toEqual([])
   })
 })
+
+describe('team:policy_updated audience', () => {
+  const policyUpdated: RealtimePublishableEvent = {
+    type: 'team:policy_updated',
+    payload: { workspace_id: 'ws-1', team_id: 'team-1' },
+  }
+
+  it('reaches managers and Team members, not outsiders', () => {
+    expect(canReceiveRealtimeEvent(manager, policyUpdated)).toBe(true)
+    expect(canReceiveRealtimeEvent(member, policyUpdated)).toBe(true)
+    expect(canReceiveRealtimeEvent(outsider, policyUpdated)).toBe(false)
+  })
+})
