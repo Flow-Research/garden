@@ -75,5 +75,6 @@ export async function getOrganizationName(db: Db, workspaceId: string) {
     .select({ name: schema.organization.name })
     .from(schema.organization)
     .where(eq(schema.organization.id, workspaceId))
+    .limit(1)
   return workspace?.name ?? null
 }
