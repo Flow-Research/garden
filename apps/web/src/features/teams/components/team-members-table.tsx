@@ -3,22 +3,25 @@ import { Trash2 } from 'lucide-react'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 
+export type MemberRoleLabel = 'Team Owner' | 'Admin' | 'Member' | 'Agent'
+
 /** Display role for a Team member: agents, owner, workspace admins, members. */
-export function memberRoleLabel(member: TeamMember, ownerUserId: string) {
+export function memberRoleLabel(
+  member: TeamMember,
+  ownerUserId: string,
+): MemberRoleLabel {
   if (member.member_type === 'agent') return 'Agent'
-  if (member.user_id === ownerUserId) return 'Owner'
+  if (member.user_id === ownerUserId) return 'Team Owner'
   return member.workspace_role === 'admin' ? 'Admin' : 'Member'
 }
 
 /**
- * The Teams design's member table (User / Role / Assigned Tasks / Activity),
- * mirroring the shared FileListTable pattern from the Files display: a
- * rounded-2xl bordered container, an unbroken gray header band, and vertical
- * rules between body cells. The first column left-aligns identity; the rest
- * center. Remove is P0 but absent from the design, so it renders as a visible
- * ghost trash action on every removable row (users and agents, never the
- * owner); rows without it keep a same-size spacer so every View all stays
- * aligned in the column.
+ * The Teams design's member table (User / Role / Assigned Tasks / Activity)
+ * from designs 30 and 33. The owner's role renders as the blue "Team Owner"
+ * badge; everyone else gets the gray badge. Managers get the design's
+ * per-row Agent settings button, which opens the Team agent policy sheet.
+ * Remove is absent from the design but must stay reachable, so removable rows
+ * keep a ghost trash action after View all.
  */
 export function TeamMembersTable({
   members,
@@ -26,12 +29,14 @@ export function TeamMembersTable({
   canManage,
   search,
   onRemove,
+  onAgentSettings,
 }: {
   members: TeamMember[]
   ownerUserId: string
   canManage: boolean
   search: string
   onRemove: (member: TeamMember) => void
+  onAgentSettings: () => void
 }) {
   return (
     <div
@@ -57,13 +62,14 @@ export function TeamMembersTable({
         </thead>
         <tbody>
           {members.map((member) => {
+            const role = memberRoleLabel(member, ownerUserId)
             const removable = canManage && member.user_id !== ownerUserId
             return (
               <tr
                 key={member.id}
                 className="border-t border-border-default bg-background-main-default"
               >
-                <td className="px-6 py-5">
+                <td className="px-6 py-4">
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate text-text-default">
                       {member.name}
@@ -73,18 +79,33 @@ export function TeamMembersTable({
                     </span>
                   </span>
                 </td>
-                <td className="border-l border-border-default px-6 py-5 text-center">
-                  <Badge className="bg-badge-gray-background text-badge-gray-text">
-                    {memberRoleLabel(member, ownerUserId)}
+                <td className="border-l border-border-default px-6 py-4 text-center">
+                  <Badge
+                    className={
+                      role === 'Team Owner'
+                        ? 'bg-badge-blue-background text-badge-blue-text'
+                        : 'bg-badge-gray-background text-badge-gray-text'
+                    }
+                  >
+                    {role}
                   </Badge>
                 </td>
-                <td className="border-l border-border-default px-6 py-5 text-center text-text-secondary">
+                <td className="border-l border-border-default px-6 py-4 text-center text-text-secondary">
                   {member.assigned_issue_count > 0
                     ? member.assigned_issue_count
                     : 'None'}
                 </td>
-                <td className="border-l border-border-default px-6 py-5">
-                  <span className="flex items-center justify-center gap-2">
+                <td className="border-l border-border-default px-6 py-4">
+                  <span className="flex items-center justify-center gap-3">
+                    {canManage ? (
+                      <Button
+                        className="h-8 rounded-md px-3 shadow-1"
+                        onClick={onAgentSettings}
+                        variant="outline"
+                      >
+                        Agent settings
+                      </Button>
+                    ) : null}
                     <Button
                       className="h-8 rounded-md px-3 shadow-1"
                       disabled
@@ -92,18 +113,20 @@ export function TeamMembersTable({
                     >
                       View all
                     </Button>
-                    {removable ? (
-                      <Button
-                        aria-label={`Remove ${member.name}`}
-                        onClick={() => onRemove(member)}
-                        size="icon-sm"
-                        variant="ghost"
-                      >
-                        <Trash2 className="size-4" />
-                      </Button>
-                    ) : (
-                      <span aria-hidden className="size-7" />
-                    )}
+                    {canManage ? (
+                      removable ? (
+                        <Button
+                          aria-label={`Remove ${member.name}`}
+                          onClick={() => onRemove(member)}
+                          size="icon-sm"
+                          variant="ghost"
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      ) : (
+                        <span aria-hidden className="size-7" />
+                      )
+                    ) : null}
                   </span>
                 </td>
               </tr>
