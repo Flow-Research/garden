@@ -37,7 +37,7 @@ Deployed Workflow names come from `workflowName`, `decideAnalysisWorkflowName`, 
 
 | Binding          | Type       | Local resource                   | Purpose                                     | Read in                                                     |
 | ---------------- | ---------- | -------------------------------- | ------------------------------------------- | ----------------------------------------------------------- |
-| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database.   | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
+| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database. Query caching is disabled in `alchemy.run.ts` so reads see the Worker's own writes. | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
 | `EXECUTOR_DB`    | D1         | `garden-executor-local`          | Executor connector state.                   | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `EXECUTOR_BLOBS` | R2         | `garden-executor-blobs-local`    | Executor blob storage.                      | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `FILES`          | R2         | `garden-files-local`             | Uploads, attachments, and run files.        | `packages/agent-runtime/src/agent-tools/read-attachment.ts`  |
@@ -68,6 +68,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | Name                          | Kind   | Required             | Purpose                                                             | Read in                                                  |
 | ----------------------------- | ------ | -------------------- | ------------------------------------------------------------------- | -------------------------------------------------------- |
 | `DATABASE_URL`                | Secret | Yes                  | Postgres connection string. Must start with `postgres://` or `postgresql://`. | `packages/db/src/client.ts`, `packages/env/src/index.ts` |
+| `DEV_DATABASE_URL`            | Build secret | Dev deploys only | Dev Neon branch connection string. `scripts/deploy-dev.mjs` copies it into `DATABASE_URL` for migrations, Hyperdrive, and the Worker secret. | `deploy-targets.mjs`, `scripts/deploy-dev.mjs` |
 | `BETTER_AUTH_SECRET`          | Secret | Yes                  | Better Auth signing secret.                                         | `apps/web/src/auth.ts`                                   |
 | `BETTER_AUTH_URL`             | Var    | Yes                  | Public origin. Alchemy sets it to the Worker URL.                   | `apps/web/src/auth.ts`                                   |
 | `ENVIRONMENT`                 | Var    | Yes                  | `development`, `test`, `staging`, or `production`.                  | `packages/env/src/index.ts`, `packages/agent-runtime/src/model.ts` |
@@ -101,6 +102,18 @@ The Required column means the Worker fails to deploy or validate without the val
 | `VITE_PUBLIC_POSTHOG_HOST`    | Var    | Yes in deployed Workers | PostHog host.                                                    | `packages/observability/src/analytics/client.ts`         |
 
 "Pair, optional" means `optionalCredentialPairIsConfigured` in `deploy-env.mjs` requires both values or neither. "No" GitHub and Slack values are bound only when the deploy environment sets them. `alchemy.run.ts` does not bind the `DISCORD_*` values.
+
+## GitHub App URLs per environment
+
+Each deployed environment needs three URLs in the GitHub App settings (**Settings → Developer settings → GitHub Apps → the App → General**). Replace `<origin>` with the environment's web origin, for example `https://garden-dev.flow-research.workers.dev`.
+
+| App setting | Value | Used by |
+| --- | --- | --- |
+| Identifying and authorizing users → **Redirect URI** | `<origin>/api/github/callback` | Link with GitHub (`apps/web/src/routes/api/github/identity/`). Without it, GitHub rejects the sign-in with a `redirect_uri` error. |
+| Post installation → **Setup URL** | `<origin>/api/github/callback` | App installation from Connectors (`apps/web/src/routes/api/github/setup.ts`). |
+| Webhook → **Webhook URL** | `<origin>/api/github/webhook` | Issue and pull request sync (`apps/web/src/routes/api/github/webhook.ts`). |
+
+Leave **Request user authorization (OAuth) during installation** off. Linking a member's GitHub account is a separate step in Settings → Account.
 
 ## Offline model variables
 

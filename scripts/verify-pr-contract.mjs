@@ -112,6 +112,17 @@ function writeUsage() {
 }
 
 /**
+ * Dependency bots (Dependabot) open version bumps with their own title and
+ * body and, for security updates, always against the default branch (main).
+ * Before this check, every bump failed the contract on its template and base
+ * branch even when CI passed and a maintainer approved it. The contract is
+ * for human-authored changes; bumps are still gated by Verify and review.
+ */
+function isDependencyBot(pullRequest) {
+  return pullRequest.user?.login === 'dependabot[bot]'
+}
+
+/**
  * Run the pull-request contract checks against the GitHub event payload.
  */
 function main() {
@@ -142,6 +153,13 @@ function main() {
       return
     }
     fail('the GitHub event is not a pull_request event')
+    return
+  }
+
+  if (isDependencyBot(pullRequest)) {
+    process.stdout.write(
+      `PR contract skipped for dependency update by ${pullRequest.user.login}.\n`,
+    )
     return
   }
 

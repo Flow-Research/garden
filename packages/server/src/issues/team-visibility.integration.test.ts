@@ -1,12 +1,20 @@
 import { randomUUID } from 'node:crypto'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import * as schema from '@garden/db/schema'
 import { startTestDb, type TestDb } from '@garden/db/testing'
-import { listIssues } from './server'
+import type { IssueRunEnv } from './run-service'
+import {
+  getIssueDb,
+  listIssues,
+  postIssueComment,
+  readIssue,
+  resolveVisibleIssue,
+} from './server'
 
 const testDbRef = vi.hoisted(() => ({ url: '', db: undefined as unknown }))
 
-// listIssues opens a pooled client from its database URL; hand it the
+// The issue services open a pooled client from its database URL; hand it the
 // testcontainer's client so no second pool outlives the container.
 vi.mock('@garden/db/runtime', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@garden/db/runtime')>()
@@ -19,7 +27,7 @@ vi.mock('@garden/db/runtime', async (importOriginal) => {
   }
 })
 
-describe('listIssues Team visibility (integration)', () => {
+describe('agent issue tools Team visibility (integration)', () => {
   let testDb: TestDb
 
   beforeAll(async () => {
@@ -93,7 +101,7 @@ describe('listIssues Team visibility (integration)', () => {
         createdBy: adminId,
       })),
     )
-    const teamIssueIds = [
+    const teamIssueIds: [string, string] = [
       await seedIssue({
         workspaceId,
         teamId,
@@ -155,5 +163,68 @@ describe('listIssues Team visibility (integration)', () => {
     expect(await listAs(s.workspaceId, s.adminId)).toEqual(
       [...s.teamIssueIds, s.workspaceIssueId].sort(),
     )
+  })
+
+  it('reads a Team issue for a Team member and refuses a workspace member outside the Team', async () => {
+    const s = await seedScenario()
+    const readAs = (viewerUserId: string, issueIdOrIdentifier: string) =>
+      readIssue({
+        databaseUrl: testDb.databaseUrl,
+        workspaceId: s.workspaceId,
+        viewerUserId,
+        issueIdOrIdentifier,
+      })
+
+    const member = await readAs(s.memberId, s.teamIssueIds[0])
+    expect(member.isOk() && member.value.issue_id).toBe(s.teamIssueIds[0])
+
+    // Both lookup forms: UUID and PREFIX-number.
+    for (const lookup of [s.teamIssueIds[0], 'ISS-1']) {
+      const outsider = await readAs(s.nonMemberId, lookup)
+      expect(outsider.isErr() && outsider.error.code).toBe('issue_not_found')
+    }
+
+    const workspaceIssue = await readAs(s.nonMemberId, s.workspaceIssueId)
+    expect(workspaceIssue.isOk()).toBe(true)
+  })
+
+  it('refuses a comment on a Team issue from a workspace member outside the Team', async () => {
+    const s = await seedScenario()
+    const commentAs = (authorUserId: string, issueIdOrIdentifier: string) =>
+      postIssueComment({
+        databaseUrl: testDb.databaseUrl,
+        workspaceId: s.workspaceId,
+        issueIdOrIdentifier,
+        authorUserId,
+        body: 'Agent comment',
+        issueRunEnv: {} as IssueRunEnv,
+      })
+
+    const outsider = await commentAs(s.nonMemberId, 'ISS-1')
+    expect(outsider.isErr() && outsider.error.code).toBe('issue_not_found')
+    const outsiderComments = await testDb.db
+      .select()
+      .from(schema.issueComment)
+      .where(eq(schema.issueComment.issueId, s.teamIssueIds[0]))
+    expect(outsiderComments).toEqual([])
+
+    const member = await commentAs(s.memberId, s.teamIssueIds[0])
+    expect(member.isOk()).toBe(true)
+  })
+
+  it('resolves a Team issue for assign and status tools only when the viewer can see it', async () => {
+    const s = await seedScenario()
+    const resolveAs = async (viewerUserId: string) =>
+      (
+        await resolveVisibleIssue(getIssueDb(testDb.databaseUrl), {
+          workspaceId: s.workspaceId,
+          viewerUserId,
+          issueIdOrIdentifier: 'ISS-2',
+        })
+      )?.id ?? null
+
+    expect(await resolveAs(s.adminId)).toBe(s.teamIssueIds[1])
+    expect(await resolveAs(s.memberId)).toBe(s.teamIssueIds[1])
+    expect(await resolveAs(s.nonMemberId)).toBeNull()
   })
 })

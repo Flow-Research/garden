@@ -72,8 +72,8 @@ describe('SettingsPage navigation', () => {
     const tabs = screen.getByRole('tablist')
     expect(tabsRoot()).toHaveAttribute('data-orientation', 'horizontal')
     // The horizontal list is h-8 by default, too short for these tabs.
-    expect(tabs).toHaveClass('group-data-horizontal/tabs:h-auto')
-    expect(tabs).not.toHaveClass('group-data-horizontal/tabs:h-8')
+    expect(tabs).toHaveClass('group-data-[orientation=horizontal]/tabs:h-auto')
+    expect(tabs).not.toHaveClass('group-data-[orientation=horizontal]/tabs:h-8')
     expect(screen.getByRole('tab', { name: 'Members' })).not.toHaveClass(
       'w-full',
     )

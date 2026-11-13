@@ -11,14 +11,14 @@ import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import type { Team, TeamMember } from '@garden/core/types'
 import { toast } from 'sonner'
 import { TeamOverview } from './team-overview'
-import { TeamDetail } from './team-detail'
+import { TeamDetail, membersToCsv } from './team-detail'
 import { TeamWorkPage } from './team-work-page'
 import { teamIssueViewStore } from '../view-store'
 import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
 import {
   AddTeamMemberDialog,
   DeleteTeamDialog,
-  TransferOwnerDialog,
+  TransferOwnerPopover,
 } from './team-dialogs'
 
 const mockNavigate = vi.hoisted(() => vi.fn())
@@ -76,6 +76,8 @@ const apiMocks = vi.hoisted(() => ({
   addTeamMember: vi.fn(),
   removeTeamMember: vi.fn(),
   transferTeamOwner: vi.fn(),
+  getTeamAgentPolicy: vi.fn(),
+  updateTeamAgentPolicy: vi.fn(),
   listMembers: vi.fn(),
   listAgents: vi.fn(),
   listIssues: vi.fn(),
@@ -85,6 +87,7 @@ const apiMocks = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({
   api: apiMocks,
   getApi: () => apiMocks,
+  listConnections: () => Promise.resolve({ integrations: [] }),
 }))
 
 const mockAuthUser = { id: 'user-1', email: 'owner@test.com', name: 'Owner' }
@@ -229,36 +232,65 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamOverview />)
 
-    expect(await screen.findByText('No Teams yet')).toBeInTheDocument()
+    expect(await screen.findByText('No Teams')).toBeInTheDocument()
     const createButtons = await screen.findAllByRole('button', {
       name: /Create a Team/,
     })
     fireEvent.click(createButtons[0] as HTMLElement)
     expect(await screen.findByText('Create New Team')).toBeInTheDocument()
 
-    const continueButton = screen.getByRole('button', { name: 'Continue' })
-    expect(continueButton).toBeDisabled()
+    expect(
+      screen.getByText('Setup and add team members to your team'),
+    ).toBeInTheDocument()
+    const createButton = screen.getByRole('button', { name: 'Create team' })
+    expect(createButton).toBeDisabled()
 
-    fireEvent.change(screen.getByPlaceholderText('e.g. Engineering'), {
-      target: { value: 'Engineering' },
-    })
-    expect(continueButton).not.toBeDisabled()
-    fireEvent.click(continueButton)
+    fireEvent.change(
+      screen.getByPlaceholderText('Enter the name of your team'),
+      { target: { value: 'Engineering' } },
+    )
+    expect(createButton).not.toBeDisabled()
 
-    expect(await screen.findByText('Team members')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    // The creator is never listed; the counter tracks picked members.
+    expect(await screen.findByText('No select')).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Owner' })).toBeNull()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Casey' }))
+    expect(screen.getByText('1 select')).toBeInTheDocument()
 
-    expect((await screen.findAllByText('Owner')).length).toBeGreaterThan(0)
-    fireEvent.click(screen.getByRole('button', { name: 'Create team' }))
+    fireEvent.click(createButton)
 
     await waitFor(() => {
       expect(apiMocks.createTeam).toHaveBeenCalledWith({
         name: 'Engineering',
         description: null,
-        initial_members: undefined,
+        initial_members: [{ member_type: 'user', user_id: 'user-2' }],
       })
     })
     expect(toast.custom).toHaveBeenCalled()
+  })
+
+  it('shows the create dialog empty state when nobody else can join', async () => {
+    apiMocks.listTeams.mockResolvedValue({ teams: [], total: 0 })
+    apiMocks.listMembers.mockResolvedValue([
+      {
+        id: 'm-1',
+        workspace_id: 'ws-1',
+        user_id: 'user-1',
+        role: 'owner',
+        name: 'Owner',
+        email: 'owner@test.com',
+        avatar_url: null,
+      },
+    ])
+
+    renderWithQuery(<TeamOverview />)
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Create a Team' }),
+    )
+    expect(await screen.findByText('No team member')).toBeInTheDocument()
+    expect(
+      screen.getByText('Add team members to see them here'),
+    ).toBeInTheDocument()
   })
 
   it('shows an error with retry when the members query fails on overview', async () => {
@@ -284,7 +316,7 @@ describe('teams UI', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
 
-    expect(await screen.findByText('No Teams yet')).toBeInTheDocument()
+    expect(await screen.findByText('No Teams')).toBeInTheDocument()
     expect(apiMocks.listMembers).toHaveBeenCalledTimes(2)
   })
 
@@ -599,7 +631,7 @@ describe('teams UI', () => {
     )
 
     renderWithQuery(
-      <TransferOwnerDialog
+      <TransferOwnerPopover
         team={makeTeam()}
         members={[
           makeMember(),
@@ -611,13 +643,17 @@ describe('teams UI', () => {
             workspace_role: 'member',
           }),
         ]}
-        onClose={() => {}}
       />,
     )
 
-    const radios = await screen.findAllByRole('radio')
-    fireEvent.click(radios[1] as HTMLElement)
-    fireEvent.click(screen.getByRole('button', { name: 'Transfer ownership' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Setup Owner' }))
+    expect(
+      await screen.findByPlaceholderText('Search for team member'),
+    ).toBeInTheDocument()
+    const makeOwner = screen.getByRole('button', { name: 'Make Team Owner' })
+    expect(makeOwner).toBeDisabled()
+    fireEvent.click(screen.getByRole('radio', { name: 'Casey' }))
+    fireEvent.click(makeOwner)
 
     await waitFor(() => {
       expect(apiMocks.transferTeamOwner).toHaveBeenCalledWith('team-1', {
@@ -626,7 +662,7 @@ describe('teams UI', () => {
     })
   })
 
-  it('wires the admin summary actions', async () => {
+  it('renders the design Team grid with the two-item card menu', async () => {
     apiMocks.listTeams.mockResolvedValue({
       teams: [
         makeTeam({ id: 'team-1', name: 'Engineering', member_count: 2 }),
@@ -638,20 +674,15 @@ describe('teams UI', () => {
 
     renderWithQuery(<TeamOverview />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'See issues' }))
-    expect(mockNavigate).toHaveBeenCalledWith({ to: '/teams/issues' })
+    expect(await screen.findByText('3 members')).toBeInTheDocument()
+    expect(screen.queryByText('Total Members')).toBeNull()
+    expect(screen.queryByText('All teams')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Engineering actions' }))
     expect(
-      screen.getByRole('button', { name: 'See members' }),
+      await screen.findByRole('menuitem', { name: 'Add team member' }),
     ).toBeInTheDocument()
-    // Settings → Teams opens this page, so the dead Manage Teams control is gone.
-    expect(screen.queryByRole('button', { name: 'Manage Teams' })).toBeNull()
-    // The card shows the server's distinct member count (4), not the
-    // per-Team sum (5).
-    const membersCard = screen.getByText('Total Members').closest('div')
-    expect(membersCard).not.toBeNull()
-    expect(
-      within(membersCard as HTMLElement).getByText('04'),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Edit Team' })).toBeNull()
   })
 
   it('renders the Teams dropdown child and toggles it', () => {
@@ -840,11 +871,16 @@ describe('teams UI', () => {
       screen.getByRole('button', { name: 'Add a team member' }),
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Owner: Owner' }),
+      screen.getByRole('button', { name: 'Setup Owner' }),
     ).toBeInTheDocument()
     expect(
       screen.getByRole('button', { name: 'Team actions' }),
     ).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('Search for anything...')).toBeVisible()
+    expect(screen.getByText('Team Owner')).toBeInTheDocument()
+    expect(
+      screen.getAllByRole('button', { name: 'Agent settings' }),
+    ).toHaveLength(2)
 
     for (const header of ['User', 'Role', 'Assigned Tasks', 'Activity']) {
       expect(
@@ -856,19 +892,99 @@ describe('teams UI', () => {
     const viewAll = screen.getAllByRole('button', { name: 'View all' })
     expect(viewAll).toHaveLength(2)
     for (const button of viewAll) expect(button).toBeDisabled()
-    expect(screen.getByRole('button', { name: 'Export Data' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Export Data' })).toBeEnabled()
     expect(
       screen.queryByRole('button', { name: 'Remove Owner' }),
     ).not.toBeInTheDocument()
 
     expect(screen.getByText('Total members')).toBeInTheDocument()
-    expect(screen.getByText('Total Roles')).toBeInTheDocument()
+    expect(screen.getByText('Total Assigned Tasks')).toBeInTheDocument()
     expect(screen.getByText('Total Activity')).toBeInTheDocument()
     expect(screen.getAllByText('02')).toHaveLength(2)
     expect(screen.getByText('07')).toBeInTheDocument()
   })
 
-  it('shows a static owner display when transfer is not allowed', async () => {
+  it('exports the visible member rows as CSV', () => {
+    const csv = membersToCsv([makeMember(), caseyMember], 'user-1')
+    expect(csv.split('\n')).toEqual([
+      'User,Email,Role,Assigned Tasks',
+      '"Owner","owner@test.com","Team Owner","2"',
+      '"Casey","casey@test.com","Member","0"',
+    ])
+  })
+
+  it('opens Team settings from a member row', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember()],
+      total: 1,
+    })
+    apiMocks.getTeamAgentPolicy.mockResolvedValue({
+      team_id: 'team-1',
+      policy: {
+        allowed_areas: ['tasks'],
+        blocked_risk_classes: [],
+        blocked_connector_ids: [],
+        approval_required: [],
+      },
+      can_edit: true,
+      updated_at: null,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Agent settings' }),
+    )
+    expect(
+      await screen.findByRole('dialog', { name: 'Team settings' }),
+    ).toBeInTheDocument()
+  })
+
+  it('opens Agent policy from the Team actions menu', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember()],
+      total: 1,
+    })
+    apiMocks.getTeamAgentPolicy.mockResolvedValue({
+      team_id: 'team-1',
+      policy: {
+        allowed_areas: ['tasks'],
+        blocked_risk_classes: [],
+        blocked_connector_ids: [],
+        approval_required: [],
+      },
+      can_edit: true,
+      updated_at: null,
+    })
+
+    renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Team actions' }))
+    for (const item of ['View details', 'Copy link', 'Delete team']) {
+      expect(
+        await screen.findByRole('menuitem', { name: item }),
+      ).toBeInTheDocument()
+    }
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Team settings' }),
+    )
+
+    expect(
+      await screen.findByRole('dialog', { name: 'Team settings' }),
+    ).toBeInTheDocument()
+    expect(
+      await screen.findByRole('checkbox', { name: 'Tasks' }),
+    ).toBeInTheDocument()
+    expect(apiMocks.getTeamAgentPolicy).toHaveBeenCalledWith('team-1')
+  })
+
+  it('hides Setup Owner when transfer is not allowed', async () => {
     apiMocks.getTeam.mockResolvedValue(makeTeam({ can_transfer_owner: false }))
     apiMocks.listTeamMembers.mockResolvedValue({
       members: [makeMember()],
@@ -879,9 +995,11 @@ describe('teams UI', () => {
       <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
     )
 
-    expect(await screen.findByText('Owner: Owner')).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Owner: Owner' }),
+      await screen.findByRole('button', { name: 'Add a team member' }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Setup Owner' }),
     ).not.toBeInTheDocument()
   })
 
@@ -943,7 +1061,7 @@ describe('teams UI', () => {
     await waitFor(() => {
       expect(apiMocks.removeTeamMember).toHaveBeenCalledWith('team-1', 'tm-2')
     })
-    expect(toast.success).toHaveBeenCalledWith('Casey removed from the Team')
+    expect(toast.success).toHaveBeenCalledWith('Casey removed from the team')
   })
 
   it('keeps the member when removal is cancelled', async () => {

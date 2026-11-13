@@ -1,7 +1,5 @@
-import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { badRequest, notFound } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
@@ -10,6 +8,7 @@ import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { agentExistsInWorkspace } from '@/lib/server/queries/issues'
 import { listIssueRuns, startIssueRun } from '@garden/server/issues/run-service'
 
 export const Route = createFileRoute('/api/issues/$id/runs')({
@@ -34,7 +33,6 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
         const issue = access.issue
-        const db = access.db
         const permission = await requireWorkspacePermission({
           appContext,
           request,
@@ -47,17 +45,11 @@ export const Route = createFileRoute('/api/issues/$id/runs')({
           return badRequest('Issue must be assigned to an agent to start a run')
         }
 
-        const [agent] = await db
-          .select({ id: schema.agent.id })
-          .from(schema.agent)
-          .where(
-            and(
-              eq(schema.agent.id, issue.assigneeId),
-              eq(schema.agent.workspaceId, issue.workspaceId),
-            ),
-          )
-          .limit(1)
-        if (!agent) return notFound('Agent not found')
+        const agentExists = await agentExistsInWorkspace(access.db, {
+          workspaceId: issue.workspaceId,
+          agentId: issue.assigneeId,
+        })
+        if (!agentExists) return notFound('Agent not found')
 
         const startResult = await startIssueRun(appEnv, {
           workspaceId: issue.workspaceId,

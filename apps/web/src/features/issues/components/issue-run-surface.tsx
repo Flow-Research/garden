@@ -228,10 +228,19 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
         pulseId={pulseWorkProductId}
         pending={reviewMutation.isPending ? reviewMutation.variables : null}
         onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}
+        onApproveAndClose={(id) =>
+          reviewMutation.mutate({ id, action: 'approve_and_close' })
+        }
         onRequestChanges={(id) =>
           reviewMutation.mutate({ id, action: 'request_changes' })
         }
         onApply={(id) => reviewMutation.mutateAsync({ id, action: 'apply' })}
+        onApplyPr={(id) =>
+          reviewMutation.mutateAsync({ id, action: 'apply_pr' })
+        }
+        onSaveToFiles={(id, folderId) =>
+          reviewMutation.mutateAsync({ id, action: 'save_to_files', folderId })
+        }
       />
     </OutputSection>
   )

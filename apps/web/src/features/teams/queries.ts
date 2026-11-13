@@ -14,12 +14,16 @@ export const teamKeys = {
     [...teamKeys.all(wsId), 'detail', teamId] as const,
   members: (wsId: string, teamId: string) =>
     [...teamKeys.all(wsId), 'members', teamId] as const,
+  agentPolicy: (wsId: string, teamId: string) =>
+    [...teamKeys.all(wsId), 'agent-policy', teamId] as const,
   repositories: (wsId: string, teamId: string) =>
     [...teamKeys.all(wsId), 'repositories', teamId] as const,
   availableRepositories: (wsId: string, teamId: string) =>
     [...teamKeys.all(wsId), 'repositories', teamId, 'available'] as const,
   issues: (wsId: string, teamId: string) =>
     ['issues', wsId, 'team', teamId] as const,
+  inviteSettings: (wsId: string) =>
+    [...teamKeys.all(wsId), 'invite-settings'] as const,
 }
 
 /** Prefix used by issue mutations to invalidate every Team issue query. */
@@ -58,6 +62,18 @@ export function teamMemberListOptions(wsId: string, teamId: string) {
     staleTime: 15_000,
     placeholderData: (previous) => previous,
     select: (data) => data.members,
+  })
+}
+
+/**
+ * A Team's agent policy. Under the `teams` root, so `team:policy_updated`
+ * realtime events refetch it with every other Team query.
+ */
+export function teamAgentPolicyOptions(wsId: string, teamId: string) {
+  return queryOptions({
+    queryKey: teamKeys.agentPolicy(wsId, teamId),
+    queryFn: () => api.getTeamAgentPolicy(teamId),
+    staleTime: 30_000,
   })
 }
 
@@ -123,5 +139,14 @@ export function allTeamIssuesOptions(wsId: string) {
     },
     staleTime: 15_000,
     placeholderData: (previous: Issue[] | undefined) => previous,
+  })
+}
+
+/** Workspace invite settings: Team owner invites and the default Team. */
+export function workspaceTeamSettingsOptions(wsId: string) {
+  return queryOptions({
+    queryKey: teamKeys.inviteSettings(wsId),
+    queryFn: () => api.getWorkspaceTeamSettings(wsId),
+    staleTime: 60_000,
   })
 }

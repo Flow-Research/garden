@@ -2,7 +2,7 @@ import { defaultTrustLevelForRisk } from '@garden/connectors/capabilities'
 import type { Db, schema } from './db'
 
 export async function bindExistingCapabilitiesToAgent(input: {
-  db: Db
+  db: Pick<Db, 'select' | 'insert'>
   schema: typeof schema
   agentId: string
   grantedBy: string

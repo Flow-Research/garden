@@ -1,4 +1,5 @@
-import { eq } from 'drizzle-orm'
+import { lockDefaultAgentProvisioning } from '@/lib/server/chat-agents'
+import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { Result, TaggedError } from 'better-result'
@@ -96,18 +97,30 @@ async function finishGardenWorkspaceCreate(input: CreateWorkspaceInput) {
           )
         }
 
-        await tx.insert(schema.agent).values({
-          id: agentId,
-          workspaceId: workspace.id,
-          ownerUserId: input.userId,
-          name: 'Garden',
-          roleTitle: GARDEN_DESCRIPTION,
-          isDefault: true,
-          status: 'active',
-          hostName: agentId,
-          permissions: DEFAULT_AGENT_PERMISSIONS,
-          createdAt: now,
-        })
+        await lockDefaultAgentProvisioning(tx, workspace.id)
+        const [existingDefault] = await tx
+          .select({ id: schema.agent.id })
+          .from(schema.agent)
+          .where(
+            and(
+              eq(schema.agent.workspaceId, workspace.id),
+              eq(schema.agent.isDefault, true),
+            ),
+          )
+        if (!existingDefault) {
+          await tx.insert(schema.agent).values({
+            id: agentId,
+            workspaceId: workspace.id,
+            ownerUserId: input.userId,
+            name: 'Garden',
+            roleTitle: GARDEN_DESCRIPTION,
+            isDefault: true,
+            status: 'active',
+            hostName: agentId,
+            permissions: DEFAULT_AGENT_PERMISSIONS,
+            createdAt: now,
+          })
+        }
 
         return Result.ok(workspace)
       }),
