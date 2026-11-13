@@ -61,10 +61,18 @@ export function SearchField({
   )
 }
 
-/** Export Data is P1 in the spec, so it renders disabled per the design. */
-export function ExportDataButton() {
+/**
+ * Design Export Data button. Surfaces with a client-side export pass
+ * `onExport`; the rest (the issues toolbars) still render it disabled.
+ */
+export function ExportDataButton({ onExport }: { onExport?: () => void }) {
   return (
-    <Button className={TOOLBAR_BUTTON_CLASS} disabled variant="outline">
+    <Button
+      className={TOOLBAR_BUTTON_CLASS}
+      disabled={!onExport}
+      onClick={onExport}
+      variant="outline"
+    >
       <Database className="size-4" />
       Export Data
     </Button>

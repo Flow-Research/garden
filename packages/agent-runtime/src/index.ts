@@ -29,6 +29,7 @@ export {
   decideSessionIdFromResult,
   type DecideGeneratedFile,
 } from './decide-analysis-result'
+export { markdownToDocx } from './documents/markdown-docx'
 export { createAgentModel } from './model'
 export {
   buildContentDisposition,
