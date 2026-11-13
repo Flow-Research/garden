@@ -103,6 +103,18 @@ The Required column means the Worker fails to deploy or validate without the val
 
 "Pair, optional" means `optionalCredentialPairIsConfigured` in `deploy-env.mjs` requires both values or neither. "No" GitHub and Slack values are bound only when the deploy environment sets them. `alchemy.run.ts` does not bind the `DISCORD_*` values.
 
+## GitHub App URLs per environment
+
+Each deployed environment needs three URLs in the GitHub App settings (**Settings → Developer settings → GitHub Apps → the App → General**). Replace `<origin>` with the environment's web origin, for example `https://garden-dev.flow-research.workers.dev`.
+
+| App setting | Value | Used by |
+| --- | --- | --- |
+| Identifying and authorizing users → **Redirect URI** | `<origin>/api/github/callback` | Link with GitHub (`apps/web/src/routes/api/github/identity/`). Without it, GitHub rejects the sign-in with a `redirect_uri` error. |
+| Post installation → **Setup URL** | `<origin>/api/github/callback` | App installation from Connectors (`apps/web/src/routes/api/github/setup.ts`). |
+| Webhook → **Webhook URL** | `<origin>/api/github/webhook` | Issue and pull request sync (`apps/web/src/routes/api/github/webhook.ts`). |
+
+Leave **Request user authorization (OAuth) during installation** off. Linking a member's GitHub account is a separate step in Settings → Account.
+
 ## Offline model variables
 
 `apps/web/wrangler.jsonc` declares these as empty `vars` so that `pnpm dev:offline` can pass them through. Deployed Workers do not set them. `packages/agent-runtime/src/model.ts` reads them.
