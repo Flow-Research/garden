@@ -1,4 +1,3 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
@@ -6,7 +5,7 @@ import {
   updateWorkspaceBodySchema,
 } from '@/lib/server/validation/workspaces'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
-import { schema } from '@/lib/server/db'
+import { listWorkspaceChatThreadHosts } from '@/lib/server/queries/workspaces/chat-thread-hosts'
 import {
   badRequest,
   notFound,
@@ -33,6 +32,10 @@ type FullOrganization = {
   }>
 } | null
 
+/**
+ * `/api/workspaces/$id` get/patch. Better Auth owns org update; chat-thread
+ * host lookup lives in `queries/workspaces` so this route stays drizzle-free.
+ */
 export const Route = createFileRoute('/api/workspaces/$id')({
   server: {
     handlers: {
@@ -106,17 +109,7 @@ export const Route = createFileRoute('/api/workspaces/$id')({
           )?.role ?? 'member'
 
         const db = await appContext.db()
-        const threads = await db
-          .select({
-            id: schema.chatThread.id,
-            hostName: schema.agent.hostName,
-          })
-          .from(schema.chatThread)
-          .innerJoin(
-            schema.agent,
-            eq(schema.agent.id, schema.chatThread.agentId),
-          )
-          .where(eq(schema.chatThread.workspaceId, params.id))
+        const threads = await listWorkspaceChatThreadHosts(db, params.id)
 
         await Promise.all(
           threads.flatMap((thread) =>
