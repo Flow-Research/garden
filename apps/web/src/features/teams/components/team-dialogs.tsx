@@ -17,6 +17,12 @@ import {
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
 import { Input } from '@garden/ui/components/ui/input'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@garden/ui/components/ui/popover'
+import { Search } from 'lucide-react'
 import { Textarea } from '@garden/ui/components/ui/textarea'
 import { toast } from 'sonner'
 import { ActorAvatar } from '@/features/common/actor-avatar'
@@ -202,7 +208,7 @@ export function EditTeamDialog({
     >
       <DialogContent size="md">
         <DialogHeader>
-          <DialogTitle>Edit Team</DialogTitle>
+          <DialogTitle>Team details</DialogTitle>
           <DialogDescription>
             Update the Team name and description.
           </DialogDescription>
@@ -246,92 +252,123 @@ export function EditTeamDialog({
   )
 }
 
-export function TransferOwnerDialog({
+/**
+ * Setup Owner popover from designs 31–32. It replaces the old modal transfer
+ * dialog: the picker now anchors under the Setup Owner button, filters human
+ * members by name or email, lists them as name/email rows with a trailing
+ * radio, and commits with a full-width Make Team Owner button that stays
+ * disabled until a non-owner is chosen.
+ */
+export function TransferOwnerPopover({
   team,
   members,
-  onClose,
 }: {
   team: TeamSummary
   members: TeamMember[]
-  onClose: () => void
 }) {
-  const humanMembers = members.filter(
-    (member) => member.member_type === 'user' && member.user_id,
-  )
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const transfer = useTransferTeamOwner()
 
-  const handleTransfer = async () => {
-    if (!selectedId) return
-    try {
-      await transfer.mutateAsync({ teamId: team.id, owner_user_id: selectedId })
-      toast.success('Team ownership transferred')
-      onClose()
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to transfer ownership',
-      )
+  const needle = query.trim().toLowerCase()
+  const candidates = members.filter(
+    (member) =>
+      member.member_type === 'user' &&
+      member.user_id &&
+      `${member.name} ${member.email ?? ''}`.toLowerCase().includes(needle),
+  )
+
+  const handleOpenChange = (next: boolean) => {
+    if (transfer.isPending) return
+    setOpen(next)
+    if (!next) {
+      setQuery('')
+      setSelectedId(null)
     }
   }
 
+  const handleTransfer = () => {
+    if (!selectedId) return
+    transfer.mutateAsync({ teamId: team.id, owner_user_id: selectedId }).then(
+      () => {
+        toast.success('Team owner updated')
+        handleOpenChange(false)
+      },
+      (error: unknown) =>
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to update owner',
+        ),
+    )
+  }
+
   return (
-    <Dialog
-      open
-      onOpenChange={(open) => !open && !transfer.isPending && onClose()}
-    >
-      <DialogContent size="md" className="gap-0 overflow-hidden p-0">
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>Transfer Team ownership</DialogTitle>
-          <DialogDescription>
-            The new owner must already be a Team member.
-          </DialogDescription>
-        </DialogHeader>
-        <ul className="max-h-[22rem] divide-y overflow-y-auto">
-          {humanMembers.map((member) => (
-            <li key={member.id}>
-              <label className="flex cursor-pointer items-center gap-3 px-6 py-2 hover:bg-background-main-secondary">
-                <input
-                  type="radio"
-                  name="team-owner-candidate"
-                  checked={selectedId === member.user_id}
-                  disabled={member.user_id === team.owner_user_id}
-                  onChange={() => setSelectedId(member.user_id)}
-                  className="size-3.5 accent-primary"
-                />
-                <ActorAvatar
-                  actorType="member"
-                  actorId={member.user_id ?? ''}
-                  size={28}
-                />
-                <span className="flex min-w-0 flex-1 items-center justify-between gap-3">
-                  <span className="truncate text-sm">{member.name}</span>
-                  <span className="text-xs text-text-secondary">
-                    {member.user_id === team.owner_user_id
-                      ? 'Current owner'
-                      : member.email}
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger
+        render={
+          <Button className="h-10 rounded-md px-3 shadow-1" variant="outline" />
+        }
+      >
+        Setup Owner
+      </PopoverTrigger>
+      <PopoverContent
+        align="center"
+        className="flex w-[23rem] flex-col gap-4 rounded-xl p-4"
+        sideOffset={12}
+      >
+        <div className="relative">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-icon-secondary" />
+          <Input
+            aria-label="Search for team member"
+            className="h-10 rounded-md border-0 bg-background-main-secondary pl-10 shadow-none placeholder:text-text-secondary"
+            onChange={(event) => setQuery(event.currentTarget.value)}
+            placeholder="Search for team member"
+            value={query}
+          />
+        </div>
+        <span className="text-xs text-text-secondary uppercase">
+          Team members
+        </span>
+        <ul className="-mt-1 flex max-h-60 flex-col gap-3 overflow-y-auto">
+          {candidates.map((member) => {
+            const isOwner = member.user_id === team.owner_user_id
+            return (
+              <li key={member.id}>
+                <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{member.name}</span>
+                    <span className="truncate text-text-secondary">
+                      {member.email}
+                    </span>
                   </span>
-                </span>
-              </label>
+                  <input
+                    aria-label={member.name}
+                    checked={selectedId === member.user_id}
+                    className="size-4 accent-primary"
+                    disabled={isOwner}
+                    name="team-owner-candidate"
+                    onChange={() => setSelectedId(member.user_id)}
+                    type="radio"
+                  />
+                </label>
+              </li>
+            )
+          })}
+          {candidates.length === 0 ? (
+            <li className="py-2 text-center text-sm text-text-secondary">
+              No matching members
             </li>
-          ))}
+          ) : null}
         </ul>
-        <DialogFooter className="border-t px-6 pt-4 pb-6">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            disabled={transfer.isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleTransfer}
-            disabled={!selectedId || transfer.isPending}
-          >
-            {transfer.isPending ? 'Transferring…' : 'Transfer ownership'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        <Button
+          className="h-10 w-full"
+          disabled={!selectedId || transfer.isPending}
+          onClick={handleTransfer}
+        >
+          {transfer.isPending ? 'Saving…' : 'Make Team Owner'}
+        </Button>
+      </PopoverContent>
+    </Popover>
   )
 }
 
