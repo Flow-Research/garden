@@ -1,4 +1,5 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import type { MemberRole } from '@garden/core/types'
 import { createLogger } from '@garden/observability/console'
 import { toInvitation } from '@/lib/server/control-plane'
 import type { Db } from '@/lib/server/db'
@@ -59,20 +60,26 @@ export type AuthMemberListRow = {
   }
 }
 
+/**
+ * Minimal Better Auth surface for invite/cancel. Method syntax (not property
+ * function types) keeps parameter checks bivariant under strictFunctionTypes so
+ * Garden's `MemberRole` body is assignable to Better Auth's
+ * `OrganizationInvitationRole` without casting the real `auth` instance.
+ */
 type InvitationAuth = {
   api: {
-    createInvitation: (args: {
+    createInvitation(args: {
       headers: Headers
       body: {
         email: string
-        role: string
+        role: MemberRole
         organizationId: string
       }
-    }) => Promise<unknown>
-    cancelInvitation: (args: {
+    }): Promise<unknown>
+    cancelInvitation(args: {
       headers: Headers
       body: { invitationId: string }
-    }) => Promise<unknown>
+    }): Promise<unknown>
   }
 }
 
@@ -168,7 +175,7 @@ export type InviteMemberInput = {
   env: Parameters<typeof sendOrganizationInvitationEmail>[0]['env']
   headers: Headers
   inviter: { id: string; email: string; name?: string | null }
-  role?: string
+  role?: MemberRole
   teamIds?: string[]
   workspaceId: string
 }
