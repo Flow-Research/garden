@@ -86,10 +86,12 @@ async function seedBase(): Promise<Seeded> {
 }
 
 function makeController(seeded: Seeded, agentId: string = seeded.agentId) {
+  const memberUserId = randomUUID()
   const identity: ThreadRuntimeIdentity = {
     threadId: randomUUID(),
     workspaceId: seeded.workspaceId,
-    userId: randomUUID(),
+    userId: memberUserId,
+    connectorUserId: memberUserId,
     agentId,
   }
 

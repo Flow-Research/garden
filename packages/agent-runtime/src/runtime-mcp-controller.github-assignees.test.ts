@@ -41,10 +41,12 @@ type ExecutableTool = {
  */
 function hostedIssueWrite(workspaceId: string) {
   const callTool = vi.fn(async () => ({ ok: true }))
+  const memberUserId = randomUUID()
   const identity: ThreadRuntimeIdentity = {
     threadId: randomUUID(),
     workspaceId,
-    userId: randomUUID(),
+    userId: memberUserId,
+    connectorUserId: memberUserId,
     agentId: randomUUID(),
   }
   const host = {

@@ -93,17 +93,35 @@ describe('extractThreadIdFromAgentName', () => {
 })
 
 describe('buildExecutorMcpServerName', () => {
+  it('addresses a no-member run by agent, not by the owner (#383)', () => {
+    expect(
+      buildExecutorMcpServerName({
+        threadId: 'thread-1',
+        workspaceId: 'workspace-1',
+        userId: 'owner-1',
+        connectorUserId: null,
+        agentId: 'agent-1',
+        issueId: 'issue-1',
+        runId: 'run-1',
+      }),
+    ).toBe(
+      'executor:workspace-1:no-member:agent-1:agent-1:thread-1:issue-1:run-1',
+    )
+  })
+
   it('keeps runtime names stable while separating runtime identities', () => {
     const first = buildExecutorMcpServerName({
       threadId: 'thread-1',
       workspaceId: 'workspace-1',
       userId: 'user-1',
+      connectorUserId: 'user-1',
       agentId: 'agent-1',
     })
     const second = buildExecutorMcpServerName({
       threadId: 'thread-1',
       workspaceId: 'workspace-1',
       userId: 'user-2',
+      connectorUserId: 'user-2',
       agentId: 'agent-1',
     })
 
@@ -115,6 +133,7 @@ describe('buildExecutorMcpServerName', () => {
         threadId: 'thread-1',
         workspaceId: 'workspace-1',
         userId: 'user-1',
+        connectorUserId: 'user-1',
         agentId: 'agent-1',
       }),
     ).toBe(first)
@@ -310,6 +329,7 @@ describe('RuntimeMcpController native installations', () => {
           threadId: 'thread-1',
           workspaceId: 'workspace-1',
           userId: 'user-1',
+          connectorUserId: 'user-1',
           agentId: 'agent-1',
         }),
     }
@@ -381,6 +401,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           threadId: 'thread-1',
           workspaceId: 'workspace-1',
           userId: 'user-1',
+          connectorUserId: 'user-1',
           agentId: 'agent-1',
         }),
     }
@@ -460,6 +481,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           threadId: 'thread-1',
           workspaceId: 'workspace-1',
           userId: 'user-1',
+          connectorUserId: 'user-1',
           agentId: 'agent-1',
         }),
     })
@@ -518,6 +540,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           threadId: 'thread-1',
           workspaceId: 'workspace-1',
           userId: 'user-1',
+          connectorUserId: 'user-1',
           agentId: 'agent-1',
         }),
     }
@@ -577,6 +600,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           threadId: 'thread-1',
           workspaceId: 'workspace-1',
           userId: 'user-1',
+          connectorUserId: 'user-1',
           agentId: 'agent-1',
         }),
     }
@@ -599,4 +623,60 @@ describe('RuntimeMcpController GitHub tools', () => {
 
     expect(waits).toBe(0)
   })
+})
+
+describe('RuntimeMcpController Executor session subject (#383)', () => {
+  it.each([
+    { connectorUserId: 'member-a', subject: 'member-a' },
+    { connectorUserId: null, subject: 'no-member:agent-1' },
+  ])(
+    'registers subject $subject, never the owner, for connector member $connectorUserId',
+    async ({ connectorUserId, subject }) => {
+      let sessionUserId: unknown
+      const host: McpHost = {
+        name: 'issue-run:run-1',
+        env: {
+          BETTER_AUTH_SECRET: 'secret',
+          BETTER_AUTH_URL: 'https://garden.test',
+          HYPERDRIVE: {
+            connectionString: 'postgres://garden.test/db',
+          } as unknown as Hyperdrive,
+        },
+        ctx: { storage: { sql: createSqlStorageStub() } },
+        mcp: {
+          getAITools: () => ({}),
+          listTools: () => [],
+          listServers: () => [],
+          callTool: async () => ({}),
+          discoverIfConnected: async () => ({ success: true }),
+        },
+        addExecutorMcpServer: async ({ props }) => {
+          sessionUserId = (props as { session: { userId: unknown } }).session
+            .userId
+          return { state: 'connected' }
+        },
+        removeMcpServer: async () => {},
+        resolveRuntimeIdentity: async () =>
+          Result.ok({
+            threadId: 'run-1',
+            workspaceId: 'workspace-1',
+            userId: 'owner-1',
+            connectorUserId,
+            agentId: 'agent-1',
+            issueId: 'issue-1',
+            runId: 'run-1',
+          }),
+      }
+      const controller = new RuntimeMcpController(host)
+      ;(
+        controller as unknown as {
+          listActiveConnectorBindings: () => Promise<Result<[], never>>
+        }
+      ).listActiveConnectorBindings = async () => Result.ok([])
+
+      const ready = await controller.ensureProxyMcpConnections()
+      expect(ready.isOk()).toBe(true)
+      expect(sessionUserId).toBe(subject)
+    },
+  )
 })

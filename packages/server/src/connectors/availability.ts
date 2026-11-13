@@ -33,30 +33,38 @@ type ConnectorAvailabilityDb = GardenDatabase
  * after install. After this, disconnected rows stay hidden while degraded rows
  * keep their account metadata visible for reconnect/resync. References consulted:
  * local GitHub App callback ledger and Cloudflare Workers binding best practices.
+ *
+ * `userId` names the member whose per-member OAuth accounts apply. `null`
+ * means no member is behind the caller (an issue run with no member actor,
+ * #383): only workspace-wide installs and keyless connectors are returned, and
+ * no other person's accounts are substituted.
  */
 export async function listAvailableConnectorBindings(args: {
   db: ConnectorAvailabilityDb
   getEnvVar?: (name: string) => string | undefined
-  userId: string
+  userId: string | null
   workspaceId: string
 }): Promise<AvailableConnectorBinding[]> {
   const db = args.db
+  const memberUserId = args.userId
   const [accounts, githubInstallations, discordInstallations] =
     await Promise.all([
-      db
-        .select({
-          accountId: schema.account.id,
-          accountLogin: schema.account.accountId,
-          connectorId: schema.account.connectorType,
-        })
-        .from(schema.account)
-        .where(
-          and(
-            eq(schema.account.workspaceId, args.workspaceId),
-            eq(schema.account.userId, args.userId),
-            eq(schema.account.status, 'connected'),
-          ),
-        ),
+      memberUserId === null
+        ? []
+        : db
+            .select({
+              accountId: schema.account.id,
+              accountLogin: schema.account.accountId,
+              connectorId: schema.account.connectorType,
+            })
+            .from(schema.account)
+            .where(
+              and(
+                eq(schema.account.workspaceId, args.workspaceId),
+                eq(schema.account.userId, memberUserId),
+                eq(schema.account.status, 'connected'),
+              ),
+            ),
       db
         .select({
           accountLogin: schema.githubAppInstallation.accountLogin,

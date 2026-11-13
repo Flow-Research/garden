@@ -41,6 +41,8 @@ export type IssueRunToolState = {
   issueId: string
   agentId: string
   agentOwnerUserId: string
+  /** Member whose per-member connections this run uses; null for none (#383). */
+  connectorUserId: string | null
   hostName: string
 }
 
