@@ -128,10 +128,10 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
             <X className="size-4" />
           </Button>
         </div>
-        <DialogTitle className="mt-1 text-center text-2xl font-semibold">
+        <DialogTitle className="mt-1 text-center text-xl leading-tight font-semibold">
           Create New Team
         </DialogTitle>
-        <DialogDescription className="mt-3 text-center text-sm text-text-secondary">
+        <DialogDescription className="mt-2 text-center text-sm text-text-secondary">
           Setup and add team members to your team
         </DialogDescription>
 

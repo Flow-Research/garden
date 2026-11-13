@@ -21,7 +21,9 @@ export function memberRoleLabel(
  * badge; everyone else gets the gray badge. Managers get the design's
  * per-row Agent settings button, which opens the Team agent policy sheet.
  * Remove is absent from the design but must stay reachable, so removable rows
- * keep a ghost trash action after View all.
+ * keep a ghost trash action after View all. The Activity column gets a fixed
+ * width so all three actions fit inside the cell. View all stays disabled
+ * (no activity history surface exists yet) and says so via its wrapper title.
  */
 export function TeamMembersTable({
   members,
@@ -55,7 +57,7 @@ export function TeamMembersTable({
             <th className="px-6 py-4 text-center font-semibold text-text-default">
               Assigned Tasks
             </th>
-            <th className="px-6 py-4 text-center font-semibold text-text-default">
+            <th className="w-[18rem] px-4 py-4 text-center font-semibold text-text-default">
               Activity
             </th>
           </tr>
@@ -95,8 +97,8 @@ export function TeamMembersTable({
                     ? member.assigned_issue_count
                     : 'None'}
                 </td>
-                <td className="border-l border-border-default px-6 py-4">
-                  <span className="flex items-center justify-center gap-3">
+                <td className="border-l border-border-default px-4 py-4">
+                  <span className="flex items-center justify-center gap-2 whitespace-nowrap">
                     {canManage ? (
                       <Button
                         className="h-8 rounded-md px-3 shadow-1"
@@ -106,13 +108,15 @@ export function TeamMembersTable({
                         Agent settings
                       </Button>
                     ) : null}
-                    <Button
-                      className="h-8 rounded-md px-3 shadow-1"
-                      disabled
-                      variant="outline"
-                    >
-                      View all
-                    </Button>
+                    <span title="Member activity history is not available yet">
+                      <Button
+                        className="h-8 rounded-md px-3 shadow-1"
+                        disabled
+                        variant="outline"
+                      >
+                        View all
+                      </Button>
+                    </span>
                     {canManage ? (
                       removable ? (
                         <Button
