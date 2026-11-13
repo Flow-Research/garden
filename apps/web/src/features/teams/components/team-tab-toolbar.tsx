@@ -49,7 +49,7 @@ export function SearchField({
 }) {
   return (
     <div className="relative w-[21.25rem] max-w-full">
-      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-icon-secondary" />
+      <Search className="pointer-events-none absolute z-10 left-3 top-1/2 size-4 -translate-y-1/2 text-icon-secondary" />
       <Input
         aria-label={label}
         className="h-8 rounded-md border-0 bg-background-main-secondary pl-9 shadow-none placeholder:text-text-secondary"

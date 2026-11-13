@@ -312,12 +312,12 @@ export function TransferOwnerPopover({
         Setup Owner
       </PopoverTrigger>
       <PopoverContent
-        align="center"
+        align="end"
         className="flex w-[23rem] flex-col gap-4 rounded-xl p-4"
         sideOffset={12}
       >
         <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-icon-secondary" />
+          <Search className="pointer-events-none absolute z-10 top-1/2 left-3 size-4 -translate-y-1/2 text-icon-secondary" />
           <Input
             aria-label="Search for team member"
             className="h-10 rounded-md border-0 bg-background-main-secondary pl-10 shadow-none placeholder:text-text-secondary"
