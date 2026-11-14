@@ -54,6 +54,9 @@
    With enough headings to overflow the outline, read down and back up through
    the document. The active outline entry must remain visible without moving
    the document's scroll position or shifting entries already in view.
+   Repeat with reduced motion enabled: jumps must be instant. Clicking an
+   already-aligned heading must not prevent the outline from following later
+   scrolling, even when that no-op jump emits no scrollend event.
 4. Save with the keyboard shortcut. Check source sync and delete confirmations.
    A failed save retains the draft; a failed sync or delete retains its dialog.
 5. Delay a save for skill A, discard its draft, and select B. Return to A and

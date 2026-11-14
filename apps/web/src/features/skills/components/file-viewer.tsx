@@ -117,6 +117,28 @@ export function FileViewer({
     updateActiveHeading()
   }
 
+  /**
+   * Outline jumps previously always animated, ignoring reduced motion. Choose
+   * instant scrolling at click time and retain native scrollend cleanup.
+   * CSSOM View emits no scrollend for no-op jumps, so release those immediately:
+   * https://drafts.csswg.org/cssom-view/#perform-a-scroll
+   */
+  const navigateToHeading = (heading: HTMLElement) => {
+    const reducedMotion = window.matchMedia(
+      '(prefers-reduced-motion: reduce)',
+    ).matches
+    const previousTop = scrollRef.current?.scrollTop
+    navigationTargetRef.current = heading
+    setActiveHeading(heading.id)
+    heading.scrollIntoView({
+      behavior: reducedMotion ? 'instant' : 'smooth',
+      block: 'start',
+    })
+    if (reducedMotion && scrollRef.current?.scrollTop === previousTop) {
+      navigationTargetRef.current = null
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 min-w-0">
       <div
@@ -217,14 +239,7 @@ export function FileViewer({
                   aria-current={
                     activeHeading === heading.id ? 'location' : undefined
                   }
-                  onClick={() => {
-                    navigationTargetRef.current = heading
-                    setActiveHeading(heading.id)
-                    heading.scrollIntoView({
-                      behavior: 'smooth',
-                      block: 'start',
-                    })
-                  }}
+                  onClick={() => navigateToHeading(heading)}
                   className={cn(
                     'min-h-11 w-full border-l-2 px-3 py-2 text-left text-xs [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring',
                     activeHeading === heading.id

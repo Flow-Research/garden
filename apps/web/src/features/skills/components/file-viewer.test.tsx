@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { FileViewer } from './file-viewer'
 
 vi.mock('../../common/markdown', async () => {
@@ -30,46 +30,106 @@ Repeat after changes.
 `
 
 describe('skill document reader', () => {
-  it('keeps a clicked heading selected through intermediate scroll events, then resumes tracking', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it.each([false, true])(
+    'keeps outline selection until scrollend with reduced motion %s',
+    (reducedMotion) => {
+      const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+      vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+        ...mediaQuery,
+        media: query,
+        matches: query === '(prefers-reduced-motion: reduce)' && reducedMotion,
+      }))
+      render(<FileViewer path="SKILL.md" content={content} />)
+      const outline = screen.getByRole('navigation', { name: 'On this page' })
+      const reader = outline.previousElementSibling
+      const entries = within(outline).getAllByRole('button')
+      const target = entries[2]
+      const first = entries[0]
+      const middle = entries[1]
+      if (!reader || !target || !first || !middle)
+        throw new Error('Missing reader or outline entries')
+      let offset = 0
+      const headings = screen
+        .getAllByRole('heading')
+        .filter((heading) => heading.id)
+      headings.forEach((heading, index) => {
+        heading.scrollIntoView = vi.fn(() => {
+          if (reducedMotion) reader.scrollTop = index * 200
+        })
+        vi.spyOn(heading, 'getBoundingClientRect').mockImplementation(
+          () => new DOMRect(0, index * 200 - offset, 400, 30),
+        )
+      })
+      Object.defineProperty(reader, 'scrollTo', {
+        configurable: true,
+        value: vi.fn(),
+      })
+      fireEvent.click(target)
+      expect(headings[2]?.scrollIntoView).toHaveBeenCalledWith({
+        behavior: reducedMotion ? 'instant' : 'smooth',
+        block: 'start',
+      })
+      fireEvent.scroll(reader)
+      expect(target).toHaveAttribute('aria-current', 'location')
+      offset = 200
+      fireEvent.scroll(reader)
+      expect(target).toHaveAttribute('aria-current', 'location')
+      offset = 400
+      fireEvent.scroll(reader)
+      fireEvent(reader, new Event('scrollend'))
+      offset = 0
+      fireEvent.scroll(reader)
+      expect(first).toHaveAttribute('aria-current', 'location')
+
+      fireEvent.click(target)
+      offset = 200
+      fireEvent.wheel(reader)
+      fireEvent.scroll(reader)
+      expect(middle).toHaveAttribute('aria-current', 'location')
+    },
+  )
+
+  it('resumes tracking after a reduced-motion jump that does not move the reader', () => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)')
+    vi.spyOn(window, 'matchMedia').mockImplementation((query) => ({
+      ...mediaQuery,
+      media: query,
+      matches: query === '(prefers-reduced-motion: reduce)',
+    }))
     render(<FileViewer path="SKILL.md" content={content} />)
-    const outline = screen.getByRole('navigation', { name: 'On this page' })
-    const reader = outline.previousElementSibling
-    const entries = within(outline).getAllByRole('button')
+    const reader = screen.getByRole('region', { name: 'Skill document' })
+    const outline = within(
+      screen.getByRole('navigation', { name: 'On this page' }),
+    )
+    const entries = outline.getAllByRole('button')
     const target = entries[2]
-    const first = entries[0]
     const middle = entries[1]
-    if (!reader || !target || !first || !middle)
-      throw new Error('Missing reader or outline entries')
-    let offset = 0
     const headings = screen
       .getAllByRole('heading')
       .filter((heading) => heading.id)
-    headings.forEach((heading, index) => {
-      heading.scrollIntoView = vi.fn()
-      vi.spyOn(heading, 'getBoundingClientRect').mockImplementation(
+    const heading = headings[2]
+    if (!target || !middle || !heading)
+      throw new Error('Missing outline target')
+    let offset = 0
+    vi.spyOn(reader, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 400, 100),
+    )
+    headings.forEach((item, index) => {
+      vi.spyOn(item, 'getBoundingClientRect').mockImplementation(
         () => new DOMRect(0, index * 200 - offset, 400, 30),
       )
     })
-    Object.defineProperty(reader, 'scrollTo', {
-      configurable: true,
-      value: vi.fn(),
+    heading.scrollIntoView = vi.fn()
+    fireEvent.click(target)
+    expect(heading.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'instant',
+      block: 'start',
     })
-    fireEvent.click(target)
-    fireEvent.scroll(reader)
     expect(target).toHaveAttribute('aria-current', 'location')
+    // No-op jumps emit no scrollend. A later scroll must still update selection.
     offset = 200
-    fireEvent.scroll(reader)
-    expect(target).toHaveAttribute('aria-current', 'location')
-    offset = 400
-    fireEvent.scroll(reader)
-    fireEvent(reader, new Event('scrollend'))
-    offset = 0
-    fireEvent.scroll(reader)
-    expect(first).toHaveAttribute('aria-current', 'location')
-
-    fireEvent.click(target)
-    offset = 200
-    fireEvent.wheel(reader)
     fireEvent.scroll(reader)
     expect(middle).toHaveAttribute('aria-current', 'location')
   })
