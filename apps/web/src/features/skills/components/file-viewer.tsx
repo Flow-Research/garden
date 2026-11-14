@@ -56,6 +56,7 @@ export function FileViewer({
   const [activeHeading, setActiveHeading] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const outlineRef = useRef<HTMLElement>(null)
+  const navigationTargetRef = useRef<HTMLElement | null>(null)
 
   /**
    * The outline previously highlighted entries outside its viewport. Reveal a
@@ -80,6 +81,7 @@ export function FileViewer({
   const registerHeadings = useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return
+      navigationTargetRef.current = null
       const elements = Array.from(
         node.querySelectorAll<HTMLElement>('h1, h2, h3'),
       )
@@ -94,6 +96,7 @@ export function FileViewer({
 
   /** Keeps the outline in step with the document's own scroll container. */
   const updateActiveHeading = () => {
+    if (navigationTargetRef.current) return
     const top = scrollRef.current?.getBoundingClientRect().top ?? 0
     const current = headings
       .filter((heading) => heading.getBoundingClientRect().top <= top + 40)
@@ -101,11 +104,47 @@ export function FileViewer({
     setActiveHeading(current?.id ?? headings[0]?.id ?? '')
   }
 
+  /**
+   * User input takes control back from an outline jump. Stop the native smooth
+   * scroll and resume tracking at the current reading position; intermediate
+   * animation events previously flashed the indicator through earlier sections.
+   */
+  const interruptNavigation = () => {
+    if (!navigationTargetRef.current) return
+    navigationTargetRef.current = null
+    const reader = scrollRef.current
+    reader?.scrollTo({ top: reader.scrollTop, behavior: 'instant' })
+    updateActiveHeading()
+  }
+
   return (
     <div className="flex h-full min-h-0 min-w-0">
       <div
         ref={scrollRef}
         onScroll={updateActiveHeading}
+        onScrollEnd={() => {
+          navigationTargetRef.current = null
+        }}
+        onWheel={interruptNavigation}
+        onTouchStart={interruptNavigation}
+        onPointerDown={interruptNavigation}
+        onKeyDown={(event) => {
+          if (
+            [
+              'ArrowUp',
+              'ArrowDown',
+              'PageUp',
+              'PageDown',
+              'Home',
+              'End',
+              ' ',
+              'Tab',
+            ].includes(event.key)
+          )
+            interruptNavigation()
+        }}
+        role="region"
+        aria-label="Skill document"
         className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain"
       >
         <div className="mx-auto flex min-h-full min-w-0 max-w-4xl flex-col px-5 py-4 md:px-8 md:py-8 lg:px-10">
@@ -179,11 +218,12 @@ export function FileViewer({
                     activeHeading === heading.id ? 'location' : undefined
                   }
                   onClick={() => {
+                    navigationTargetRef.current = heading
+                    setActiveHeading(heading.id)
                     heading.scrollIntoView({
                       behavior: 'smooth',
                       block: 'start',
                     })
-                    setActiveHeading(heading.id)
                   }}
                   className={cn(
                     'min-h-11 w-full border-l-2 px-3 py-2 text-left text-xs [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring',

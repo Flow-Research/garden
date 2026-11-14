@@ -31,6 +31,10 @@ Frontmatter is collapsed by default and can be expanded without losing fields.
 Desktop previews include an **On this page** outline built from rendered
 headings. As the active heading changes, the outline scrolls within its own
 panel just enough to keep that entry visible, without moving the document.
+Clicking an outline entry selects it immediately and keeps it selected throughout
+the smooth scroll. Native scroll completion releases that selection for reading
+position tracking. Wheel, touch, pointer, or navigation-key input interrupts the
+jump and resumes tracking immediately.
 Long identifiers wrap; code blocks and wide tables scroll inside
 their own containers.
 

@@ -30,6 +30,50 @@ Repeat after changes.
 `
 
 describe('skill document reader', () => {
+  it('keeps a clicked heading selected through intermediate scroll events, then resumes tracking', () => {
+    render(<FileViewer path="SKILL.md" content={content} />)
+    const outline = screen.getByRole('navigation', { name: 'On this page' })
+    const reader = outline.previousElementSibling
+    const entries = within(outline).getAllByRole('button')
+    const target = entries[2]
+    const first = entries[0]
+    const middle = entries[1]
+    if (!reader || !target || !first || !middle)
+      throw new Error('Missing reader or outline entries')
+    let offset = 0
+    const headings = screen
+      .getAllByRole('heading')
+      .filter((heading) => heading.id)
+    headings.forEach((heading, index) => {
+      heading.scrollIntoView = vi.fn()
+      vi.spyOn(heading, 'getBoundingClientRect').mockImplementation(
+        () => new DOMRect(0, index * 200 - offset, 400, 30),
+      )
+    })
+    Object.defineProperty(reader, 'scrollTo', {
+      configurable: true,
+      value: vi.fn(),
+    })
+    fireEvent.click(target)
+    fireEvent.scroll(reader)
+    expect(target).toHaveAttribute('aria-current', 'location')
+    offset = 200
+    fireEvent.scroll(reader)
+    expect(target).toHaveAttribute('aria-current', 'location')
+    offset = 400
+    fireEvent.scroll(reader)
+    fireEvent(reader, new Event('scrollend'))
+    offset = 0
+    fireEvent.scroll(reader)
+    expect(first).toHaveAttribute('aria-current', 'location')
+
+    fireEvent.click(target)
+    offset = 200
+    fireEvent.wheel(reader)
+    fireEvent.scroll(reader)
+    expect(middle).toHaveAttribute('aria-current', 'location')
+  })
+
   it('collapses frontmatter and preserves nested YAML when expanded', () => {
     render(<FileViewer path="SKILL.md" content={content} />)
     const summary = screen.getByText('Frontmatter · 3 fields')

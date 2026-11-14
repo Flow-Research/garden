@@ -36,6 +36,9 @@
 3. At 1440px, use **On this page** to jump to headings. Scroll the document and
    confirm that the active section changes. Code-fence text must not become an
    outline entry, and duplicate heading titles must have separate targets.
+   Click a distant entry. Its indicator must move directly to that entry and
+   stay there throughout the smooth scroll. Interrupt another jump with a wheel,
+   touch gesture, or scroll key; the indicator must follow the reading position.
    With enough headings to overflow the outline, read down and back up through
    the document. The active outline entry must remain visible without moving
    the document's scroll position or shifting entries already in view.
