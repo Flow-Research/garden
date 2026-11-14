@@ -12,6 +12,8 @@ Home shows an Overview heading, four metric cards, two issue charts, and two col
 
 Open Work excludes done and cancelled issues. Its completion bar shows done issues as a share of non-cancelled issues. Blocked uses a warning treatment when work needs attention. Agents shows the non-archived count and available skills. Connected Apps shows connected and pending counts.
 
+Metric cards use compact values, small icon tiles, and aligned footer dividers so the charts remain visible near the top of Home. The completion bar replaces Open Work's footer divider. Blocked keeps its label and supporting text neutral, with a subtle warning border and emphasis on the count and icon. Each card is one keyboard-focusable button with visible hover and focus states; loading placeholders reserve the same layout.
+
 The status chart uses one stacked bar, followed by status counts in workflow order. Cancelled issues appear separately and are excluded from the bar and total. Priority bars show percentages of all tasks, including completed and cancelled tasks, matching the existing distribution query. Their heading explicitly describes that scope. Bar widths use each bucket's share of the total, rather than scaling against the largest bucket.
 
 ## Navigation and loading

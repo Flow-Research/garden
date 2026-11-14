@@ -62,7 +62,12 @@ function connectionIcon(id: string): LucideIcon {
   }
 }
 
-/** Metric hierarchy follows the dashboard references: label, value, then context. */
+/**
+ * Keep overview metrics compact enough to scan before the charts. The previous
+ * 64px values and large radii dominated the page; shared type/radius tokens now
+ * give labels, values, and aligned footers distinct roles. See
+ * docs/concepts/features/dashboard.md.
+ */
 function MetricCard({
   icon: Icon,
   value,
@@ -75,81 +80,68 @@ function MetricCard({
   icon: LucideIcon
   value: string | number
   label: string
-  description?: React.ReactNode
-  onClick?: () => void
+  description: React.ReactNode
+  onClick: () => void
   warning?: boolean
   progress?: number
 }) {
-  const content = (
-    <div
+  return (
+    <button
+      type="button"
+      onClick={onClick}
       className={cn(
-        'h-full rounded-2xl border border-border/50 bg-muted/35 p-5 sm:p-6',
-        warning && 'border-warning/30 bg-warning/5',
+        'group flex h-full min-w-0 cursor-pointer flex-col rounded-xl border border-border/50 bg-muted/25 p-4 text-left transition-colors hover:border-border hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:p-5',
+        warning &&
+          'border-warning/20 bg-warning/[0.03] hover:border-warning/40 hover:bg-warning/[0.06]',
       )}
     >
-      <div className="flex items-center justify-between gap-3">
-        <p
-          className={cn(
-            'text-sm font-medium text-muted-foreground',
-            warning && 'text-warning',
-          )}
-        >
+      <span className="flex min-h-8 w-full items-center justify-between gap-2">
+        <span className="text-xs leading-4 font-medium text-muted-foreground transition-colors group-hover:text-foreground sm:text-sm sm:leading-5">
           {label}
-        </p>
+        </span>
         <span
           className={cn(
-            'flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground',
-            warning && 'bg-warning/10 text-warning',
+            'flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/80 text-muted-foreground sm:size-8',
+            warning && 'bg-warning/10 text-text-warning-default',
           )}
         >
           <Icon aria-hidden="true" className="size-4" />
         </span>
-      </div>
-      <p
+      </span>
+      <span
         className={cn(
-          'mt-2 text-4xl font-semibold tracking-tight tabular-nums sm:text-5xl',
-          warning && 'text-warning',
+          'mt-3 text-2xl leading-none font-semibold tracking-tight tabular-nums sm:text-3xl sm:leading-none',
+          warning && 'text-text-warning-default',
         )}
       >
         {value}
-      </p>
-      <div className="mt-2 flex min-h-10 flex-col justify-end gap-2">
+      </span>
+      <span className="mt-auto flex w-full flex-col gap-2 pt-4">
         {progress !== undefined ? (
-          <div
-            className="h-1.5 overflow-hidden rounded-full bg-muted"
+          <span
+            className="block h-1 overflow-hidden rounded-full bg-muted"
             role="meter"
             aria-label="Completed work"
             aria-valuenow={progress}
             aria-valuemin={0}
             aria-valuemax={100}
           >
-            <div
-              className="h-full bg-success"
+            <span
+              className="block h-full rounded-full bg-success"
               style={{ width: `${progress}%` }}
             />
-          </div>
-        ) : null}
-        <div
-          className={cn(
-            'text-xs text-muted-foreground',
-            warning && 'text-warning',
-          )}
-        >
+          </span>
+        ) : (
+          <span
+            aria-hidden="true"
+            className="block h-1 border-b border-border/40"
+          />
+        )}
+        <span className="min-h-10 text-xs leading-5 text-muted-foreground sm:min-h-5">
           {description}
-        </div>
-      </div>
-    </div>
-  )
-  return onClick ? (
-    <button
-      type="button"
-      onClick={onClick}
-      className="block h-full min-w-0 text-left rounded-2xl transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2"
-    >
-      {content}
+        </span>
+      </span>
     </button>
-  ) : (
-    content
   )
 }
 
@@ -293,11 +285,15 @@ function DashboardMetricGridFallback() {
       {Array.from({ length: 4 }, (_, index) => (
         <div
           key={index}
-          className="min-h-52 rounded-2xl border border-border/50 bg-muted/35 p-5 sm:p-6"
+          className="min-w-0 rounded-xl border border-border/50 bg-muted/25 p-4 sm:p-5"
         >
-          <SectionPlaceholder className="h-4 w-24" />
-          <SectionPlaceholder className="mt-6 h-14 w-20" />
-          <SectionPlaceholder className="mt-6 h-3 w-28" />
+          <div className="flex h-8 items-center justify-between gap-2">
+            <SectionPlaceholder className="h-3 w-20 max-w-full" />
+            <SectionPlaceholder className="size-7 shrink-0 sm:size-8" />
+          </div>
+          <SectionPlaceholder className="mt-3 h-8 w-12 sm:h-10" />
+          <SectionPlaceholder className="mt-4 h-1 w-full" />
+          <SectionPlaceholder className="mt-2 h-10 w-28 max-w-full sm:h-5" />
         </div>
       ))}
     </div>
@@ -519,7 +515,12 @@ function DashboardOverviewSection({
           value={data.summary.agentCount}
           label="Agents"
           onClick={openAgents}
-          description={<span>{data.summary.skillCount} skills available</span>}
+          description={
+            <span>
+              {data.summary.skillCount}{' '}
+              {data.summary.skillCount === 1 ? 'skill' : 'skills'} available
+            </span>
+          }
         />
         <MetricCard
           icon={Link2}
