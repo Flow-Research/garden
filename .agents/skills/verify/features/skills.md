@@ -47,6 +47,10 @@
    the document's scroll position or shifting entries already in view.
 4. Save with the keyboard shortcut. Check source sync and delete confirmations.
    A failed save retains the draft; a failed sync or delete retains its dialog.
+5. Delay a save for skill A, discard its draft, and select B. Return to A and
+   enter a new draft before the first save completes. Resolving that save must
+   preserve the new draft and its discard guard. Save again and confirm the new
+   draft persists and the unsaved indicator clears.
 
 ## Automated proof
 

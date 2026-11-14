@@ -71,6 +71,7 @@ export function SkillWorkspace({
   })
   const [selectedPath, setSelectedPath] = useState(SKILL_MD)
   const [mode, setMode] = useState<SkillView>('preview')
+  const [draftBundle, setDraftBundle] = useState<Skill>()
 
   if (!query.data) {
     return (
@@ -110,10 +111,23 @@ export function SkillWorkspace({
     )
   }
 
+  const editorBundle = draftBundle ?? query.data
+
+  /**
+   * Pins the dirty editor's baseline so a previous editor's save cannot change
+   * its React key and erase reopened edits. SkillsPage keys each workspace by
+   * editor generation, so only this instance's clean notification releases it.
+   * React's preserving-and-resetting-state docs define this key reset behavior.
+   */
+  const reportEditorDirty = (dirty: boolean) => {
+    setDraftBundle(dirty ? editorBundle : undefined)
+    onDirtyChange(dirty)
+  }
+
   return (
     <SkillBundleEditor
-      key={`${query.data.id}:${query.data.bundle_hash ?? query.data.updated_at}`}
-      skill={query.data}
+      key={`${editorBundle.id}:${editorBundle.bundle_hash ?? editorBundle.updated_at}`}
+      skill={editorBundle}
       selectedPath={selectedPath}
       onSelectPath={setSelectedPath}
       mode={mode}
@@ -121,7 +135,7 @@ export function SkillWorkspace({
       onUpdate={onUpdate}
       onDelete={onDelete}
       onReinstall={onReinstall}
-      onDirtyChange={onDirtyChange}
+      onDirtyChange={reportEditorDirty}
       onBack={onBack}
     />
   )

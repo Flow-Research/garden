@@ -46,7 +46,10 @@ their own containers.
 Create, community import, source sync, file addition/removal, skill deletion,
 and keyboard save remain available. Leaving a dirty editor, including returning
 to the mobile library, asks before discarding changes. Failed saves keep the
-draft. Saving the main document does not replace supporting files unless those
+draft. A save from a discarded editor still updates the cached bundle, but cannot
+replace a newer dirty draft after that skill is reopened. Each dirty editor keeps
+its starting bundle until its own save succeeds or the draft is discarded.
+Saving the main document does not replace supporting files unless those
 files changed. These presentation changes use the existing Skills API and do
 not require Cloudflare credentials in local offline development.
 

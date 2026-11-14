@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -314,6 +315,65 @@ describe('SkillsPage library', () => {
     expect(editorBox()).toHaveValue('Triage draft')
     fireEvent.click(skillsList().getByRole('button', { name: 'Release notes' }))
     expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  it('preserves a reopened skill draft when its previous editor finishes saving', async () => {
+    let finishSave: ((value: Skill) => void) | undefined
+    mocks.updateSkill.mockImplementationOnce(
+      () =>
+        new Promise<Skill>((resolve) => {
+          finishSave = resolve
+        }),
+    )
+    mocks.updateSkill.mockResolvedValueOnce(
+      skill({
+        content: 'Reopened draft',
+        bundle_hash: 'saved-reopened',
+        files: [skillFile('scripts/run.sh', 'echo hi')],
+      }),
+    )
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'First draft' } })
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+    fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+    await screen.findByRole('heading', { name: 'Triage' })
+    fireEvent.click(skillsList().getByRole('button', { name: 'Release notes' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'Reopened draft' } })
+
+    await act(async () => {
+      finishSave?.(
+        skill({
+          content: 'First draft',
+          bundle_hash: 'saved-first',
+          files: [skillFile('scripts/run.sh', 'echo hi')],
+        }),
+      )
+    })
+    await waitFor(() => expect(mocks.listSkills).toHaveBeenCalledTimes(2))
+    expect(editorBox()).toHaveValue('Reopened draft')
+    expect(screen.getByText('Unsaved')).toBeInTheDocument()
+    fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Keep editing',
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(2))
+    expect(mocks.updateSkill).toHaveBeenLastCalledWith('skill-1', {
+      content: 'Reopened draft',
+    })
+    await waitFor(() => expect(screen.queryByText('Unsaved')).toBeNull())
+    expect(editorBox()).toHaveValue('Reopened draft')
   })
 
   it('opens the initially selected skill, returns to the list, and preserves search', async () => {
