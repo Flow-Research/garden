@@ -3,6 +3,11 @@ import { ChevronRight, Plus, Search } from 'lucide-react'
 import type { Skill } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@garden/ui/components/ui/tooltip'
+import {
   InputGroup,
   InputGroupAddon,
   InputGroupInput,
@@ -86,14 +91,22 @@ export function SkillsList({
             <span className="hidden md:inline">{skills.length}</span>
           </p>
         </div>
-        <Button
-          onClick={onAdd}
-          size="icon-lg"
-          aria-label="Add skill"
-          className="size-12 shrink-0 rounded-full md:size-11 md:rounded-xl"
-        >
-          <Plus className="size-6" />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                onClick={onAdd}
+                variant="ghost"
+                size="icon-lg"
+                aria-label="Add skill"
+                className="size-11 shrink-0 rounded-lg text-muted-foreground md:size-8"
+              >
+                <Plus className="size-4" />
+              </Button>
+            }
+          />
+          <TooltipContent side="bottom">Add skill</TooltipContent>
+        </Tooltip>
       </div>
       <div className="shrink-0 px-4 pb-3">
         <InputGroup className="h-11 rounded-xl">
@@ -126,15 +139,17 @@ export function SkillsList({
           <ul className="overflow-hidden rounded-2xl bg-muted/40 md:space-y-1 md:rounded-none md:bg-transparent">
             {visibleGroups.map((group) => (
               <Fragment key={group.label}>
-                <li className="hidden pt-4 pb-1 md:block">
-                  <h2 className="flex items-center gap-1 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                    <span className="min-w-0 truncate">{group.label}</span>
-                    <span className="hidden md:inline">·</span>
-                    <span className="ml-auto md:ml-0">
-                      {group.items.length}
-                    </span>
-                  </h2>
-                </li>
+                {group.label !== 'Uncategorized' ? (
+                  <li className="hidden pt-4 pb-1 md:block">
+                    <h2 className="flex items-center gap-1 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <span className="min-w-0 truncate">{group.label}</span>
+                      <span className="hidden md:inline">·</span>
+                      <span className="ml-auto md:ml-0">
+                        {group.items.length}
+                      </span>
+                    </h2>
+                  </li>
+                ) : null}
                 {group.items.map((skill) => {
                   const selected = selectedSkillId === skill.id
                   return (

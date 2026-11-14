@@ -19,8 +19,9 @@ the library beside the selected skill.
 Mobile shows one continuous list with names and descriptions, without category
 filters or headings. Search matches names and descriptions across the library.
 Desktop groups show compact names with categories from `config.metadata.category`.
-Skills without a category appear under **Uncategorized** on desktop.
+Skills without a category appear without a group heading on desktop.
 Skill details show a category badge only when the skill has a category.
+The Add control is a plus icon with a subtle hover background and an **Add skill** tooltip.
 
 Each bundle file is reachable through a horizontally scrolling file bar on
 both mobile and desktop. **Preview** renders Markdown, **Source** shows the
