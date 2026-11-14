@@ -50,7 +50,10 @@ draft. A save from a discarded editor still updates the cached bundle, but canno
 replace a newer dirty draft after that skill is reopened. Each dirty editor keeps
 its starting bundle until its own save succeeds or the draft is discarded.
 Saving the main document does not replace supporting files unless those
-files changed. These presentation changes use the existing Skills API and do
+files changed. Adding a file is blocked while a save is pending, including
+the Add file dialog's button and Enter shortcut if the dialog was already open.
+A failed save keeps the dialog's path and allows adding the file again.
+These presentation changes use the existing Skills API and do
 not require Cloudflare credentials in local offline development.
 
 Supporting-file paths use the same canonical form in the Add file dialog and

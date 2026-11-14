@@ -534,6 +534,93 @@ describe('SkillsPage library', () => {
     ).toHaveValue('# Checks')
   })
 
+  it.each(['button', 'Enter'])(
+    'blocks resource addition with %s while a dialog-started save is pending',
+    async (method) => {
+      let finishSave: ((value: Skill) => void) | undefined
+      const pendingSave = new Promise<Skill>((resolve) => {
+        finishSave = resolve
+      })
+      mocks.updateSkill.mockReset().mockReturnValue(pendingSave)
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+      fireEvent.change(editorBox(), { target: { value: 'Saving draft' } })
+      fireEvent.click(screen.getByRole('button', { name: 'Skill actions' }))
+      fireEvent.click(await screen.findByRole('menuitem', { name: 'Add file' }))
+      const dialog = within(await screen.findByRole('dialog'))
+      const input = dialog.getByRole('textbox', { name: 'File path' })
+      fireEvent.change(input, {
+        target: { value: 'references/during-save.md' },
+      })
+      fireEvent.keyDown(input, { key: 's', ctrlKey: true })
+      await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+      expect(mocks.updateSkill).toHaveBeenCalledWith('skill-1', {
+        content: 'Saving draft',
+      })
+      expect(
+        screen.getByRole('button', { name: 'Skill actions', hidden: true }),
+      ).toBeDisabled()
+      expect(dialog.getByRole('button', { name: 'Add file' })).toBeDisabled()
+      if (method === 'button') {
+        fireEvent.click(dialog.getByRole('button', { name: 'Add file' }))
+      } else {
+        fireEvent.keyDown(input, { key: 'Enter' })
+      }
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(
+        screen.queryByRole('button', {
+          name: 'references/during-save.md',
+          hidden: true,
+        }),
+      ).toBeNull()
+      await act(async () => {
+        finishSave?.(
+          skill({
+            content: 'Saving draft',
+            bundle_hash: 'save-completed',
+            files: [skillFile('scripts/run.sh', 'echo hi')],
+          }),
+        )
+      })
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+      expect(editorBox()).toHaveValue('Saving draft')
+      expect(screen.queryByText('Unsaved')).toBeNull()
+    },
+  )
+
+  it('allows resource addition again after a dialog-started save fails', async () => {
+    let failSave: ((error: Error) => void) | undefined
+    const pendingSave = new Promise<Skill>((_resolve, reject) => {
+      failSave = reject
+    })
+    mocks.updateSkill.mockReset().mockReturnValue(pendingSave)
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'Retained draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Skill actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add file' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    const input = dialog.getByRole('textbox', { name: 'File path' })
+    fireEvent.change(input, { target: { value: 'references/retry.md' } })
+    fireEvent.keyDown(input, { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+    expect(dialog.getByRole('button', { name: 'Add file' })).toBeDisabled()
+    await act(async () => {
+      failSave?.(new Error('Save failed'))
+    })
+    await waitFor(() =>
+      expect(dialog.getByRole('button', { name: 'Add file' })).toBeEnabled(),
+    )
+    expect(input).toHaveValue('references/retry.md')
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(
+      await screen.findByRole('textbox', { name: 'Edit references/retry.md' }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'SKILL.md' }))
+    expect(editorBox()).toHaveValue('Retained draft')
+    expect(screen.getByText('Unsaved')).toBeInTheDocument()
+  })
+
   it('adds a resource, edits it, and removes it without affecting the main file', async () => {
     renderPage()
     fireEvent.click(

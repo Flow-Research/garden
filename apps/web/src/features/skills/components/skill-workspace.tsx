@@ -195,6 +195,7 @@ function SkillViewSwitcher({
  * Owns one draft and reports dirty state in edit events rather than effects.
  * Failed writes keep that draft; successful writes remount from the saved bundle.
  * This lets mobile back navigation use the same discard guard as skill switching.
+ * Already-handled dialog shortcuts are ignored to prevent duplicate save requests.
  */
 function SkillBundleEditor({
   skill,
@@ -296,6 +297,7 @@ function SkillBundleEditor({
       aria-label="Skill workspace"
       onKeyDown={(event) => {
         if (
+          !event.defaultPrevented &&
           (event.metaKey || event.ctrlKey) &&
           event.key.toLowerCase() === 's'
         ) {
@@ -361,7 +363,10 @@ function SkillBundleEditor({
             }
           />
           <DropdownMenuContent align="end" sideOffset={6}>
-            <DropdownMenuItem onClick={() => setShowAddFile(true)}>
+            <DropdownMenuItem
+              disabled={saving}
+              onClick={() => setShowAddFile(true)}
+            >
               <Plus />
               Add file
             </DropdownMenuItem>
@@ -495,6 +500,7 @@ function SkillBundleEditor({
       {showAddFile ? (
         <AddFileDialog
           paths={paths}
+          saving={saving}
           onClose={() => setShowAddFile(false)}
           onAdd={(path) => {
             changeDraft({
@@ -535,13 +541,19 @@ function SkillBundleEditor({
   )
 }
 
-/** Uses the server's canonical path rules so aliases cannot bypass duplicate or SKILL.md checks. */
+/**
+ * Applies canonical path rules and blocks additions during a save. Previously
+ * an open dialog could add a file absent from the request, then lose it when
+ * the successful response remounted the editor. Button and Enter share a guard.
+ */
 function AddFileDialog({
   paths,
+  saving,
   onClose,
   onAdd,
 }: {
   paths: string[]
+  saving: boolean
   onClose: () => void
   onAdd: (path: string) => void
 }) {
@@ -553,9 +565,9 @@ function AddFileDialog({
       const candidate = parseSupportingFilePath(existing)
       return candidate.kind === 'valid' && candidate.path === parsed.path
     })
-  const valid = parsed.kind === 'valid' && !duplicate
+  const valid = !saving && parsed.kind === 'valid' && !duplicate
   const add = () => {
-    if (parsed.kind === 'valid' && !duplicate) {
+    if (!saving && parsed.kind === 'valid' && !duplicate) {
       onAdd(parsed.path)
       onClose()
     }

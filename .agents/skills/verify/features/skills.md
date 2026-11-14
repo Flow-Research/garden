@@ -31,6 +31,11 @@
    `./SKILL.md` and a path made entirely of `.` and separators. Add
    `references//./checks.md`; the tab and saved path must be
    `references/checks.md`.
+8. Edit a document and open Add file. Start a delayed save with the keyboard
+   shortcut from the path input. Add file must be disabled and Enter must leave
+   the dialog open without adding a resource. Fail the save; the typed path
+   must remain and adding the resource must work again. Also start a save from
+   the header and confirm Skill actions is disabled until it settles.
 
 ## Desktop reader
 
