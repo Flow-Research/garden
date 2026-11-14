@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { Skill } from '@garden/core/types'
+import type { Skill, UpdateSkillRequest } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { useSkillsBrowseStore } from '@garden/app-state/skills'
 import SkillsPage from './skills-page'
@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   getSkill: vi.fn(),
   updateSkill: vi.fn(),
   deleteSkill: vi.fn(),
+  createSkill: vi.fn(),
+  importSkill: vi.fn(),
+  previewSkill: vi.fn(),
+  searchSkills: vi.fn(),
 }))
 
 vi.mock('@/lib/api', () => ({
@@ -25,6 +29,10 @@ vi.mock('@/lib/api', () => ({
     getSkill: mocks.getSkill,
     updateSkill: mocks.updateSkill,
     deleteSkill: mocks.deleteSkill,
+    createSkill: mocks.createSkill,
+    importSkill: mocks.importSkill,
+    previewSkill: mocks.previewSkill,
+    searchSkills: mocks.searchSkills,
   },
 }))
 vi.mock('../../common/markdown', () => ({
@@ -36,12 +44,21 @@ const WS_ID = 'ws-test'
 function skill(overrides: Partial<Skill>): Skill {
   return {
     id: 'skill-1',
+    workspace_id: WS_ID,
+    slug: 'release-notes',
     name: 'Release notes',
+    description: 'Write a release summary',
     content: '# Release notes',
+    config: { name: 'Release notes', description: 'Write a release summary' },
     files: [],
+    source_type: 'manual',
+    source_url: null,
+    created_by: null,
+    created_at: '2026-11-14T00:00:00.000Z',
+    updated_at: '2026-11-14T00:00:00.000Z',
     bundle_hash: 'hash-1',
     ...overrides,
-  } as Skill
+  }
 }
 
 function skillFile(path: string, content: string): Skill['files'][number] {
@@ -91,11 +108,13 @@ describe('SkillsPage editor', () => {
       skill({ files: [skillFile('scripts/run.sh', 'echo hi')] }),
     )
     mocks.updateSkill.mockImplementation(
-      async (_id: string, data: { content: string }) =>
+      async (_id: string, data: UpdateSkillRequest) =>
         skill({
-          content: data.content,
+          content: data.content ?? '# Release notes',
           bundle_hash: 'hash-2',
-          files: [skillFile('scripts/run.sh', 'echo hi')],
+          files: data.files?.map((file) =>
+            skillFile(file.path, file.content),
+          ) ?? [skillFile('scripts/run.sh', 'echo hi')],
         }),
     )
   })
@@ -116,12 +135,45 @@ describe('SkillsPage editor', () => {
     fireEvent.change(editorBox(), {
       target: { value: '# Release notes\n\nUpdated' },
     })
-    fireEvent.click(await screen.findByRole('button', { name: /save/i }))
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
 
     await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
     const [, data] = mocks.updateSkill.mock.calls[0] ?? []
     expect(data).toEqual({ content: '# Release notes\n\nUpdated' })
     expect(data).not.toHaveProperty('files')
+  })
+
+  it('keeps a failed save editable and retries the same draft with keyboard save', async () => {
+    mocks.updateSkill.mockRejectedValueOnce(new Error('Write failed'))
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'Draft notes' } })
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+    expect(editorBox()).toHaveValue('Draft notes')
+    expect(await screen.findByText('Unsaved')).toBeInTheDocument()
+    await waitFor(() => expect(editorBox()).not.toHaveAttribute('readonly'))
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByText('Unsaved')).toBeNull())
+  })
+
+  it('saves an edited supporting file with the rest of the bundle intact', async () => {
+    renderPage()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'scripts/run.sh' }),
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Edit scripts/run.sh' }),
+      { target: { value: 'echo updated' } },
+    )
+    fireEvent.keyDown(editorBox(), { key: 's', metaKey: true })
+    await waitFor(() =>
+      expect(mocks.updateSkill).toHaveBeenCalledWith('skill-1', {
+        files: [{ path: 'scripts/run.sh', content: 'echo updated' }],
+      }),
+    )
   })
 })
 
@@ -148,7 +200,12 @@ describe('SkillsPage list states', () => {
 })
 
 describe('SkillsPage library', () => {
-  const second = skill({ id: 'skill-2', name: 'Triage', content: '# Triage' })
+  const second = skill({
+    id: 'skill-2',
+    name: 'Triage',
+    description: 'Review incoming issues',
+    content: '# Triage',
+  })
 
   beforeEach(() => {
     vi.clearAllMocks()
@@ -197,9 +254,11 @@ describe('SkillsPage library', () => {
     const files = within(
       await screen.findByRole('navigation', { name: 'Skill files' }),
     )
-    fireEvent.click(await files.findByText('run.sh'))
+    fireEvent.click(
+      await files.findByRole('button', { name: 'scripts/run.sh' }),
+    )
     expect(
-      await screen.findByText('scripts/run.sh', { selector: 'header span' }),
+      await screen.findByLabelText('Source of scripts/run.sh'),
     ).toBeInTheDocument()
   })
 
@@ -227,6 +286,246 @@ describe('SkillsPage library', () => {
     expect(
       await screen.findByRole('heading', { name: 'Triage' }),
     ).toBeInTheDocument()
+  })
+
+  it('keeps a new draft guarded when an earlier skill save finishes after navigation', async () => {
+    let finishSave: ((value: Skill) => void) | undefined
+    mocks.updateSkill.mockImplementationOnce(
+      () =>
+        new Promise<Skill>((resolve) => {
+          finishSave = resolve
+        }),
+    )
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'First draft' } })
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+    fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'Triage draft' } })
+    finishSave?.(skill({ content: 'First draft', bundle_hash: 'saved-first' }))
+    await waitFor(() => expect(mocks.listSkills).toHaveBeenCalledTimes(2))
+    expect(editorBox()).toHaveValue('Triage draft')
+    fireEvent.click(skillsList().getByRole('button', { name: 'Release notes' }))
+    expect(await screen.findByRole('alertdialog')).toBeInTheDocument()
+  })
+
+  it('opens the initially selected skill, returns to the list, and preserves search', async () => {
+    const onSelectSkill = vi.fn()
+    renderPage({ onSelectSkill })
+    const filter = await screen.findByRole('textbox', { name: 'Filter skills' })
+    fireEvent.change(filter, { target: { value: 'release' } })
+    fireEvent.click(skillsList().getByRole('button', { name: 'Release notes' }))
+    expect(onSelectSkill).toHaveBeenCalledWith('skill-1')
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Back to skills' }),
+    )
+    expect(onSelectSkill).toHaveBeenLastCalledWith(undefined)
+    expect(filter).toHaveValue('release')
+    expect(skillsList().queryByRole('button', { name: 'Triage' })).toBeNull()
+  })
+
+  it('guards mobile back, keeps the draft on cancel, and discards it on confirmation', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit skill' }))
+    fireEvent.change(editorBox(), { target: { value: 'Mobile draft' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Back to skills' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Keep editing',
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(editorBox()).toHaveValue('Mobile draft')
+    fireEvent.click(screen.getByRole('button', { name: 'Back to skills' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    fireEvent.click(skillsList().getByRole('button', { name: 'Release notes' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit skill' }))
+    expect(editorBox()).toHaveValue('# Release notes')
+    expect(screen.queryByText('Unsaved')).toBeNull()
+  })
+
+  it('combines category and description search using real catalog metadata', async () => {
+    mocks.listSkills.mockResolvedValue([
+      skill({
+        config: {
+          name: 'Release notes',
+          description: 'Release summary',
+          metadata: { category: 'Content' },
+        },
+      }),
+      skill({
+        ...second,
+        description: 'Run adversarial checks',
+        config: {
+          name: 'Triage',
+          description: 'Run adversarial checks',
+          metadata: { category: 'qa' },
+        },
+      }),
+      skill({ id: 'uncategorized', name: 'Unsorted' }),
+    ])
+    renderPage()
+    await screen.findByRole('navigation', { name: 'Skills' })
+    fireEvent.click(skillsList().getByRole('button', { name: 'QA 1' }))
+    expect(
+      skillsList().queryByRole('button', { name: 'Release notes' }),
+    ).toBeNull()
+    expect(
+      skillsList().getByRole('button', { name: 'Triage' }),
+    ).toBeInTheDocument()
+    fireEvent.change(
+      skillsList().getByRole('textbox', { name: 'Filter skills' }),
+      { target: { value: 'adversarial' } },
+    )
+    expect(
+      skillsList().getByRole('button', { name: 'Triage' }),
+    ).toBeInTheDocument()
+    fireEvent.change(
+      skillsList().getByRole('textbox', { name: 'Filter skills' }),
+      { target: { value: 'unknown' } },
+    )
+    expect(skillsList().getByText('No matches')).toBeInTheDocument()
+    fireEvent.click(skillsList().getByRole('button', { name: 'Clear filter' }))
+    expect(
+      skillsList().getByRole('button', { name: 'Unsorted' }),
+    ).toBeInTheDocument()
+    expect(
+      skillsList().getByRole('button', { name: 'Release notes' }),
+    ).toBeInTheDocument()
+  })
+
+  it('adds a resource, edits it, and removes it without affecting the main file', async () => {
+    renderPage()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Skill actions' }),
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add file' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByRole('textbox', { name: 'File path' }), {
+      target: { value: 'references/checks.md' },
+    })
+    fireEvent.click(dialog.getByRole('button', { name: 'Add file' }))
+    fireEvent.change(
+      await screen.findByRole('textbox', { name: 'Edit references/checks.md' }),
+      { target: { value: '# Checks' } },
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Skill actions' }))
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Delete file' }),
+    )
+    expect(
+      screen.queryByRole('button', { name: 'references/checks.md' }),
+    ).toBeNull()
+    expect(editorBox()).toHaveValue('# Release notes')
+    expect(screen.queryByText('Unsaved')).toBeNull()
+  })
+
+  it('creates a skill from the library and opens its complete bundle', async () => {
+    const created = skill({ id: 'created', name: 'New skill' })
+    mocks.createSkill.mockImplementation(async () => {
+      mocks.listSkills.mockResolvedValue([skill({}), second, created])
+      return created
+    })
+    const onSelectSkill = vi.fn()
+    renderPage({ onSelectSkill })
+    fireEvent.click(await screen.findByRole('button', { name: 'Add skill' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Create yours' }))
+    fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), {
+      target: { value: 'New skill' },
+    })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Description' }), {
+      target: { value: 'A new workflow' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }))
+    await waitFor(() =>
+      expect(mocks.createSkill).toHaveBeenCalledWith({
+        name: 'New skill',
+        description: 'A new workflow',
+      }),
+    )
+    await waitFor(() => expect(onSelectSkill).toHaveBeenCalledWith('created'))
+    expect(
+      await screen.findByRole('heading', { name: 'New skill' }),
+    ).toBeInTheDocument()
+  })
+
+  it('previews community resources and imports the selected skill', async () => {
+    const url = 'example/repo/community'
+    mocks.previewSkill.mockResolvedValue({
+      name: 'Community',
+      content: '# Community',
+      files: [{ path: 'scripts/run.sh', content: 'echo community' }],
+    })
+    const imported = skill({
+      id: 'community',
+      name: 'Community',
+      source_type: 'skills.sh',
+      source_url: url,
+    })
+    mocks.importSkill.mockImplementation(async () => {
+      mocks.listSkills.mockResolvedValue([skill({}), imported])
+      return imported
+    })
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Add skill' }))
+    fireEvent.change(await screen.findByRole('combobox'), {
+      target: { value: url },
+    })
+    fireEvent.click(
+      await screen.findByRole('option', { name: /example\/repo\/community/i }),
+    )
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'scripts/run.sh' }),
+    )
+    expect(
+      await screen.findByLabelText('Source of scripts/run.sh'),
+    ).toHaveTextContent('echo community')
+    fireEvent.click(screen.getByRole('button', { name: 'Add skill' }))
+    await waitFor(() => expect(mocks.importSkill).toHaveBeenCalledWith({ url }))
+    expect(
+      await screen.findByRole('heading', { name: 'Community' }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers source sync and preserves the confirmation when it fails', async () => {
+    const imported = skill({
+      source_type: 'skills.sh',
+      source_url: 'https://skills.sh/example/repo/qa',
+    })
+    mocks.listSkills.mockResolvedValue([imported])
+    mocks.getSkill.mockResolvedValue(imported)
+    mocks.importSkill.mockRejectedValue(new Error('Source unavailable'))
+    renderPage()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Skill actions' }),
+    )
+    expect(
+      await screen.findByRole('menuitem', { name: 'Open source' }),
+    ).toHaveAttribute('href', imported.source_url)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Sync from source' }))
+    const dialog = within(await screen.findByRole('alertdialog'))
+    fireEvent.click(dialog.getByRole('button', { name: 'Sync' }))
+    await waitFor(() =>
+      expect(mocks.importSkill).toHaveBeenCalledWith({
+        url: imported.source_url,
+      }),
+    )
+    await waitFor(() =>
+      expect(dialog.getByRole('button', { name: 'Sync' })).not.toBeDisabled(),
+    )
+    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
   })
 })
 

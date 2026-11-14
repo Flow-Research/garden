@@ -3,10 +3,39 @@ title: Skills load on demand from R2 through Think skill sources
 description: Where skills are stored, how an agent sees only its assigned skills, and why a skill write never touches existing chat threads.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-11
+last_reviewed: 2026-11-14
 ---
 
 A skill is a `SKILL.md` bundle of instructions and supporting files that teaches an agent a task. Skills belong to a workspace and are assigned to agents. An agent sees a catalog of its assigned skills and loads one only when a task calls for it.
+
+## Browse and edit the library on any screen
+
+The Skills page shows one pane at a time below the `md` breakpoint. It opens
+with a full-width library. Selecting a skill opens its detail; **Skills** returns
+to the library with the search, category filter, and scroll position preserved.
+The `?focus=<skillId>` search parameter opens a skill directly. Desktop keeps
+the library beside the selected skill.
+
+Categories come from `config.metadata.category`. Skills without a category
+appear under **Uncategorized**. Search matches names and descriptions, and
+category counts describe the full library. Mobile rows include descriptions;
+desktop groups show compact names.
+
+Each bundle file is reachable through a horizontally scrolling file bar on
+both mobile and desktop. **Preview** renders Markdown, **Source** shows the
+complete saved or draft document, and **Edit** enables changes. On mobile the
+source control is labeled **SKILL.md**, or **Source** for a supporting file.
+Frontmatter is collapsed by default and can be expanded without losing fields.
+Desktop previews include an **On this page** outline built from rendered
+headings. Long identifiers wrap; code blocks and wide tables scroll inside
+their own containers.
+
+Create, community import, source sync, file addition/removal, skill deletion,
+and keyboard save remain available. Leaving a dirty editor, including returning
+to the mobile library, asks before discarding changes. Failed saves keep the
+draft. Saving the main document does not replace supporting files unless those
+files changed. These presentation changes use the existing Skills API and do
+not require Cloudflare credentials in local offline development.
 
 The reasons for this design, and the eager design it replaced, are in the decision record [Think-native skills](../../decisions/2026-06-think-native-skills.md).
 

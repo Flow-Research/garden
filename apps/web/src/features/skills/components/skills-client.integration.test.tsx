@@ -3,10 +3,10 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { configureApi } from '@/lib/api/state'
-import { listSkills } from '@/lib/api/skills'
+import { getSkill, listSkills } from '@/lib/api/skills'
 import SkillsPage from './skills-page'
 
-vi.mock('@/lib/api', () => ({ api: { listSkills } }))
+vi.mock('@/lib/api', () => ({ api: { listSkills, getSkill } }))
 vi.mock('@/lib/auth/client', () => ({
   authClient: { organization: { setActive: vi.fn() } },
 }))
@@ -56,7 +56,8 @@ describe('skills UI through the real shared client adapter', () => {
   it('renders a typed catalog response through the web consumer', async () => {
     const fetch = vi
       .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(Response.json([skill]))
+      .mockResolvedValueOnce(Response.json([skill]))
+      .mockResolvedValue(Response.json(skill))
     const queryClient = renderSkills()
     expect(
       await screen.findByRole('heading', { name: 'Review code' }),
