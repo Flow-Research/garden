@@ -141,11 +141,11 @@ describe('DashboardPage', () => {
     expect(screen.getByText('cancelled').textContent).toContain(
       'excluded from total',
     )
-    expect(screen.getByText('10 across all tasks')).toBeTruthy()
+    expect(screen.getByText('All 10 tasks')).toBeTruthy()
     expect(screen.getByText('10%')).toBeTruthy()
     expect(screen.getByText('90%')).toBeTruthy()
     const statusPanel = screen
-      .getByRole('heading', { name: 'Issues by Status' })
+      .getByRole('heading', { name: 'Issues by status' })
       .closest('section')
     const segments = statusPanel?.querySelectorAll('[aria-hidden="true"] > div')
     expect(
@@ -167,10 +167,10 @@ describe('DashboardPage', () => {
         .getAllByRole('heading', { level: 2 })
         .map((heading) => heading.textContent),
     ).toEqual([
-      'Issues by Status',
-      'Issues by Priority',
-      'Recent Tasks',
-      'Recent Activity',
+      'Issues by status',
+      'Issues by priority',
+      'Recent tasks',
+      'Recent activity',
       'Agents',
       'Connections',
     ])

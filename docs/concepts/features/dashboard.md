@@ -16,6 +16,8 @@ Metric cards use compact values, small icon tiles, and aligned footer dividers s
 
 The status chart uses one stacked bar, followed by status counts in workflow order. Cancelled issues appear separately and are excluded from the bar and total. Priority bars show percentages of all tasks, including completed and cancelled tasks, matching the existing distribution query. Their heading explicitly describes that scope. Bar widths use each bucket's share of the total, rather than scaling against the largest bucket.
 
+Charts and lists share the metric cards' smaller corners and padding. Sentence-case headings separate sections from their quieter count chips and actions. Status counts use compact rows without repeated rules; priority bars are thin, with aligned percentages and counts. Recent tasks align status and time columns, while long titles truncate and expose the full text on hover. Resource rows use small square icon tiles and subdued status badges. Activity icons distinguish assignments, failures, blocked work, completion, conversations, and connector requests.
+
 ## Navigation and loading
 
 Metric cards open tasks, blocked tasks, agents, or connections. Blocked resets task scope and filters before selecting blocked status. Recent task rows open task details. Activity rows open their linked task, or the inbox item when no task is attached. View all opens tasks; Manage and connection rows open connections.

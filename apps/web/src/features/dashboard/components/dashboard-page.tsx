@@ -7,6 +7,8 @@ import {
   Bot,
   Cable,
   CircleDot,
+  CircleAlert,
+  CircleCheck,
   GitBranch,
   Folder,
   UserRoundPlus,
@@ -145,8 +147,12 @@ function MetricCard({
   )
 }
 
-/** Keeps titles and actions inside the bordered panels shown in the references. */
-function ChartCard({
+/**
+ * Match the compact metric cards across charts and lists. Oversized corners and
+ * uppercase labels previously outweighed the content; use shared radius/type
+ * tokens and quiet count chips. See docs/concepts/features/dashboard.md.
+ */
+function DashboardPanel({
   title,
   subtitle,
   action,
@@ -158,14 +164,14 @@ function ChartCard({
   children: React.ReactNode
 }) {
   return (
-    <section className="min-w-0 rounded-2xl border border-border/50 bg-muted/35 p-5 sm:p-6">
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {title}
-        </h2>
+    <section className="min-w-0 rounded-xl border border-border/50 bg-muted/25 p-4 sm:p-5">
+      <div className="mb-3 flex min-h-7 items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         {action ??
           (subtitle ? (
-            <span className="text-xs text-muted-foreground">{subtitle}</span>
+            <span className="shrink-0 rounded-md bg-muted/70 px-2 py-0.5 text-xs tabular-nums text-muted-foreground">
+              {subtitle}
+            </span>
           ) : null)}
       </div>
       {children}
@@ -185,22 +191,22 @@ function DistributionBars({
   if (total === 0)
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
   return (
-    <div className="space-y-5 pt-1">
+    <div className="space-y-4 pt-1">
       {entries.map((entry) => {
         const percentage = Math.round((entry.value / total) * 100)
         return (
-          <div key={entry.name} className="space-y-2">
-            <div className="flex items-center gap-4 text-sm">
+          <div key={entry.name} className="space-y-1.5">
+            <div className="flex items-center gap-3 text-sm leading-5">
               <span className="flex-1 capitalize">{entry.name}</span>
               <span className="text-xs tabular-nums text-muted-foreground">
                 {percentage}%
               </span>
-              <span className="w-7 text-right font-semibold tabular-nums">
+              <span className="min-w-6 text-right font-medium tabular-nums">
                 {entry.value}
               </span>
             </div>
             <div
-              className="h-2 overflow-hidden rounded-full bg-muted"
+              className="h-1 overflow-hidden rounded-full bg-muted"
               aria-hidden="true"
             >
               <div
@@ -227,7 +233,7 @@ function StatusDistribution({ entries }: { entries: DashboardBucket[] }) {
     <div>
       {total > 0 ? (
         <div
-          className="mb-4 flex h-3 overflow-hidden rounded-full bg-muted"
+          className="mb-3 flex h-2 overflow-hidden rounded-full bg-muted"
           aria-hidden="true"
         >
           {active.map((entry) => (
@@ -244,19 +250,19 @@ function StatusDistribution({ entries }: { entries: DashboardBucket[] }) {
       ) : (
         <p className="mb-4 text-sm text-muted-foreground">No issues yet</p>
       )}
-      <dl className="divide-y divide-border/40">
+      <dl>
         {[...active, ...(cancelled ? [cancelled] : [])].map((entry) => (
           <div
             key={entry.name}
             className={cn(
-              'flex items-center justify-between gap-3 py-3 text-sm',
+              'flex items-center justify-between gap-3 py-2 text-sm leading-5',
               entry.name === 'cancelled' &&
-                'border-t border-dashed border-border/60 text-muted-foreground',
+                'mt-2 border-t border-dashed border-border/40 pt-3 text-muted-foreground',
             )}
           >
-            <dt className="flex min-w-0 items-center gap-3">
+            <dt className="flex min-w-0 items-center gap-2.5">
               <span
-                className="size-2.5 shrink-0 rounded-full"
+                className="size-2 shrink-0 rounded-full"
                 style={{ backgroundColor: entry.color }}
               />
               <span className="capitalize">
@@ -266,7 +272,7 @@ function StatusDistribution({ entries }: { entries: DashboardBucket[] }) {
                 ) : null}
               </span>
             </dt>
-            <dd className="font-semibold tabular-nums">{entry.value}</dd>
+            <dd className="shrink-0 font-medium tabular-nums">{entry.value}</dd>
           </div>
         ))}
       </dl>
@@ -303,14 +309,14 @@ function DashboardMetricGridFallback() {
 function DashboardChartSectionFallback() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
-      {['Issues by Status', 'Issues by Priority'].map((title) => (
-        <ChartCard key={title} title={title}>
-          <div className="min-h-72 space-y-6">
+      {['Issues by status', 'Issues by priority'].map((title) => (
+        <DashboardPanel key={title} title={title}>
+          <div className="min-h-52 space-y-4">
             {Array.from({ length: 5 }, (_, index) => (
               <SectionPlaceholder key={index} className="h-5 w-full" />
             ))}
           </div>
-        </ChartCard>
+        </DashboardPanel>
       ))}
     </div>
   )
@@ -318,13 +324,13 @@ function DashboardChartSectionFallback() {
 
 function DashboardListSectionFallback({ title }: { title: string }) {
   return (
-    <ChartCard title={title}>
-      <div className="space-y-6 border-t border-border/40 pt-4">
+    <DashboardPanel title={title}>
+      <div className="space-y-4 border-t border-border/30 pt-3">
         {Array.from({ length: 3 }, (_, index) => (
           <SectionPlaceholder key={index} className="h-8 w-full" />
         ))}
       </div>
-    </ChartCard>
+    </DashboardPanel>
   )
 }
 
@@ -430,8 +436,8 @@ export function DashboardPageSkeleton() {
         <DashboardChartSectionFallback />
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <div className="space-y-4">
-            <DashboardListSectionFallback title="Recent Tasks" />
-            <DashboardListSectionFallback title="Recent Activity" />
+            <DashboardListSectionFallback title="Recent tasks" />
+            <DashboardListSectionFallback title="Recent activity" />
           </div>
           <div className="space-y-4">
             <DashboardListSectionFallback title="Agents" />
@@ -564,23 +570,50 @@ function DashboardChartsSection({ wsId }: { wsId: string }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      <ChartCard
-        title="Issues by Status"
+      <DashboardPanel
+        title="Issues by status"
         subtitle={`${data.summary.totalIssues} total`}
       >
         <StatusDistribution entries={statusBuckets} />
-      </ChartCard>
-      <ChartCard
-        title="Issues by Priority"
-        subtitle={`${priorityBuckets.reduce((sum, entry) => sum + entry.value, 0)} across all tasks`}
+      </DashboardPanel>
+      <DashboardPanel
+        title="Issues by priority"
+        subtitle={`All ${priorityBuckets.reduce((sum, entry) => sum + entry.value, 0)} tasks`}
       >
         <DistributionBars
           entries={priorityBuckets}
           emptyLabel="No issues yet"
         />
-      </ChartCard>
+      </DashboardPanel>
     </div>
   )
+}
+
+/** Activity used an assignment icon for every event, including failures.
+ * Mirror the inbox event vocabulary with distinct symbols; unknown events retain a neutral inbox icon.
+ */
+function activityIcon(type: string): LucideIcon {
+  switch (type) {
+    case 'issue_assigned':
+    case 'assignee_changed':
+    case 'unassigned':
+      return UserRoundPlus
+    case 'task_failed':
+      return CircleAlert
+    case 'agent_blocked':
+      return ShieldAlert
+    case 'task_completed':
+    case 'agent_completed':
+      return CircleCheck
+    case 'new_comment':
+    case 'mentioned':
+    case 'waiting_for_input':
+      return MessageSquareMore
+    case 'connector_needed':
+      return Cable
+    default:
+      return InboxIcon
+  }
 }
 
 /** Stack tasks above activity in the left column while retaining existing inbox/task navigation. */
@@ -601,33 +634,33 @@ function DashboardActivitySection({
 
   return (
     <div className="min-w-0 space-y-4">
-      <ChartCard
-        title="Recent Tasks"
+      <DashboardPanel
+        title="Recent tasks"
         action={
           <Button
-            variant="link"
+            variant="ghost"
             size="sm"
             onClick={openIssues}
-            className="h-auto p-0 text-xs text-muted-foreground"
+            className="-mr-2 h-7 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
           >
             View all
           </Button>
         }
       >
         {data.recentIssues.length === 0 ? (
-          <Empty className="border p-4">
+          <Empty className="border-0 py-6">
             <EmptyHeader>
               <EmptyTitle>No tasks yet</EmptyTitle>
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="divide-y divide-border/40 border-t border-border/40">
-            {data.recentIssues.slice(0, 10).map((issue) => (
+          <div className="divide-y divide-border/25 border-t border-border/30">
+            {data.recentIssues.map((issue) => (
               <button
                 key={issue.id}
                 type="button"
                 onClick={() => openIssueDetail(issue)}
-                className="block w-full cursor-pointer py-3.5 text-left text-sm transition-colors hover:bg-accent/50"
+                className="block w-full cursor-pointer py-2.5 text-left text-sm transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
               >
                 <div className="flex items-center gap-3">
                   <StatusIcon
@@ -638,16 +671,18 @@ function DashboardActivitySection({
                     priority={issue.priority}
                     className="size-4 shrink-0"
                   />
-                  <span className="min-w-0 flex-1 truncate">{issue.title}</span>
+                  <span className="min-w-0 flex-1 truncate" title={issue.title}>
+                    {issue.title}
+                  </span>
                   <span
                     className={cn(
-                      'hidden shrink-0 text-xs text-muted-foreground sm:block',
-                      issue.status === 'blocked' && 'text-destructive',
+                      'hidden w-20 shrink-0 text-right text-xs text-muted-foreground sm:block',
+                      issue.status === 'blocked' && 'text-text-danger-default',
                     )}
                   >
                     {STATUS_CONFIG[issue.status]?.label ?? issue.status}
                   </span>
-                  <span className="shrink-0 text-xs text-muted-foreground">
+                  <span className="w-7 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
                     {timeAgo(issue.updatedAt, { compact: true })}
                   </span>
                 </div>
@@ -655,16 +690,16 @@ function DashboardActivitySection({
             ))}
           </div>
         )}
-      </ChartCard>
-      <ChartCard
-        title="Recent Activity"
+      </DashboardPanel>
+      <DashboardPanel
+        title="Recent activity"
         action={
           data.unreadCount > 0 ? (
             <Button
-              variant="link"
+              variant="ghost"
               size="sm"
               onClick={openInbox}
-              className="h-auto p-0 text-xs text-muted-foreground"
+              className="-mr-2 h-7 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
             >
               {data.unreadCount} in inbox
             </Button>
@@ -672,7 +707,7 @@ function DashboardActivitySection({
         }
       >
         {data.inbox.length === 0 ? (
-          <Empty className="border p-4">
+          <Empty className="border-0 py-6">
             <EmptyHeader>
               <EmptyMedia variant="icon">
                 <InboxIcon />
@@ -682,39 +717,50 @@ function DashboardActivitySection({
             </EmptyHeader>
           </Empty>
         ) : (
-          <div className="divide-y divide-border/40 border-t border-border/40">
-            {data.inbox.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                // Items with no issue (connector prompts, run notices) used to
-                // navigate to /tasks/ with an empty id.
-                onClick={() =>
-                  item.issue_id
-                    ? openIssueDetail({ id: item.issue_id, title: item.title })
-                    : openInboxItem(item.id)
-                }
-                className="block w-full cursor-pointer py-4 text-left text-sm transition-colors hover:bg-accent/50"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
-                    <UserRoundPlus className="size-4" />
-                  </span>
-                  <p className="min-w-0 flex-1 truncate">
-                    <span className="font-medium">{item.title}</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {item.type.replaceAll('_', ' ')}
+          <div className="divide-y divide-border/25 border-t border-border/30">
+            {data.inbox.map((item) => {
+              const Icon = activityIcon(item.type)
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  // Items with no issue (connector prompts, run notices) used to
+                  // navigate to /tasks/ with an empty id.
+                  onClick={() =>
+                    item.issue_id
+                      ? openIssueDetail({
+                          id: item.issue_id,
+                          title: item.title,
+                        })
+                      : openInboxItem(item.id)
+                  }
+                  className="block w-full cursor-pointer py-3 text-left text-sm transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/80 text-muted-foreground">
+                      <Icon aria-hidden="true" className="size-4" />
                     </span>
-                  </p>
-                  <span className="shrink-0 pt-0.5 text-xs text-muted-foreground">
-                    {timeAgo(item.created_at, { compact: true })}
-                  </span>
-                </div>
-              </button>
-            ))}
+                    <p className="min-w-0 flex-1">
+                      <span
+                        className="block truncate font-medium"
+                        title={item.title}
+                      >
+                        {item.title}
+                      </span>
+                      <span className="block truncate text-xs capitalize text-muted-foreground">
+                        {item.type.replaceAll('_', ' ')}
+                      </span>
+                    </p>
+                    <span className="w-7 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                      {timeAgo(item.created_at, { compact: true })}
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
           </div>
         )}
-      </ChartCard>
+      </DashboardPanel>
     </div>
   )
 }
@@ -736,19 +782,24 @@ function DashboardResourcesSection({
   return (
     <div className="min-w-0 space-y-4">
       {data.agents.length > 0 ? (
-        <ChartCard title="Agents">
-          <div className="divide-y divide-border/40 border-t border-border/40">
+        <DashboardPanel title="Agents">
+          <div className="divide-y divide-border/25 border-t border-border/30">
             {data.agents.map((agent) => (
               <div
                 key={agent.id}
-                className="flex items-center gap-3 py-4 text-sm"
+                className="flex items-center gap-3 py-3 text-sm"
               >
-                <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/80 text-muted-foreground">
                   <Bot className="size-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-medium">{agent.name}</div>
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="truncate font-medium" title={agent.name}>
+                    {agent.name}
+                  </div>
+                  <div
+                    className="truncate text-xs text-muted-foreground"
+                    title={agent.roleTitle ?? undefined}
+                  >
                     {agent.roleTitle ?? 'Workspace agent'}
                   </div>
                 </div>
@@ -756,9 +807,8 @@ function DashboardResourcesSection({
                   <Badge
                     variant="outline"
                     className={cn(
-                      'capitalize rounded-full',
-                      agent.status === 'active' &&
-                        'border-success/25 bg-success/10 text-success',
+                      'rounded-md border-transparent bg-muted/60 font-normal capitalize text-muted-foreground',
+                      agent.status === 'active' && 'bg-success/10 text-success',
                     )}
                   >
                     {agent.status === 'active' ? (
@@ -767,30 +817,31 @@ function DashboardResourcesSection({
                     {agent.status}
                   </Badge>
                   <p className="text-xs tabular-nums text-muted-foreground">
-                    {agent.activeIssueCount} active
+                    {agent.activeIssueCount} active{' '}
+                    {agent.activeIssueCount === 1 ? 'task' : 'tasks'}
                   </p>
                 </div>
               </div>
             ))}
           </div>
-        </ChartCard>
+        </DashboardPanel>
       ) : null}
 
       {data.connections.length > 0 ? (
-        <ChartCard
+        <DashboardPanel
           title="Connections"
           action={
             <Button
-              variant="link"
+              variant="ghost"
               size="sm"
               onClick={openConnections}
-              className="h-auto p-0 text-xs text-muted-foreground"
+              className="-mr-2 h-7 rounded-md px-2 text-xs text-muted-foreground hover:text-foreground"
             >
               Manage
             </Button>
           }
         >
-          <div className="divide-y divide-border/40 border-t border-border/40">
+          <div className="divide-y divide-border/25 border-t border-border/30">
             {data.connections.map((connection) => {
               const Icon = connectionIcon(connection.id)
               return (
@@ -798,9 +849,9 @@ function DashboardResourcesSection({
                   key={connection.id}
                   type="button"
                   onClick={openConnections}
-                  className="flex w-full cursor-pointer items-center gap-3 py-4 text-left text-sm transition-colors hover:bg-accent/50"
+                  className="flex w-full cursor-pointer items-center gap-3 py-3 text-left text-sm transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                 >
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
+                  <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/80 text-muted-foreground">
                     <Icon className="size-4" />
                   </span>
                   <div className="min-w-0 flex-1">
@@ -818,9 +869,9 @@ function DashboardResourcesSection({
                         : 'outline'
                     }
                     className={cn(
-                      'capitalize rounded-full',
+                      'rounded-md border-transparent bg-muted/60 font-normal capitalize text-muted-foreground',
                       connection.status === 'connected' &&
-                        'border-success/25 bg-success/10 text-success',
+                        'bg-success/10 text-success',
                     )}
                   >
                     {connection.status === 'connected' ? (
@@ -832,7 +883,7 @@ function DashboardResourcesSection({
               )
             })}
           </div>
-        </ChartCard>
+        </DashboardPanel>
       ) : null}
     </div>
   )
@@ -896,8 +947,8 @@ export function DashboardPage() {
           <DashboardSectionBoundary
             fallback={
               <div className="space-y-4">
-                <DashboardListSectionFallback title="Recent Tasks" />
-                <DashboardListSectionFallback title="Recent Activity" />
+                <DashboardListSectionFallback title="Recent tasks" />
+                <DashboardListSectionFallback title="Recent activity" />
               </div>
             }
           >
