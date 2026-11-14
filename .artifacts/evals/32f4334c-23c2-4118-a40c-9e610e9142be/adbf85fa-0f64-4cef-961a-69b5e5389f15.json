@@ -1,0 +1,29 @@
+{
+  "reportId": "dc6ea68c-24b7-4d37-80d7-0bf9f2b4b273",
+  "trial": {
+    "trialId": "adbf85fa-0f64-4cef-961a-69b5e5389f15",
+    "evaluationId": "32f4334c-23c2-4118-a40c-9e610e9142be",
+    "isolationId": "8d5d85c9-8d68-4bd5-acf3-031889376d48",
+    "taskId": "durability.issue-run-status-succeeds",
+    "taskVersion": 1,
+    "repetition": 0,
+    "seed": 0,
+    "allocatedAt": "2026-11-04T11:22:56.675Z"
+  },
+  "configuration": {
+    "baseUrl": "http://localhost:3000",
+    "workspaceId": "99a0bee0-461e-44ec-9c23-72c7621e1674",
+    "agentId": "846cc4ab-c7da-47e5-807b-0a1eb1959614",
+    "deadlineMs": 1800000,
+    "pollIntervalMs": 3000
+  },
+  "recordedAt": "2026-11-04T11:22:56.691Z",
+  "outcome": "invalid",
+  "checks": [],
+  "invalidReason": "unsupported_environment",
+  "diagnostic": {
+    "stage": "fixture_setup",
+    "code": "invalid_runner_config",
+    "message": "The Garden eval target, IDs, deadline, poll interval, or session cookie is invalid."
+  }
+}
