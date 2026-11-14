@@ -29,7 +29,7 @@ export function skillCategory(skill: Skill) {
     : category.charAt(0).toUpperCase() + category.slice(1)
 }
 
-/** Keeps search mounted and mobile rows continuous; categories label only the desktop rail. */
+/** Keeps mobile rows unframed instead of one rounded card; categories label only the desktop rail. */
 export function SkillsList({
   skills,
   selectedSkillId,
@@ -136,7 +136,7 @@ export function SkillsList({
             </Button>
           </div>
         ) : (
-          <ul className="overflow-hidden rounded-2xl bg-muted/40 md:space-y-1 md:rounded-none md:bg-transparent">
+          <ul className="md:space-y-1">
             {visibleGroups.map((group) => (
               <Fragment key={group.label}>
                 {group.label !== 'Uncategorized' ? (
@@ -153,8 +153,6 @@ export function SkillsList({
                 {group.items.map((skill) => {
                   const selected = selectedSkillId === skill.id
                   return (
-                    // Mobile used a bottom rule on every row, so the list
-                    // read as framed at the top and bottom of each skill.
                     <li key={skill.id}>
                       <button
                         type="button"
@@ -162,7 +160,7 @@ export function SkillsList({
                         aria-current={selected ? 'page' : undefined}
                         onClick={() => onSelectSkill(skill.id)}
                         className={cn(
-                          'flex min-h-16 w-full min-w-0 items-center gap-3 px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:min-h-11 md:rounded-lg md:px-3 md:py-2.5',
+                          'flex min-h-16 w-full min-w-0 items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring md:min-h-11 md:px-3 md:py-2.5',
                           selected
                             ? 'bg-primary/15 text-primary'
                             : 'hover:bg-muted/70',

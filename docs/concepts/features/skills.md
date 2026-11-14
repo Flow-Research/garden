@@ -20,8 +20,9 @@ menu sit above compact Preview, Source, and Edit controls. Save controls wrap
 when needed so they remain reachable in the narrow detail pane.
 
 Mobile shows one continuous list with names and descriptions, without category
-filters, headings, or rules between rows. Search matches names and descriptions
-across the library.
+filters, headings, rules between rows, or a rounded background enclosing the list.
+Only the selected or hovered row has a background. Search matches names and
+descriptions across the library.
 Desktop groups show compact names with categories from `config.metadata.category`.
 Skills without a category appear without a group heading on desktop.
 Skill details show a category badge only when the skill has a category.
