@@ -153,10 +153,9 @@ export function SkillsList({
                 {group.items.map((skill) => {
                   const selected = selectedSkillId === skill.id
                   return (
-                    <li
-                      key={skill.id}
-                      className="border-b border-border/50 last:border-0 md:border-0"
-                    >
+                    // Mobile used a bottom rule on every row, so the list
+                    // read as framed at the top and bottom of each skill.
+                    <li key={skill.id}>
                       <button
                         type="button"
                         aria-label={skill.name}
