@@ -27,6 +27,10 @@
    The changed document must persist and untouched supporting files must remain.
 7. Add a resource, edit it, remove it, and save. Create a skill and preview a
    community import. Check that the dialogs fit a short phone viewport.
+   With `notes.md` present, adding `./notes.md` must be refused, as must
+   `./SKILL.md` and a path made entirely of `.` and separators. Add
+   `references//./checks.md`; the tab and saved path must be
+   `references/checks.md`.
 
 ## Desktop reader
 

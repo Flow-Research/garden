@@ -466,6 +466,74 @@ describe('SkillsPage library', () => {
     ).toBeInTheDocument()
   })
 
+  it.each([
+    './SKILL.md',
+    './skill.md',
+    'notes.md',
+    './notes.md',
+    '.\\notes.md',
+    './',
+    'references/../notes.md',
+    '/notes.md',
+  ])('rejects invalid or duplicate supporting file path %s', async (path) => {
+    mocks.getSkill.mockResolvedValue(
+      skill({ files: [skillFile('notes.md', '# Existing notes')] }),
+    )
+    renderPage()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Skill actions' }),
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add file' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByRole('textbox', { name: 'File path' }), {
+      target: { value: path },
+    })
+    expect(dialog.getByRole('button', { name: 'Add file' })).toBeDisabled()
+    fireEvent.keyDown(dialog.getByRole('textbox', { name: 'File path' }), {
+      key: 'Enter',
+    })
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByText('Unsaved')).toBeNull()
+  })
+
+  it('adds and submits a canonical supporting file path', async () => {
+    mocks.updateSkill.mockResolvedValueOnce(
+      skill({
+        bundle_hash: 'canonical-path',
+        files: [
+          skillFile('scripts/run.sh', 'echo hi'),
+          skillFile('references/checks.md', '# Checks'),
+        ],
+      }),
+    )
+    renderPage()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Skill actions' }),
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Add file' }))
+    const dialog = within(await screen.findByRole('dialog'))
+    fireEvent.change(dialog.getByRole('textbox', { name: 'File path' }), {
+      target: { value: ' ./references//./checks.md ' },
+    })
+    fireEvent.click(dialog.getByRole('button', { name: 'Add file' }))
+    const editor = await screen.findByRole('textbox', {
+      name: 'Edit references/checks.md',
+    })
+    fireEvent.change(editor, { target: { value: '# Checks' } })
+    fireEvent.keyDown(editor, { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+    expect(mocks.updateSkill).toHaveBeenCalledWith('skill-1', {
+      files: [
+        { path: 'scripts/run.sh', content: 'echo hi' },
+        { path: 'references/checks.md', content: '# Checks' },
+      ],
+    })
+    await waitFor(() => expect(screen.queryByText('Unsaved')).toBeNull())
+    expect(
+      screen.getByRole('textbox', { name: 'Edit references/checks.md' }),
+    ).toHaveValue('# Checks')
+  })
+
   it('adds a resource, edits it, and removes it without affecting the main file', async () => {
     renderPage()
     fireEvent.click(

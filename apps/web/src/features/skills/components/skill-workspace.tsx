@@ -13,6 +13,7 @@ import {
 import { useQuery } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import type { Skill, UpdateSkillRequest } from '@garden/core/types'
+import { parseSupportingFilePath } from '@garden/core/skills/file-path'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { Button } from '@garden/ui/components/ui/button'
 import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
@@ -534,7 +535,7 @@ function SkillBundleEditor({
   )
 }
 
-/** Rejects duplicate or traversing paths before adding an editable bundle resource. */
+/** Uses the server's canonical path rules so aliases cannot bypass duplicate or SKILL.md checks. */
 function AddFileDialog({
   paths,
   onClose,
@@ -545,17 +546,17 @@ function AddFileDialog({
   onAdd: (path: string) => void
 }) {
   const [path, setPath] = useState('')
-  const value = path.trim().replace(/\\/g, '/')
-  const duplicate = paths.includes(value)
-  const valid =
-    value.length > 0 &&
-    !duplicate &&
-    !value.startsWith('/') &&
-    !value.split('/').includes('..') &&
-    value.toLowerCase() !== 'skill.md'
+  const parsed = parseSupportingFilePath(path)
+  const duplicate =
+    parsed.kind === 'valid' &&
+    paths.some((existing) => {
+      const candidate = parseSupportingFilePath(existing)
+      return candidate.kind === 'valid' && candidate.path === parsed.path
+    })
+  const valid = parsed.kind === 'valid' && !duplicate
   const add = () => {
-    if (valid) {
-      onAdd(value)
+    if (parsed.kind === 'valid' && !duplicate) {
+      onAdd(parsed.path)
       onClose()
     }
   }

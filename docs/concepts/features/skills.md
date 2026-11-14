@@ -53,6 +53,13 @@ Saving the main document does not replace supporting files unless those
 files changed. These presentation changes use the existing Skills API and do
 not require Cloudflare credentials in local offline development.
 
+Supporting-file paths use the same canonical form in the Add file dialog and
+server validation. After rejecting absolute paths and parent traversal, they
+remove `.` and empty segments. Duplicate checks use that canonical path, and
+an empty path or any case variant of the root `SKILL.md` is rejected. For
+example, `./notes.md` conflicts with `notes.md`; `./SKILL.md` cannot be added
+as a supporting file.
+
 The reasons for this design, and the eager design it replaced, are in the decision record [Think-native skills](../../decisions/2026-06-think-native-skills.md).
 
 ## R2 holds the bundles and Postgres holds the catalog
