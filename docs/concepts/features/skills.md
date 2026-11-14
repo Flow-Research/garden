@@ -15,6 +15,9 @@ with a full-width library. Selecting a skill opens its detail; **Skills** return
 to the library with the search and scroll position preserved.
 The `?focus=<skillId>` search parameter opens a skill directly. Desktop keeps
 the library beside the selected skill.
+At exactly 768px, the detail toolbar uses two rows: the breadcrumb and actions
+menu sit above compact Preview, Source, and Edit controls. Save controls wrap
+when needed so they remain reachable in the narrow detail pane.
 
 Mobile shows one continuous list with names and descriptions, without category
 filters or headings. Search matches names and descriptions across the library.

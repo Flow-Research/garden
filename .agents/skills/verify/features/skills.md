@@ -33,6 +33,9 @@
 1. Repeat at widths of 768px, 1024px, and 1440px.
 2. Confirm that the grouped library and detail appear together, with horizontal bundle
    navigation, Preview and Source controls, Edit, and the actions menu.
+   At exactly 768px, confirm that the breadcrumb/menu and view/edit controls use
+   separate rows. Edit a file and check that Save wraps without overlapping
+   other buttons. The special layout must not apply at 767px or 769px.
 3. At 1440px, use **On this page** to jump to headings. Scroll the document and
    confirm that the active section changes. Code-fence text must not become an
    outline entry, and duplicate heading titles must have separate targets.

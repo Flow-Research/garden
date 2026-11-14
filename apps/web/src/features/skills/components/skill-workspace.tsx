@@ -290,7 +290,7 @@ function SkillBundleEditor({
       }}
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 px-4 md:border-b md:px-6">
+      <header className="flex min-h-14 shrink-0 items-center justify-between gap-3 px-4 md:border-b md:px-6 [@media(width:768px)]:grid [@media(width:768px)]:grid-cols-[minmax(0,1fr)_auto] [@media(width:768px)]:gap-2 [@media(width:768px)]:px-3 [@media(width:768px)]:py-2">
         <Button
           variant="ghost"
           onClick={onBack}
@@ -301,7 +301,7 @@ function SkillBundleEditor({
           <ChevronLeft />
           Skills
         </Button>
-        <p className="hidden min-w-0 flex-1 items-center gap-2 text-sm md:flex">
+        <p className="hidden min-w-0 flex-1 items-center gap-2 text-sm md:flex [@media(width:768px)]:col-start-1 [@media(width:768px)]:row-start-1">
           <span className="text-muted-foreground">Skills</span>
           <span className="text-muted-foreground">/</span>
           <span className="truncate font-semibold">{skill.name}</span>
@@ -309,21 +309,22 @@ function SkillBundleEditor({
         {isDirty ? (
           <span
             role="status"
-            className="shrink-0 text-xs text-muted-foreground"
+            className="shrink-0 text-xs text-muted-foreground [@media(width:768px)]:col-span-2 [@media(width:768px)]:row-start-3"
           >
             Unsaved
           </span>
         ) : null}
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center gap-2 md:flex [@media(width:768px)]:col-span-2 [@media(width:768px)]:row-start-2 [@media(width:768px)]:min-w-0 [@media(width:768px)]:flex-wrap">
           <SkillViewSwitcher
             mode={mode}
             onChange={onModeChange}
             disabled={saving}
+            className="[@media(width:768px)]:min-w-32 [@media(width:768px)]:flex-1 [@media(width:768px)]:[&_button]:px-2 [@media(width:768px)]:[&_button]:text-xs"
           />
           <Button
             onClick={() => onModeChange(mode === 'edit' ? 'preview' : 'edit')}
             disabled={saving}
-            className="min-h-10 px-4"
+            className="min-h-10 px-4 [@media(width:768px)]:px-3"
           >
             <Pencil />
             {mode === 'edit' ? 'Done' : 'Edit'}
@@ -336,7 +337,7 @@ function SkillBundleEditor({
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-11 shrink-0"
+                className="size-11 shrink-0 [@media(width:768px)]:col-start-2 [@media(width:768px)]:row-start-1"
                 aria-label="Skill actions"
                 disabled={saving}
               >
