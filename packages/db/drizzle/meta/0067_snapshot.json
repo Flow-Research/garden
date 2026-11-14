@@ -1,5 +1,5 @@
 {
-  "id": "1dae6eb1-2e6e-4ee3-a04f-00dd076359e1",
+  "id": "abddee8d-3103-49ce-b086-278668e70f3e",
   "prevId": "505dc09f-1b08-4f32-b9ae-d62597a965d5",
   "version": "7",
   "dialect": "postgresql",
@@ -728,6 +728,12 @@
           "notNull": false,
           "default": "'free'"
         },
+        "default_team_id": {
+          "name": "default_team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -744,7 +750,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "organization_default_team_id_team_id_fk": {
+          "name": "organization_default_team_id_team_id_fk",
+          "tableFrom": "organization",
+          "tableTo": "team",
+          "columnsFrom": [
+            "default_team_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "organization_slug_unique": {
@@ -762,6 +782,95 @@
           "value": "\"organization\".\"issue_prefix\" ~ '^[A-Z0-9]{2,8}$'"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.invitation_team": {
+      "name": "invitation_team",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "invitation_id": {
+          "name": "invitation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "team_id": {
+          "name": "team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "invitation_team_invitation_id_invitation_id_fk": {
+          "name": "invitation_team_invitation_id_invitation_id_fk",
+          "tableFrom": "invitation_team",
+          "tableTo": "invitation",
+          "columnsFrom": [
+            "invitation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invitation_team_workspace_id_organization_id_fk": {
+          "name": "invitation_team_workspace_id_organization_id_fk",
+          "tableFrom": "invitation_team",
+          "tableTo": "organization",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "invitation_team_team_workspace_fk": {
+          "name": "invitation_team_team_workspace_fk",
+          "tableFrom": "invitation_team",
+          "tableTo": "team",
+          "columnsFrom": [
+            "team_id",
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id",
+            "workspace_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "invitation_team_invitation_team_unique": {
+          "name": "invitation_team_invitation_team_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "invitation_id",
+            "team_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.team": {
@@ -2914,12 +3023,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "operation_key": {
-          "name": "operation_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "claim_hash": {
           "name": "claim_hash",
           "type": "text",
@@ -3005,32 +3108,11 @@
           "method": "btree",
           "with": {}
         },
-        "brain_write_proposal_operation_unique": {
-          "name": "brain_write_proposal_operation_unique",
+        "brain_write_proposal_run_claim_idx": {
+          "name": "brain_write_proposal_run_claim_idx",
           "columns": [
             {
-              "expression": "workspace_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "operation_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "brain_write_proposal_claim_unique": {
-          "name": "brain_write_proposal_claim_unique",
-          "columns": [
-            {
-              "expression": "workspace_id",
+              "expression": "run_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -3042,7 +3124,7 @@
               "nulls": "last"
             }
           ],
-          "isUnique": true,
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}

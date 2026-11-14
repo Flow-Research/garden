@@ -25,7 +25,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = resolve(here, '../../drizzle')
 const cli = resolve(here, '../../../../node_modules/drizzle-kit/bin.cjs')
-const migrationTag = '0067_adorable_harrier'
+const migrationTag = '0069_brain_write_operation_identity'
 const guardMessage =
   'Brain proposal migration requires review of duplicate legacy claim hashes; no rows were deleted'
 type CliResult = {
@@ -41,7 +41,7 @@ type LegacyProposal = {
   status: 'pending' | 'approved' | 'rejected'
 }
 
-describe('0067 populated Brain proposal migration (PostgreSQL CLI)', () => {
+describe('0069 populated Brain proposal migration (PostgreSQL CLI)', () => {
   let postgres: StartedTestContainer
   let admin: Pool
   let pool: Pool
@@ -96,8 +96,8 @@ describe('0067 populated Brain proposal migration (PostgreSQL CLI)', () => {
   }
 
   beforeAll(async () => {
-    directory = await mkdtemp(resolve(tmpdir(), 'garden-0067-migration-'))
-    preFolder = resolve(directory, 'before-0067')
+    directory = await mkdtemp(resolve(tmpdir(), 'garden-0069-migration-'))
+    preFolder = resolve(directory, 'before-0069')
     fullFolder = resolve(directory, 'candidate')
     await cp(migrations, preFolder, { recursive: true })
     await cp(migrations, fullFolder, { recursive: true })
@@ -243,7 +243,7 @@ describe('0067 populated Brain proposal migration (PostgreSQL CLI)', () => {
     return { done, applicationName }
   }
 
-  /** Seeds the real pre-0067 table, including review evidence that must never be discarded. */
+  /** Seeds the real pre-0069 table, including review evidence that must never be discarded. */
   async function insertProposal(
     input: LegacyProposal,
     client: Pool | PoolClient = pool,
@@ -451,7 +451,7 @@ describe('0067 populated Brain proposal migration (PostgreSQL CLI)', () => {
     )
   })
 
-  it('rolls back all 0067 changes when a concurrent claim arrives after preflight', async () => {
+  it('rolls back all 0069 changes when a concurrent claim arrives after preflight', async () => {
     await insertProposal({
       workspace,
       hash: 'raced-hash',

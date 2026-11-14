@@ -63,6 +63,7 @@ import {
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
+import { renderCommentTriggerReason } from './issue-run-trigger'
 import { objectOrNull } from './runtime-utils'
 import {
   RunSubAgentBase,
@@ -519,6 +520,17 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         loader: this.env.LOADER,
         getSandbox: () => this.getAgentSandbox(),
         issueRunEnv: this.env,
+        // Facet is named by run, not chat thread; resolve tools from the run (#376).
+        getRunIdentity: () => {
+          const run = this.currentRunState
+          return run === null
+            ? null
+            : {
+                workspaceId: run.workspaceId,
+                agentId: run.agentId,
+                ownerUserId: run.agentOwnerUserId,
+              }
+        },
         brain: {
           ...(this.env.HELIX_URL === undefined
             ? {}
@@ -591,7 +603,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     const outputAuthority = await this.ensureBrainOutputAuthority(run.runId)
     if (outputAuthority.isErr()) throw outputAuthority.error
 
-    const gateResult = this.assertToolAllowed(ctx.toolName)
+    const gateResult = this.assertToolAllowed(ctx.toolName, ctx.input)
     if (gateResult.isErr()) throw gateResult.error
 
     this.aiObservation.beforeToolCall(ctx)
@@ -1132,13 +1144,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         users: input.users,
         agents: input.agents,
       })
-      const body =
-        comment.body.length > 500
-          ? `${comment.body.slice(0, 500).trimEnd()}...`
-          : comment.body
-      return input.source === 'mention'
-        ? `${authorName} mentioned you in a comment: "${body}"`
-        : `${authorName} replied: "${body}"`
+      return renderCommentTriggerReason({
+        source: input.source,
+        authorName,
+        body: comment.body,
+      })
     }
 
     return `This run was triggered by ${input.source}.`

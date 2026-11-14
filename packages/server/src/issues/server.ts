@@ -44,6 +44,7 @@ import {
 import { startIssueRun, type IssueRunEnv } from './run-service'
 
 const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
+const MENTION_LINK_PATTERN = /\(mention:\/\/(member|user|agent)\/([^)\s]+)\)/g
 
 export class IssueServiceError extends TaggedError('IssueServiceError')<{
   code:
@@ -378,13 +379,63 @@ function extractMentionTokens(content: string) {
   )
 }
 
+type MentionCandidates = {
+  agents: Array<{ id: string; name: string | null }>
+  members: Array<{ id: string; name: string | null; email: string | null }>
+}
+
+/**
+ * Matches comment text against workspace agents and members.
+ *
+ * Why: the composer stores picked mentions as markdown links like
+ * `[@Abiola Adeshina](mention://member/<id>)`. Before, only `@token` text was
+ * matched against name/email aliases, so multi-word names (`@abiola` vs alias
+ * `abiola adeshina`) resolved nobody and the inbox/subscriber never fired.
+ * After, link targets (`mention://member|user|agent/<id>`) resolve by id first,
+ * restricted to the candidate lists so forged or foreign ids are dropped, and
+ * typed `@token` mentions still match by alias.
+ */
+export function matchMentions(content: string, candidates: MentionCandidates) {
+  const linkedIds = { agents: new Set<string>(), users: new Set<string>() }
+  for (const match of content.matchAll(MENTION_LINK_PATTERN)) {
+    const kind = match[1]
+    const id = match[2]?.toLowerCase()
+    if (!id) continue
+    if (kind === 'agent') linkedIds.agents.add(id)
+    else linkedIds.users.add(id)
+  }
+  const tokens = extractMentionTokens(content.replace(MENTION_LINK_PATTERN, ''))
+
+  const agents = candidates.agents
+    .filter(
+      (agent) =>
+        linkedIds.agents.has(agent.id.toLowerCase()) ||
+        hasMentionToken(mentionAliases({ name: agent.name }), tokens),
+    )
+    .map((agent) => agent.id)
+  const users = candidates.members
+    .filter(
+      (member) =>
+        linkedIds.users.has(member.id.toLowerCase()) ||
+        hasMentionToken(
+          mentionAliases({ name: member.name, email: member.email }),
+          tokens,
+        ),
+    )
+    .map((member) => member.id)
+
+  return {
+    agents: [...new Set(agents)],
+    users: [...new Set(users)],
+  }
+}
+
 async function resolveMentions(args: {
   db: IssueDb
   workspaceId: string
   content: string
 }) {
-  const tokens = extractMentionTokens(args.content)
-  if (tokens.size === 0)
+  if (!args.content.includes('@') && !args.content.includes('mention://'))
     return { agents: [] as string[], users: [] as string[] }
 
   const [agentRows, memberRows] = await Promise.all([
@@ -411,24 +462,10 @@ async function resolveMentions(args: {
       .where(eq(schema.member.organizationId, args.workspaceId)),
   ])
 
-  const agents = agentRows
-    .filter((agent) =>
-      hasMentionToken(mentionAliases({ name: agent.name }), tokens),
-    )
-    .map((agent) => agent.id)
-  const users = memberRows
-    .filter((member) =>
-      hasMentionToken(
-        mentionAliases({ name: member.name, email: member.email }),
-        tokens,
-      ),
-    )
-    .map((member) => member.id)
-
-  return {
-    agents: [...new Set(agents)],
-    users: [...new Set(users)],
-  }
+  return matchMentions(args.content, {
+    agents: agentRows,
+    members: memberRows,
+  })
 }
 
 function mentionsJson(mentions: { agents: string[]; users: string[] }) {

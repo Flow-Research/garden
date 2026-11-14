@@ -76,7 +76,14 @@ Effect turns a JSON parse failure into a defect, which would return 500. `malfor
 
 ## TanStack Query sits on one Promise boundary
 
-TanStack Query needs Promises. Generated HttpApi client methods return lazy `Effect` values. One shared adapter bridges them: `apps/web/src/lib/api/skills.ts` keeps one browser `ManagedRuntime` with `FetchHttpClient` and one `runClientEffect` function. `runClientEffect` runs a client Effect and forwards TanStack Query's `AbortSignal`. No endpoint has its own runner.
+TanStack Query needs Promises. Generated HttpApi client methods return lazy `Effect` values. `apps/web/src/lib/api/skills.ts` bridges the web consumer to generated clients.
+The skills-list read uses `skills-client.ts`, which binds an explicit origin,
+workspace and session to a host-supplied Fetch transport. Session invalidation
+aborts pending reads and rejects late results. The web adapter handles cookie
+credentials and account/workspace changes. Other skills operations retain the
+browser `ManagedRuntime` and `runClientEffect` boundary. Generated clients are
+cached per transport, so reconfiguration does not retain the first origin. See
+[the session decision](../../decisions/2026-11-shared-client-session.md).
 
 TanStack Query keeps its existing jobs: query keys and invalidation, optimistic updates, freshness, `ensureQueryData` prefetch, and dehydration. Values stored in Query stay plain JSON. The API transport is HTTP JSON. Seroval takes part only when Query state is dehydrated for SSR.
 

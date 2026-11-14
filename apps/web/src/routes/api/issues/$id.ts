@@ -1,14 +1,7 @@
-import { and, eq } from 'drizzle-orm'
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { sendIssueAssignmentEmail } from '@/lib/server/email/issue-assignment'
-import { upsertIssueAssignmentInbox } from '@garden/db/inbox'
-import {
-  addIssueSubscribers,
-  assigneeToSubscriberType,
-} from '@garden/db/subscribers'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   parseJsonBody,
@@ -37,6 +30,17 @@ import {
   isWorkspaceParticipant,
 } from '@/lib/server/workspace-refs'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
+import {
+  addIssueSubscriberRows,
+  assigneeToSubscriberType,
+  deleteIssueRow,
+  getOrganizationName,
+  getUserEmail,
+  isTeamAssigneeMember,
+  updateIssueRow,
+  upsertIssueAssignmentInboxItem,
+  type IssueRowUpdate,
+} from '@/lib/server/queries/issues'
 
 const logger = createGardenLogger({
   service: 'garden-staging',
@@ -161,26 +165,20 @@ export const Route = createFileRoute('/api/issues/$id')({
                 ? 'agent'
                 : 'user'
               : existingIssue.assigneeType
-          const assigneeCondition =
-            resultingAssigneeType === 'agent'
-              ? and(
-                  eq(schema.teamMember.teamId, nextTeamId),
-                  eq(schema.teamMember.agentId, resultingAssigneeId),
-                )
-              : and(
-                  eq(schema.teamMember.teamId, nextTeamId),
-                  eq(schema.teamMember.userId, resultingAssigneeId),
-                )
-          const [assigneeMembership] = await db
-            .select({ id: schema.teamMember.id })
-            .from(schema.teamMember)
-            .where(assigneeCondition)
-          if (!assigneeMembership) {
+          const assigneeIsTeamMember = await isTeamAssigneeMember(db, {
+            teamId: nextTeamId,
+            assigneeId: resultingAssigneeId,
+            assigneeType:
+              resultingAssigneeType === 'agent' ? 'agent' : 'member',
+          })
+          if (!assigneeIsTeamMember) {
             return badRequest('Assignee must be a Team member')
           }
         }
 
-        const updateValues: Partial<typeof schema.issue.$inferInsert> = {}
+        // Build field changes first, then stamp updatedAt, so the empty-update
+        // check stays `length === 0` instead of relying on a sentinel key count.
+        const updateValues: Omit<IssueRowUpdate, 'updatedAt'> = {}
 
         if (typeof body.title === 'string') updateValues.title = body.title
         if (Object.prototype.hasOwnProperty.call(body, 'description')) {
@@ -216,8 +214,6 @@ export const Route = createFileRoute('/api/issues/$id')({
           return badRequest('No valid issue changes submitted')
         }
 
-        updateValues.updatedAt = new Date()
-
         // IDs from the body are global: confirm they live in this workspace
         // before storing them (and before emailing an assignee below).
         if (updateValues.assigneeId) {
@@ -247,16 +243,11 @@ export const Route = createFileRoute('/api/issues/$id')({
           }
         }
 
-        const [issue] = await db
-          .update(schema.issue)
-          .set(updateValues)
-          .where(
-            and(
-              eq(schema.issue.id, params.id),
-              eq(schema.issue.workspaceId, existingIssue.workspaceId),
-            ),
-          )
-          .returning()
+        const issue = await updateIssueRow(db, {
+          workspaceId: existingIssue.workspaceId,
+          issueId: params.id,
+          values: { ...updateValues, updatedAt: new Date() },
+        })
 
         if (!issue) return notFound('Issue not found')
 
@@ -275,7 +266,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           const assigneeId = issue.assigneeId
           const subscriberResult = await Result.tryPromise({
             try: () =>
-              addIssueSubscribers(db, {
+              addIssueSubscriberRows(db, {
                 workspaceId: existingIssue.workspaceId,
                 issueId: issue.id,
                 entries: [
@@ -301,8 +292,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           (existingIssue.assigneeType !== issue.assigneeType ||
             existingIssue.assigneeId !== issue.assigneeId)
         ) {
-          await upsertIssueAssignmentInbox({
-            db,
+          await upsertIssueAssignmentInboxItem(db, {
             workspaceId: existingIssue.workspaceId,
             issueId: issue.id,
             actorType: 'member',
@@ -313,16 +303,13 @@ export const Route = createFileRoute('/api/issues/$id')({
           // point emailing yourself) and keep it best-effort so a Resend failure
           // never fails the assignment write.
           if (issue.assigneeId !== session.user.id) {
-            const [assignee] = await db
-              .select({ email: schema.user.email })
-              .from(schema.user)
-              .where(eq(schema.user.id, issue.assigneeId))
-            const [workspace] = await db
-              .select({ name: schema.organization.name })
-              .from(schema.organization)
-              .where(eq(schema.organization.id, existingIssue.workspaceId))
+            const assigneeEmail = await getUserEmail(db, issue.assigneeId)
+            const workspaceName = await getOrganizationName(
+              db,
+              existingIssue.workspaceId,
+            )
 
-            if (assignee?.email) {
+            if (assigneeEmail) {
               const assignerName =
                 session.user.name?.trim() || session.user.email
               const emailResult = await Result.tryPromise({
@@ -334,9 +321,9 @@ export const Route = createFileRoute('/api/issues/$id')({
                       issue: { id: issue.id, title: issue.title },
                       workspace: {
                         id: existingIssue.workspaceId,
-                        name: workspace?.name ?? 'your workspace',
+                        name: workspaceName ?? 'your workspace',
                       },
-                      assignee: { email: assignee.email },
+                      assignee: { email: assigneeEmail },
                       assignerName,
                     },
                     env: appEnv,
@@ -380,14 +367,10 @@ export const Route = createFileRoute('/api/issues/$id')({
         })
         if (permission) return permission
 
-        await access.db
-          .delete(schema.issue)
-          .where(
-            and(
-              eq(schema.issue.id, params.id),
-              eq(schema.issue.workspaceId, access.issue.workspaceId),
-            ),
-          )
+        await deleteIssueRow(access.db, {
+          workspaceId: access.issue.workspaceId,
+          issueId: params.id,
+        })
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
             type: 'issue:deleted',

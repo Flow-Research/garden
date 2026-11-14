@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useForm } from '@tanstack/react-form'
-import { useNavigationActions } from '../navigation'
+import { Result } from 'better-result'
 import { useImmersiveMode } from '../platform'
 import { toast } from 'sonner'
 import { ArrowLeft } from 'lucide-react'
@@ -32,7 +32,6 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
   // left corner isn't stolen by the native controls' hit-test. No-op elsewhere.
   useImmersiveMode()
 
-  const router = useNavigationActions()
   const createWorkspace = useCreateWorkspace()
   const [slugTouched, setSlugTouched] = useState(false)
   const [slugServerError, setSlugServerError] = useState<string | null>(null)
@@ -48,22 +47,30 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
       logger.info('submit.start', { name, slug })
       setSlugServerError(null)
 
-      try {
-        await createWorkspace.mutateAsync({ name, slug })
-        logger.info('submit.success', { slug })
-        onClose()
-        router.push('/home')
-      } catch (error) {
-        logger.error('submit.error', error)
-        if (isWorkspaceSlugConflict(error)) {
-          setSlugServerError(WORKSPACE_SLUG_CONFLICT_ERROR)
-          toast.error('Choose a different workspace URL')
-          return
-        }
-        toast.error(
-          error instanceof Error ? error.message : 'Failed to create workspace',
-        )
-      }
+      // The mutation owns navigation and the destination workspace_id. A second
+      // bare /home push cleared that id and could restore the old auth snapshot.
+      const result = await Result.tryPromise(() =>
+        createWorkspace.mutateAsync({ name, slug }),
+      )
+      result.match({
+        ok: () => {
+          logger.info('submit.success', { slug })
+          onClose()
+        },
+        err: (error) => {
+          logger.error('submit.error', error)
+          if (isWorkspaceSlugConflict(error)) {
+            setSlugServerError(WORKSPACE_SLUG_CONFLICT_ERROR)
+            toast.error('Choose a different workspace URL')
+            return
+          }
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : 'Failed to create workspace',
+          )
+        },
+      })
     },
   })
 

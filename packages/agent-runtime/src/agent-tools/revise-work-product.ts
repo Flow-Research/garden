@@ -54,6 +54,20 @@ export function createReviseWorkProductTool(context: IssueRunToolContext) {
             .limit(1)
           if (!existing) return null
 
+          /**
+           * The replaced version is serialized here and bound as one ::jsonb
+           * param. Binding each field inside jsonb_build_object (variadic
+           * "any") left Postgres unable to infer their types, so every revise
+           * failed with "could not determine data type of parameter $7"
+           * (FLO-150, run b749d28b).
+           */
+          const previousVersion = {
+            body: existing.body ?? '',
+            title: existing.title ?? '',
+            replaced_at: now.toISOString(),
+            agent_id: run.agentId,
+            change_summary: input.change_summary ?? null,
+          }
           const [updated] = await db
             .update(schema.issueWorkProduct)
             .set({
@@ -68,13 +82,7 @@ export function createReviseWorkProductTool(context: IssueRunToolContext) {
                   coalesce(${schema.issueWorkProduct.payload}, '{}'::jsonb),
                   '{previous_versions}',
                   coalesce(${schema.issueWorkProduct.payload}->'previous_versions', '[]'::jsonb) ||
-                    jsonb_build_array(jsonb_build_object(
-                      'body', ${existing.body ?? ''},
-                      'title', ${existing.title ?? ''},
-                      'replaced_at', ${now.toISOString()},
-                      'agent_id', ${run.agentId},
-                      'change_summary', ${input.change_summary ?? null}
-                    )),
+                    jsonb_build_array(${JSON.stringify(previousVersion)}::jsonb),
                   true
                 )
               ` as never,

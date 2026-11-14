@@ -3,7 +3,7 @@ title: Skills load on demand from R2 through Think skill sources
 description: Where skills are stored, how an agent sees only its assigned skills, and why a skill write never touches existing chat threads.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-11
 ---
 
 A skill is a `SKILL.md` bundle of instructions and supporting files that teaches an agent a task. Skills belong to a workspace and are assigned to agents. An agent sees a catalog of its assigned skills and loads one only when a task calls for it.
@@ -50,3 +50,22 @@ This splits errors cleanly:
 - Should built-in document skills stay always available, or become assigned skills like the rest?
 - Should an old chat show the skill catalog it had at the time, for reproducibility, or always the latest assignment?
 - How should Garden gate skill scripts if it enables Think's `run_skill_script` later?
+
+## Read the catalog through an explicit client session
+
+The shared client slice uses the existing `GardenSkillsApi` list contract. Its
+client instance binds one API origin, workspace and session identity to an
+injected Fetch transport. It does not import React, browser storage, Node services
+or Cloudflare bindings. The host supplies credentials; client identity is a local
+scope marker and never grants server authority.
+
+Garden web supplies its cookie transport and invalidates the instance when the
+account, workspace or API configuration changes. Invalidated instances reject
+late responses and cannot clear a newer session after an old 401. Cancellation
+aborts the read. A 403 reports denied access without signing the member out.
+An explicit workspace parameter must match the active workspace.
+
+This slice covers the skills list only. It does not implement native sign-in,
+offline storage, direct execution-host launch or outside executable plugins.
+The [execution-host contract proposal](../../proposals/execution-host-contract.md)
+defines the later launch boundary separately.

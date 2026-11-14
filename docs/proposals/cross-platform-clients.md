@@ -3,7 +3,7 @@ title: Garden clients share contracts and keep native boundaries explicit
 description: Agreed client scope, the current API and authentication map, and the evidence needed before native framework and release claims.
 status: proposal
 owner: Unassigned
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-11
 ---
 
 Garden needs desktop web, mobile web, native iOS and Android clients, and a native desktop release for macOS, Windows and Linux together. This page records the scope agreed on 2026-11-10 and the proposed technical sequence.
@@ -128,3 +128,14 @@ Preserve language, model, knowledge-provider and execution-host preferences acro
 ## Review and rollback
 
 This is a documentation-only proposal. Runtime permissions, writes, migrations and deployment are unchanged. Revert this documentation commit if scope changes. Runtime changes need their own focused review, existing verification maps and target-specific evidence. Client/API compatibility and retained drafts must survive future upgrade/rollback; incompatible plugin-state migrations need a separate recovery plan.
+
+## First client slice
+
+The [shared skills-session decision](../decisions/2026-11-shared-client-session.md)
+describes the first portable read in source. The web consumer uses the
+existing typed endpoint with explicit scope, cancellation and stale-response
+rejection. The client needs standard Fetch and abort APIs supplied by its host.
+Node and component fixtures do not prove native authentication or device support.
+
+The [execution-host proposal](execution-host-contract.md) defines the separate
+Garden-to-host and host-to-agent interfaces. It does not implement direct launch.

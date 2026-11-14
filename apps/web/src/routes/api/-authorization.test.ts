@@ -37,6 +37,8 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
   'github/webhook.ts':
     'public GitHub App webhook; HMAC signature is the authorization gate',
   'me.ts': 'the caller updates only their own profile',
+  'github/identity/unlink.ts':
+    "the caller clears only their own member row's GitHub link",
   'workspaces.ts': 'any signed-in user may create a workspace',
   'workspaces/$id.ts': 'Better Auth organization API enforces the role',
   'workspaces/$id/invitations/$invitationId.ts':

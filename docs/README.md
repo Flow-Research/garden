@@ -37,6 +37,7 @@ Read in this order, and stop when you have what you need:
 | --- | --- |
 | What is Garden building now? | [Roadmap](./concepts/product/roadmap.md), [Product](./concepts/product/product.md) |
 | What must web and native clients share? | [Client scope and boundary proposal](./proposals/cross-platform-clients.md), [HTTP API](./concepts/architecture/http-api.md) |
+| How will Garden launch work on an enrolled host? | [Execution-host contract proposal](./proposals/execution-host-contract.md) |
 | Where does this behavior live? | [Architecture map](./reference/architecture-map.md) |
 | How do runs, tools, and permissions work? | [Run engine](./concepts/architecture/run-engine.md), [Connectors](./concepts/architecture/connectors.md), [Agent runtime](./concepts/architecture/agent-runtime.md), [Permissions](./concepts/features/permissions.md) |
 | What must not be claimed yet? | [Known gaps](./reference/known-gaps.md) |

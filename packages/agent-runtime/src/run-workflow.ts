@@ -107,8 +107,18 @@ export type RunWorkflowTurnCompleteEvent = {
 export const RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX =
   'run-turn-complete' as const
 
+/**
+ * Builds the Workflow event type both `waitForEvent` and `sendEvent` use for a
+ * turn. Cloudflare Workflows only accepts `^[a-zA-Z0-9_][a-zA-Z0-9-_]*$` (max
+ * 100 chars) for event types. Before: the type embedded the raw submission id
+ * (`issue-run:<runId>:<turn>:<mode>`), so production `sendEvent` rejected it
+ * and every turn waited out the status-check interval. Local miniflare skips
+ * this validation, which hid the failure. After: each disallowed character is
+ * mapped to `_`, so the type is valid and still unique per submission. Ref:
+ * developers.cloudflare.com/workflows/build/events-and-parameters/.
+ */
 export function getRunWorkflowTurnCompleteEventType(submissionId: string) {
-  return `${RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX}:${submissionId}`
+  return `${RUN_WORKFLOW_TURN_COMPLETE_EVENT_PREFIX}-${submissionId.replace(/[^a-zA-Z0-9_-]/g, '_')}`
 }
 
 export class RunWorkflow extends AgentWorkflow<
@@ -205,8 +215,12 @@ export class RunWorkflow extends AgentWorkflow<
         return { runId, status: result.status }
       }
 
+      // A status that is neither terminal nor awaiting means the run row is
+      // still live. Before, the Workflow completed here with `running` and
+      // stranded the row (FLO-150); now the run is failed first, so the
+      // instance never ends while its run looks in progress.
       if (!AWAITING_RUN_STATUSES.has(result.status)) {
-        workflowLogger.info('run_workflow.completed', {
+        workflowLogger.error('run_workflow.ended_with_live_run', {
           kind: event.payload.kind,
           runId,
           turn,
@@ -215,8 +229,26 @@ export class RunWorkflow extends AgentWorkflow<
             ? { issueId: event.payload.issueId }
             : {}),
         })
-        await step.reportComplete({ runId, status: result.status })
-        return { runId, status: result.status }
+        const failed = await step.do<{ status: string }>(
+          `turn-${turn}-live-run-failed`,
+          { retries: TURN_RETRIES },
+          async () => {
+            const reason = 'workflow_ended_with_live_run'
+            return event.payload.kind === 'automation'
+              ? disposeRpcResult(
+                  await this.agent.failAutomationRunTurn({ runId, reason }),
+                )
+              : disposeRpcResult(
+                  await this.agent.failRunTurn({
+                    runId,
+                    issueId: event.payload.issueId,
+                    reason,
+                  }),
+                )
+          },
+        )
+        await step.reportComplete({ runId, status: failed.status })
+        return { runId, status: failed.status }
       }
 
       const resumed = await step

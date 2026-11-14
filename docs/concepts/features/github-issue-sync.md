@@ -52,7 +52,28 @@ Each Flow Research product team (Garden, Workstream, LMS, Blockchain) tracks its
 | Labels | `labels` |
 | Title and body | `title` and `description`, set on create and on `issues.edited` |
 | Author | `created_by` is the member matched to the author, else the user who linked the repository, or the Team owner once that user is deleted (`linked_by` is set null) |
-| Pull request | Skipped |
+| Pull request with a closing keyword, opened as a draft | `in_progress`, forward only. See [Pull requests](#pull-requests). |
+| Pull request opened ready, or marked ready for review | `in_review`, forward only |
+| Pull request converted to draft | `in_progress` from `todo` or `in_review` |
+| Pull request merged into any branch | `done` |
+| Pull request closed without merging | `in_progress` from `todo` or `in_review`, unless another open PR still links the issue |
+| Pull request as its own board card | Skipped |
+
+## Pull requests
+
+A pull request moves the card of every issue its body closes. Garden reads GitHub's closing keywords, case-insensitive: `close`, `closes`, `closed`, `fix`, `fixes`, `fixed`, `resolve`, `resolves`, and `resolved`, followed by `#N` or `owner/repo#N` for the PR's own repository. A reference to another repository is ignored. A PR without a closing keyword moves nothing.
+
+**Only linked repositories move cards.** The PR's repository must be linked to a Team in the workspace, and the issue must already have a Garden binding. A binding left from a repository that was later unlinked does not move.
+
+**Cards move forward only.** The order is `todo` < `in_progress` < `in_review` < `done`. A PR event never moves a `done` or `cancelled` card. `blocked` ranks with `in_progress`. Two events move a card back: a PR converted to draft, and a PR closed without merging. Both send a `todo` or `in_review` card to `in_progress`.
+
+**A merge into any branch is Done.** GitHub closes an issue only when a PR merges into the default branch, so fixes merged into `dev` never closed their issue. The webhook moves the card to `done` on any merge.
+
+**Open PRs are tracked on the binding.** A PR that closes unmerged leaves the card alone when another open PR still links the issue. GitHub does not send that fact, so the binding's `metadata.github_open_pull_requests` keeps the open PR numbers the webhook has seen. PRs opened before the App subscribed to `pull_request` events are not in that list.
+
+**Moves use the issue path.** Each move goes through the delivery ledger in its own order scope per PR (`binding:<id>:pull_request:<n>`), so a redelivery is a no-op and a PR's `updated_at` never makes an issue edit stale. After commit, `applyIssueMutationSideEffects` runs, so a merge cancels live runs the same way a close does. Each move adds a GitHub connector comment to the timeline that names the PR number and URL and the old and new status.
+
+**Garden's own App bot is not skipped.** A PR an agent opens through the App is the work the card tracks, and Garden never writes PR state back, so nothing echoes.
 
 ## Scope
 
@@ -65,7 +86,7 @@ In scope:
 
 Out of scope:
 
-- Pull requests as board cards. They stay readable through `read_source` and work-product write-back.
+- Pull requests as their own board cards. They stay readable through `read_source` and work-product write-back.
 - Sending Garden edits to GitHub beyond today's comment write-back.
 - Repositories outside the workspace's GitHub App installation.
 - Importing closed issues.
@@ -98,14 +119,14 @@ Anyone who can see the Team can list its linked repositories. Linking, unlinking
 
 The import and the webhook write `issue`, `issue_source_binding`, `github_webhook_delivery` order markers, and `team_repository.import_state`, `imported_at`, and `full_name`. They read `member.github_user_id` to match people. Imported issues publish `issue:created`, and import state changes publish `team:updated`.
 
-The GitHub App needs Issues read access and the Issues, Issue comment, and Repository webhook events. These are set in GitHub's App settings and cannot be checked from the repository. An owner confirms them before release.
+The GitHub App needs Issues read access, Pull requests read access, and the Issues, Issue comment, Pull request, and Repository webhook events. Without the **Pull request** event subscription, PRs move no cards. These are set in GitHub's App settings and cannot be checked from the repository. An owner confirms them before release.
 
 ## How to verify it
 
 - `pnpm --filter @garden/web exec vitest run src/routes/api/teams/-team-repositories.integration.test.ts` runs against a Postgres container. It covers linking, a repository the installation cannot access, a member without manage rights, the picker's linked markers, a second Workflow start, paged import with a pull request skipped and assignee and author matching, a second import that creates nothing, an issue closed between pages, a failed import with **Retry**, a **Retry** whose restart fails, and concurrent numbering.
-- `pnpm --filter @garden/web exec vitest run src/routes/api/github/-webhook.integration.test.ts` covers `opened` on linked and unlinked repositories, redelivery, an issue opened by Garden's App bot, a close that arrives before the import, a webhook older than an imported snapshot, events under a renamed repository, `repository.renamed`, assignee matching with and without a member, label sync, and status mapping.
+- `pnpm --filter @garden/web exec vitest run src/routes/api/github/-webhook.integration.test.ts` covers `opened` on linked and unlinked repositories, redelivery, an issue opened by Garden's App bot, a close that arrives before the import, a webhook older than an imported snapshot, events under a renamed repository, `repository.renamed`, assignee matching with and without a member, label sync, and status mapping. Its `pull requests` block covers draft, ready, converted to draft, merged into `dev`, closed unmerged with and without another open PR, forward-only guards for `in_review`, `done`, and `cancelled`, a redelivered PR event, an unlinked repository, and a PR without keywords.
 - `pnpm --filter @garden/web exec vitest run src/features/teams/components/team-repositories-panel.test.tsx` covers the **Repositories** tab.
-- End to end in a dev workspace: link the Garden repository, see its open issues on the Garden Team board, open a GitHub issue and see it appear, then close it and see it move to Done.
+- End to end in a dev workspace: link the Garden repository, see its open issues on the Garden Team board, open a GitHub issue and see it appear, then close it and see it move to Done. Open a PR on garden-dev that says `Closes #N`, mark it ready, and see the card move to In Review. Merge it into `dev` and see the card move to Done.
 
 ## Gaps and follow-up
 
@@ -116,4 +137,6 @@ The GitHub App needs Issues read access and the Issues, Issue comment, and Repos
 - **Agent-attached bindings.** When an agent opens a GitHub issue through the App on a linked repository and then attaches it to its own Garden issue, the create step has usually already put a second Garden issue on the board.
 - **Subscribers.** Imported issues get no initial subscribers, so the matched assignee is not subscribed to activity the way `createIssue` subscribes one.
 - **Assignee visibility.** A matched assignee who is a workspace member but not a Team member cannot see the issue under today's visibility rule.
+- **Linked issues set in GitHub's sidebar.** Garden reads closing keywords in the PR body only. An issue linked through the PR's **Development** sidebar does not move. Reading `closingIssuesReferences` through the GraphQL API with the App token would cover it.
+- **Keywords added by an edit.** A PR body edited to add `Closes #N` after it opened does not move the card until the PR's next state change.
 - **Closed issues.** The import brings in open issues only. Importing recently closed issues would give history but clutter the Done column.

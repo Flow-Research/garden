@@ -55,6 +55,7 @@ import {
   GithubIdentityLinkDialog,
   githubIdentityStatusLabel,
 } from './github-workspace-identity'
+import { TeamMultiPicker } from '@/features/teams/components/team-picker'
 
 const roleConfig: Record<
   MemberRole,
@@ -291,6 +292,7 @@ export function MembersTab() {
 
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState<MemberRole>('member')
+  const [inviteTeamIds, setInviteTeamIds] = useState<string[]>([])
   const [inviteLoading, setInviteLoading] = useState(false)
   const [memberActionId, setMemberActionId] = useState<string | null>(null)
   const [invitationActionId, setInvitationActionId] = useState<string | null>(
@@ -330,9 +332,11 @@ export function MembersTab() {
       await api.createMember(wsId, {
         email,
         role: inviteRole,
+        ...(inviteTeamIds.length ? { team_ids: inviteTeamIds } : {}),
       })
       setInviteEmail('')
       setInviteRole('member')
+      setInviteTeamIds([])
       qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
       toast.success('Invitation sent')
     } catch (e) {
@@ -486,7 +490,7 @@ export function MembersTab() {
 
         {canManageWorkspace && (
           <form
-            className="grid gap-2 sm:grid-cols-[1fr_120px_auto]"
+            className="grid gap-2 sm:grid-cols-[1fr_120px_140px_auto]"
             noValidate
             onSubmit={(event) => {
               event.preventDefault()
@@ -512,6 +516,19 @@ export function MembersTab() {
                 <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
+            <TeamMultiPicker
+              teamIds={inviteTeamIds}
+              onUpdate={setInviteTeamIds}
+              triggerRender={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  aria-label="Teams the invitee joins"
+                  className="justify-start gap-1.5 overflow-hidden"
+                />
+              }
+            />
             <Button
               type="submit"
               size="sm"

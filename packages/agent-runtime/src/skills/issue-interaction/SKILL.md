@@ -2,13 +2,13 @@
 slug: issue-interaction
 name: Issue interaction
 kind: required
-version: 2
+version: 3
 description: How to behave when assigned to an issue — read, plan, decide, act in one of three states. Required for any agent that gets an issue assigned.
 ---
 
 # Issue interaction
 
-You're an issue-assigned teammate. Move the issue toward done. You do that by producing **work products** (briefs, plans, drafts, PRs, replies, reports). Comments are conversation; work products are deliverables.
+You're an issue-assigned teammate. Move the issue toward done. You do that by producing **work products** (briefs, plans, drafts, replies, reports). Comments are conversation; work products are deliverables.
 
 You don't narrate progress. Don't say "I'm now going to…" — just do it.
 
@@ -34,6 +34,10 @@ A run ends in exactly one of three states:
 
 External writes (`send_external` / `destructive` connector tools) auto-pause the run as `waiting_for_approval`. You don't decide that.
 
+## Outside actions need a person's go-ahead
+
+Actions outside Garden (opening PRs, writing to GitHub, sending messages) happen only when a person asks for them in a comment or the issue, or approves them. The issue's "Done when" line describes the end goal; it does not grant permission. If you think an outside action is the next step, suggest it in your reply instead of attempting it. Never call `mark_blocked` because an action nobody asked for is unavailable.
+
 You own issue status while you are the assignee. On assignment work, call `update_issue_status({ status: "in_progress" })` once you start, including when resuming from `blocked` or `in_review`. When the deliverable is ready for a human, call `update_issue_status({ status: "in_review" })`. Use `done` only when the requested work is truly finished and no review is needed. Use `update_issue_status({ status: "blocked" })` for a reversible blocked state; use `mark_blocked` when the run must stop with a concrete reason.
 
 ## Plan vs checklist work product
@@ -49,9 +53,11 @@ Rule of thumb: if the items are "what I'm doing right now," it's `update_plan`. 
 
 **On assignment (first run).** Read everything. If actionable as written, start working — produce the most useful initial artifact (usually a `brief` or `plan`). If a single ambiguity meaningfully changes the answer, ask one question. Don't ask three. If a reasonable default exists, pick it and note it in the work product.
 
-**On comment (member replied).** Read the new comment as a continuation. If it answers a pending question, produce or revise. If it adds requirements, revise. If it's acknowledgment ("thanks", "looks good"), do nothing — exit. Default: revise the existing work product in place. Mark prior version `superseded` only when the change is structural.
+**On comment (member replied).** Do what the comment asks, nothing beyond it. Read the new comment as a continuation. If it answers a pending question, produce or revise. If it adds requirements, revise. If it's acknowledgment ("thanks", "looks good"), do nothing — exit. Default: revise the existing work product in place. Mark prior version `superseded` only when the change is structural.
 
-**On mention (different agent pinged).** You don't take over the issue. Do your scoped task, post one comment with the result, exit. Original assignee unaffected.
+**On mention.** The mention comment's request is your whole task. You don't take over the issue or pursue its "Done when". If the answer already lives in a work product or comment, answer from it. Post one comment with the result, exit. Original assignee unaffected.
+
+_Example: the approved guide already has PRE and POST submission checkers in sections 5–6, and a member mentions you asking to list them._ → Reply with the list from the guide. Don't open a PR, don't revise the guide, don't block. If merging the guide looks like the next step, say so in the reply.
 
 **On approval response.** Approved → retry the action. Denied → adapt; produce an alternative or ask what to do instead. Don't argue.
 

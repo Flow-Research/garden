@@ -1,13 +1,22 @@
 import { Result } from 'better-result'
+import { useAuthStore } from '@garden/app-state/auth'
 import { authClient } from '@/lib/auth/client'
 import { ApiError } from './errors'
 import { ApiTransport, type ApiTransportOptions } from './transport'
 
 let transport: ApiTransport | null = null
+let unsubscribeAuth: (() => void) | undefined
 
+/** Reconfiguration and account changes end reads bound to the previous session. */
 export function configureApi(baseUrl: string, options?: ApiTransportOptions) {
-  transport = new ApiTransport(baseUrl, options)
-  return transport
+  transport?.invalidateSession()
+  unsubscribeAuth?.()
+  const nextTransport = new ApiTransport(baseUrl, options)
+  transport = nextTransport
+  unsubscribeAuth = useAuthStore.subscribe((state, previous) => {
+    if (state.user?.id !== previous.user?.id) nextTransport.invalidateSession()
+  })
+  return nextTransport
 }
 
 export function getApiTransport() {

@@ -2,7 +2,7 @@
 title: The run engine pairs Think submissions with Cloudflare Workflows
 description: How Garden turns an issue_run or automation_run row into a durable, resumable, cancellable Think agent loop, and which work does not belong there.
 status: current
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-05
 ---
 
@@ -41,20 +41,20 @@ A run moves through these steps:
 2. **Create the Workflow.** The DO calls `this.runWorkflow('RUN_WORKFLOW', ...)` with the run id as the instance id. The instance id is the idempotency boundary. A duplicate create counts as success.
 3. **Submit a turn.** `RunWorkflow.run()` loops up to `MAX_TURNS` (200). Each turn runs a `step.do` with `TURN_RETRIES` (3 tries, 5 second exponential backoff). The step calls `AgentDO.executeRunTurn` or `executeAutomationRunTurn`, which calls the facet.
 4. **Hand the turn to Think.** The facet calls `this.submitMessages([message], ...)` with the submission id as the idempotency key and the run id in metadata. It returns at once instead of blocking until the turn ends.
-5. **Wait durably.** If the submission is not already terminal, the Workflow calls `step.waitForEvent` on the event type `run-turn-complete:<submissionId>`. No timer or in-memory waiter exists in the DO.
+5. **Wait durably.** If the submission is not already terminal, the Workflow calls `step.waitForEvent` on the event type `run-turn-complete-<submissionId>`, with every character outside `[a-zA-Z0-9_-]` replaced by `_`. Cloudflare Workflows rejects event types outside that set in production, and local miniflare does not check it. No timer or in-memory waiter exists in the DO.
 6. **Wake.** When a submission ends, Think calls the facet's `onSubmissionStatus` override. The facet reads the run id from metadata and sends the event to the Workflow instance.
-7. **Close the turn.** The Workflow calls `AgentDO.completeRunTurn` or `completeAutomationRunTurn`. The facet inspects the submission and writes the product status. An `error` or `skipped` submission fails the run. An `aborted` submission cancels the run if cancel was requested and fails it otherwise.
-8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input` or `waiting_for_approval`) makes the Workflow wait for a `run-control` event. An automation turn that returns `waitingOn: { kind: "decide_analysis", decideRunId }` makes the Workflow wait for `decide-analysis-finished:<decideRunId>`, bounded by `DECIDE_ANALYSIS_OWNER_WAIT_MS`, then run the next turn in resume mode. See [Decide](../features/decide.md#in-an-automation-the-run-pauses-and-resumes). Any other status ends the Workflow as is.
+7. **Close the turn.** The Workflow calls `AgentDO.completeRunTurn` or `completeAutomationRunTurn`. The facet inspects the submission and writes the product status. An `error` or `skipped` submission fails the run. An `aborted` submission cancels the run if cancel was requested and fails it otherwise. A `completed` submission that leaves the run `queued` or `running`, with no Decide wait, fails the run with reason `turn_ended_without_resolution` and an `issue_run:failed` event. This covers a turn that stopped on a failed resolution tool, such as a `revise_work_product` database error (FLO-150).
+8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input` or `waiting_for_approval`) makes the Workflow wait for a `run-control` event. An automation turn that returns `waitingOn: { kind: "decide_analysis", decideRunId }` makes the Workflow wait for `decide-analysis-finished:<decideRunId>`, bounded by `DECIDE_ANALYSIS_OWNER_WAIT_MS`, then run the next turn in resume mode. See [Decide](../features/decide.md#in-an-automation-the-run-pauses-and-resumes). Any other status means the run row is still live: the Workflow fails the run with reason `workflow_ended_with_live_run` before it ends, so an instance never completes while its run looks in progress.
 9. **Hit the cap.** After 200 turns with no end, the Workflow reports `max_turns_exceeded`.
 
 ## Two ledgers share one engine
 
 The two surfaces keep separate ledgers and status words:
 
-| Surface | Ledger | Statuses | Pauses for people |
-| --- | --- | --- | --- |
-| Issues | `issue_run` | `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, `blocked` | Yes. A run can pause on a question, `mark_blocked`, or an approval gate. |
-| Automations | `automation_run` | `pending`, `queued`, `running`, `completed`, `failed`, `cancelled`, `skipped` | Not for people. A run can pause while a Decide analysis it started runs, and resumes when Decide finishes. |
+| Surface     | Ledger           | Statuses                                                                                                        | Pauses for people                                                                                          |
+| ----------- | ---------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Issues      | `issue_run`      | `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, `blocked` | Yes. A run can pause on a question, `mark_blocked`, or an approval gate.                                   |
+| Automations | `automation_run` | `pending`, `queued`, `running`, `completed`, `failed`, `cancelled`, `skipped`                                   | Not for people. A run can pause while a Decide analysis it started runs, and resumes when Decide finishes. |
 
 `TERMINAL_RUN_STATUSES` and `AWAITING_RUN_STATUSES` in `run-workflow.ts` are the union of both ledgers. One generic loop is simpler, but it means the Workflow does not check which statuses fit which run kind. Database check constraints and each facet's `completeWorkflowTurn` enforce that.
 
@@ -67,8 +67,8 @@ Both controls go to the Workflow instance keyed by the run id:
 ```ts
 const instance = await env.RUN_WORKFLOW.get(runId)
 await instance.sendEvent({
-	type: 'run-control',
-	payload: { kind: 'resume' },
+  type: 'run-control',
+  payload: { kind: 'resume' },
 })
 ```
 
