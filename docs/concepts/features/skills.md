@@ -29,7 +29,9 @@ complete saved or draft document, and **Edit** enables changes. On mobile the
 source control is labeled **SKILL.md**, or **Source** for a supporting file.
 Frontmatter is collapsed by default and can be expanded without losing fields.
 Desktop previews include an **On this page** outline built from rendered
-headings. Long identifiers wrap; code blocks and wide tables scroll inside
+headings. As the active heading changes, the outline scrolls within its own
+panel just enough to keep that entry visible, without moving the document.
+Long identifiers wrap; code blocks and wide tables scroll inside
 their own containers.
 
 Create, community import, source sync, file addition/removal, skill deletion,

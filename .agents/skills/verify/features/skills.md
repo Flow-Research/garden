@@ -36,6 +36,9 @@
 3. At 1440px, use **On this page** to jump to headings. Scroll the document and
    confirm that the active section changes. Code-fence text must not become an
    outline entry, and duplicate heading titles must have separate targets.
+   With enough headings to overflow the outline, read down and back up through
+   the document. The active outline entry must remain visible without moving
+   the document's scroll position or shifting entries already in view.
 4. Save with the keyboard shortcut. Check source sync and delete confirmations.
    A failed save retains the draft; a failed sync or delete retains its dialog.
 

@@ -55,6 +55,26 @@ export function FileViewer({
   const [headings, setHeadings] = useState<HTMLElement[]>([])
   const [activeHeading, setActiveHeading] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+  const outlineRef = useRef<HTMLElement>(null)
+
+  /**
+   * The outline previously highlighted entries outside its viewport. Reveal a
+   * newly active entry by moving only this panel, since scrollIntoView can also
+   * move ancestor containers and disturb the document's reading position.
+   */
+  const revealActiveHeading = useCallback((entry: HTMLButtonElement | null) => {
+    const outline = outlineRef.current
+    if (!entry || !outline || outline.clientHeight === 0) return
+    const top = outline.getBoundingClientRect().top + outline.clientTop
+    const bottom = top + outline.clientHeight
+    const bounds = entry.getBoundingClientRect()
+    // Round outward so scrollTop quantization cannot leave a fractional pixel clipped.
+    if (bounds.top < top) {
+      outline.scrollTop = Math.floor(outline.scrollTop + bounds.top - top)
+    } else if (bounds.bottom > bottom) {
+      outline.scrollTop = Math.ceil(outline.scrollTop + bounds.bottom - bottom)
+    }
+  }, [])
 
   /** Registers rendered headings, including duplicate titles, without parsing Markdown twice. */
   const registerHeadings = useCallback(
@@ -138,6 +158,7 @@ export function FileViewer({
       </div>
       {mode === 'preview' && isMarkdown && headings.length > 0 ? (
         <nav
+          ref={outlineRef}
           aria-label="On this page"
           className="hidden w-44 shrink-0 overflow-y-auto border-l px-4 py-9 xl:block 2xl:w-52"
         >
@@ -148,6 +169,11 @@ export function FileViewer({
             {headings.map((heading) => (
               <li key={heading.id}>
                 <button
+                  ref={
+                    activeHeading === heading.id
+                      ? revealActiveHeading
+                      : undefined
+                  }
                   type="button"
                   aria-current={
                     activeHeading === heading.id ? 'location' : undefined

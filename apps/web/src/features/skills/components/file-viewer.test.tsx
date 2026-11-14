@@ -98,4 +98,63 @@ describe('skill document reader', () => {
     ).toHaveTextContent('echo check')
     expect(screen.queryByRole('textbox')).toBeNull()
   })
+
+  it('keeps the active outline entry visible when reading down and back up', () => {
+    render(<FileViewer path="SKILL.md" content={content} />)
+    const outline = screen.getByRole('navigation', { name: 'On this page' })
+    const reader = outline.previousElementSibling
+    if (!reader) throw new Error('Missing document panel')
+    Object.defineProperty(outline, 'clientHeight', {
+      configurable: true,
+      value: 100,
+    })
+    vi.spyOn(outline, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 120, 100),
+    )
+    vi.spyOn(reader, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 400, 100),
+    )
+    const entries = within(outline).getAllByRole('button')
+    entries.forEach((entry, index) => {
+      vi.spyOn(entry, 'getBoundingClientRect').mockImplementation(
+        () => new DOMRect(0, 10.5 + index * 150 - outline.scrollTop, 120, 44),
+      )
+    })
+    let section = 0
+    const headings = screen
+      .getAllByRole('heading')
+      .filter((heading) => heading.id)
+    headings.forEach((heading, index) => {
+      vi.spyOn(heading, 'getBoundingClientRect').mockImplementation(
+        () => new DOMRect(0, (index - section) * 200, 400, 30),
+      )
+    })
+    const activeEntry = () => {
+      const entry = entries.find(
+        (entry) => entry.getAttribute('aria-current') === 'location',
+      )
+      if (!entry) throw new Error('Missing active outline entry')
+      return entry.getBoundingClientRect()
+    }
+
+    reader.scrollTop = 200
+    section = 2
+    fireEvent.scroll(reader)
+    expect(activeEntry().top).toBeGreaterThanOrEqual(0)
+    expect(activeEntry().bottom).toBeLessThanOrEqual(outline.clientHeight)
+    expect(reader.scrollTop).toBe(200)
+    const scrolledDown = outline.scrollTop
+
+    reader.scrollTop = 0
+    section = 0
+    fireEvent.scroll(reader)
+    expect(activeEntry().top).toBeGreaterThanOrEqual(0)
+    expect(activeEntry().bottom).toBeLessThanOrEqual(outline.clientHeight)
+    expect(outline.scrollTop).toBeLessThan(scrolledDown)
+    expect(reader.scrollTop).toBe(0)
+
+    const visiblePosition = outline.scrollTop
+    fireEvent.scroll(reader)
+    expect(outline.scrollTop).toBe(visiblePosition)
+  })
 })
