@@ -226,6 +226,7 @@ function SkillBundleEditor({
     JSON.stringify(draft.files) !== JSON.stringify(saved.files)
   const isDirty = draft.content !== saved.content || filesChanged
   const canSync = skill.source_type === 'skills.sh' && Boolean(skill.source_url)
+  const hasCategory = Boolean(skill.config.metadata?.category?.trim())
 
   /** Computes dirty state from the next complete draft, including reverting an edit. */
   const changeDraft = (next: Draft) => {
@@ -416,10 +417,17 @@ function SkillBundleEditor({
           disabled={saving}
           intro={
             <div className="mb-6 min-w-0">
-              <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
-                {skillCategory(skill)}
-              </span>
-              <h1 className="mt-3 font-mono text-xl font-bold leading-snug [overflow-wrap:anywhere] md:text-2xl">
+              {hasCategory ? (
+                <span className="inline-flex rounded-full bg-primary/15 px-3 py-1 text-xs font-semibold text-primary">
+                  {skillCategory(skill)}
+                </span>
+              ) : null}
+              <h1
+                className={cn(
+                  'font-mono text-xl font-bold leading-snug [overflow-wrap:anywhere] md:text-2xl',
+                  hasCategory && 'mt-3',
+                )}
+              >
                 {skill.name}
               </h1>
               {skill.description ? (
