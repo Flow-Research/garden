@@ -356,7 +356,7 @@ describe('SkillsPage library', () => {
     expect(screen.queryByText('Unsaved')).toBeNull()
   })
 
-  it('combines category and description search using real catalog metadata', async () => {
+  it('searches descriptions across the full library without category controls', async () => {
     mocks.listSkills.mockResolvedValue([
       skill({
         config: {
@@ -378,10 +378,7 @@ describe('SkillsPage library', () => {
     ])
     renderPage()
     await screen.findByRole('navigation', { name: 'Skills' })
-    fireEvent.click(skillsList().getByRole('button', { name: 'QA 1' }))
-    expect(
-      skillsList().queryByRole('button', { name: 'Release notes' }),
-    ).toBeNull()
+    expect(skillsList().queryByRole('button', { name: 'QA 1' })).toBeNull()
     expect(
       skillsList().getByRole('button', { name: 'Triage' }),
     ).toBeInTheDocument()
@@ -389,6 +386,9 @@ describe('SkillsPage library', () => {
       skillsList().getByRole('textbox', { name: 'Filter skills' }),
       { target: { value: 'adversarial' } },
     )
+    expect(
+      skillsList().queryByRole('button', { name: 'Release notes' }),
+    ).toBeNull()
     expect(
       skillsList().getByRole('button', { name: 'Triage' }),
     ).toBeInTheDocument()

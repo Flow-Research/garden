@@ -12,14 +12,14 @@ A skill is a `SKILL.md` bundle of instructions and supporting files that teaches
 
 The Skills page shows one pane at a time below the `md` breakpoint. It opens
 with a full-width library. Selecting a skill opens its detail; **Skills** returns
-to the library with the search, category filter, and scroll position preserved.
+to the library with the search and scroll position preserved.
 The `?focus=<skillId>` search parameter opens a skill directly. Desktop keeps
 the library beside the selected skill.
 
-Categories come from `config.metadata.category`. Skills without a category
-appear under **Uncategorized**. Search matches names and descriptions, and
-category counts describe the full library. Mobile rows include descriptions;
-desktop groups show compact names.
+Mobile shows one continuous list with names and descriptions, without category
+filters or headings. Search matches names and descriptions across the library.
+Desktop groups show compact names with categories from `config.metadata.category`.
+Skills without a category appear under **Uncategorized** on desktop.
 
 Each bundle file is reachable through a horizontally scrolling file bar on
 both mobile and desktop. **Preview** renders Markdown, **Source** shows the

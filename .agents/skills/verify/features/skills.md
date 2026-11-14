@@ -11,10 +11,11 @@
 ## Mobile library and detail
 
 1. Open `/skills` at widths of 320px, 390px, and 540px.
-2. Confirm that the library occupies the content width. Search by name and
-   description, select a category, and clear both filters after a no-match result.
+2. Confirm that the library occupies the content width and shows a continuous
+   list without category chips or headings. Search by name and description,
+   then clear the search after a no-match result.
 3. Open a skill. Confirm that detail replaces the library and **Skills** returns
-   to the same filters and scroll position. Reload `?focus=<skillId>` to check
+   to the same search and scroll position. Reload `?focus=<skillId>` to check
    direct navigation.
 4. Switch between Preview and Source. Expand frontmatter and open each bundle
    file from the scrolling file bar. Long text must wrap; tables and code may
@@ -30,7 +31,7 @@
 ## Desktop reader
 
 1. Repeat at widths of 768px, 1024px, and 1440px.
-2. Confirm that the library and detail appear together, with horizontal bundle
+2. Confirm that the grouped library and detail appear together, with horizontal bundle
    navigation, Preview and Source controls, Edit, and the actions menu.
 3. At 1440px, use **On this page** to jump to headings. Scroll the document and
    confirm that the active section changes. Code-fence text must not become an

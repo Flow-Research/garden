@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { ChevronRight, Plus, Search } from 'lucide-react'
 import type { Skill } from '@garden/core/types'
 import { Button } from '@garden/ui/components/ui/button'
@@ -24,7 +24,7 @@ export function skillCategory(skill: Skill) {
     : category.charAt(0).toUpperCase() + category.slice(1)
 }
 
-/** Keeps browse state mounted while mobile detail takes over the available width. */
+/** Keeps search mounted and mobile rows continuous; categories label only the desktop rail. */
 export function SkillsList({
   skills,
   selectedSkillId,
@@ -39,7 +39,6 @@ export function SkillsList({
   detailOpen: boolean
 }) {
   const [filter, setFilter] = useState('')
-  const [category, setCategory] = useState<string | null>(null)
   const groups = useMemo(() => {
     const grouped = new Map<string, Skill[]>()
     for (const skill of skills) {
@@ -57,12 +56,8 @@ export function SkillsList({
           (CATEGORY_ORDER.get(b.label) ?? 3) || a.label.localeCompare(b.label),
     )
   }, [skills])
-  const activeCategory = groups.some((group) => group.label === category)
-    ? category
-    : null
   const query = filter.trim().toLowerCase()
   const visibleGroups = groups.flatMap((group) => {
-    if (activeCategory !== null && group.label !== activeCategory) return []
     const items = group.items.filter(
       (skill) =>
         skill.name.toLowerCase().includes(query) ||
@@ -113,39 +108,6 @@ export function SkillsList({
           />
         </InputGroup>
       </div>
-      <div
-        aria-label="Skill categories"
-        className={cn(
-          'flex shrink-0 gap-2 overflow-x-auto px-4 pb-2',
-          activeCategory === null && 'md:hidden',
-        )}
-      >
-        {[
-          { label: 'All', value: null, count: skills.length },
-          ...groups.map((group) => ({
-            label: group.label,
-            value: group.label,
-            count: group.items.length,
-          })),
-        ].map((item) => (
-          <button
-            key={item.label}
-            type="button"
-            aria-label={`${item.label} ${item.count}`}
-            aria-pressed={activeCategory === item.value}
-            onClick={() => setCategory(item.value)}
-            className={cn(
-              'flex min-h-11 shrink-0 flex-col items-center justify-center rounded-full border px-4 py-1 text-xs font-semibold focus-visible:outline-2 focus-visible:outline-ring',
-              activeCategory === item.value
-                ? 'border-foreground bg-foreground text-background'
-                : 'border-border bg-muted/40 text-muted-foreground',
-            )}
-          >
-            <span>{item.label}</span>
-            <span className="tabular-nums">{item.count}</span>
-          </button>
-        ))}
-      </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5 md:px-3">
         {visibleGroups.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-10 text-center">
@@ -155,25 +117,24 @@ export function SkillsList({
               size="sm"
               onClick={() => {
                 setFilter('')
-                setCategory(null)
               }}
             >
               Clear filter
             </Button>
           </div>
         ) : (
-          visibleGroups.map((group) => (
-            <section
-              key={group.label}
-              aria-label={group.label}
-              className="mt-3 md:mt-4"
-            >
-              <h2 className="mb-2 flex items-center gap-1 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <span className="min-w-0 truncate">{group.label}</span>
-                <span className="hidden md:inline">·</span>
-                <span className="ml-auto md:ml-0">{group.items.length}</span>
-              </h2>
-              <ul className="overflow-hidden rounded-2xl bg-muted/40 md:space-y-1 md:rounded-none md:bg-transparent">
+          <ul className="overflow-hidden rounded-2xl bg-muted/40 md:space-y-1 md:rounded-none md:bg-transparent">
+            {visibleGroups.map((group) => (
+              <Fragment key={group.label}>
+                <li className="hidden pt-4 pb-1 md:block">
+                  <h2 className="flex items-center gap-1 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <span className="min-w-0 truncate">{group.label}</span>
+                    <span className="hidden md:inline">·</span>
+                    <span className="ml-auto md:ml-0">
+                      {group.items.length}
+                    </span>
+                  </h2>
+                </li>
                 {group.items.map((skill) => {
                   const selected = selectedSkillId === skill.id
                   return (
@@ -209,9 +170,9 @@ export function SkillsList({
                     </li>
                   )
                 })}
-              </ul>
-            </section>
-          ))
+              </Fragment>
+            ))}
+          </ul>
         )}
       </div>
     </nav>
