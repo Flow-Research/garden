@@ -734,7 +734,7 @@ function DashboardActivitySection({
                         })
                       : openInboxItem(item.id)
                   }
-                  className="block w-full cursor-pointer py-3 text-left text-sm transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                  className="block w-full cursor-pointer px-3 py-3 text-left text-sm transition-colors hover:bg-accent/50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted/80 text-muted-foreground">
