@@ -94,11 +94,14 @@ export class AiObservation {
   private state: AiTurnState | null = null
 
   constructor(
-    private readonly durableState: DurableObjectState,
+    private readonly durableState: Pick<DurableObjectState, 'waitUntil'>,
     private readonly env: AiRuntimeEnv,
   ) {}
 
-  startTurn(identity: AiTurnIdentity, ctx: TurnContext) {
+  startTurn(
+    identity: AiTurnIdentity,
+    ctx: Pick<TurnContext, 'messages' | 'system' | 'body'>,
+  ) {
     this.state = {
       ...identity,
       traceId: identity.traceId ?? crypto.randomUUID(),

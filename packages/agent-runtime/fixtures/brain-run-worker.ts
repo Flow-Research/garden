@@ -28,12 +28,23 @@ export {
   ExecutorMcpExecutionOwnerDirectory,
 } from '../../../apps/web/src/lib/server/executor-engine/mcp'
 
+const fixtureEnvironmentSchema = z.object({
+  GARDEN_MODEL_BASE_URL: z.string().url(),
+  G08_GRANT_FAULT_KIND: z.enum(['issue', 'automation']).optional(),
+  G08_GRANT_FAULT_PHASE: z.enum(['before-turn', 'injection', 'tool']).optional(),
+  G08_ERROR_CANARY_KIND: z.enum(['issue', 'automation']).optional(),
+})
+
+/** Validate test-only bindings before a synthetic endpoint or fault is used. */
+function fixtureEnvironment(host: object) {
+  return fixtureEnvironmentSchema.parse(Reflect.get(host, 'env'))
+}
+
 // A deterministic local-only barrier between completed-origin handoff and the
 // actual writeback call. It never replaces the production implementation.
 const startBrainWriteBack = AgentDO.prototype.startBrainWriteBack
 AgentDO.prototype.startBrainWriteBack = async function (input) {
-  const env = (this as unknown as { env: { GARDEN_MODEL_BASE_URL: string } })
-    .env
+  const env = fixtureEnvironment(this)
   const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/handoff`, {
     method: 'POST',
     body: JSON.stringify(input),
@@ -58,12 +69,9 @@ for (const [kind, facet] of [
     return await beforeToolCall.call(this as never, ctx).finally(() => dispatching.delete(this))
   }
   facet.prototype.configure = function (config) {
-    const host = this as unknown as {
-      env: { G08_GRANT_FAULT_KIND?: string; G08_GRANT_FAULT_PHASE?: string }
-      getConfig(): { brainGrantHistory?: unknown } | null
-    }
+    const env = fixtureEnvironment(this)
     const targeted =
-      host.env.G08_GRANT_FAULT_KIND === kind &&
+      env.G08_GRANT_FAULT_KIND === kind &&
       config !== null &&
       typeof config === 'object' &&
       Object.hasOwn(config, 'brainGrantHistory')
@@ -72,7 +80,7 @@ for (const [kind, facet] of [
     writes.set(this, ordinal)
     const provenance = Reflect.get(config, 'brainGrantHistory') as { tools: string[] }
     const phase = dispatching.has(this) ? 'tool' : provenance.tools.length === 0 ? 'before-turn' : 'injection'
-    if (phase === host.env.G08_GRANT_FAULT_PHASE && !failed.has(this)) {
+    if (phase === env.G08_GRANT_FAULT_PHASE && !failed.has(this)) {
       failed.add(this)
       console.info(
         'G08_CONFIG_FAULT',
@@ -93,7 +101,7 @@ for (const [kind, facet] of [
       JSON.stringify({
         kind,
         ordinal,
-        provenance: host.getConfig()?.brainGrantHistory,
+        provenance: this.getConfig<{ brainGrantHistory?: unknown }>()?.brainGrantHistory,
       }),
     )
     return result
@@ -106,7 +114,7 @@ for (const [kind, facet] of [['issue', IssueRunSubAgent], ['automation', Automat
   const beforeTurn = facet.prototype.beforeTurn
   facet.prototype.beforeTurn = async function (ctx) {
     const config = await beforeTurn.call(this as never, ctx)
-    const env = (this as unknown as {env:{ G08_ERROR_CANARY_KIND?:string; GARDEN_MODEL_BASE_URL:string }}).env
+    const env = fixtureEnvironment(this)
     if (env.G08_ERROR_CANARY_KIND !== kind) return config
     const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/run-error`, {
       method:'POST',body:JSON.stringify({system:config?.system}),
@@ -120,7 +128,7 @@ for (const [kind, facet] of [['issue', IssueRunSubAgent], ['automation', Automat
 for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
   const getTools = facet.prototype.getTools
   facet.prototype.getTools = function () {
-    const env = (this as unknown as { env: { GARDEN_MODEL_BASE_URL: string } }).env
+    const env = fixtureEnvironment(this)
     return {
       ...getTools.call(this as never),
       g08_external_publish: tool({

@@ -94,9 +94,8 @@ export async function resolveBrainRuntimeAgentId(
 
 /**
  * Resolves exact originating ledger identity and fresh grants before a Brain
- * operation. Workspace-only checks previously let completion run under an
- * unrelated agent. Missing/malformed persisted policy fails closed before
- * derivePermissions can apply its permissive input fallback.
+ * operation. Missing or malformed persisted policy must fail closed before
+ * derivePermissions can apply permissive defaults.
  */
 export async function loadBrainRunAuthority(
   databaseUrl: string,

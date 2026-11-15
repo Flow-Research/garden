@@ -3,7 +3,6 @@ import type {
   ChatResponseResult,
   ToolCallContext,
   ToolCallResultContext,
-  TurnContext,
 } from '@cloudflare/think'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 
@@ -25,23 +24,21 @@ const identity: AiTurnIdentity = {
   runId: 'run',
   sessionId: 'session',
 }
-const context = (text: string) =>
-  ({
-    messages: [{ id: 'input', role: 'user', parts: [{ type: 'text', text }] }],
-    system: '',
-    body: {},
-  }) as unknown as TurnContext
-const result = (text: string) =>
-  ({
-    status: 'completed',
-    requestId: 'request',
-    continuation: false,
-    message: {
-      id: 'output',
-      role: 'assistant',
-      parts: [{ type: 'text', text }],
-    },
-  }) as unknown as ChatResponseResult
+const context = (text: string): Parameters<AiObservation['startTurn']>[1] => ({
+  messages: [{ role: 'user', content: text }],
+  system: '',
+  body: {},
+})
+const result = (text: string): ChatResponseResult => ({
+  status: 'completed',
+  requestId: 'request',
+  continuation: false,
+  message: {
+    id: 'output',
+    role: 'assistant',
+    parts: [{ type: 'text', text }],
+  },
+})
 
 beforeEach(() => {
   captured.length = 0
@@ -54,7 +51,7 @@ describe('final observation authority', () => {
       waitUntil: (promise: Promise<unknown>) => {
         pending.push(promise)
       },
-    } as unknown as DurableObjectState
+    } satisfies Pick<DurableObjectState, 'waitUntil'>
     return {
       value: new AiObservation(durable, {}),
       drain: () => Promise.all(pending),

@@ -69,6 +69,14 @@ To run these four suites:
 pnpm --filter @garden/agent-runtime test src/runtime-mcp-controller.approval.test.ts src/runtime-mcp-controller.executor.test.ts src/runtime-mcp-controller.github-assignees.test.ts src/skills-assignments.test.ts
 ```
 
+## Run native Brain authority tests
+
+These tests use disposable Postgres and Helix containers and a real Worker runtime. Model responses come from a controlled loopback server. No model-provider credentials are required. The fixture validates its test-only bindings before it uses a fault or synthetic endpoint.
+
+```bash
+GARDEN_ITEST_HELIX=1 pnpm --filter @garden/agent-runtime exec vitest run src/brain-run-authorization.integration.test.ts --maxWorkers=1
+```
+
 ## Run the other checks CI runs
 
 CI also runs these root scripts. Run them before you open a pull request:

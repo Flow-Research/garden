@@ -95,9 +95,8 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       files: this.env.BRAIN_FILES,
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       /**
-       * Re-read origin provenance for each tool context. A beforeTurn check
-       * missed revocations during deduplication; createBrainWriteBackTools
-       * also requests fresh context before persistence.
+       * Deduplication can overlap a grant change. Both proposal entry and
+       * persistence require fresh provenance from the originating facet.
        */
       getContext: async (toolName) => {
         const config = this.getConfig<BrainWriteBackConfig>()
