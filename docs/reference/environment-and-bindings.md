@@ -155,3 +155,7 @@ These variables are read by deploy tooling, not by the Worker at runtime.
 - `ENVIRONMENT=development`
 
 Generate `BETTER_AUTH_SECRET` and `EXECUTOR_SECRET_KEY` with `openssl rand -base64 32`.
+
+## Structured log correlation
+
+Structured logs preserve complete UUID values for run and workspace correlation. Secret field names remain redacted, including when their value is a UUID. Bearer credentials and token-shaped text remain redacted. A hexadecimal UUID segment that starts with `cf` does not make the complete UUID a Cloudflare token.

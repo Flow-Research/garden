@@ -1041,9 +1041,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       return { agentId, issueId: nextIssueId, runId: nextRunId }
     }
 
-    async function seedAutomation() {
+    async function seedAutomation(
+      automationRunId: string = crypto.randomUUID(),
+    ) {
       const automationId = crypto.randomUUID()
-      const automationRunId = crypto.randomUUID()
       await database!.db.insert(schema.automation).values({
         id: automationId,
         workspaceId,
@@ -1239,7 +1240,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             method: 'POST',
             body: JSON.stringify({ workspaceId }),
           })
-          expect(snapshot.status).toBe(200)
+          expect(snapshot.status, await snapshot.clone().text()).toBe(200)
           const persisted = await snapshot.text()
           if (mayWrite) expect(persisted).toContain('G08 durable direct')
           else expect(persisted).not.toContain('G08 durable')
@@ -2412,7 +2413,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             const input =
               kind === 'issue'
                 ? await seedIssue('G08 writeback revoke')
-                : await seedAutomation()
+                : await seedAutomation(
+                    phase === 'before-proposal' && confidence === 0.5
+                      ? 'a93f5417-cfa3-4f11-960e-b4a77d55a56e'
+                      : undefined,
+                  )
             expect(
               (
                 await harness!.fetch(
@@ -2591,7 +2596,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             method: 'POST',
             body: JSON.stringify({ workspaceId }),
           })
-          expect(snapshot.status).toBe(200)
+          expect(snapshot.status, await snapshot.clone().text()).toBe(200)
           if (operation === 'create')
             expect(
               (await snapshot.text()).includes('G06_MUTATION_CREATED'),
