@@ -111,7 +111,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     warn.mockRestore()
   })
 
-  it('skips an equivalent claim already present in the brain', async () => {
+  it('skips a claim differing only in surrounding whitespace', async () => {
     const { Effect } = await import('effect')
     mockSearch.mockReturnValue(
       Effect.succeed([
@@ -120,7 +120,7 @@ describe('createBrainWriteBackTools user scope without user context', () => {
             id: 'item-1',
             label: 'Datastore',
             kind: 'decision',
-            body: '  THE ORG CHOSE D1 as the primary datastore. ',
+            body: '  The org chose D1 as the primary datastore. ',
           },
           score: 1,
         },
@@ -204,6 +204,61 @@ describe('createBrainWriteBackTools user scope without user context', () => {
       expect(mockGetPooledDb).not.toHaveBeenCalled()
     },
   )
+
+  for (const confidence of [0.5, 0.9])
+    it.each([
+      [
+        'The callback path is /OAuth/Callback.',
+        'The callback path is /oauth/callback.',
+      ],
+      ['The literal label is `A  B`.', 'The literal label is `A B`.'],
+    ])(
+      `preserves distinct fact content at confidence ${confidence}: %s`,
+      async (first, second) => {
+        const { Effect } = await import('effect')
+        mockSearch
+          .mockReturnValueOnce(Effect.succeed([]))
+          .mockReturnValue(
+            Effect.succeed([{ item: { label: first, body: first }, score: 1 }]),
+          )
+        mockAddText.mockReturnValue(Effect.succeed({ id: 'written' }))
+        const returning = vi.fn().mockResolvedValue([{ id: 'proposal' }])
+        const values = vi
+          .fn()
+          .mockReturnValue({ onConflictDoNothing: () => ({ returning }) })
+        mockGetPooledDb.mockReturnValue({ insert: () => ({ values }) })
+        const tools = createBrainWriteBackTools({
+          env: { HELIX_URL: 'http://localhost:6968' },
+          ai: { run: async () => ({ data: [] }) },
+          files: { get: async () => null },
+          databaseUrl: 'postgres://test:test@localhost:5432/test',
+          getContext: () => ({
+            workspaceId: 'workspace-1',
+            agentId: 'agent-1',
+            runId: 'run-1',
+          }),
+        })
+        for (const claim of [first, second]) {
+          const result = await execute(tools.propose_brain_item, {
+            claim,
+            kind: 'policy',
+            confidence,
+            sensitive: false,
+            scope: 'org',
+          })
+          expect(result).toMatchObject({
+            ok: true,
+            action: confidence < 0.75 ? 'proposed' : 'written',
+          })
+        }
+        const hashes =
+          confidence < 0.75
+            ? values.mock.calls.map(([row]) => row.claimHash)
+            : mockAddText.mock.calls.map(([input]) => input.canonical.value)
+        expect(hashes).toHaveLength(2)
+        expect(new Set(hashes).size).toBe(2)
+      },
+    )
 
   it('uses one semantic identity across runs and a run-specific operation key', async () => {
     const returning = vi

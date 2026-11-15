@@ -67,6 +67,8 @@ An output-authority check before issue preparation must not create configuration
 
 Write-back uses a stable operation key and a scope-aware claim hash. Database indexes prevent duplicate operations and duplicate claims within a workspace. A repeated delivery can return the existing result. Brain node creation also uses a stable canonical identity, so a repeated request does not create another node after an uncertain response.
 
+Claim hashes and duplicate checks remove surrounding whitespace only. They preserve case and internal spacing because a path, identifier or literal can depend on them.
+
 Semantic duplicate checks compare the stored body when it exists. They use the summary, then the label, only when the body is absent. A matching label or summary cannot override different body content.
 
 The migration preserves existing proposal rows and review fields. It stops when legacy hashes are ambiguous. An operator must review those rows before the migration can continue. Migration completion is not evidence of a live deployment.

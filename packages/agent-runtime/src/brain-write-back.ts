@@ -113,12 +113,12 @@ const proposeInputSchema = z
   .strict()
 
 /**
- * Canonicalizes only presentation differences, keeping changed facts distinct.
+ * Preserves case and internal spacing because they can change facts.
  * This code-level identity is shared by retry and cross-run duplicate checks;
  * semantic search remains a separate check for existing brain content.
  */
 export const normalizeBrainWriteBackClaim = (claim: string): string =>
-  claim.trim().toLocaleLowerCase('en-US').replace(/\s+/g, ' ')
+  claim.trim()
 
 /** Uses a collision-resistant digest because this value backs unique indexes. */
 const claimDigest = async (value: string): Promise<string> => {
@@ -131,7 +131,7 @@ const claimDigest = async (value: string): Promise<string> => {
     .join('')
 }
 
-/** Confirms exact semantic identity after search narrows likely matches. */
+/** Confirms exact claim content after search narrows likely matches. */
 const matchesExistingClaim = (
   claim: string,
   hit: {
