@@ -45,6 +45,7 @@ let grantScenario:
         | 'during-dedupe'
         | 'before-dedupe-read'
       confidence?: number
+      revokeRetainedGrant?: boolean
       scope?: 'org' | 'user'
       mutation?: 'create' | 'update' | 'mention' | 'link'
       mutationRevoke?: boolean
@@ -261,7 +262,14 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .set({
               permissions: {
                 full_access: false,
-                allowed_tools: ['brain_search'],
+                allowed_tools: grantScenario.revokeRetainedGrant
+                  ? [
+                      'brain_search',
+                      'add_to_brain',
+                      'create_work_product',
+                      'complete_automation',
+                    ]
+                  : ['brain_search'],
               },
             })
             .where(eq(schema.agent.id, agentId))
@@ -434,8 +442,14 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                 .set({
                   permissions: {
                     full_access: false,
-                    allowed_tools:
-                      grantScenario.writebackRevoke === 'before-dedupe-read'
+                    allowed_tools: grantScenario.revokeRetainedGrant
+                      ? [
+                          'brain_search',
+                          'add_to_brain',
+                          'create_work_product',
+                          'complete_automation',
+                        ]
+                      : grantScenario.writebackRevoke === 'before-dedupe-read'
                         ? ['add_to_brain']
                         : ['brain_search'],
                   },
@@ -847,6 +861,14 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         'BrainWriteBackSubAgent.runWriteBack',
       ]
       for (const kind of ['issue', 'automation']) {
+        for (const phase of ['before-proposal', 'during-dedupe'])
+          rolesByScenario[
+            `rechecks retained ${kind} grants ${phase} during writeback`
+          ] = [
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.completeWorkflowTurn`,
+            `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.validateBrainSummaryAccess`,
+            'BrainWriteBackSubAgent.runWriteBack',
+          ]
         for (const state of kind === 'automation'
           ? ['revoked', 'always-denied', 'owner-changed']
           : ['revoked', 'always-denied'])
@@ -2459,6 +2481,64 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             expect(await snapshot.text()).not.toContain('G08 durable')
           }, 90_000)
         }
+
+    for (const kind of ['issue', 'automation'] as const)
+      for (const phase of ['before-proposal', 'during-dedupe'] as const)
+        it(`rechecks retained ${kind} grants ${phase} during writeback`, async () => {
+          grantScenario = {
+            kind,
+            read: true,
+            neighborhood: true,
+            writebackRevoke: phase,
+            revokeRetainedGrant: true,
+          }
+          const input =
+            kind === 'issue'
+              ? await seedIssue('G08 retained writeback grant')
+              : await seedAutomation()
+          const response = await harness!.fetch(
+            kind === 'issue' ? '/start' : '/automation-start',
+            {
+              method: 'POST',
+              body: JSON.stringify(input),
+            },
+          )
+          expect(response.status, await response.clone().text()).toBe(200)
+          await expect
+            .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60_000 })
+            .toMatch(
+              new RegExp(
+                `agent_do\\.brain_write_back\\.completed[^\n]*${input.runId}`,
+              ),
+            )
+          expect(revokedAtBrainRequest).toBeTypeOf('number')
+          expect(brainRequests.length).toBe(revokedAtBrainRequest)
+          expect(
+            await database!.db.select().from(schema.brainWriteProposal),
+          ).toHaveLength(0)
+          const requests = modelRequests.filter((request) =>
+            request.tools?.some(
+              (tool) => tool.function.name === 'propose_brain_item',
+            ),
+          )
+          const results = requests
+            .flatMap((request) => request.messages)
+            .filter((message) => message.role === 'tool')
+            .map((message) => fixtureToolResult(message.content))
+          expect(results).toContainEqual({
+            ok: false,
+            error:
+              phase === 'before-proposal'
+                ? 'No active run context.'
+                : 'Brain write is not permitted.',
+          })
+          const snapshot = await harness!.fetch('/snapshot', {
+            method: 'POST',
+            body: JSON.stringify({ workspaceId }),
+          })
+          expect(snapshot.status, await snapshot.clone().text()).toBe(200)
+          expect(await snapshot.text()).not.toContain('G08 durable')
+        }, 90_000)
 
     for (const kind of ['issue', 'automation'] as const)
       it(`denies ${kind} proposal dedupe after read-only revocation`, async () => {

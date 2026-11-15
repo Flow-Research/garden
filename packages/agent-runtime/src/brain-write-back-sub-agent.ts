@@ -94,19 +94,31 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       ai: this.env.AI,
       files: this.env.BRAIN_FILES,
       databaseUrl: this.env.HYPERDRIVE.connectionString,
+      /**
+       * Re-read origin provenance for each tool context. A beforeTurn check
+       * missed revocations during deduplication; createBrainWriteBackTools
+       * also requests fresh context before persistence.
+       */
       getContext: async (toolName) => {
         const config = this.getConfig<BrainWriteBackConfig>()
         if (!config?.origin) return null
-        return (
-          await authorizeBrainRunTool(
-            this.env.HYPERDRIVE.connectionString,
-            config.origin,
-            toolName,
-          )
-        ).match({
-          ok: (context) => ({ ...context, runId: config.runId }),
-          err: () => null,
-        })
+        const authority = await authorizeBrainRunTool(
+          this.env.HYPERDRIVE.connectionString,
+          config.origin,
+          toolName,
+        )
+        const context = await authority.andThenAsync((context) =>
+          Result.tryPromise(async () => {
+            const parent = await this.parentAgent(AgentDO)
+            await parent.validateBrainWriteBackOrigin({
+              runKind: config.origin.runKind,
+              runId: config.origin.runId,
+              originObjectId: config.origin.objectId,
+            })
+            return { ...context, runId: config.runId }
+          }),
+        )
+        return context.match({ ok: (value) => value, err: () => null })
       },
     })
   }
