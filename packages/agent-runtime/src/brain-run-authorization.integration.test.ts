@@ -1788,6 +1788,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
                   ? foreignWorkspaceId
                   : workspaceId,
               label: claim,
+              body: claim,
               scope:
                 label === 'issue-org'
                   ? { kind: 'org' }

@@ -669,6 +669,7 @@ export default {
       const input = await request.json<{
         workspaceId: string
         label: string
+        body?: string
         scope: BrainScope
       }>()
       const item = await Effect.runPromise(
@@ -681,7 +682,7 @@ export default {
                 // Give every audience the same lexical relevance to real
                 // start/resume queries. Real ranking must cross the production
                 // injection floor; authorization alone selects visible items.
-                body: [
+                body: input.body ?? [
                   input.label,
                   'Start this automation run using the injected automation context. Complete the task directly, then call complete_automation. Respect the injected closure controls: do not create issues, update GitHub, draft PRs, update QA artifacts, or mutate source unless the run payload explicitly enables that closure action.',
                   'Resume this automation run using the injected automation context. Complete required work, then call complete_automation with the final result.',
