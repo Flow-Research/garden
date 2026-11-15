@@ -1,6 +1,18 @@
-import type { ComponentType, ReactNode } from 'react'
+import type {
+  ComponentProps,
+  ComponentType,
+  MouseEventHandler,
+  ReactElement,
+  ReactNode,
+  Ref,
+} from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@garden/ui/lib/utils'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@garden/ui/components/ui/tooltip'
 
 /**
  * App shell sidebar — the flat, labeled navigation column from the redesign
@@ -16,6 +28,10 @@ import { cn } from '@garden/ui/lib/utils'
  * Nav items may declare children (Penpot Teams_Main: caret row + 32px indented
  * sub-rows). Expansion is owned by the app; the caret is a separate button so
  * the parent row can still navigate.
+ *
+ * Collapsed rows hide the label. A tooltip on the nav control names the tab
+ * on hover and keyboard focus, because a native `title` waits for the
+ * platform delay and is easy to miss on an icon rail.
  */
 
 export type AppSidebarNavChild = {
@@ -92,6 +108,42 @@ export function AppSidebar({
             const active = item.id === activeId
             const hasChildren = !collapsed && (item.children?.length ?? 0) > 0
             const expanded = hasChildren && expandedIds.includes(item.id)
+            const navTarget = (
+              <NavTarget
+                href={item.href}
+                onActivate={() => onSelect(item.id)}
+                aria-current={active ? 'page' : undefined}
+                aria-label={collapsed ? item.label : undefined}
+                className={cn(
+                  'group flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-sm',
+                  collapsed ? 'justify-center px-0' : 'px-2',
+                  active
+                    ? 'font-medium text-text-brand-secondary'
+                    : 'text-text-secondary hover:text-text-neutral-default',
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    'size-5 shrink-0',
+                    active
+                      ? 'text-icon-brand-secondary'
+                      : 'text-icon-neutral-tertiary group-hover:text-icon-neutral-secondary',
+                  )}
+                />
+                {!collapsed ? (
+                  <span className="flex-1 truncate text-left">
+                    {item.label}
+                  </span>
+                ) : null}
+                {!collapsed &&
+                typeof item.badge === 'number' &&
+                item.badge > 0 ? (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-pill bg-background-danger-default px-1 text-xs leading-none text-text-danger-on-danger">
+                    {item.badge > 99 ? '99+' : item.badge}
+                  </span>
+                ) : null}
+              </NavTarget>
+            )
             return (
               <li key={item.id}>
                 <div
@@ -102,40 +154,13 @@ export function AppSidebar({
                       : 'hover:bg-background-main-secondary-hover',
                   )}
                 >
-                  <NavTarget
-                    href={item.href}
-                    onActivate={() => onSelect(item.id)}
-                    aria-current={active ? 'page' : undefined}
-                    title={collapsed ? item.label : undefined}
-                    className={cn(
-                      'group flex h-full min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-sm',
-                      collapsed ? 'justify-center px-0' : 'px-2',
-                      active
-                        ? 'font-medium text-text-brand-secondary'
-                        : 'text-text-secondary hover:text-text-neutral-default',
-                    )}
-                  >
-                    <item.icon
-                      className={cn(
-                        'size-5 shrink-0',
-                        active
-                          ? 'text-icon-brand-secondary'
-                          : 'text-icon-neutral-tertiary group-hover:text-icon-neutral-secondary',
-                      )}
-                    />
-                    {!collapsed ? (
-                      <span className="flex-1 truncate text-left">
-                        {item.label}
-                      </span>
-                    ) : null}
-                    {!collapsed &&
-                    typeof item.badge === 'number' &&
-                    item.badge > 0 ? (
-                      <span className="flex h-4 min-w-4 items-center justify-center rounded-pill bg-background-danger-default px-1 text-xs leading-none text-text-danger-on-danger">
-                        {item.badge > 99 ? '99+' : item.badge}
-                      </span>
-                    ) : null}
-                  </NavTarget>
+                  {collapsed ? (
+                    <CollapsedTabTooltip label={item.label}>
+                      {navTarget}
+                    </CollapsedTabTooltip>
+                  ) : (
+                    navTarget
+                  )}
                   {hasChildren ? (
                     <button
                       type="button"
@@ -211,34 +236,85 @@ export function AppSidebar({
 }
 
 /**
+ * Names a collapsed sidebar tab while the pointer or keyboard focus is on it.
+ *
+ * The trigger is the nav control itself, so the tooltip tracks that control
+ * and opens on focus as well as hover. `delay={0}` overrides the app tooltip
+ * provider (500ms): an icon rail is unlabeled until this name appears, so the
+ * platform title delay made the tabs feel unnamed. The label is also the
+ * control's `aria-label`, set by the caller, so the name exists while the
+ * tooltip is closed.
+ */
+function CollapsedTabTooltip({
+  label,
+  children,
+}: {
+  label: string
+  children: ReactElement
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger delay={0} render={children} />
+      <TooltipContent side="right" sideOffset={8}>
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+type NavTargetProps = {
+  href?: string
+  onActivate: () => void
+  children: ReactNode
+  onClick?: MouseEventHandler<HTMLElement>
+  /**
+   * The collapsed tooltip trigger clones this component and passes its ref.
+   * One ref serves either the link or the button.
+   */
+  ref?: Ref<HTMLAnchorElement | HTMLButtonElement>
+} & Omit<ComponentProps<'a'>, 'href' | 'onClick' | 'children' | 'type' | 'ref'>
+
+/**
  * A nav row: a link when it has an href, so it can be middle-clicked or
  * opened in a new tab, with plain left clicks handled in-app; a button
  * otherwise.
+ *
+ * Extra props are forwarded to the DOM node. The collapsed tooltip trigger
+ * clones this element and attaches its hover, focus, and ref props here.
+ * Incoming `onClick` is composed with activation so that clone does not
+ * replace the in-app click. The static props are anchor attributes; the
+ * button branch casts them because the same clone also renders a button.
  */
 function NavTarget({
   href,
   onActivate,
   children,
+  onClick,
+  ref,
   ...props
-}: {
-  href?: string
-  onActivate: () => void
-  children: ReactNode
-  className?: string
-  title?: string
-  'aria-current'?: 'page'
-}) {
+}: NavTargetProps) {
   if (!href) {
     return (
-      <button type="button" onClick={onActivate} {...props}>
+      <button
+        {...(props as ComponentProps<'button'>)}
+        ref={ref as Ref<HTMLButtonElement> | undefined}
+        type="button"
+        onClick={(event) => {
+          onClick?.(event)
+          onActivate()
+        }}
+      >
         {children}
       </button>
     )
   }
   return (
     <a
+      {...props}
+      ref={ref as Ref<HTMLAnchorElement> | undefined}
       href={href}
       onClick={(event) => {
+        onClick?.(event)
         if (
           event.button !== 0 ||
           event.metaKey ||
@@ -251,7 +327,6 @@ function NavTarget({
         event.preventDefault()
         onActivate()
       }}
-      {...props}
     >
       {children}
     </a>
