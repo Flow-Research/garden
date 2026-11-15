@@ -20,7 +20,7 @@ Session rules:
 - No overengineering. Pick the simplest approach that fits the codebase and the task.
 - Product feel matters: the app should feel fast, snappy, and local-first. Prefer proper caching, preloading, optimistic updates, and reuse of warm UI/runtime state so users rarely see loading states.
 - Use `better-result` as a typed workflow toolkit, not just an error wrapper. Model rich product/domain outcomes in `Result.ok(...)`; reserve `Result.err(...)` for recoverable operation failures callers must handle. Prefer `Result.gen`, `Result.await`, `andThen`, `mapError`, `tryRecover`, `tap`/`tapBoth`, and boundary `.match(...)`/`matchError(...)` over scattered `isOk()`/`isErr()` branching, nullable sentinels, booleans, or thrown domain exceptions.
-- Never use `try/catch`.
+- Never use `try/catch`. `pnpm verify:code-policy` enforces this, together with the `useEffect` ban and the `as any` / `as unknown as T` ban, against `scripts/code-policy-baseline.json`. New violations fail CI. After you remove one, run `pnpm verify:code-policy --update` so the baseline only shrinks. `pnpm verify:code-policy` enforces this, together with the `useEffect` ban and the `as any` / `as unknown as T` ban, against `scripts/code-policy-baseline.json`. New violations fail CI. After you remove one, run `pnpm verify:code-policy --update` so the baseline only shrinks.
 - React `useEffect` is banned. Use loaders, server functions, event handlers, subscriptions, or derived state instead.
 - For API and server boundary validation, prefer shared Zod schemas and use `drizzle-zod` where DB-backed shapes should stay in sync with Drizzle schema.
 - For schema migrations, edit the Drizzle schema first and run `pnpm --filter @garden/db db:generate`. Do not hand-write raw schema SQL. Raw SQL is only acceptable for data migrations or hand-authored data repair/backfill steps that Drizzle cannot generate.
@@ -67,7 +67,7 @@ Cloudflare run orchestration:
 
 General code hygiene:
 
-- Add JSDoc above every non-trivial function, class method, hook, server function, route handler, store action, and implementation block whose purpose is not obvious from its name and types. The JSDoc must explain why this code exists, the observed behavior before the change, the intended behavior after the change, and any docs or source references consulted (for example SDK docs, installed package source, framework docs, or local reference code). Keep it concise but concrete; future agents should understand the decision without reconstructing the whole debugging session.
+- Comments state what the code cannot: a constraint, an external quirk, or a non-obvious invariant, with a source link when one exists. Exported APIs get a short JSDoc on what they do and why they exist. Do not narrate the change: "before/after" behavior, debugging history, and sources consulted belong in the commit message and PR, because they stop being true once the change merges. Do not restate what names and types already say. Prefer encoding a constraint as a type, lint rule, or test over writing it down.
 - Prefer `rg` over `grep` for code search. When searching `.`, use `rg` first.
 - Never destructure methods off an object you'll then call. Either call as `obj.method(...)` or bind explicitly (`obj.method.bind(obj)`). Loose method references quietly drop `this`.
 
