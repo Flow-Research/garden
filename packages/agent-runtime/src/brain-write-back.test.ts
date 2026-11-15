@@ -155,6 +155,56 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     expect(mockGetPooledDb).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [
+      {
+        body: 'Retention is now 30 days.',
+        label: 'Retention is 90 days.',
+        summary: 'Retention is 90 days.',
+      },
+      false,
+    ],
+    [{ body: '', label: 'Retention is 90 days.' }, false],
+    [
+      { summary: 'Retention is now 30 days.', label: 'Retention is 90 days.' },
+      false,
+    ],
+    [{ summary: 'Retention is 90 days.', label: 'Retention policy' }, true],
+    [{ label: 'Retention is 90 days.' }, true],
+  ])(
+    'compares authoritative stored content before metadata %j',
+    async (item, duplicate) => {
+      const { Effect } = await import('effect')
+      mockSearch.mockReturnValue(Effect.succeed([{ item, score: 1 }]))
+      mockAddText.mockReturnValue(Effect.succeed({ id: 'written' }))
+      const tools = createBrainWriteBackTools({
+        env: { HELIX_URL: 'http://localhost:6968' },
+        ai: { run: async () => ({ data: [] }) },
+        files: { get: async () => null },
+        databaseUrl: 'postgres://test:test@localhost:5432/test',
+        getContext: () => ({
+          workspaceId: 'workspace-1',
+          agentId: 'agent-1',
+          runId: 'run-1',
+        }),
+      })
+      const result = await execute(tools.propose_brain_item, {
+        claim: 'Retention is 90 days.',
+        kind: 'policy',
+        confidence: 0.9,
+        sensitive: false,
+        scope: 'org',
+      })
+      expect(result).toEqual(
+        duplicate
+          ? { ok: true, action: 'skipped', reason: 'duplicate' }
+          : { ok: true, action: 'written' },
+      )
+      expect(mockAddText).toHaveBeenCalledTimes(duplicate ? 0 : 1)
+      expect(mockGetPooledDb).not.toHaveBeenCalled()
+    },
+  )
+
   it('uses one semantic identity across runs and a run-specific operation key', async () => {
     const returning = vi
       .fn()

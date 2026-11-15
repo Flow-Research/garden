@@ -143,10 +143,9 @@ const matchesExistingClaim = (
   },
 ): boolean => {
   const normalized = normalizeBrainWriteBackClaim(claim)
-  return [hit.item.body, hit.item.summary, hit.item.label].some(
-    (value) =>
-      value !== undefined && normalizeBrainWriteBackClaim(value) === normalized,
-  )
+  // Metadata can be stale after content changes; it is only a missing-body fallback.
+  const storedClaim = hit.item.body ?? hit.item.summary ?? hit.item.label
+  return normalizeBrainWriteBackClaim(storedClaim) === normalized
 }
 
 /**

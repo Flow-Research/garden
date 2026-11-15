@@ -1097,11 +1097,17 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         marker: this.getConfig<{ brainGrantHistory?: unknown }>()
           ?.brainGrantHistory,
         readDurableHistory: () => this.session.getHistory(),
-        persist: (brainGrantHistory) =>
-          this.configure({
-            ...this.getConfig<Record<string, unknown>>(),
-            brainGrantHistory,
-          }),
+        persist: (brainGrantHistory) => {
+          const config = this.getConfig<Record<string, unknown>>()
+          // Preparation owns the first audience stamp. Early output checks
+          // must not create a provenance-only configuration on an empty facet.
+          if (
+            exposeTool === undefined &&
+            config?.brainAudience !== `org-v1:${origin.workspaceId}`
+          )
+            return
+          this.configure({ ...config, brainGrantHistory })
+        },
       })
     ).mapError(
       (error) =>

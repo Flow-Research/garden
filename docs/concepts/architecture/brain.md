@@ -63,7 +63,11 @@ HelixDB stores data in the `helix-data` volume through `HELIX_DATA_DIR`. HelixDB
 
 `brain-run-authority.ts` validates the originating issue or automation run and reads its current permissions. The shared run lifecycle remains in `RunSubAgentBase`. The base checks originating identity before execution, completion, failure and cancellation RPCs can change a run. Each run facet supplies that identity check and checks Brain access through preparation and summary hooks. The parent passes the exact origin object to a separate write-back facet. That facet checks the origin again before it uses the summary. Each later write-back tool-context check also validates the origin's retained provenance. The existing context checks run before deduplication and before persistence. A grant removal between those operations therefore blocks both the review proposal and direct-write paths.
 
+An output-authority check before issue preparation must not create configuration that contains only grant provenance. Preparation owns the first organization-audience stamp. A failure before preparation leaves the empty facet available for a later run.
+
 Write-back uses a stable operation key and a scope-aware claim hash. Database indexes prevent duplicate operations and duplicate claims within a workspace. A repeated delivery can return the existing result. Brain node creation also uses a stable canonical identity, so a repeated request does not create another node after an uncertain response.
+
+Semantic duplicate checks compare the stored body when it exists. They use the summary, then the label, only when the body is absent. A matching label or summary cannot override different body content.
 
 The migration preserves existing proposal rows and review fields. It stops when legacy hashes are ambiguous. An operator must review those rows before the migration can continue. Migration completion is not evidence of a live deployment.
 

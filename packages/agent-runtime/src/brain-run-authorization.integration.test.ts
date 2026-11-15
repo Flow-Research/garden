@@ -773,6 +773,13 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           [],
       }
       rolesByScenario[
+        'allows a new run on the same issue after failure before preparation'
+      ] = [
+        'IssueRunSubAgent.completeWorkflowTurn',
+        'BrainWriteBackSubAgent.runWriteBack',
+        'IssueRunSubAgent.validateBrainSummaryAccess',
+      ]
+      rolesByScenario[
         'closes native authority connections after repeated allowed and denied checks'
       ] = ['IssueRunSubAgent.validateBrainSummaryAccess']
       for (const kind of ['issue', 'automation'])
@@ -1094,6 +1101,66 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       })
       return { agentId, runId: automationRunId }
     }
+
+    it('allows a new run on the same issue after failure before preparation', async () => {
+      grantScenario = { kind: 'issue', read: true }
+      const failed = await harness!.fetch('/entry-mutation', {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: 'issue',
+          agentId,
+          objectId: issueId,
+          runId,
+          method: 'fail',
+        }),
+      })
+      expect(failed.status, await failed.clone().text()).toBe(200)
+      expect(await failed.json()).toEqual({ ok: true })
+      expect(modelRequests).toHaveLength(0)
+      const nextRunId = crypto.randomUUID()
+      await database!.db.insert(schema.issueRun).values({
+        id: nextRunId,
+        workspaceId,
+        issueId,
+        agentId,
+        hostName: agentId,
+        workflowInstanceId: nextRunId,
+      })
+      await database!.db
+        .update(schema.issue)
+        .set({ activeRunId: nextRunId })
+        .where(eq(schema.issue.id, issueId))
+      const response = await harness!.fetch('/start', {
+        method: 'POST',
+        body: JSON.stringify({ agentId, issueId, runId: nextRunId }),
+      })
+      expect(response.status, await response.clone().text()).toBe(200)
+      await expect
+        .poll(
+          async () =>
+            (
+              await database!.db
+                .select()
+                .from(schema.issueRun)
+                .where(eq(schema.issueRun.id, nextRunId))
+            )[0]?.status,
+          { timeout: 60_000 },
+        )
+        .toMatch(/^(succeeded|failed|blocked|cancelled)$/)
+      const [result] = await database!.db
+        .select()
+        .from(schema.issueRun)
+        .where(eq(schema.issueRun.id, nextRunId))
+      expect(result?.status, result?.error ?? 'Missing run').toBe('succeeded')
+      await expect
+        .poll(() => JSON.stringify(harness!.getLogs()), { timeout: 60_000 })
+        .toMatch(
+          new RegExp(
+            `agent_do\\.brain_write_back\\.completed[^\n]*${nextRunId}`,
+          ),
+        )
+      expect(modelRequests.length).toBeGreaterThan(0)
+    }, 90_000)
 
     for (const kind of ['issue', 'automation'] as const) {
       for (const policy of [
@@ -2484,6 +2551,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
               method: 'POST',
               body: JSON.stringify({ workspaceId }),
             })
+            expect(snapshot.status, await snapshot.clone().text()).toBe(200)
             expect(await snapshot.text()).not.toContain('G08 durable')
           }, 90_000)
         }
