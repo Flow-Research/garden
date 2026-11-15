@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { parseSync } from 'oxc-parser'
 
@@ -10,7 +10,9 @@ import { parseSync } from 'oxc-parser'
  * `scripts/code-policy-baseline.json`. CI fails when a file gains a
  * violation, and also when a file drops below its baseline, so the
  * baseline only ever shrinks. Run `pnpm verify:code-policy --update`
- * after removing violations.
+ * after removing violations; it refuses to raise any count. When the
+ * measurement itself changes, delete the baseline file and run `--update`
+ * to re-record it, so the full rewrite shows up in review.
  */
 
 const roots = ['apps', 'packages', 'workers']
@@ -46,26 +48,62 @@ function listSources(dir) {
 
 const escapeTypes = new Set(['TSAnyKeyword', 'TSUnknownKeyword'])
 
+function unwrapParens(node) {
+  return node.type === 'ParenthesizedExpression'
+    ? unwrapParens(node.expression)
+    : node
+}
+
+/**
+ * Local names that refer to React's `useEffect` (aliased named imports) and
+ * to the React module itself (default or namespace imports), so the visitor
+ * counts call sites rather than imports.
+ */
+function reactBindings(program) {
+  const effectNames = new Set()
+  const moduleNames = new Set()
+  for (const statement of program.body) {
+    if (statement.type !== 'ImportDeclaration') continue
+    if (statement.source.value !== 'react') continue
+    for (const specifier of statement.specifiers) {
+      if (specifier.type === 'ImportSpecifier') {
+        if (specifier.imported.name === 'useEffect') {
+          effectNames.add(specifier.local.name)
+        }
+      } else {
+        moduleNames.add(specifier.local.name)
+      }
+    }
+  }
+  return { effectNames, moduleNames }
+}
+
+function isEffectCall(callee, { effectNames, moduleNames }) {
+  if (callee.type === 'Identifier') return effectNames.has(callee.name)
+  return (
+    callee.type === 'MemberExpression' &&
+    callee.object.type === 'Identifier' &&
+    moduleNames.has(callee.object.name) &&
+    callee.property.name === 'useEffect'
+  )
+}
+
 function countViolations(file) {
   const { program } = parseSync(file, readFileSync(file, 'utf8'))
+  const bindings = reactBindings(program)
   const counts = { 'try-catch': 0, 'use-effect': 0, 'type-escape': 0 }
   const visit = (node) => {
     if (Array.isArray(node)) return node.forEach(visit)
     if (!node || typeof node.type !== 'string') return
     if (node.type === 'TryStatement' && node.handler) counts['try-catch'] += 1
-    if (node.type === 'ImportSpecifier' && node.imported.name === 'useEffect') {
-      counts['use-effect'] += 1
-    }
-    if (
-      node.type === 'MemberExpression' &&
-      node.property.name === 'useEffect'
-    ) {
+    if (node.type === 'CallExpression' && isEffectCall(node.callee, bindings)) {
       counts['use-effect'] += 1
     }
     if (node.type === 'TSAsExpression') {
+      const inner = unwrapParens(node.expression)
       const doubleCast =
-        node.expression.type === 'TSAsExpression' &&
-        escapeTypes.has(node.expression.typeAnnotation.type)
+        inner.type === 'TSAsExpression' &&
+        escapeTypes.has(inner.typeAnnotation.type)
       if (node.typeAnnotation.type === 'TSAnyKeyword' || doubleCast)
         counts['type-escape'] += 1
     }
@@ -91,17 +129,14 @@ function measure() {
 }
 
 const current = measure()
-
-if (process.argv.includes('--update')) {
-  writeFileSync(baselinePath, `${JSON.stringify(current, null, 2)}\n`)
-  for (const rule of Object.keys(rules)) {
-    const total = Object.values(current[rule]).reduce((sum, n) => sum + n, 0)
-    process.stdout.write(`${rule}: ${total}\n`)
-  }
-  process.exit(0)
+const updating = process.argv.includes('--update')
+if (!existsSync(baselinePath) && !updating) {
+  console.error('Missing baseline. Run `pnpm verify:code-policy --update`.')
+  process.exit(1)
 }
-
-const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
+const baseline = existsSync(baselinePath)
+  ? JSON.parse(readFileSync(baselinePath, 'utf8'))
+  : current
 const added = []
 const stale = []
 for (const [rule, message] of Object.entries(rules)) {
@@ -112,8 +147,9 @@ for (const [rule, message] of Object.entries(rules)) {
   for (const file of files) {
     const now = current[rule][file] ?? 0
     const allowed = baseline[rule]?.[file] ?? 0
-    if (now > allowed)
+    if (now > allowed) {
       added.push(`${file}: ${rule} ${allowed} -> ${now}. ${message}`)
+    }
     if (now < allowed) stale.push(`${file}: ${rule} ${allowed} -> ${now}`)
   }
 }
@@ -122,11 +158,22 @@ if (added.length > 0) {
   console.error(
     `New code-policy violations:\n${added.map((line) => `  ${line}`).join('\n')}`,
   )
+  process.exit(1)
 }
+
+if (updating) {
+  writeFileSync(baselinePath, `${JSON.stringify(current, null, 2)}\n`)
+  for (const rule of Object.keys(rules)) {
+    const total = Object.values(current[rule]).reduce((sum, n) => sum + n, 0)
+    process.stdout.write(`${rule}: ${total}\n`)
+  }
+  process.exit(0)
+}
+
 if (stale.length > 0) {
   console.error(
     `Violations removed; lock in the lower baseline with \`pnpm verify:code-policy --update\`:\n${stale.map((line) => `  ${line}`).join('\n')}`,
   )
+  process.exit(1)
 }
-if (added.length > 0 || stale.length > 0) process.exit(1)
 process.stdout.write('Code policy baseline holds.\n')
