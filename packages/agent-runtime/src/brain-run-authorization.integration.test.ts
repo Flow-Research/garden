@@ -174,6 +174,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       | undefined
 
     beforeEach(async (context) => {
+      // A failed setup must not close resources retained from the previous case.
+      database = undefined
+      helix = undefined
+      model = undefined
+      brainProxy = undefined
+      harness = undefined
       nextIssueNumber = 2
       modelRequests.length = 0
       modelBrainCounts.length = 0
@@ -2569,7 +2575,14 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           r.tools?.some((t) => t.function.name === 'propose_brain_item'),
         )
         expect(calls.length).toBeGreaterThan(1)
-        expect(JSON.stringify(calls)).toContain('Brain read is not permitted.')
+        const results = calls
+          .flatMap((request) => request.messages)
+          .filter((message) => message.role === 'tool')
+          .map((message) => fixtureToolResult(message.content))
+        expect(results).toContainEqual({
+          ok: false,
+          error: 'No active run context.',
+        })
         expect(
           await database!.db.select().from(schema.brainWriteProposal),
         ).toHaveLength(0)

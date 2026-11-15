@@ -50,7 +50,7 @@ pnpm --filter @garden/web exec vitest src/features/automations/queries.test.ts
 
 ## Run the Postgres integration tests
 
-Integration tests start a real Postgres container. They call `startTestDb` or `withTestDb` from `@garden/db/testing`, which lives in `packages/db/src/testing/container.ts`. Each call starts `postgres:16-alpine` through testcontainers and applies every migration in `packages/db/drizzle`.
+Integration tests start a real Postgres container. They call `startTestDb` or `withTestDb` from `@garden/db/testing`, which lives in `packages/db/src/testing/container.ts`. Each call starts `postgres:16-alpine` through testcontainers. It waits for the database-ready log messages and the internal and mapped host ports before it applies migrations from `packages/db/drizzle`. A log message alone does not prove that the host can connect.
 
 1. Start Docker. Testcontainers needs a running Docker daemon. If Docker listens on a non-default socket, set `DOCKER_HOST`. Turbo passes it through.
 2. Run the test file or the package:
