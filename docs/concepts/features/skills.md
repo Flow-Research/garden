@@ -3,7 +3,7 @@ title: Skills load on demand from R2 through Think skill sources
 description: Where skills are stored, how an agent sees only its assigned skills, and why a skill write never touches existing chat threads.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-14
+last_reviewed: 2026-11-15
 ---
 
 A skill is a `SKILL.md` bundle of instructions and supporting files that teaches an agent a task. Skills belong to a workspace and are assigned to agents. An agent sees a catalog of its assigned skills and loads one only when a task calls for it.
@@ -51,6 +51,11 @@ to the mobile library, asks before discarding changes. Failed saves keep the
 draft. A save from a discarded editor still updates the cached bundle, but cannot
 replace a newer dirty draft after that skill is reopened. Each dirty editor keeps
 its starting bundle until its own save succeeds or the draft is discarded.
+Within one browser tab, saves for the same workspace skill run in submission
+order, even when the editor is discarded and reopened. Each queued save waits
+for the previous request and its cache update to settle, including failed saves.
+Different skills can save independently. This ordering uses TanStack Query's
+shared mutation scope; timestamps are not used as bundle versions.
 Saving the main document does not replace supporting files unless those
 files changed. Adding a file is blocked while a save is pending, including
 the Add file dialog's button and Enter shortcut if the dialog was already open.

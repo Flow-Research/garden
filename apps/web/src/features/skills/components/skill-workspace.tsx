@@ -10,8 +10,9 @@ import {
   Save,
   Trash2,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
+import { toast } from 'sonner'
 import type { Skill, UpdateSkillRequest } from '@garden/core/types'
 import { parseSupportingFilePath } from '@garden/core/skills/file-path'
 import { useWorkspaceId } from '@garden/app-state/hooks'
@@ -51,24 +52,44 @@ type Draft = { content: string; files: { path: string; content: string }[] }
  */
 export function SkillWorkspace({
   skill,
-  onUpdate,
   onDelete,
   onReinstall,
   onDirtyChange,
   onBack,
 }: {
   skill: Skill
-  onUpdate: (data: UpdateSkillRequest) => Promise<unknown>
   onDelete: () => Promise<unknown>
   onReinstall: () => Promise<unknown>
   onDirtyChange: (dirty: boolean) => void
   onBack: () => void
 }) {
   const wsId = useWorkspaceId()
+  const qc = useQueryClient()
   const query = useQuery({
     queryKey: workspaceKeys.skill(wsId, skill.id),
     queryFn: ({ signal }) => api.getSkill(skill.id, signal),
     staleTime: Infinity,
+  })
+  /**
+   * Keeps one skill's saves ordered across editor remounts; parallel responses
+   * previously replaced newer cached bundles. Query's MutationCache.canRun/runNext
+   * holds this scope through cache callbacks, as used by AgentSkillsTab.
+   */
+  const updateMutation = useMutation({
+    scope: { id: `skill-save:${wsId}:${skill.id}` },
+    mutationFn: (data: UpdateSkillRequest) => api.updateSkill(skill.id, data),
+    onSuccess: (updated) => {
+      qc.setQueryData(workspaceKeys.skill(wsId, updated.id), updated)
+      // The full saved bundle is authoritative; only the catalog needs refetching.
+      qc.invalidateQueries({
+        queryKey: workspaceKeys.skills(wsId),
+        exact: true,
+      })
+      toast.success('Saved')
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Save failed')
+    },
   })
   const [selectedPath, setSelectedPath] = useState(SKILL_MD)
   const [mode, setMode] = useState<SkillView>('preview')
@@ -133,7 +154,7 @@ export function SkillWorkspace({
       onSelectPath={setSelectedPath}
       mode={mode}
       onModeChange={setMode}
-      onUpdate={onUpdate}
+      onUpdate={(data) => updateMutation.mutateAsync(data)}
       onDelete={onDelete}
       onReinstall={onReinstall}
       onDirtyChange={reportEditorDirty}

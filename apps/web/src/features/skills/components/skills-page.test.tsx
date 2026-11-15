@@ -376,6 +376,128 @@ describe('SkillsPage library', () => {
     expect(editorBox()).toHaveValue('Reopened draft')
   })
 
+  it.each(['succeeds', 'fails'])(
+    'queues a reopened skill save until its previous save %s',
+    async (outcome) => {
+      let finishFirst: ((value: Skill) => void) | undefined
+      let failFirst: ((reason: Error) => void) | undefined
+      let finishSecond: ((value: Skill) => void) | undefined
+      mocks.updateSkill
+        .mockImplementationOnce(
+          () =>
+            new Promise<Skill>((resolve, reject) => {
+              finishFirst = resolve
+              failFirst = reject
+            }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<Skill>((resolve) => {
+              finishSecond = resolve
+            }),
+        )
+      renderPage()
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+      fireEvent.change(editorBox(), { target: { value: 'First draft' } })
+      fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+      await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+      fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+      fireEvent.click(
+        within(await screen.findByRole('alertdialog')).getByRole('button', {
+          name: 'Discard changes',
+        }),
+      )
+      await screen.findByRole('heading', { name: 'Triage' })
+      fireEvent.click(
+        skillsList().getByRole('button', { name: 'Release notes' }),
+      )
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+      fireEvent.change(editorBox(), { target: { value: 'Reopened draft' } })
+      await act(async () => {
+        fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+      })
+
+      for (const button of screen.getAllByRole('button', { name: 'Saving' })) {
+        expect(button).toBeDisabled()
+      }
+      expect(mocks.updateSkill).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        if (outcome === 'succeeds') {
+          finishFirst?.(
+            skill({ content: 'First draft', bundle_hash: 'saved-first' }),
+          )
+        } else {
+          failFirst?.(new Error('Write failed'))
+        }
+      })
+      await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(2))
+      expect(mocks.updateSkill).toHaveBeenLastCalledWith('skill-1', {
+        content: 'Reopened draft',
+      })
+      expect(editorBox()).toHaveValue('Reopened draft')
+      expect(screen.getByText('Unsaved')).toBeInTheDocument()
+      await act(async () => {
+        finishSecond?.(
+          skill({ content: 'Reopened draft', bundle_hash: 'saved-reopened' }),
+        )
+      })
+      await waitFor(() => expect(screen.queryByText('Unsaved')).toBeNull())
+      expect(editorBox()).toHaveValue('Reopened draft')
+    },
+  )
+
+  it('saves another skill while the previous skill still has a pending save', async () => {
+    let finishFirst: ((value: Skill) => void) | undefined
+    let finishSecond: ((value: Skill) => void) | undefined
+    mocks.updateSkill
+      .mockImplementationOnce(
+        () =>
+          new Promise<Skill>((resolve) => {
+            finishFirst = resolve
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise<Skill>((resolve) => {
+            finishSecond = resolve
+          }),
+      )
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'First draft' } })
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(1))
+    fireEvent.click(skillsList().getByRole('button', { name: 'Triage' }))
+    fireEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', {
+        name: 'Discard changes',
+      }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.change(editorBox(), { target: { value: 'Triage draft' } })
+    fireEvent.keyDown(editorBox(), { key: 's', ctrlKey: true })
+    await waitFor(() => expect(mocks.updateSkill).toHaveBeenCalledTimes(2))
+    expect(mocks.updateSkill).toHaveBeenLastCalledWith('skill-2', {
+      content: 'Triage draft',
+    })
+    await act(async () => {
+      finishFirst?.(
+        skill({ content: 'First draft', bundle_hash: 'saved-first' }),
+      )
+    })
+    expect(editorBox()).toHaveValue('Triage draft')
+    expect(screen.getByText('Unsaved')).toBeInTheDocument()
+    await act(async () => {
+      finishSecond?.({
+        ...second,
+        content: 'Triage draft',
+        bundle_hash: 'saved-triage',
+      })
+    })
+    await waitFor(() => expect(screen.queryByText('Unsaved')).toBeNull())
+    expect(editorBox()).toHaveValue('Triage draft')
+  })
+
   it('opens the initially selected skill, returns to the list, and preserves search', async () => {
     const onSelectSkill = vi.fn()
     renderPage({ onSelectSkill })

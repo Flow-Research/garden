@@ -5,7 +5,6 @@ import type {
   Skill,
   CreateSkillRequest,
   SkillsShSearchResult,
-  UpdateSkillRequest,
 } from '@garden/core/types'
 import {
   Dialog,
@@ -94,7 +93,7 @@ function formatInstallCount(installs: number) {
 // Page root
 // ---------------------------------------------------------------------------
 
-/** Coordinates catalog mutations and guards navigation before a draft is discarded. */
+/** Coordinates library mutations and guards navigation before a draft is discarded. */
 export default function SkillsPage({
   focusedSkillId,
   onSelectSkill,
@@ -173,24 +172,6 @@ export default function SkillsPage({
     },
     onError: (err) => {
       toast.error(err instanceof Error ? err.message : 'Import failed')
-    },
-  })
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: UpdateSkillRequest }) =>
-      api.updateSkill(id, data),
-    onSuccess: (updated) => {
-      qc.setQueryData(workspaceKeys.skill(wsId, updated.id), updated)
-      // The write returns the full bundle. Refetching its detail could replace
-      // that saved response with an older in-flight read and leave a dirty editor.
-      qc.invalidateQueries({
-        queryKey: workspaceKeys.skills(wsId),
-        exact: true,
-      })
-      toast.success('Saved')
-    },
-    onError: (err) => {
-      toast.error(err instanceof Error ? err.message : 'Save failed')
     },
   })
 
@@ -350,9 +331,6 @@ export default function SkillsPage({
             <SkillWorkspace
               key={editorKey}
               skill={selected}
-              onUpdate={(data) =>
-                updateMutation.mutateAsync({ id: selected.id, data })
-              }
               onDelete={() => deleteMutation.mutateAsync(selected.id)}
               onReinstall={() =>
                 selected.source_url

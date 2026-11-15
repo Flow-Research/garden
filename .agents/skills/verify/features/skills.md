@@ -63,6 +63,11 @@
    enter a new draft before the first save completes. Resolving that save must
    preserve the new draft and its discard guard. Save again and confirm the new
    draft persists and the unsaved indicator clears.
+6. Repeat with a save started from the reopened editor before the first response
+   arrives. The second request must wait until the first settles, including when
+   the first fails. The reopened draft must remain visible while queued, then
+   persist and become clean after its save. A pending save for A must not delay
+   saving B.
 
 ## Automated proof
 
