@@ -51,6 +51,9 @@ jobs:
       - name: Lint
         run: pnpm lint
 
+      - name: Verify code policy
+        run: pnpm verify:code-policy
+
       - name: Typecheck
         run: pnpm typecheck
 
