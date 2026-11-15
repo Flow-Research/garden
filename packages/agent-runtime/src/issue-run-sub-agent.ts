@@ -314,8 +314,13 @@ export class IssueRunSubAgent extends RunSubAgentBase<
    * injection reads org-scoped Brain context only. Before this change the
    * owner's private memory could surface in shared run output (garden#143).
    */
-  protected brainInjectionIdentity(loaded: LoadedTurnContext) {
+  protected async brainInjectionIdentity(loaded: LoadedTurnContext) {
     if (!this.brainInjectionAllowed) return null
+    // MCP preparation can overlap revocation; injection requires fresh authority.
+    const authority = await this.ensureBrainOutputAuthority(
+      loaded.runState.runId,
+    )
+    if (authority.isErr()) return null
     return {
       workspaceId: loaded.runState.workspaceId,
       userId: undefined,
@@ -649,6 +654,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
     const outputAuthority = await this.ensureBrainOutputAuthority(run.runId)
     if (outputAuthority.isErr()) return
+    this.aiObservation.afterToolCall(ctx)
 
     const output = ctx.success ? objectOrNull(ctx.output) : null
     const ok = ctx.success && output?.ok !== false
@@ -692,7 +698,6 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         ...errorFields(eventResult.error),
       })
     }
-    this.aiObservation.afterToolCall(ctx)
   }
 
   /**

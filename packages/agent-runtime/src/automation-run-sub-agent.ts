@@ -400,8 +400,11 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     return Result.ok(undefined)
   }
 
-  protected brainInjectionIdentity(loaded: LoadedAutomationRunContext) {
+  protected async brainInjectionIdentity(loaded: LoadedAutomationRunContext) {
     if (!this.brainInjectionAllowed) return null
+    // MCP preparation can overlap revocation; injection requires fresh authority.
+    const authority = await this.ensureBrainOutputAuthority(loaded.run.id)
+    if (authority.isErr()) return null
     return {
       workspaceId: loaded.run.workspaceId,
       userId: loaded.agent.ownerUserId,
@@ -736,6 +739,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
 
     const outputAuthority = await this.ensureBrainOutputAuthority(runId)
     if (outputAuthority.isErr()) return
+    this.aiObservation.afterToolCall(ctx)
 
     automationRunLogger[ctx.success ? 'info' : 'warn'](
       'automation_run.tool.finished',
@@ -760,7 +764,6 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       outputPreview: ctx.success ? previewUnknown(ctx.output) : undefined,
       error: ctx.success ? undefined : errorMessage(ctx.error),
     })
-    this.aiObservation.afterToolCall(ctx)
   }
 
   /**

@@ -123,6 +123,17 @@ for (const [kind, facet] of [['issue', IssueRunSubAgent], ['automation', Automat
   }
 }
 
+// A loopback barrier after preparation can revoke grants before real injection.
+for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
+  const started = Reflect.get(facet.prototype, 'onTurnStarted')
+  Reflect.set(facet.prototype, 'onTurnStarted', async function (this: object, runId: string) {
+    await started.call(this, runId)
+    const env = fixtureEnvironment(this)
+    const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/before-injection`, { method: 'POST' })
+    if (!response.ok) throw new Error('Injection authority barrier failed')
+  })
+}
+
 // An actual outward tool in the native dispatch pipeline. It has no production
 // counterpart and publishes only to this suite's local synthetic endpoint.
 for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
@@ -364,7 +375,12 @@ export default {
       const persisted: unknown[] = []
       const host = {
         env,
-        getConfig: () => ({ brainGrantHistory: input.marker }),
+        getConfig: () => ({
+          brainGrantHistory: input.marker,
+          ...(input.failPersist && input.exposeTool === undefined
+            ? { brainAudience: `org-v1:${input.workspaceId}` }
+            : {}),
+        }),
         configure: (value: unknown) => {
           if (input.failPersist)
             throw new Error('Injected grant provenance persistence failure')

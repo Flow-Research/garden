@@ -335,9 +335,9 @@ export abstract class RunSubAgentBase<
    * The run facet knows these from its loaded context; the shared base must not
    * assume fields that differ between issue and automation ledgers.
    */
-  protected brainInjectionIdentity(
+  protected async brainInjectionIdentity(
     _loaded: TLoaded,
-  ): { workspaceId: string; userId: string | undefined } | null {
+  ): Promise<{ workspaceId: string; userId: string | undefined } | null> {
     return null
   }
 
@@ -537,7 +537,7 @@ export abstract class RunSubAgentBase<
       },
     )
 
-    const brainIdentity = this.brainInjectionIdentity(loadedResult.value)
+    const brainIdentity = await this.brainInjectionIdentity(loadedResult.value)
     const brainContext = brainIdentity
       ? (
           await Result.tryPromise({

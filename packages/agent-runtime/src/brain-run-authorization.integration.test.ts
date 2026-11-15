@@ -49,6 +49,7 @@ let grantScenario:
       scope?: 'org' | 'user'
       mutation?: 'create' | 'update' | 'mention' | 'link'
       mutationRevoke?: boolean
+      revokeBeforeInjection?: boolean
     }
   | undefined
 let brainRequests: string[] = []
@@ -296,6 +297,23 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       model = createServer(async (request, response) => {
         let raw = ''
         for await (const chunk of request) raw += String(chunk)
+        if (request.url?.endsWith('/before-injection')) {
+          if (grantScenario?.revokeBeforeInjection) {
+            await database!.db
+              .update(schema.agent)
+              .set({
+                permissions: {
+                  full_access: false,
+                  allowed_tools: ['create_work_product', 'complete_automation'],
+                },
+              })
+              .where(eq(schema.agent.id, agentId))
+            revokedAtBrainRequest = brainRequests.length
+          }
+          response.writeHead(200)
+          response.end('ready')
+          return
+        }
         if (request.url?.endsWith('/run-error')) {
           runErrorRequests.push(raw)
           if (grantScenario?.revoke === 'completion') {
@@ -772,6 +790,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         'uses the real issue guard durable-history reader when hydration is empty or storage fails':
           [],
       }
+      for (const kind of ['issue', 'automation'])
+        rolesByScenario[
+          `blocks ${kind} Brain injection revoked-before-injection`
+        ] = [
+          `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.executeWorkflowTurn`,
+        ]
       rolesByScenario[
         'allows a new run on the same issue after failure before preparation'
       ] = [
@@ -1342,6 +1366,46 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         }, 90_000)
       }
     }
+
+    for (const kind of ['issue', 'automation'] as const)
+      it(`blocks ${kind} Brain injection revoked-before-injection`, async () => {
+        grantScenario = { kind, read: true, revokeBeforeInjection: true }
+        const input =
+          kind === 'issue'
+            ? await seedIssue('G08 injection boundary')
+            : await seedAutomation()
+        const response = await harness!.fetch(
+          kind === 'issue' ? '/start' : '/automation-start',
+          {
+            method: 'POST',
+            body: JSON.stringify(input),
+          },
+        )
+        expect(response.status, await response.clone().text()).toBe(200)
+        await expect
+          .poll(
+            async () => {
+              const table =
+                kind === 'issue' ? schema.issueRun : schema.automationRun
+              const [row] = await database!.db
+                .select({ status: table.status })
+                .from(table)
+                .where(eq(table.id, input.runId))
+              return row?.status
+            },
+            { timeout: 60_000 },
+          )
+          .toMatch(/^(succeeded|completed|failed|cancelled|blocked)$/)
+        expect(revokedAtBrainRequest).toBeTypeOf('number')
+        expect(
+          brainRequests.length,
+          'revocation before injection must prevent the Brain read',
+        ).toBe(revokedAtBrainRequest)
+        expect(JSON.stringify(modelRequests)).not.toContain(allowedMarker)
+        expect(
+          await database!.db.select().from(schema.brainWriteProposal),
+        ).toHaveLength(0)
+      }, 90_000)
 
     for (const mode of ['denied', 'allowed'] as const)
       it(`guards failure records mode=${mode}`, async () => {
