@@ -1,7 +1,5 @@
 import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
 import { parseWorkProductSavedFile } from '@garden/core/issues/work-product-saved-file'
-import { useQuery } from '@tanstack/react-query'
-import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useEffect, useRef, useState } from 'react'
 import {
   Check,
@@ -9,8 +7,6 @@ import {
   Download,
   ExternalLink,
   FileText,
-  FolderIcon,
-  FolderInput,
   GitPullRequest,
   History,
   ListChecks,
@@ -23,15 +19,6 @@ import { cn } from '@garden/ui/lib/utils'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuTrigger,
-} from '@garden/ui/components/ui/dropdown-menu'
-import { brainFolderListOptions } from '@/features/brain/queries'
 import type { WorkProductReviewAction } from '@/lib/issues/mutations'
 import {
   Empty,
@@ -99,8 +86,6 @@ export interface WorkProductCardProps {
   onApply?: () => Promise<unknown>
   /** Opens a PR writing the body to `payload.pr_target`; confirmed first. */
   onApplyPr?: () => Promise<unknown>
-  /** Saves the approved body as a Markdown file in the picked folder. */
-  onSaveToFiles?: (folderId: string) => Promise<unknown>
   onShowDiff?: () => void
 }
 
@@ -179,7 +164,6 @@ export function WorkProductCard({
   onRequestChanges,
   onApply,
   onApplyPr,
-  onSaveToFiles,
   onShowDiff,
 }: WorkProductCardProps) {
   const [expanded, setExpanded] = useState(false)
@@ -202,10 +186,6 @@ export function WorkProductCard({
   const showApply = applyable && connectorId
   const showApplyPr = applyable && prTarget !== null && onApplyPr
   const savedFile = parseWorkProductSavedFile(workProduct.payload)
-  // Saving is a copy, not an apply, so it stays available after Apply.
-  const showSaveToFiles =
-    (workProduct.status === 'approved' || workProduct.status === 'applied') &&
-    onSaveToFiles !== undefined
 
   useEffect(() => {
     if (!pulseOnMount) return
@@ -388,47 +368,31 @@ export function WorkProductCard({
         </div>
       )}
 
-      {(showSaveToFiles || savedFile) && (
+      {savedFile && (
         <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
-          {showSaveToFiles && onSaveToFiles && (
-            <SaveToFilesMenu
-              busy={busy}
-              saving={pendingAction === 'save_to_files'}
-              saved={savedFile !== null}
-              onSave={onSaveToFiles}
-            />
-          )}
-          {savedFile ? (
-            <>
-              <a
-                href={savedFile.url}
-                target="_blank"
-                rel="noreferrer"
-                className="min-w-0 truncate text-xs text-foreground hover:underline inline-flex items-center gap-1"
-              >
-                {savedFile.file_name}
-                <ExternalLink className="size-3 shrink-0" />
-              </a>
-              <a
-                href={`${savedFile.url}?download`}
-                className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-              >
-                <Download className="size-3" />
-                Markdown
-              </a>
-              <a
-                href={savedFile.url.replace(/\/content$/, '/docx')}
-                className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
-              >
-                <Download className="size-3" />
-                Word
-              </a>
-            </>
-          ) : (
-            <span className="min-w-0 truncate text-xs text-muted-foreground">
-              Saves a Markdown copy to Files & Folders.
-            </span>
-          )}
+          <a
+            href={savedFile.url}
+            target="_blank"
+            rel="noreferrer"
+            className="min-w-0 truncate text-xs text-foreground hover:underline inline-flex items-center gap-1"
+          >
+            {savedFile.file_name}
+            <ExternalLink className="size-3 shrink-0" />
+          </a>
+          <a
+            href={`${savedFile.url}?download`}
+            className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+          >
+            <Download className="size-3" />
+            Markdown
+          </a>
+          <a
+            href={savedFile.url.replace(/\/content$/, '/docx')}
+            className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+          >
+            <Download className="size-3" />
+            Word
+          </a>
         </div>
       )}
 
@@ -440,54 +404,6 @@ export function WorkProductCard({
           </div>
         )}
     </div>
-  )
-}
-
-/**
- * Folder picker for "Save to Files" (#381). Lists the workspace folders the
- * person can see, from the same query the Files page uses, so a pick here
- * matches what Files & Folders shows. The server re-checks visibility.
- */
-function SaveToFilesMenu({
-  busy,
-  saving,
-  saved,
-  onSave,
-}: {
-  busy: boolean
-  saving: boolean
-  saved: boolean
-  onSave: (folderId: string) => Promise<unknown>
-}) {
-  const foldersQuery = useQuery(brainFolderListOptions(useWorkspaceId()))
-  const folders = foldersQuery.data ?? []
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button size="sm" variant="outline" className="h-7" disabled={busy} />
-        }
-      >
-        <FolderInput className="size-3.5 mr-1" />
-        {saving ? 'Saving…' : saved ? 'Save again' : 'Save to Files'}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent className="w-52">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            {folders.length === 0 ? 'No folders yet' : 'Save to folder'}
-          </DropdownMenuLabel>
-          {folders.map((folder) => (
-            <DropdownMenuItem
-              key={folder.id}
-              onClick={() => void onSave(folder.id)}
-            >
-              <FolderIcon />
-              <span className="min-w-0 truncate">{folder.name}</span>
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
   )
 }
 
@@ -505,7 +421,6 @@ interface WorkProductListProps {
   onRequestChanges?: (id: string) => void
   onApply?: (id: string) => Promise<unknown>
   onApplyPr?: (id: string) => Promise<unknown>
-  onSaveToFiles?: (id: string, folderId: string) => Promise<unknown>
 }
 
 export function WorkProductList({
@@ -518,7 +433,6 @@ export function WorkProductList({
   onRequestChanges,
   onApply,
   onApplyPr,
-  onSaveToFiles,
 }: WorkProductListProps) {
   if (workProducts.length === 0) return null
 
@@ -536,11 +450,6 @@ export function WorkProductList({
           onRequestChanges={() => onRequestChanges?.(wp.id)}
           onApply={() => (onApply ? onApply(wp.id) : Promise.resolve())}
           onApplyPr={onApplyPr ? () => onApplyPr(wp.id) : undefined}
-          onSaveToFiles={
-            onSaveToFiles
-              ? (folderId) => onSaveToFiles(wp.id, folderId)
-              : undefined
-          }
         />
       ))}
     </div>

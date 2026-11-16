@@ -87,4 +87,35 @@ describe('WorkProductCard', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Approve and close' }))
     expect(onApproveAndClose).toHaveBeenCalledTimes(1)
   })
+
+  it('shows the saved file on an approved brief with no manual save control', () => {
+    render(
+      <WorkProductCard
+        workProduct={workProduct({
+          type: 'brief',
+          payload: {
+            saved_file: {
+              file_id: 'file-1',
+              file_name: 'research-brief.md',
+              folder_id: '00000000-0000-4000-8000-000000000009',
+              url: '/api/brain/files/file-1/content',
+              saved_by: 'user-1',
+              saved_at: '2026-11-01T00:00:00.000Z',
+            },
+          },
+        })}
+        onApprove={vi.fn()}
+        onRequestChanges={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+    expect(
+      screen.getByRole('link', { name: /research-brief\.md/ }),
+    ).toHaveAttribute('href', '/api/brain/files/file-1/content')
+    expect(screen.getByRole('link', { name: /word/i })).toHaveAttribute(
+      'href',
+      '/api/brain/files/file-1/docx',
+    )
+  })
 })

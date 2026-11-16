@@ -41,12 +41,10 @@ function brainStorageKey(input: {
 }
 
 /**
- * Stores one file in a workspace's Files & Folders. Before #381 this lived
- * inline in `POST /api/brain/files`, so the only way into Files was a manual
- * upload. "Save to Files" for an approved work product now needs the same
- * write, so both callers share this one path: stage to R2, adopt as a Brain
- * file item, then index and audit in the background (the upload behaviour),
- * which keeps saved work products searchable like any upload.
+ * Stores one file in a workspace's Files & Folders. `POST /api/brain/files`
+ * and work-product approval share this one path: stage to R2, adopt as a
+ * Brain file item, then index and audit in the background, which keeps saved
+ * work products searchable like any upload.
  */
 export async function saveBrainFileUpload(args: {
   env: AppEnv
