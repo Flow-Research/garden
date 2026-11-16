@@ -112,10 +112,12 @@ async function cleanupSeeded(seeded: Seeded) {
 }
 
 function makeController(seeded: Seeded) {
+  const memberUserId = randomUUID()
   const identity: ThreadRuntimeIdentity = {
     threadId: randomUUID(),
     workspaceId: seeded.workspaceId,
-    userId: randomUUID(),
+    userId: memberUserId,
+    connectorUserId: memberUserId,
     agentId: seeded.agentId,
   }
 

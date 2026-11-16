@@ -111,6 +111,8 @@ export function createCreateChildIssueTool(context: IssueRunToolContext) {
           source: 'manual',
           trigger: { correlationId: `parent:${run.issueId}:run:${run.runId}` },
           actor: { type: 'agent', id: run.agentId },
+          // The child run acts for the same member as this run, or for none.
+          onBehalfOfUserId: run.connectorUserId,
         })
         childRun =
           startResult.isOk() && startResult.value.kind === 'started'

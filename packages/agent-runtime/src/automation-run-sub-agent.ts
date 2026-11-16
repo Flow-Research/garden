@@ -1480,6 +1480,10 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       threadId: this.name,
       workspaceId: result.value.workspaceId,
       userId: result.value.userId,
+      // Automations still use the agent owner's connections. Issue runs moved
+      // to the triggering member in #383; whether an automation should act as
+      // its creator is a separate product decision noted on that issue.
+      connectorUserId: result.value.userId,
       agentId: result.value.agentId,
       runId,
     })

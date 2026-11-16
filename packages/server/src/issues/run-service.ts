@@ -23,6 +23,7 @@ import {
   type RunWorkflowBinding,
   type RunWorkflowControlEvent,
 } from '../runtime-bindings'
+import { resolveRunConnectorIdentity } from './run-connector-identity'
 
 const WORKFLOW_START_FAILURE_RETRY_DELAY_MS = 5_000
 
@@ -81,6 +82,12 @@ export type StartIssueRunInput = {
     correlationId?: string
   }
   actor: { type: 'member' | 'agent' | 'system'; id: string }
+  /**
+   * For agent actors: the member the agent was acting for (the chat owner, or
+   * the member behind the parent run). Decides the run's per-member
+   * connections; see `resolveRunConnectorIdentity` (#383).
+   */
+  onBehalfOfUserId?: string | null
 }
 
 export type IssueRunEnv = {
@@ -682,6 +689,7 @@ export async function startIssueRun(
   }
 
   const runId = crypto.randomUUID()
+  const connectorIdentity = resolveRunConnectorIdentity(input)
   const writeResult = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
@@ -762,6 +770,7 @@ export async function startIssueRun(
             source: input.source,
             trigger: input.trigger ?? {},
             actor: input.actor,
+            connectorIdentity,
           },
         })
         await tx
@@ -781,6 +790,7 @@ export async function startIssueRun(
           payload: {
             source: input.source,
             actor: input.actor,
+            connector_identity: connectorIdentity,
           },
         })
 
