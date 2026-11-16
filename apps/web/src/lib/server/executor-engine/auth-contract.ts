@@ -20,6 +20,20 @@ import {
 const GOOGLE_AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_CLIENT_SLUG = OAuthClientSlug.make('garden-google')
+const WORKSTREAM_RESOURCE = 'https://workstream.flowresearch.tech/mcp'
+const WORKSTREAM_ISSUER = 'https://identity.flowresearch.tech/realms/flow'
+const WORKSTREAM_AUTHORIZATION_URL = `${WORKSTREAM_ISSUER}/protocol/openid-connect/auth`
+const WORKSTREAM_TOKEN_URL = `${WORKSTREAM_ISSUER}/protocol/openid-connect/token`
+const WORKSTREAM_CLIENT_SLUG = OAuthClientSlug.make('garden-workstream')
+
+/** Identifies the resource whose invited accounts require personal credentials. */
+export const isWorkstreamMcpOAuth = (
+  integration: Integration,
+  method: AuthMethodDescriptor,
+): boolean =>
+  integration.kind === 'mcp' &&
+  method.kind === 'oauth' &&
+  method.oauth?.discoveryUrl === WORKSTREAM_RESOURCE
 
 const modelPlacement = (
   placement: NonNullable<AuthMethodDescriptor['placements']>[number],
@@ -85,7 +99,25 @@ export const oauthClientSupportsMethod = (
   client: OAuthClientSummary,
   integration: Integration,
   method: AuthMethodDescriptor,
+  env: ServerManagedOAuthEnv,
 ): boolean => {
+  if (
+    isWorkstreamMcpOAuth(integration, method) ||
+    client.slug === WORKSTREAM_CLIENT_SLUG ||
+    client.resource === WORKSTREAM_RESOURCE
+  ) {
+    const clientId = env.WORKSTREAM_MCP_CLIENT_ID?.trim()
+    return (
+      isWorkstreamMcpOAuth(integration, method) &&
+      Boolean(clientId) &&
+      client.owner === 'org' &&
+      client.clientId === clientId &&
+      client.grant === 'authorization_code' &&
+      client.authorizationUrl === WORKSTREAM_AUTHORIZATION_URL &&
+      client.tokenUrl === WORKSTREAM_TOKEN_URL &&
+      client.resource === WORKSTREAM_RESOURCE
+    )
+  }
   if (client.grant !== 'authorization_code') return false
   if (client.origin.integration === integration.slug) return true
   if (method.kind !== 'oauth' || method.oauth === undefined) return false
@@ -101,13 +133,14 @@ export const oauthClientSupportsMethod = (
   return (client.resource ?? null) === (method.oauth.resource ?? null)
 }
 
-interface GoogleOAuthEnv {
+interface ServerManagedOAuthEnv {
+  readonly WORKSTREAM_MCP_CLIENT_ID?: string
   readonly GOOGLE_CLIENT_ID?: string
   readonly GOOGLE_CLIENT_SECRET?: string
 }
 
 const googleClientCredentials = (
-  env: GoogleOAuthEnv,
+  env: ServerManagedOAuthEnv,
   method: AuthMethodDescriptor,
 ): Option.Option<{
   readonly clientId: string
@@ -141,28 +174,45 @@ interface OAuthClientRegistry {
   >
 }
 
-/** Ensures plugin-declared Google OAuth uses Garden's deployment-owned app.
- * One workspace OAuth client can serve every curated Google API because scopes
- * belong to each integration method, not to the registered client record. */
+/** Supplies deployment-owned OAuth applications while Executor owns the flow.
+ * The public Workstream app is resource-bound; Google APIs share their app.
+ * Credentials minted through either app remain connection-specific. */
 export const ensureServerManagedOAuthClient = Effect.fn(
   'ExecutorAuth.ensureServerManagedOAuthClient',
 )(function* (
   oauthClients: OAuthClientRegistry,
   integration: Integration,
   method: AuthMethodDescriptor,
-  env: GoogleOAuthEnv,
+  env: ServerManagedOAuthEnv,
 ) {
   const clients = yield* oauthClients.listClients()
   const existing = clients.find(
     (client) =>
       client.owner === 'org' &&
-      oauthClientSupportsMethod(client, integration, method),
+      oauthClientSupportsMethod(client, integration, method, env),
   )
   if (existing !== undefined) {
     return Option.some<ServerManagedOAuthClient>({
       slug: existing.slug,
       owner: 'org',
     })
+  }
+
+  if (isWorkstreamMcpOAuth(integration, method)) {
+    const clientId = env.WORKSTREAM_MCP_CLIENT_ID?.trim()
+    if (!clientId) return Option.none<ServerManagedOAuthClient>()
+    const slug = yield* oauthClients.createClient({
+      owner: 'org',
+      slug: WORKSTREAM_CLIENT_SLUG,
+      authorizationUrl: WORKSTREAM_AUTHORIZATION_URL,
+      tokenUrl: WORKSTREAM_TOKEN_URL,
+      grant: 'authorization_code',
+      clientId,
+      clientSecret: '',
+      resource: WORKSTREAM_RESOURCE,
+      origin: { kind: 'manual', integration: integration.slug },
+    })
+    return Option.some<ServerManagedOAuthClient>({ slug, owner: 'org' })
   }
 
   const credentials = googleClientCredentials(env, method)
