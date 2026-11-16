@@ -1,4 +1,4 @@
-import { isAgentDoPath } from '@/lib/server/agent-do-path'
+import { getChatFacetTarget, isAgentDoPath } from '@/lib/server/agent-do-path'
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
 import {
@@ -19,7 +19,10 @@ import { Result } from 'better-result'
 import { createSessionAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
 import { bindAppEnv } from '@/lib/server/env'
-import { requireAgentAccess } from '@/lib/server/agent-do-router'
+import {
+  requireAgentAccess,
+  requireChatFacetAccess,
+} from '@/lib/server/agent-do-router'
 import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 import {
@@ -220,11 +223,19 @@ async function authorizeAgentRequest(
   }
 
   const userLogger = logger.child({ userId: session.user.id })
+  const chatTarget = getChatFacetTarget(request.url)
+  if (chatTarget.kind === 'invalid') {
+    return {
+      request,
+      response: new Response('Not found', { status: 404 }),
+      userId: session.user.id,
+    }
+  }
 
   const cacheKey = `${session.user.id}:${agentRuntimeName}`
   const now = Date.now()
   let access = agentDoAuthCache.get(cacheKey) ?? null
-  if (!access || access.expiresAt <= now) {
+  if (chatTarget.kind === 'chat' || !access || access.expiresAt <= now) {
     const accessResult = await requireAgentAccess(
       env,
       agentRuntimeName,
@@ -248,6 +259,26 @@ async function authorizeAgentRequest(
       expiresAt: now + AGENT_DO_AUTH_CACHE_TTL_MS,
     }
     agentDoAuthCache.set(cacheKey, access)
+  }
+
+  if (chatTarget.kind === 'chat') {
+    const chatAccess = await requireChatFacetAccess(
+      env,
+      access,
+      chatTarget.threadName,
+      session,
+    )
+    if (chatAccess.isErr()) {
+      userLogger.warn('agent.request.chat_access_denied', {
+        agentRuntimeName,
+        message: chatAccess.error.message,
+      })
+      return {
+        request,
+        response: new Response('Not found', { status: 404 }),
+        userId: session.user.id,
+      }
+    }
   }
 
   userLogger.info('agent.request.connecting', {

@@ -86,7 +86,7 @@ function buildSessionPreview(message: ChatUiMessage | undefined) {
 }
 
 function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
-  const agent = useAgent({
+  useAgent({
     agent: 'AgentDO',
     connectionTimeout: 30_000,
     name: session.hostName,
@@ -94,7 +94,7 @@ function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
       console.warn('[chat.runtime] warm parent websocket error', event)
     },
   })
-  useAgent({
+  const agent = useAgent({
     agent: 'AgentDO',
     connectionTimeout: 30_000,
     name: session.hostName,
@@ -111,9 +111,7 @@ function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
       session.runtime_key,
     ],
     queryFn: async () => {
-      const result = await agent.call<WarmRuntimeResult>('warmThreadRuntime', [
-        session.runtime_key,
-      ])
+      const result = await agent.call<WarmRuntimeResult>('warmRuntime', [])
       if (!result.ok) throw new Error(result.error)
       return true
     },
@@ -252,7 +250,7 @@ export function useChatRuntimeConnection({
   historySyncRef.current ??= createHistorySyncGate()
   const historySync = historySyncRef.current
 
-  const parentAgent = useAgent({
+  useAgent({
     agent: 'AgentDO',
     connectionTimeout: 30_000,
     name: session.hostName,
@@ -342,8 +340,8 @@ export function useChatRuntimeConnection({
   const warmRuntime = useCallback(() => {
     if (warmInFlightRef.current) return
 
-    warmInFlightRef.current = parentAgent
-      .call<WarmRuntimeResult>('warmThreadRuntime', [session.runtime_key])
+    warmInFlightRef.current = agent
+      .call<WarmRuntimeResult>('warmRuntime', [])
       .then((result) => {
         if (!result.ok) {
           console.warn('[chat.runtime] warm failed', result.error)
@@ -355,7 +353,7 @@ export function useChatRuntimeConnection({
       .finally(() => {
         warmInFlightRef.current = null
       })
-  }, [agent, parentAgent])
+  }, [agent])
 
   useQuery({
     queryKey: ['chat-runtime-warm', session.hostName, session.runtime_key],
