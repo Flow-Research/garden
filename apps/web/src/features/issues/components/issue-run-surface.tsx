@@ -238,6 +238,9 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
         onApplyPr={(id) =>
           reviewMutation.mutateAsync({ id, action: 'apply_pr' })
         }
+        onSaveToFiles={(id, folderId) =>
+          reviewMutation.mutateAsync({ id, action: 'save_to_files', folderId })
+        }
       />
     </OutputSection>
   )

@@ -67,6 +67,7 @@ const runDeferredBrainIndexAndAudit = (
     index: () => indexEffect,
     addItem: unused,
     addText: unused,
+    replaceFileContent: () => Effect.die('unused replaceFileContent'),
     updateItemMetadata: unused,
     updateIndexStatus: (input) =>
       Effect.sync(() => {

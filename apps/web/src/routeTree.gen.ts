@@ -162,6 +162,7 @@ import { Route as ApiChatThreadsIdDocumentsRouteImport } from './routes/api/chat
 import { Route as ApiBrainProposalsIdResolveRouteImport } from './routes/api/brain/proposals/$id/resolve'
 import { Route as ApiBrainFoldersIdFilesRouteImport } from './routes/api/brain/folders/$id/files'
 import { Route as ApiBrainFilesIdTextRouteImport } from './routes/api/brain/files/$id/text'
+import { Route as ApiBrainFilesIdDocxRouteImport } from './routes/api/brain/files/$id/docx'
 import { Route as ApiBrainFilesIdContentRouteImport } from './routes/api/brain/files/$id/content'
 import { Route as ApiAutomationsIdTriggersTriggerIdRouteImport } from './routes/api/automations/$id/triggers/$triggerId'
 import { Route as ApiTeamsTeamIdRepositoriesRepositoryIdRetryRouteImport } from './routes/api/teams/$teamId/repositories/$repositoryId/retry'
@@ -977,6 +978,11 @@ const ApiBrainFilesIdTextRoute = ApiBrainFilesIdTextRouteImport.update({
   path: '/text',
   getParentRoute: () => ApiBrainFilesIdRoute,
 } as any)
+const ApiBrainFilesIdDocxRoute = ApiBrainFilesIdDocxRouteImport.update({
+  id: '/docx',
+  path: '/docx',
+  getParentRoute: () => ApiBrainFilesIdRoute,
+} as any)
 const ApiBrainFilesIdContentRoute = ApiBrainFilesIdContentRouteImport.update({
   id: '/content',
   path: '/content',
@@ -1141,6 +1147,7 @@ export interface FileRoutesByFullPath {
   '/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
+  '/api/brain/files/$id/docx': typeof ApiBrainFilesIdDocxRoute
   '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
   '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
   '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
@@ -1293,6 +1300,7 @@ export interface FileRoutesByTo {
   '/workflows': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
+  '/api/brain/files/$id/docx': typeof ApiBrainFilesIdDocxRoute
   '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
   '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
   '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
@@ -1453,6 +1461,7 @@ export interface FileRoutesById {
   '/_authenticated/_app/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
+  '/api/brain/files/$id/docx': typeof ApiBrainFilesIdDocxRoute
   '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
   '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
   '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
@@ -1612,6 +1621,7 @@ export interface FileRouteTypes {
     | '/workflows/'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
+    | '/api/brain/files/$id/docx'
     | '/api/brain/files/$id/text'
     | '/api/brain/folders/$id/files'
     | '/api/brain/proposals/$id/resolve'
@@ -1764,6 +1774,7 @@ export interface FileRouteTypes {
     | '/workflows'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
+    | '/api/brain/files/$id/docx'
     | '/api/brain/files/$id/text'
     | '/api/brain/folders/$id/files'
     | '/api/brain/proposals/$id/resolve'
@@ -1923,6 +1934,7 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/workflows/'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
+    | '/api/brain/files/$id/docx'
     | '/api/brain/files/$id/text'
     | '/api/brain/folders/$id/files'
     | '/api/brain/proposals/$id/resolve'
@@ -3078,6 +3090,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBrainFilesIdTextRouteImport
       parentRoute: typeof ApiBrainFilesIdRoute
     }
+    '/api/brain/files/$id/docx': {
+      id: '/api/brain/files/$id/docx'
+      path: '/docx'
+      fullPath: '/api/brain/files/$id/docx'
+      preLoaderRoute: typeof ApiBrainFilesIdDocxRouteImport
+      parentRoute: typeof ApiBrainFilesIdRoute
+    }
     '/api/brain/files/$id/content': {
       id: '/api/brain/files/$id/content'
       path: '/content'
@@ -3588,11 +3607,13 @@ const ApiWorkspacesRouteWithChildren = ApiWorkspacesRoute._addFileChildren(
 
 interface ApiBrainFilesIdRouteChildren {
   ApiBrainFilesIdContentRoute: typeof ApiBrainFilesIdContentRoute
+  ApiBrainFilesIdDocxRoute: typeof ApiBrainFilesIdDocxRoute
   ApiBrainFilesIdTextRoute: typeof ApiBrainFilesIdTextRoute
 }
 
 const ApiBrainFilesIdRouteChildren: ApiBrainFilesIdRouteChildren = {
   ApiBrainFilesIdContentRoute: ApiBrainFilesIdContentRoute,
+  ApiBrainFilesIdDocxRoute: ApiBrainFilesIdDocxRoute,
   ApiBrainFilesIdTextRoute: ApiBrainFilesIdTextRoute,
 }
 

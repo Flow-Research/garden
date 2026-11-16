@@ -766,10 +766,15 @@ export type WorkProductReviewAction =
   | 'request_changes'
   | 'apply'
   | 'apply_pr'
+  | 'save_to_files'
 
-/** Maps a UI review action to the review endpoint's request body. */
+/**
+ * Maps a UI review action to the review endpoint's request body.
+ * `save_to_files` carries the folder the person picked.
+ */
 function reviewRequestBody(
   action: WorkProductReviewAction,
+  folderId: string | undefined,
 ): WorkProductReviewInput {
   switch (action) {
     case 'approve':
@@ -782,6 +787,8 @@ function reviewRequestBody(
       return { action: 'apply' }
     case 'apply_pr':
       return { action: 'apply_pr' }
+    case 'save_to_files':
+      return { action: 'save_to_files', folder_id: folderId ?? '' }
   }
 }
 
@@ -789,8 +796,15 @@ function reviewRequestBody(
 export function useReviewWorkProduct(issueId: string | null) {
   const invalidate = useIssueActionInvalidation(issueId)
   return useMutation({
-    mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
-      api.reviewWorkProduct(vars.id, reviewRequestBody(vars.action)),
+    mutationFn: (vars: {
+      id: string
+      action: WorkProductReviewAction
+      folderId?: string
+    }) =>
+      api.reviewWorkProduct(
+        vars.id,
+        reviewRequestBody(vars.action, vars.folderId),
+      ),
     onSuccess: invalidate,
     onError: () => toast.error('Failed to update work product'),
   })

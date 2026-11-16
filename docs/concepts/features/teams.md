@@ -2,7 +2,7 @@
 title: Teams group people and agents, and scope who sees which issues
 description: How Teams work in a workspace, who can manage them, how invites add people to Teams, how admins reach them from Settings, how a Team agent policy caps agents, and why Team realtime events carry identifiers only.
 status: current
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-10
 ---
 
@@ -87,11 +87,20 @@ Teams has one home in the app:
 
 | Route            | What it shows                                                                                                                                                                                                                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/teams`         | Owners and admins see summary cards, a grid of Team cards with create, edit, delete, and ownership actions, and the **Invites** settings. Members see a Team selector and their Team's issues.                                                                                                     |
+| `/teams`         | Owners and admins see one card holding **Create a Team** and the Team grid (or the **No Teams** empty state), then the **Invites** settings. Each Team card menu has **Add team member** and **Delete**. Members see a Team selector and their Team's issues.                                      |
 | `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md). |
 | `/teams/issues`  | Issues across every Team, for owners and admins                                                                                                                                                                                                                                                    |
 
 The sidebar links to `/teams`. Settings links to it too.
+
+## Team management screens
+
+The admin screens follow the admin designs 25 to 33, with "Team" in place of the design's "Department".
+
+- **Create a Team** opens one screen titled **Create New Team**. It has **Team name** (required), **Description**, and a **TEAM MEMBERS** checklist of workspace members and active agents with a "No select" or "N select" counter. The creator is not listed because the server always adds them as owner. With nobody else in the workspace, the list shows **No team member**. **Create team** stays disabled until the name is set. Success shows the toast "A new team has been added".
+- The Team detail page puts the title, description, **Add a team member**, **Setup Owner**, and the ⋯ menu in one card. The ⋯ menu has **View details** (edit name and description), **Team settings** (the agent policy sheet), **Copy link**, and **Delete team**.
+- **Setup Owner** opens a popover anchored to the button. It has **Search for team member**, radio rows of human members, and **Make Team Owner**. The owner's role badge reads **Team Owner**.
+- The Members tab has **Search for anything...**, **Filter** by role, and **Export Data**, which downloads the filtered member table as CSV in the browser. The summary cards are **Total members**, **Total Assigned Tasks**, and **Total Activity**. Managers get an **Agent settings** button on every row, which opens the same Team settings sheet, and a remove action on every row except the owner's.
 
 ## Settings opens the Teams page
 
@@ -169,7 +178,7 @@ A policy is a ceiling. It can switch tools off and add approvals. It never grant
 | Team owner               | Read it. The panel is read-only and says only workspace admins can change it. |
 | Team member              | Nothing. `GET` returns 403.                                                   |
 
-The Team detail page's actions menu has **Agent policy** for workspace managers and the Team owner. It opens a **Team settings** side sheet with the three tabs, **Cancel**, and **Save Changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
+The Team detail page's ⋯ menu has **Team settings** for workspace managers, and each member row has **Agent settings**. It opens a **Team settings** side sheet with the three tabs, **Cancel**, and **Save Changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
 
 Design controls with no backing in Garden still render, disabled, with a **Coming soon** badge: the Chats and Home areas; the Delete projects, Manage billing, and Read locked files restrictions; the Deploy changes and Create documents approval rows; the per-member Team Role select; and the Admin Policy tab. They store nothing, and the schema rejects them if a client sends them.
 
