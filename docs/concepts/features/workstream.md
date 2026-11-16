@@ -18,6 +18,8 @@ The hosted MCP resource is `https://workstream.flowresearch.tech/mcp`. Its Flow 
 
 `WORKSTREAM_MCP_CLIENT_ID` supplies the public client registered for this Garden deployment. Executor represents public clients with an empty client secret and owns authorization code exchange, S256 PKCE, callback state, encrypted connection credentials, and refresh. The organization owns the public application registration; the member owns each connection and its refresh credential. Workspace connections are refused before OAuth starts. Other integrations retain their existing ownership choices.
 
+For the exact Workstream resource, the installed SDK patch keeps code exchange and the saved refresh token endpoint on the configured issuer. Untrusted callback `domain` or `site` parameters cannot rebind them to a sibling host. Other providers retain their existing regional callback behavior. See the [Executor seams](../../../third_party/executor/PATCHES.md).
+
 Executor discovers the requested scopes from Workstream's protected-resource metadata: `workstream:access workstream-mcp-audience`. These are access-token scopes; no OpenID identity token is requested. The audience scope binds this credential to MCP. Workstream exchanges it for its internal API credential and enforces existing product authorization. Garden never receives the MCP server's exchange secret and never forwards its primary sign-in credential to Workstream.
 
 ## What the member sees
@@ -31,6 +33,8 @@ Executor discovers the requested scopes from Workstream's protected-resource met
 ## Deployment registration
 
 Configure `WORKSTREAM_MCP_CLIENT_ID` independently for each deployed target. The existing staging registration is `garden-staging`, public, authorization-code enabled, S256 required, and permits only `https://garden-staging.flow-research.workers.dev/api/oauth/callback`. Do not reuse it for `garden-dev`, preview, localhost, or a production origin. Register each intended callback exactly; no wildcard callbacks or automatic dynamic registration are used for Workstream. An unset client ID disables new Workstream authorization even if old client metadata remains in storage.
+
+The Workstream MCP audience client scope must have **Include in token scope** enabled in Flow Identity. Executor records the scopes returned by the token endpoint and requests that same set during refresh. Returning both `workstream:access` and `workstream-mcp-audience` keeps the audience mapping selected on refresh. The internal API audience and identity scopes retain their separate configuration. Verify the signed access token and an actual MCP call after refresh; a successful token response alone does not prove the refreshed credential is valid for MCP.
 
 The deployment binding is optional, so an environment without a registered client can still run other connectors. Register and bind an appropriate client before enabling Workstream there. Merging into `dev` deploys `garden-dev`; staging promotion remains a separate maintainer action. See [deploy targets](../../reference/deploy-targets.md) and [environment and bindings](../../reference/environment-and-bindings.md).
 

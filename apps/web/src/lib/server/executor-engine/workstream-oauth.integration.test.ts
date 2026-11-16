@@ -5,6 +5,7 @@ import {
   AuthTemplateSlug,
   ConnectionName,
   IntegrationSlug,
+  OAuthClientSlug,
   Subject,
   Tenant,
   createExecutor,
@@ -19,7 +20,18 @@ import { schema } from '@executor-js/fumadb/schema'
 import { mcpPlugin } from '@executor-js/plugin-mcp/core'
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { settleOAuthCallback } from '@/routes/api/oauth/callback'
 import { ensureServerManagedOAuthClient } from './auth-contract'
+
+const callbackExecutors = vi.hoisted(() => new Map<string, unknown>())
+
+// Keep callback settlement on the real SDK, replacing only request acquisition.
+vi.mock('@/lib/server/executor-runtime', () => ({
+  executorProgram: (
+    identity: { subject: string },
+    run: (executor: unknown) => unknown,
+  ) => run(callbackExecutors.get(identity.subject)),
+}))
 
 const resource = 'https://workstream.flowresearch.tech/mcp'
 const issuer = 'https://identity.flowresearch.tech/realms/flow'
@@ -35,6 +47,7 @@ describe('Workstream public OAuth lifecycle', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    callbackExecutors.clear()
   })
 
   it('binds PKCE callbacks and refresh credentials to each member', async () => {
@@ -89,7 +102,7 @@ describe('Workstream public OAuth lifecycle', () => {
           refresh_token: `${member}-refresh`,
           token_type: 'Bearer',
           expires_in: 3600,
-          scope: 'workstream:access',
+          scope: scopes.join(' '),
         })
       }
       if (request.url === resource) {
@@ -167,6 +180,8 @@ describe('Workstream public OAuth lifecycle', () => {
       Effect.all([open('member-a'), open('member-b')]),
     )
     const [alice, bob] = members
+    callbackExecutors.set('member-a', alice)
+    callbackExecutors.set('member-b', bob)
     await Effect.runPromise(
       Effect.gen(function* () {
         yield* alice.mcp.addServer({
@@ -229,10 +244,23 @@ describe('Workstream public OAuth lifecycle', () => {
             expect(Result.isFailure(foreignCallback)).toBe(true)
             expect(tokenRequests).toHaveLength(0)
           }
-          const connection = yield* executor.oauth.complete({
+          const settled = yield* settleOAuthCallback({
+            identity: { tenant: 'workspace-a', subject: member },
             state: flow.state,
             code: member,
+            providerError: null,
+            providerErrorDescription: null,
+            callbackDomain:
+              member === 'member-a'
+                ? 'workstream.flowresearch.tech'
+                : 'malicious.flowresearch.tech',
           })
+          expect(settled).toEqual({ ok: true })
+          const connection = (yield* executor.connections.list({
+            integration: slug,
+          }))[0]
+          expect(connection).toBeDefined()
+          if (connection === undefined) return
           expect(connection.owner).toBe('user')
           expect(connection.provider).toBe('encrypted')
           const replay = yield* Effect.result(
@@ -293,8 +321,8 @@ describe('Workstream public OAuth lifecycle', () => {
           (body) => body.get('grant_type') === 'refresh_token',
         )
         expect(refreshRequests.map((body) => body.get('scope'))).toEqual([
-          'workstream:access',
-          'workstream:access',
+          scopes.join(' '),
+          scopes.join(' '),
         ])
         const ref = (yield* alice.connections.list({ integration: slug }))[0]
         expect(ref).toBeDefined()
@@ -314,5 +342,83 @@ describe('Workstream public OAuth lifecycle', () => {
         Effect.forEach(members, (executor) => executor.close()),
       )
     })
+  })
+
+  it('retains regional callback token endpoints for other providers', async () => {
+    const regionalResource = 'https://mcp.provider.example/mcp'
+    const regionalTokenUrl = 'https://eu.provider.example/token'
+    const exchanges: string[] = []
+    const http = vi.fn<typeof fetch>(async (input, init) => {
+      const request = new Request(input, init)
+      if (request.url.includes('/.well-known/')) {
+        return Response.json({
+          resource: regionalResource,
+          authorization_servers: ['https://auth.provider.example'],
+          scopes_supported: ['read'],
+        })
+      }
+      if (request.method === 'POST' && request.url.endsWith('/token')) {
+        exchanges.push(request.url)
+        return Response.json({
+          access_token: 'regional-access',
+          token_type: 'Bearer',
+          expires_in: 3600,
+          scope: 'read',
+        })
+      }
+      return new Response(null, { status: 405 })
+    })
+    vi.stubGlobal('fetch', http)
+    await Effect.runPromise(
+      Effect.acquireUseRelease(
+        createExecutor({
+          tenant: Tenant.make('regional-workspace'),
+          subject: Subject.make('regional-member'),
+          plugins: [
+            mcpPlugin({ fetch: http }),
+            encryptedSecretsPlugin({ key: 'regional-test-key' }),
+          ],
+          fetch: http,
+          redirectUri: callback,
+          onElicitation: 'accept-all',
+        }),
+        (executor) =>
+          Effect.gen(function* () {
+            yield* executor.mcp.addServer({
+              slug: 'regional',
+              name: 'Regional',
+              endpoint: regionalResource,
+              authenticationTemplate: [{ slug: 'oauth2', kind: 'oauth2' }],
+            })
+            const client = yield* executor.oauth.createClient({
+              owner: 'org',
+              slug: OAuthClientSlug.make('regional'),
+              grant: 'authorization_code',
+              authorizationUrl: 'https://auth.provider.example/authorize',
+              tokenUrl: 'https://auth.provider.example/token',
+              resource: regionalResource,
+              clientId: 'regional-client',
+              clientSecret: '',
+            })
+            const flow = yield* executor.oauth.start({
+              client,
+              clientOwner: 'org',
+              owner: 'user',
+              integration: IntegrationSlug.make('regional'),
+              template: AuthTemplateSlug.make('oauth2'),
+              name: ConnectionName.make('Regional'),
+            })
+            expect(flow.status).toBe('redirect')
+            if (flow.status !== 'redirect') return
+            yield* executor.oauth.complete({
+              state: flow.state,
+              code: 'regional-code',
+              callbackDomain: 'eu.provider.example',
+            })
+            expect(exchanges).toEqual([regionalTokenUrl])
+          }),
+        (executor) => executor.close(),
+      ),
+    )
   })
 })
