@@ -78,6 +78,13 @@ function intersection(left: Set<string>, right: Set<string>): string[] {
   return [...left].filter((term) => right.has(term))
 }
 
+function explicitlyRequestsTool(userText: string, toolName: string): boolean {
+  const escapedName = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return new RegExp(`(?:^|[^a-z0-9_])${escapedName}(?=$|[^a-z0-9_])`, 'i').test(
+    userText,
+  )
+}
+
 function attachmentText(attachments: readonly RouteAttachment[]): string {
   return attachments
     .flatMap((attachment) => [attachment.filename, attachment.mediaType])
@@ -182,17 +189,16 @@ function rankIntegration(args: {
   catalog: ExecutorCatalog
   integration: ExecutorCatalog['integrations'][number]
   query: string
+  userText: string
   skill: IntegrationSkill | null
 }): IntegrationRoute | null {
-  const { catalog, integration, query, skill } = args
+  const { catalog, integration, query, userText, skill } = args
   const connected = catalog.connections.some(
     (connection) => connection.integration === integration.slug,
   )
   const queryTerms = terms(query)
-  const directTerms = intersection(
-    queryTerms,
-    terms(`${integration.slug} ${integration.name}`),
-  )
+  const integrationTerms = terms(`${integration.slug} ${integration.name}`)
+  const directTerms = intersection(queryTerms, integrationTerms)
   const directMention = directTerms.length > 0
   if (!connected && !directMention) return null
 
@@ -211,16 +217,39 @@ function rankIntegration(args: {
   const queryMatches = intersection(queryTerms, capabilityTerms)
   if (!directMention && capabilityMatches.length === 0) return null
 
+  // A shared provider prefix selects the integration, not its most relevant tools.
+  const relevanceTerms = new Set(
+    [...queryTerms, ...requiredTerms].filter(
+      (term) => !integrationTerms.has(term),
+    ),
+  )
   const allowedToolNames = toolRows
-    .filter((tool) => {
-      const toolTerms = terms(`${tool.name} ${tool.description}`)
-      return (
-        intersection(toolTerms, requiredTerms).length > 0 ||
-        intersection(toolTerms, queryTerms).length > 0
-      )
+    .map((tool) => {
+      const nameTerms = terms(tool.name)
+      const descriptionTerms = terms(tool.description)
+      const toolTerms = new Set([...nameTerms, ...descriptionTerms])
+      const explicitlyRequested = explicitlyRequestsTool(userText, tool.name)
+      return {
+        tool,
+        explicitlyRequested,
+        matches:
+          explicitlyRequested ||
+          intersection(toolTerms, requiredTerms).length > 0 ||
+          intersection(toolTerms, queryTerms).length > 0,
+        relevance:
+          intersection(nameTerms, relevanceTerms).length * 2 +
+          intersection(descriptionTerms, relevanceTerms).length,
+      }
     })
+    .filter((candidate) => candidate.matches)
+    .sort(
+      (left, right) =>
+        Number(right.explicitlyRequested) - Number(left.explicitlyRequested) ||
+        right.relevance - left.relevance ||
+        left.tool.name.localeCompare(right.tool.name),
+    )
     .slice(0, 8)
-    .map((tool) => tool.name)
+    .map(({ tool }) => tool.name)
 
   return {
     slug: integration.slug,
@@ -275,7 +304,13 @@ export function selectIntegrationRoute(args: {
   const catalog = args.catalog
   const routes = catalog.integrations
     .map((integration) =>
-      rankIntegration({ catalog, integration, query, skill }),
+      rankIntegration({
+        catalog,
+        integration,
+        query,
+        userText: args.userText,
+        skill,
+      }),
     )
     .filter((route): route is IntegrationRoute => route !== null)
     .sort((left, right) => right.score - left.score)
