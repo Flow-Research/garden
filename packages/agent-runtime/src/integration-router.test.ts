@@ -405,26 +405,32 @@ describe('integration router tool relevance', () => {
     expect(decision.routes[0]?.allowedToolNames[0]).toBe(PROFILE_TOOL)
   })
 
-  it('keeps the eight-tool cap and does not treat an unavailable longer name as an exact request', () => {
-    const requested = Array.from(
-      { length: 8 },
-      (_, index) =>
-        `workstream_catalogue_${String(100 + index).padStart(3, '0')}`,
-    )
-    const unavailable = `${PROFILE_TOOL}_unavailable`
-    const decision = selectIntegrationRoute({
-      userText: `Use Workstream. Call ${requested.join(', ')} and ${unavailable}.`,
-      catalog: WORKSTREAM_CATALOG,
-    })
-    const allowed = decision.routes[0]?.allowedToolNames ?? []
-    expect(allowed).toHaveLength(8)
-    expect(allowed).toEqual(expect.arrayContaining(requested))
-    expect(allowed).not.toContain(PROFILE_TOOL)
-    expect(allowed).not.toContain(unavailable)
-    expect(isIntegrationToolAllowed(decision, 'workstream', unavailable)).toBe(
-      false,
-    )
-  })
+  it.each([
+    `${PROFILE_TOOL}_unavailable`,
+    `${PROFILE_TOOL}-unavailable`,
+    `unavailable-${PROFILE_TOOL}`,
+  ])(
+    'keeps the eight-tool cap without exact-matching part of %s',
+    (unavailable) => {
+      const requested = Array.from(
+        { length: 8 },
+        (_, index) =>
+          `workstream_catalogue_${String(100 + index).padStart(3, '0')}`,
+      )
+      const decision = selectIntegrationRoute({
+        userText: `Use Workstream. Call ${requested.join(', ')} and ${unavailable}.`,
+        catalog: WORKSTREAM_CATALOG,
+      })
+      const allowed = decision.routes[0]?.allowedToolNames ?? []
+      expect(allowed).toHaveLength(8)
+      expect(allowed).toEqual(expect.arrayContaining(requested))
+      expect(allowed).not.toContain(PROFILE_TOOL)
+      expect(allowed).not.toContain(unavailable)
+      expect(
+        isIntegrationToolAllowed(decision, 'workstream', unavailable),
+      ).toBe(false)
+    },
+  )
 
   it('does not admit another connected provider into the selected scope', () => {
     const decision = selectIntegrationRoute({

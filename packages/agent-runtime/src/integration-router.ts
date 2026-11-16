@@ -80,9 +80,10 @@ function intersection(left: Set<string>, right: Set<string>): string[] {
 
 function explicitlyRequestsTool(userText: string, toolName: string): boolean {
   const escapedName = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  return new RegExp(`(?:^|[^a-z0-9_])${escapedName}(?=$|[^a-z0-9_])`, 'i').test(
-    userText,
-  )
+  return new RegExp(
+    `(?:^|[^a-z0-9_-])${escapedName}(?=$|[^a-z0-9_-])`,
+    'i',
+  ).test(userText)
 }
 
 function attachmentText(attachments: readonly RouteAttachment[]): string {
