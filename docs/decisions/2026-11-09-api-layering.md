@@ -43,7 +43,7 @@ Locked rules:
 | Validation | `apps/web/src/lib/server/validation/` | Request/search/body Zod schemas shared by routes. |
 | Queries | `apps/web/src/lib/server/queries/{domain}/` | Pure Drizzle reads/writes and optional transactions. No HTTP types. |
 | Services | Prefer `packages/server/src/{domain}/`; web-boundary helpers in `apps/web/src/lib/server/{domain}/` | Domain orchestration and product outcomes as `Result.ok` / `Result.err`. Group by domain folder; leave shared infra flat (`db.ts`, `context.ts`, `control-plane.ts`, …). |
-| Side effects | Called from the route after success | Realtime publish, email, analytics, `waitUntil` run starts. |
+| Side effects | Called from the route after success | Effects whose failure does not undo the write: realtime publish, notification email, analytics, `waitUntil` run starts. An effect that decides whether the write stands (for example, the invitation email that rolls back the invitation when it fails) is part of the operation and belongs to the service. |
 
 Additional locks:
 
