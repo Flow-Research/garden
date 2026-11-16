@@ -20,7 +20,9 @@ import {
 const GOOGLE_AUTHORIZATION_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const GOOGLE_CLIENT_SLUG = OAuthClientSlug.make('garden-google')
-const WORKSTREAM_RESOURCE = 'https://workstream.flowresearch.tech/mcp'
+/** Pins the hosted resource used by Workstream's installation and OAuth policy. */
+export const WORKSTREAM_MCP_RESOURCE =
+  'https://workstream.flowresearch.tech/mcp'
 const WORKSTREAM_ISSUER = 'https://identity.flowresearch.tech/realms/flow'
 const WORKSTREAM_AUTHORIZATION_URL = `${WORKSTREAM_ISSUER}/protocol/openid-connect/auth`
 const WORKSTREAM_TOKEN_URL = `${WORKSTREAM_ISSUER}/protocol/openid-connect/token`
@@ -33,7 +35,7 @@ export const isWorkstreamMcpOAuth = (
 ): boolean =>
   integration.kind === 'mcp' &&
   method.kind === 'oauth' &&
-  method.oauth?.discoveryUrl === WORKSTREAM_RESOURCE
+  method.oauth?.discoveryUrl === WORKSTREAM_MCP_RESOURCE
 
 const modelPlacement = (
   placement: NonNullable<AuthMethodDescriptor['placements']>[number],
@@ -104,7 +106,7 @@ export const oauthClientSupportsMethod = (
   if (
     isWorkstreamMcpOAuth(integration, method) ||
     client.slug === WORKSTREAM_CLIENT_SLUG ||
-    client.resource === WORKSTREAM_RESOURCE
+    client.resource === WORKSTREAM_MCP_RESOURCE
   ) {
     const clientId = env.WORKSTREAM_MCP_CLIENT_ID?.trim()
     return (
@@ -115,7 +117,7 @@ export const oauthClientSupportsMethod = (
       client.grant === 'authorization_code' &&
       client.authorizationUrl === WORKSTREAM_AUTHORIZATION_URL &&
       client.tokenUrl === WORKSTREAM_TOKEN_URL &&
-      client.resource === WORKSTREAM_RESOURCE
+      client.resource === WORKSTREAM_MCP_RESOURCE
     )
   }
   if (client.grant !== 'authorization_code') return false
@@ -209,7 +211,7 @@ export const ensureServerManagedOAuthClient = Effect.fn(
       grant: 'authorization_code',
       clientId,
       clientSecret: '',
-      resource: WORKSTREAM_RESOURCE,
+      resource: WORKSTREAM_MCP_RESOURCE,
       origin: { kind: 'manual', integration: integration.slug },
     })
     return Option.some<ServerManagedOAuthClient>({ slug, owner: 'org' })

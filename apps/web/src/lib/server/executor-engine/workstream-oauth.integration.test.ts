@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
-import { Effect, Result } from 'effect'
+import { Effect, Layer, Option, Result } from 'effect'
+import { FetchHttpClient } from 'effect/unstable/http'
 import {
   AuthTemplateSlug,
   ConnectionName,
@@ -22,6 +23,10 @@ import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { settleOAuthCallback } from '@/routes/api/oauth/callback'
 import { ensureServerManagedOAuthClient } from './auth-contract'
+import { listServerOwnedExecutorProviders } from './catalog'
+import { installProvider } from './install'
+import { IntegrationsShDomainSurface } from './integrations-sh'
+import { makeExecutorPlugins } from './plugins'
 
 const callbackExecutors = vi.hoisted(() => new Map<string, unknown>())
 
@@ -37,7 +42,7 @@ const resource = 'https://workstream.flowresearch.tech/mcp'
 const issuer = 'https://identity.flowresearch.tech/realms/flow'
 const tokenUrl = `${issuer}/protocol/openid-connect/token`
 const callback =
-  'https://garden-staging.flow-research.workers.dev/api/oauth/callback'
+  'https://garden-dev.flow-research.workers.dev/api/oauth/callback'
 const scopes = ['workstream:access', 'workstream-mcp-audience']
 const slug = IntegrationSlug.make('workstream')
 
@@ -50,7 +55,7 @@ describe('Workstream public OAuth lifecycle', () => {
     callbackExecutors.clear()
   })
 
-  it('binds PKCE callbacks and refresh credentials to each member', async () => {
+  it('installs OAuth through discovery and binds callbacks and refresh to each member', async () => {
     const codes = new Map<string, { member: string; challenge: string }>()
     const refreshes: string[] = []
     const tokenRequests: URLSearchParams[] = []
@@ -65,7 +70,7 @@ describe('Workstream public OAuth lifecycle', () => {
           scopes_supported: scopes,
         })
       }
-      if (request.url.includes('/.well-known/')) {
+      if (request.url === `${issuer}/.well-known/openid-configuration`) {
         return Response.json({
           issuer,
           authorization_endpoint: `${issuer}/protocol/openid-connect/auth`,
@@ -74,6 +79,9 @@ describe('Workstream public OAuth lifecycle', () => {
           scopes_supported: scopes,
           code_challenge_methods_supported: ['S256'],
         })
+      }
+      if (request.url.includes('/.well-known/')) {
+        return new Response(null, { status: 404 })
       }
       if (request.url === tokenUrl) {
         const body = new URLSearchParams(await request.text())
@@ -106,6 +114,17 @@ describe('Workstream public OAuth lifecycle', () => {
         })
       }
       if (request.url === resource) {
+        if (!request.headers.has('authorization')) {
+          return Response.json(
+            { error: 'unauthorized' },
+            {
+              status: 401,
+              headers: {
+                'www-authenticate': `Bearer resource_metadata="https://workstream.flowresearch.tech/.well-known/oauth-protected-resource/mcp"`,
+              },
+            },
+          )
+        }
         if (request.method !== 'POST')
           return new Response(null, { status: 405 })
         const message = (await request.json()) as {
@@ -162,10 +181,10 @@ describe('Workstream public OAuth lifecycle', () => {
         .client(memoryAdapter({ db: stored }))
         .orm<string>(version)
     }
-    const plugins = [
-      mcpPlugin({ fetch: http }),
-      encryptedSecretsPlugin({ key: 'workstream-oauth-test-encryption-key' }),
-    ] as const
+    const plugins = makeExecutorPlugins(
+      'workstream-oauth-test-encryption-key',
+      { fetch: http },
+    )
     const open = (member: string) =>
       createExecutor({
         tenant: Tenant.make('workspace-a'),
@@ -173,6 +192,9 @@ describe('Workstream public OAuth lifecycle', () => {
         db,
         plugins,
         fetch: http,
+        httpClientLayer: FetchHttpClient.layer.pipe(
+          Layer.provide(Layer.succeed(FetchHttpClient.Fetch, http)),
+        ),
         redirectUri: callback,
         onElicitation: 'accept-all',
       })
@@ -184,11 +206,26 @@ describe('Workstream public OAuth lifecycle', () => {
     callbackExecutors.set('member-b', bob)
     await Effect.runPromise(
       Effect.gen(function* () {
-        yield* alice.mcp.addServer({
+        const provider = listServerOwnedExecutorProviders().find(
+          (candidate) => String(candidate.installSlug) === 'workstream',
+        )
+        expect(provider).toBeDefined()
+        if (provider === undefined) return
+        const installed = yield* installProvider(
+          alice,
+          provider,
+          IntegrationsShDomainSurface.make({
+            domain: 'workstream.flowresearch.tech',
+            description: Option.none(),
+            summary: Option.none(),
+            surfaces: [],
+          }),
+          'mcp',
+        )
+        expect(installed).toMatchObject({
+          kind: 'oauth_ready',
           slug: 'workstream',
-          name: 'Workstream',
-          endpoint: resource,
-          authenticationTemplate: [{ slug: 'oauth2', kind: 'oauth2' }],
+          connectUrl: '/api/executor/oauth/start?integration=workstream',
         })
         const integration = yield* alice.integrations.get(slug)
         expect(integration).not.toBeNull()
@@ -201,7 +238,7 @@ describe('Workstream public OAuth lifecycle', () => {
           integration,
           method,
           {
-            WORKSTREAM_MCP_CLIENT_ID: 'garden-staging',
+            WORKSTREAM_MCP_CLIENT_ID: 'garden-dev',
           },
         )
         expect(managed._tag).toBe('Some')
@@ -301,7 +338,7 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(tokenRequests).toHaveLength(4)
         expect(tokenAuthorizations).toEqual([null, null, null, null])
         for (const body of tokenRequests) {
-          expect(body.get('client_id')).toBe('garden-staging')
+          expect(body.get('client_id')).toBe('garden-dev')
           expect(body.has('client_secret')).toBe(false)
           expect(body.get('resource')).toBe(resource)
         }
@@ -379,6 +416,9 @@ describe('Workstream public OAuth lifecycle', () => {
             encryptedSecretsPlugin({ key: 'regional-test-key' }),
           ],
           fetch: http,
+          httpClientLayer: FetchHttpClient.layer.pipe(
+            Layer.provide(Layer.succeed(FetchHttpClient.Fetch, http)),
+          ),
           redirectUri: callback,
           onElicitation: 'accept-all',
         }),

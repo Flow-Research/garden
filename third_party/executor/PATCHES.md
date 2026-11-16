@@ -42,6 +42,12 @@ documented compatibility changes:
    Workstream authorization codes and PKCE verifiers must reach the configured
    issuer token endpoint, and refresh must retain that endpoint. Other
    resources keep the SDK's regional-provider behavior.
+9. The same SDK patch appends `/.well-known/openid-configuration` after a
+   path-bearing issuer, as required by [OpenID Connect Discovery section 4.1](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig).
+   OAuth metadata discovery retains [RFC 8414 section 3](https://www.rfc-editor.org/rfc/rfc8414.html#section-3),
+   which inserts its well-known path before the issuer path. Garden's Workstream
+   installation requires successful OAuth discovery and reports unavailability
+   without offering a manual token template or registering an integration.
 
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's

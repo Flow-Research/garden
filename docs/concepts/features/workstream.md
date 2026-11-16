@@ -28,7 +28,7 @@ Executor discovers the requested scopes from Workstream's protected-resource met
 2. Install and connect it as **Personal**. Choosing **Workspace** is refused with an explanation.
 3. Authorize at Flow Identity with an invited account. Complete a required temporary-password action there when applicable.
 4. Return through Garden's existing `/api/oauth/callback`. Executor saves the personal connection and refresh credential.
-5. Cancellation leaves the account disconnected. Missing deployment registration reports that OAuth is not configured. An expired or revoked OAuth session may require signing in again or reconnecting. Revoked Workstream permissions remain denied; reconnecting does not restore a product grant.
+5. Cancellation leaves the account disconnected. Unavailable OAuth discovery stops installation with an actionable failure instead of offering a manual token form. Missing deployment registration reports that OAuth is not configured. An expired or revoked OAuth session may require signing in again or reconnecting. Revoked Workstream permissions remain denied; reconnecting does not restore a product grant.
 
 ## Deployment registration
 
@@ -42,8 +42,8 @@ The deployment binding is optional, so an environment without a registered clien
 
 ## Implementation and proof
 
-The existing owners are `apps/web/src/lib/server/executor-engine/presets.ts`, `auth-contract.ts`, and `apps/web/src/routes/api/executor/oauth/start.ts`. No schema or storage migration is required. See [connector architecture](../architecture/connectors.md).
+The existing owners are `apps/web/src/lib/server/executor-engine/presets.ts`, `auth-contract.ts`, `install.ts`, and `apps/web/src/routes/api/executor/oauth/start.ts`. The SDK discovery patch uses the OpenID Connect issuer-path convention while preserving the RFC 8414 OAuth metadata convention. The installation regression runs the actual catalogue-to-probe-to-registration path, including discovery failure. No schema or storage migration is required. See [connector architecture](../architecture/connectors.md).
 
-Acceptance covers catalogue installation, strict public-client registration and reuse, refusal of foreign resources or issuers, missing configuration, and refusal of Workspace ownership before client writes or authorization. Focused registration, catalogue, installation, and route tests cover these boundaries. Deployment and code-policy checks cover binding propagation. Security review focuses on resource binding, callback/PKCE ownership, and personal credential isolation.
+Acceptance covers catalogue installation through real SDK discovery, strict public-client registration and reuse, refusal of foreign resources or issuers, missing configuration, and refusal of Workspace ownership before client writes or authorization. Workstream discovery failure must leave no new integration or credential and must not offer a manual token form. Focused registration, catalogue, installation, and route tests cover these boundaries. Deployment and code-policy checks cover binding propagation. Security review focuses on resource binding, callback/PKCE ownership, and personal credential isolation.
 
 Follow the [Workstream verification scenario](../../../.agents/skills/verify/features/workstream.md) for browser authorization, personal isolation, refresh, cancellation, and a permission refusal. Live user-flow proof remains required; unit tests alone do not establish that a deployed callback or refresh works. The corresponding open proof gap is recorded in [known gaps](../../reference/known-gaps.md).
