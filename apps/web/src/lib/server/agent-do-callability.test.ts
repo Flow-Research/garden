@@ -1,46 +1,12 @@
 // @vitest-environment node
 import { readFile } from 'node:fs/promises'
-import { createRequire } from 'node:module'
-import { fileURLToPath } from 'node:url'
-import { build, transform } from 'esbuild'
+import { transform } from 'esbuild'
 import { parseSync } from 'oxc-parser'
 import { describe, expect, it, vi } from 'vitest'
 import { Result } from 'better-result'
-import type * as AgentsSdk from 'agents'
+import { agentsSdk } from '@/test/agents-sdk-fixture'
 
-// Bundle the installed SDK with only Cloudflare platform leaves replaced.
-// Decorator metadata and browser RPC dispatch remain the installed implementation.
-const sdkBundle = await build({
-  entryPoints: [fileURLToPath(import.meta.resolve('agents'))],
-  bundle: true,
-  platform: 'node',
-  format: 'cjs',
-  write: false,
-  plugins: [
-    {
-      name: 'cloudflare-test-leaves',
-      setup(builder) {
-        builder.onResolve({ filter: /^cloudflare:/ }, (args) => ({
-          path: args.path,
-          namespace: 'test-platform',
-        }))
-        builder.onLoad({ filter: /.*/, namespace: 'test-platform' }, () => ({
-          contents:
-            'export class DurableObject { constructor(ctx, env) { this.ctx = ctx; this.env = env } } export class RpcTarget {} export class EmailMessage {} export const exports = {}; export const env = {};',
-        }))
-      },
-    },
-  ],
-})
-const sdkModule = { exports: {} }
-const sdkOutput = sdkBundle.outputFiles[0]
-if (!sdkOutput) throw new Error('SDK bundle output missing')
-new Function('require', 'module', 'exports', sdkOutput.text)(
-  createRequire(import.meta.url),
-  sdkModule,
-  sdkModule.exports,
-)
-const { Agent, callable } = sdkModule.exports as typeof AgentsSdk
+const { Agent, callable } = agentsSdk
 const source = await readFile(
   new URL(
     '../../../../../packages/agent-runtime/src/agent-do.ts',

@@ -164,9 +164,26 @@ async function routeAgentDoRequest(request: Request, env: ServerEnv) {
   const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
   if (!agentRuntimeName) return new Response('Not found', { status: 404 })
 
-  const response = await routeAgentRequest(request, env, {
-    routingRetry: AGENT_ROUTING_RETRY,
-  })
+  // The SDK trusts these headers for internal routing and facet restoration.
+  // Public clients select a target only through the authorized URL; the SDK
+  // generates its own metadata after this boundary.
+  const headers = new Headers(request.headers)
+  for (const name of [
+    'x-cf-agents-subagent-url',
+    'x-partykit-props',
+    'x-partykit-room',
+    'x-partykit-namespace',
+    'x-partykit-jurisdiction',
+  ]) {
+    headers.delete(name)
+  }
+  const response = await routeAgentRequest(
+    new Request(request, { headers }),
+    env,
+    {
+      routingRetry: AGENT_ROUTING_RETRY,
+    },
+  )
   return response ?? new Response('Not found', { status: 404 })
 }
 
