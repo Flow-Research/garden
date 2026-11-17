@@ -16,6 +16,7 @@ import { requireWorkspaceContext } from '@/lib/server/control-plane'
 import { appEnv } from '@/lib/server/env'
 import {
   ensureServerManagedOAuthClient,
+  isWorkstreamMcpOAuth,
   oauthClientSupportsMethod,
 } from '@/lib/server/executor-engine/auth-contract'
 import {
@@ -41,7 +42,7 @@ const routeFailure = (message: string, cause: unknown, status = 502) =>
   new ExecutorOAuthRouteError({ status, message, cause })
 
 /** Starts one owner-scoped OAuth flow. Existing user/workspace clients remain
- * valid, Google is provisioned from deployment-owned credentials, and RFC 7591
+ * valid, deployment-owned Google and Workstream apps are supplied, and RFC 7591
  * remains available for providers that explicitly publish dynamic registration.
  * Manual client registration was removed because provider apps are host policy. */
 export const beginOAuth = Effect.fn('ExecutorOAuth.begin')(function* (
@@ -85,11 +86,20 @@ export const beginOAuth = Effect.fn('ExecutorOAuth.begin')(function* (
           })
         }
 
+        const workstream = isWorkstreamMcpOAuth(integration, method)
+        if (workstream && ownership.owner !== 'user') {
+          return yield* new ExecutorOAuthRouteError({
+            status: 403,
+            message:
+              'Workstream requires a Personal connection. Switch to Personal to connect your account.',
+          })
+        }
+
         const clients = yield* executor.oauth.listClients()
         const existingClient = yield* ownership.selectOAuthClient(
           clients,
           (candidate) =>
-            oauthClientSupportsMethod(candidate, integration, method),
+            oauthClientSupportsMethod(candidate, integration, method, appEnv),
         )
         let client = Option.map(existingClient, (candidate) => candidate.slug)
         let clientOwner = Option.match(existingClient, {
@@ -110,7 +120,7 @@ export const beginOAuth = Effect.fn('ExecutorOAuth.begin')(function* (
           }
         }
 
-        if (Option.isNone(client)) {
+        if (Option.isNone(client) && !workstream) {
           let discovered = Option.none<OAuthProbeResult>()
           if (oauth.discoveryUrl !== undefined) {
             discovered = Option.some(

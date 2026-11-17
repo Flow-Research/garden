@@ -34,6 +34,8 @@
     "verify:code-policy": "node scripts/verify-code-policy.mjs",
     "smoke": "node scripts/smoke.mjs",
     "test:smoke": "node --test scripts/smoke.test.mjs",
+    "test:pr-contract": "node --test scripts/pr-evidence.test.mjs",
+    "screenshot:webp": "node scripts/screenshot-webp.mjs",
     "typecheck": "turbo run typecheck --concurrency=1",
     "test": "turbo run test",
     "lint": "turbo run lint && pnpm run lint:root",
@@ -52,6 +54,7 @@
     "oxc-parser": "0.95.0",
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
+    "sharp": "0.33.5",
     "turbo": "2.9.14"
   },
   "pnpm": {

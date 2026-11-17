@@ -50,7 +50,7 @@ pnpm --filter @garden/web exec vitest src/features/automations/queries.test.ts
 
 ## Run the Postgres integration tests
 
-Integration tests start a real Postgres container. They call `startTestDb` or `withTestDb` from `@garden/db/testing`, which lives in `packages/db/src/testing/container.ts`. Each call starts `postgres:16-alpine` through testcontainers and applies every migration in `packages/db/drizzle`.
+Integration tests start a real Postgres container. They call `startTestDb` or `withTestDb` from `@garden/db/testing`, which lives in `packages/db/src/testing/container.ts`. Each call starts `postgres:16-alpine` through testcontainers. It waits for the database-ready log messages and the internal and mapped host ports before it applies migrations from `packages/db/drizzle`. A log message alone does not prove that the host can connect.
 
 1. Start Docker. Testcontainers needs a running Docker daemon. If Docker listens on a non-default socket, set `DOCKER_HOST`. Turbo passes it through.
 2. Run the test file or the package:
@@ -67,6 +67,14 @@ To run these four suites:
 
 ```bash
 pnpm --filter @garden/agent-runtime test src/runtime-mcp-controller.approval.test.ts src/runtime-mcp-controller.executor.test.ts src/runtime-mcp-controller.github-assignees.test.ts src/skills-assignments.test.ts
+```
+
+## Run native Brain authority tests
+
+These tests use disposable Postgres and Helix containers and a real Worker runtime. Model responses come from a controlled loopback server. No model-provider credentials are required. The fixture validates its test-only bindings before it uses a fault or synthetic endpoint.
+
+```bash
+GARDEN_ITEST_HELIX=1 pnpm --filter @garden/agent-runtime exec vitest run src/brain-run-authorization.integration.test.ts --maxWorkers=1
 ```
 
 ## Run the other checks CI runs
