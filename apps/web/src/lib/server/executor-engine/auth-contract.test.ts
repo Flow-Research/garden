@@ -122,7 +122,158 @@ describe('Executor auth contract', () => {
     }
 
     expect(
-      oauthClientSupportsMethod(client, googleIntegration, googleMethod),
+      oauthClientSupportsMethod(client, googleIntegration, googleMethod, {}),
     ).toBe(true)
   })
+})
+
+const workstreamMethod: AuthMethodDescriptor = {
+  id: 'oauth2',
+  label: 'OAuth',
+  kind: 'oauth',
+  template: 'oauth2',
+  oauth: {
+    discoveryUrl: 'https://workstream.flowresearch.tech/mcp',
+    supportsDynamicRegistration: true,
+  },
+}
+const workstreamIntegration: Integration = {
+  slug: IntegrationSlug.make('workstream'),
+  name: 'Workstream',
+  description: 'Governed work',
+  kind: 'mcp',
+  canRemove: true,
+  canRefresh: true,
+  authMethods: [workstreamMethod],
+}
+const workstreamEnv = { WORKSTREAM_MCP_CLIENT_ID: 'garden-staging' }
+const workstreamClient: OAuthClientSummary = {
+  owner: 'org',
+  slug: OAuthClientSlug.make('garden-workstream'),
+  grant: 'authorization_code',
+  clientId: 'garden-staging',
+  authorizationUrl:
+    'https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/auth',
+  tokenUrl:
+    'https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/token',
+  resource: 'https://workstream.flowresearch.tech/mcp',
+  origin: { kind: 'manual', integration: workstreamIntegration.slug },
+}
+
+const workstreamRegistry = (clients: readonly OAuthClientSummary[] = []) => {
+  const created: CreateOAuthClientInput[] = []
+  return {
+    created,
+    registry: {
+      listClients: () => Effect.succeed(clients),
+      createClient: (input: CreateOAuthClientInput) => {
+        created.push(input)
+        return Effect.succeed(input.slug)
+      },
+    },
+  }
+}
+
+describe('Workstream deployment-owned public OAuth app', () => {
+  it('registers a resource-bound public client for the discovery-only MCP method', async () => {
+    const { registry, created } = workstreamRegistry()
+    const managed = await Effect.runPromise(
+      ensureServerManagedOAuthClient(
+        registry,
+        workstreamIntegration,
+        workstreamMethod,
+        workstreamEnv,
+      ),
+    )
+
+    expect(Option.getOrNull(managed)).toEqual({
+      owner: 'org',
+      slug: workstreamClient.slug,
+    })
+    expect(created).toEqual([{ ...workstreamClient, clientSecret: '' }])
+  })
+
+  it('reuses the exact deployment app without sharing a member credential', async () => {
+    const { registry, created } = workstreamRegistry([workstreamClient])
+    const managed = await Effect.runPromise(
+      ensureServerManagedOAuthClient(
+        registry,
+        workstreamIntegration,
+        workstreamMethod,
+        workstreamEnv,
+      ),
+    )
+
+    expect(Option.getOrNull(managed)?.slug).toBe(workstreamClient.slug)
+    expect(created).toEqual([])
+  })
+
+  it('requires deployment configuration even with stored app metadata', async () => {
+    const { registry, created } = workstreamRegistry([workstreamClient])
+    const managed = await Effect.runPromise(
+      ensureServerManagedOAuthClient(
+        registry,
+        workstreamIntegration,
+        workstreamMethod,
+        {},
+      ),
+    )
+
+    expect(Option.isNone(managed)).toBe(true)
+    expect(created).toEqual([])
+  })
+
+  it.each([
+    { resource: 'https://workstream.flowresearch.tech/api' },
+    { resource: null },
+    { tokenUrl: 'https://attacker.example/token' },
+    {
+      authorizationUrl: 'https://identity.flowresearch.tech/realms/other/auth',
+    },
+    { clientId: 'garden-dev' },
+    { owner: 'user' as const },
+    { grant: 'client_credentials' as const },
+  ])('rejects a mismatched app despite matching origin: %j', (changed) => {
+    expect(
+      oauthClientSupportsMethod(
+        { ...workstreamClient, ...changed },
+        workstreamIntegration,
+        workstreamMethod,
+        workstreamEnv,
+      ),
+    ).toBe(false)
+  })
+
+  it.each([
+    'https://workstream.flowresearch.tech/mcp/other',
+    'https://attacker.example/mcp',
+    'https://workstream.flowresearch.tech.evil.example/mcp',
+  ])(
+    'never attaches the deployment app to another target: %s',
+    async (discoveryUrl) => {
+      const foreignMethod = {
+        ...workstreamMethod,
+        oauth: { discoveryUrl, supportsDynamicRegistration: true },
+      }
+      const { registry, created } = workstreamRegistry([workstreamClient])
+      expect(
+        oauthClientSupportsMethod(
+          workstreamClient,
+          workstreamIntegration,
+          foreignMethod,
+          workstreamEnv,
+        ),
+      ).toBe(false)
+      const managed = await Effect.runPromise(
+        ensureServerManagedOAuthClient(
+          registry,
+          workstreamIntegration,
+          foreignMethod,
+          workstreamEnv,
+        ),
+      )
+      expect(Option.isNone(managed)).toBe(true)
+      expect(created).toEqual([])
+    },
+  )
 })

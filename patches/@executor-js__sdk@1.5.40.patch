@@ -183,6 +183,29 @@ index 34cf72783eabf91bab4ff90a9028c8b51689546e..cfc8a8bb664353cd9669c8d42ae643b2
    "OAuthSessionNotFoundError",
    { state: OAuthState }
  ) {
+diff --git a/dist/chunk-VWFZ6OPE.js b/dist/chunk-VWFZ6OPE.js
+index 6cf936862fbea4d8f6a106fe9282aa7571336c76..a18e463b920aef3cdc4f8fc57bf02c0631d98160 100644
+--- a/dist/chunk-VWFZ6OPE.js
++++ b/dist/chunk-VWFZ6OPE.js
+@@ -4177,6 +4177,8 @@ var discoverProtectedResourceMetadata = (resourceUrl, options = {}) => Effect6.g
+ });
+ var wellKnownUrlFor = (issuerOrigin2, algorithm, issuerPath) => {
+   const suffix = algorithm === "oauth2" ? "oauth-authorization-server" : "openid-configuration";
++  // OpenID Discovery 1.0 section 4.1 appends the well-known path to the issuer.
++  if (algorithm === "oidc") return `${issuerOrigin2}${issuerPath}/.well-known/${suffix}`;
+   return issuerPath && issuerPath !== "/" ? `${issuerOrigin2}/.well-known/${suffix}${issuerPath}` : `${issuerOrigin2}/.well-known/${suffix}`;
+ };
+ var discoverAuthorizationServerMetadata = (issuer, options = {}) => Effect6.gen(function* () {
+@@ -5028,7 +5030,8 @@ var makeOAuthService = (deps) => {
+     }
+     const tokenUrl = rebindTokenEndpointHostToCallbackDomain(
+       client.tokenUrl,
+-      input.callbackDomain
++      // Workstream's resource credential must stay on its configured issuer.
++      client.resource === "https://workstream.flowresearch.tech/mcp" ? void 0 : input.callbackDomain
+     );
+     const token = yield* exchangeAuthorizationCode({
+       tokenUrl,
 diff --git a/dist/host-internal.js b/dist/host-internal.js
 index c7bab565f4f3c3f833ddf1237dc0ccbd44f1eab5..ef2a81cee2376670cff978e70649ba5da5937789 100644
 --- a/dist/host-internal.js

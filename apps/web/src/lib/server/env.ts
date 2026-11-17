@@ -46,6 +46,7 @@ export type AppEnv = {
   GITHUB_WEBHOOK_SECRET?: string
   GOOGLE_AUTH_CLIENT_ID?: string
   GOOGLE_AUTH_CLIENT_SECRET?: string
+  WORKSTREAM_MCP_CLIENT_ID?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
   SLACK_CLIENT_ID?: string
