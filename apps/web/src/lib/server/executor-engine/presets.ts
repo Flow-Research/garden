@@ -79,10 +79,7 @@ export const gardenOpenApiPresets: readonly IntegrationPreset[] = [
   ...gardenOpenApiCustomPresets,
 ]
 
-/** Adds Decide to the SDK catalog so users can connect through Executor's MCP
- * OAuth discovery and dynamic registration, rather than manage API keys.
- * Endpoint and OAuth support: https://www.trydecide.ai/docs/mcp and
- * https://chat.trydecide.ai/.well-known/oauth-authorization-server. */
+/** Curates remote MCP integrations using Executor's existing transport. */
 export const gardenMcpPresets: readonly McpRemotePreset[] = [
   ...mcpPresets
     .filter(isRemoteMcpPreset)
@@ -94,6 +91,15 @@ export const gardenMcpPresets: readonly McpRemotePreset[] = [
       'Analyze data, build charts and reports, and read generated files. Follow-up analyses reuse the same session. Uses credits from your Decide account.',
     url: 'https://www.trydecide.ai/docs/mcp',
     endpoint: 'https://api.trydecide.ai/mcp',
+    featured: true,
+  },
+  {
+    id: 'workstream',
+    name: 'Workstream',
+    summary:
+      'Inspect governed tasks, submit work, and follow review and contribution evidence through a Personal connection with your invited Workstream account.',
+    url: 'https://workstream.flowresearch.tech',
+    endpoint: 'https://workstream.flowresearch.tech/mcp',
     featured: true,
   },
 ]

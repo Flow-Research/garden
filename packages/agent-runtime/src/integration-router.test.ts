@@ -318,3 +318,129 @@ describe('connected-tool need detection', () => {
     expect(requestNeedsConnectedTools(decision)).toBe(false)
   })
 })
+
+const WORKSTREAM_CATALOG: ExecutorCatalog = {
+  integrations: [
+    ...CATALOG.integrations,
+    {
+      slug: 'workstream',
+      name: 'Workstream',
+      description: 'Governed work and contribution evidence.',
+      capabilities: [],
+    },
+  ],
+  connections: [
+    ...CATALOG.connections,
+    { owner: 'user', integration: 'workstream', name: 'workstream' },
+  ],
+  tools: [
+    ...CATALOG.tools,
+    ...[
+      'workstream_active_guide_get',
+      'workstream_actor_admin_grants_list',
+      'workstream_actor_assignments_list',
+      'workstream_actor_deactivate',
+      'workstream_actor_get',
+      'workstream_actor_identity_link_get',
+      'workstream_actor_projects_list',
+      'workstream_actor_reactivate',
+      'workstream_admin_grants_list',
+      ...Array.from(
+        { length: 122 },
+        (_, index) => `workstream_catalogue_${String(index).padStart(3, '0')}`,
+      ),
+      'workstream_profile_get',
+    ].map((name) => ({
+      name,
+      description:
+        name === 'workstream_profile_get'
+          ? "Read the authenticated caller's Workstream profile."
+          : 'Inspect Workstream governance information.',
+      integration: 'workstream',
+      connection: 'workstream',
+      owner: 'user' as const,
+      requiresApproval: true,
+    })),
+  ],
+}
+
+const PROFILE_TOOL = 'workstream_profile_get'
+const ADMIN_READ_TOOL = 'workstream_admin_grants_list'
+
+describe('integration router tool relevance', () => {
+  it.each([
+    `Use Workstream. Call ${PROFILE_TOOL} with {} and ${ADMIN_READ_TOOL} with {"scope_type":"system","limit":1}.`,
+    `Use Workstream. Call tools.workstream.user.workstream.${PROFILE_TOOL}({}) and tools.workstream.user.workstream.${ADMIN_READ_TOOL}({scope_type:"system",limit:1}).`,
+  ])('retains explicitly requested discovered tools: %s', (userText) => {
+    expect(
+      WORKSTREAM_CATALOG.tools.filter(
+        (tool) => tool.integration === 'workstream',
+      ),
+    ).toHaveLength(132)
+    const decision = selectIntegrationRoute({
+      userText,
+      catalog: WORKSTREAM_CATALOG,
+    })
+    expect(decision.status).toBe('selected')
+    const allowed = decision.routes[0]?.allowedToolNames ?? []
+    expect(allowed.slice(0, 2)).toEqual(
+      expect.arrayContaining([PROFILE_TOOL, ADMIN_READ_TOOL]),
+    )
+    expect(allowed).toHaveLength(8)
+    expect(isIntegrationToolAllowed(decision, 'workstream', PROFILE_TOOL)).toBe(
+      true,
+    )
+    expect(
+      isIntegrationToolAllowed(decision, 'workstream', ADMIN_READ_TOOL),
+    ).toBe(true)
+    expect(renderIntegrationRouteDirective(decision)).toContain(PROFILE_TOOL)
+    expect(renderIntegrationRouteDirective(decision)).toContain(ADMIN_READ_TOOL)
+  })
+
+  it('ranks meaningful profile matches ahead of the shared provider prefix', () => {
+    const decision = selectIntegrationRoute({
+      userText: 'Use Workstream to read my authenticated caller profile.',
+      catalog: WORKSTREAM_CATALOG,
+    })
+    expect(decision.routes[0]?.allowedToolNames[0]).toBe(PROFILE_TOOL)
+  })
+
+  it.each([
+    `${PROFILE_TOOL}_unavailable`,
+    `${PROFILE_TOOL}-unavailable`,
+    `unavailable-${PROFILE_TOOL}`,
+  ])(
+    'keeps the eight-tool cap without exact-matching part of %s',
+    (unavailable) => {
+      const requested = Array.from(
+        { length: 8 },
+        (_, index) =>
+          `workstream_catalogue_${String(100 + index).padStart(3, '0')}`,
+      )
+      const decision = selectIntegrationRoute({
+        userText: `Use Workstream. Call ${requested.join(', ')} and ${unavailable}.`,
+        catalog: WORKSTREAM_CATALOG,
+      })
+      const allowed = decision.routes[0]?.allowedToolNames ?? []
+      expect(allowed).toHaveLength(8)
+      expect(allowed).toEqual(expect.arrayContaining(requested))
+      expect(allowed).not.toContain(PROFILE_TOOL)
+      expect(allowed).not.toContain(unavailable)
+      expect(
+        isIntegrationToolAllowed(decision, 'workstream', unavailable),
+      ).toBe(false)
+    },
+  )
+
+  it('does not admit another connected provider into the selected scope', () => {
+    const decision = selectIntegrationRoute({
+      userText: `Use Workstream and call ${PROFILE_TOOL}.`,
+      catalog: WORKSTREAM_CATALOG,
+    })
+    expect(decision.routes[0]?.slug).toBe('workstream')
+    expect(isIntegrationToolAllowed(decision, 'gmail', 'send_email')).toBe(
+      false,
+    )
+    expect(decision.routes[0]?.allowedToolNames).not.toContain('send_email')
+  })
+})
