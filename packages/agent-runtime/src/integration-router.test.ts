@@ -561,6 +561,18 @@ describe('explicit tool integration selection', () => {
     })
     expect(decision.status).toBe('none')
   })
+  it('retains both exact owners when an attachment selects a different skill', () => {
+    const decision = selectIntegrationRoute({
+      catalog: CATALOG,
+      userText: 'Call analyze_dataset and send_email.',
+      attachments: [{ filename: 'revenue.csv', mediaType: 'text/csv' }],
+    })
+    expect(decision.status).toBe('none')
+    expect(decision.routes.map((route) => route.slug)).toEqual(
+      expect.arrayContaining(['decide', 'gmail']),
+    )
+  })
+
   it('does not promote an unavailable tool name over a real exact request', () => {
     const decision = selectIntegrationRoute({
       catalog: COMPETING_CATALOG,

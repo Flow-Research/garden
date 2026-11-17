@@ -201,11 +201,14 @@ function rankIntegration(args: {
   const integrationTerms = terms(`${integration.slug} ${integration.name}`)
   const directTerms = intersection(queryTerms, integrationTerms)
   const directMention = directTerms.length > 0
-  if (!connected && !directMention) return null
-
   const toolRows = catalog.tools.filter(
     (tool) => tool.integration === integration.slug,
   )
+  const exactToolMention = toolRows.some((tool) =>
+    explicitlyRequestsTool(userText, tool.name),
+  )
+  if (!connected && !directMention && !exactToolMention) return null
+
   const capabilityTerms = terms(
     [
       integration.description,
@@ -216,7 +219,8 @@ function rankIntegration(args: {
   const requiredTerms = terms(skill?.requiredCapabilities.join(' ') ?? query)
   const capabilityMatches = intersection(requiredTerms, capabilityTerms)
   const queryMatches = intersection(queryTerms, capabilityTerms)
-  if (!directMention && capabilityMatches.length === 0) return null
+  if (!directMention && !exactToolMention && capabilityMatches.length === 0)
+    return null
 
   // A shared provider prefix selects the integration, not its most relevant tools.
   const relevanceTerms = new Set(
