@@ -77,6 +77,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | `HELIX_API_KEY`               | Secret | Yes in deployed Workers | Org Brain HelixDB key.                                           | `apps/web/src/routes/api/brain/`                         |
 | `GOOGLE_AUTH_CLIENT_ID`       | Var    | Pair, optional       | Google sign-in client id.                                           | `apps/web/src/lib/auth/instance.ts`                      |
 | `GOOGLE_AUTH_CLIENT_SECRET`   | Secret | Pair, optional       | Google sign-in client secret.                                       | `apps/web/src/lib/auth/instance.ts`                      |
+| `WORKSTREAM_MCP_CLIENT_ID`   | Var    | No                   | Public Flow Identity client registered for this target’s exact Garden callback; Workstream MCP only. | `apps/web/src/lib/server/executor-engine/auth-contract.ts` |
 | `GOOGLE_CLIENT_ID`            | Var    | Yes in deployed Workers | Gmail and Google Drive connector OAuth client id.                | `packages/connectors/src/oauth.ts`                       |
 | `GOOGLE_CLIENT_SECRET`        | Secret | Yes in deployed Workers | Gmail and Google Drive connector OAuth client secret.            | `packages/connectors/src/oauth.ts`                       |
 | `GITHUB_CLIENT_ID`            | Var    | No                   | GitHub OAuth client id.                                             | `packages/connectors/src/oauth.ts`                       |

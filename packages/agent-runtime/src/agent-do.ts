@@ -526,7 +526,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     })
   }
 
-  @callable()
   async ensureThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     await this.subAgent(ChatSubAgent, threadId)
@@ -541,14 +540,12 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
    * Think docs say MCP tools are automatically merged into every turn, and
    * installed `think.js` merges `this.mcp.getAITools()` in `_runInferenceLoop`.
    */
-  @callable()
   async warmThreadRuntime(threadId: string): Promise<RuntimePreparePayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return await thread.warmRuntime()
   }
 
-  @callable()
   async deleteThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
@@ -557,7 +554,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return { ok: true }
   }
 
-  @callable()
   async pauseThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
@@ -565,7 +561,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return { ok: true }
   }
 
-  @callable()
   async debugThreadMeta(threadId: string): Promise<DebugMetaPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
@@ -577,35 +572,30 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     }
   }
 
-  @callable()
   async debugThreadWorkspace(threadId: string): Promise<DebugWorkspacePayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugWorkspace()
   }
 
-  @callable()
   async debugThreadSandbox(threadId: string): Promise<DebugSandboxPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugSandbox()
   }
 
-  @callable()
   async debugThreadTools(threadId: string): Promise<DebugToolsPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugTools()
   }
 
-  @callable()
   async debugThreadPrompt(threadId: string): Promise<DebugPromptPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugPrompt()
   }
 
-  @callable()
   async runThreadFixtureTurn(
     threadId: string,
     input: { clear?: boolean; message: string },
@@ -628,7 +618,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     }
   }
 
-  @callable()
   async uploadThreadDocument(
     threadId: string,
     input: { base64: string; filename: string; mediaType?: string | null },
@@ -638,7 +627,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.uploadDocument(input)
   }
 
-  @callable()
   async readThreadDocumentBytes(
     threadId: string,
     documentId: string,
@@ -701,7 +689,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return { delivered: true }
   }
 
-  @callable()
   async readThreadDocumentVersionBytes(
     threadId: string,
     input: {
@@ -715,7 +702,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.readDocumentVersionBytes(input)
   }
 
-  @callable()
   async listThreadDocumentVersions(
     threadId: string,
     documentId: string,
@@ -725,7 +711,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.listDocumentVersions(documentId)
   }
 
-  @callable()
   async readThreadDocumentArtifact(
     threadId: string,
     documentId: string,
@@ -735,7 +720,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.readDocumentArtifact(documentId)
   }
 
-  @callable()
   async applyThreadDocumentArtifactOperation(
     threadId: string,
     input: { documentId: string; operation: unknown },
@@ -753,7 +737,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
    * used by reads and writes. Native Workers RPC transfers the backpressured
    * stream; the browser-facing Effect HttpApi adapter supplies SSE semantics.
    */
-  @callable()
   async subscribeThreadDocumentArtifact(
     threadId: string,
     documentId: string,
@@ -763,7 +746,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.subscribeDocumentArtifact(documentId)
   }
 
-  @callable()
   async refreshThreadPrompt(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
