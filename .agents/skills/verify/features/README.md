@@ -13,3 +13,4 @@ file when a shipped user path needs repeatable proof.
 | [Internal handbook](./handbook.md) | Sign in, open `/handbook`, browse the Diátaxis sections, follow links, scroll a long page | Documented; checked by hand on PR #262 |
 | [GitHub issue sync](./github-issue-sync.md) | Link a repository to a Team, see its open issues imported, see a new GitHub issue arrive assigned | Documented; route and UI tests pass; live check pending |
 | [Shared skills client](./shared-client.md) | Read skills, refuse access and switch sessions without stale data | Automated portable/HTTP/UI fixtures; local-app check recorded separately |
+| [Home dashboard](./dashboard.md) | Overview, distributions, detail panels, responsive layout, and navigation | Component regression coverage; local-app evidence recorded separately |
