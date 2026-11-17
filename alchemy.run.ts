@@ -236,6 +236,7 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
       'GOOGLE_AUTH_CLIENT_SECRET',
     ),
     ...optionalPlainBindings([
+      'WORKSTREAM_MCP_CLIENT_ID',
       'GITHUB_CLIENT_ID',
       'GITHUB_APP_ID',
       'GITHUB_APP_SLUG',

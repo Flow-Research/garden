@@ -110,6 +110,36 @@ describe('Executor server-owned preset catalog', () => {
 
   afterEach(() => vi.unstubAllGlobals())
 
+  it('offers Workstream and installs its exact MCP resource', async () => {
+    const provider = listServerOwnedExecutorProviders().find(
+      (candidate) => String(candidate.installSlug) === 'workstream',
+    )
+    expect(provider).toMatchObject({
+      providerId: 'executor:workstream',
+      name: 'Workstream',
+      featured: true,
+    })
+    if (provider === undefined) return
+    const target = resolveInstallTarget(
+      provider.candidates[0],
+      IntegrationsShDomainSurface.make({
+        domain: 'workstream.flowresearch.tech',
+        description: Option.none(),
+        summary: Option.none(),
+        surfaces: [],
+      }),
+    )
+    expect(Option.getOrNull(target)).toEqual({
+      kind: 'mcp',
+      endpoint: 'https://workstream.flowresearch.tech/mcp',
+      transport: 'streamable-http',
+    })
+    const featured = await Effect.runPromise(getFeaturedExecutorCatalog())
+    expect(featured.entries).toContainEqual(
+      expect.objectContaining({ providerId: 'executor:workstream' }),
+    )
+  })
+
   it('offers Decide as a featured MCP provider with its documented endpoint', async () => {
     const decide = listServerOwnedExecutorProviders().find(
       (provider) => String(provider.installSlug) === 'decide',
