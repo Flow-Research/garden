@@ -143,7 +143,14 @@ export function ManageDrawerBody({
   }
 
   let accountSetup: ReactNode = null
-  if (nativeProvider && connectedInScope) {
+  if (integration.providerId === 'executor:workstream' && owner === 'org') {
+    accountSetup = (
+      <p className="text-sm text-muted-foreground">
+        Workstream requires a Personal connection. Switch to Personal to connect
+        your invited account.
+      </p>
+    )
+  } else if (nativeProvider && connectedInScope) {
     accountSetup = null
   } else if (nativeProvider) {
     let nativeLabel = 'Connect native app'
