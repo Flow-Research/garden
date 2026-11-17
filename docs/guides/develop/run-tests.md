@@ -76,6 +76,7 @@ CI also runs these root scripts. Run them before you open a pull request:
 ```bash
 pnpm format
 pnpm lint
+pnpm verify:code-policy
 pnpm typecheck
 pnpm verify:connectors
 pnpm verify:docs
