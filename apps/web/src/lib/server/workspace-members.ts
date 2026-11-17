@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { isWorkspaceManager } from '@/lib/server/team-access'
 import { schema, type Db } from '@/lib/server/db'
@@ -77,42 +77,10 @@ export async function readWorkspaceMember(args: {
 
 /**
  * Hydrates Better Auth listMembers rows with github_* from Garden's member
- * table. Phase 1 returned hardcoded nulls; without this join, linked identities
- * would never appear on GET /members.
+ * table. SQL lives in `queries/workspaces`; re-exported here for callers that
+ * already import from this module (`members/$memberId`, tests).
  */
-export async function githubIdentityByMemberId(args: {
-  db: Db
-  workspaceId: string
-  memberIds: string[]
-}) {
-  if (args.memberIds.length === 0) {
-    return new Map<
-      string,
-      { githubUserId: string | null; githubLogin: string | null }
-    >()
-  }
-
-  const rows = await args.db
-    .select({
-      id: schema.member.id,
-      githubUserId: schema.member.githubUserId,
-      githubLogin: schema.member.githubLogin,
-    })
-    .from(schema.member)
-    .where(
-      and(
-        eq(schema.member.organizationId, args.workspaceId),
-        inArray(schema.member.id, args.memberIds),
-      ),
-    )
-
-  return new Map(
-    rows.map((row) => [
-      row.id,
-      { githubUserId: row.githubUserId, githubLogin: row.githubLogin },
-    ]),
-  )
-}
+export { githubIdentityByMemberId } from '@/lib/server/queries/workspaces/members-github'
 
 /** The caller's role in this workspace, or null when they are not a member. */
 export async function readActorWorkspaceRole(args: {
