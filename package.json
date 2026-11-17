@@ -54,7 +54,7 @@
     "oxc-parser": "0.95.0",
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
-    "sharp": "0.33.5",
+    "sharp": "0.35.5",
     "turbo": "2.9.14"
   },
   "pnpm": {
@@ -71,7 +71,7 @@
     "overrides": {
       "alchemy>miniflare": "4.20260714.0",
       "@posthog/cli": "0.8.4",
-      "sharp": "0.33.5",
+      "sharp": "0.35.5",
       "effect": "4.0.0-rc.111",
       "@effect/atom-react": "4.0.0-rc.111",
       "@effect/platform-node": "4.0.0-rc.111",
