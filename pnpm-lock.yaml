@@ -184,6 +184,9 @@ importers:
       oxlint:
         specifier: ^1.60.0
         version: 1.60.0
+      sharp:
+        specifier: 0.33.5
+        version: 0.33.5
       turbo:
         specifier: 2.9.14
         version: 2.9.14
