@@ -303,7 +303,7 @@ export function selectIntegrationRoute(args: {
   }
 
   const catalog = args.catalog
-  const routes = catalog.integrations
+  const rankedRoutes = catalog.integrations
     .map((integration) =>
       rankIntegration({
         catalog,
@@ -315,6 +315,15 @@ export function selectIntegrationRoute(args: {
     )
     .filter((route): route is IntegrationRoute => route !== null)
     .sort((left, right) => right.score - left.score)
+  const explicitlyRequestedOwners = new Set(
+    catalog.tools
+      .filter((tool) => explicitlyRequestsTool(args.userText, tool.name))
+      .map((tool) => tool.integration),
+  )
+  const explicitRoutes = rankedRoutes.filter((route) =>
+    explicitlyRequestedOwners.has(route.slug),
+  )
+  const routes = explicitRoutes.length > 0 ? explicitRoutes : rankedRoutes
   const [top, second] = routes
 
   if (isInformationalRequest(args.userText, attachments.length > 0)) {
@@ -325,7 +334,7 @@ export function selectIntegrationRoute(args: {
       reason: 'The request asks for an explanation, not an integration run.',
     }
   }
-  if (!top || top.score < 6) {
+  if (!top || (explicitRoutes.length === 0 && top.score < 6)) {
     return {
       status: 'none',
       skill,
@@ -333,7 +342,7 @@ export function selectIntegrationRoute(args: {
       reason: 'No integration matched with enough confidence.',
     }
   }
-  if (second && second.score >= top.score - 2) {
+  if (second && (explicitRoutes.length > 1 || second.score >= top.score - 2)) {
     return {
       status: 'none',
       skill,

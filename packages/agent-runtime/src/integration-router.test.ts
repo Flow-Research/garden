@@ -444,3 +444,133 @@ describe('integration router tool relevance', () => {
     expect(decision.routes[0]?.allowedToolNames).not.toContain('send_email')
   })
 })
+
+const COMPETING_CATALOG: ExecutorCatalog = {
+  integrations: [
+    ...WORKSTREAM_CATALOG.integrations,
+    {
+      slug: 'executor',
+      name: 'Executor',
+      description:
+        'Manage integrations and connections in the workspace catalog.',
+      capabilities: [],
+    },
+  ],
+  connections: [
+    ...WORKSTREAM_CATALOG.connections,
+    { owner: 'user', integration: 'executor', name: 'core' },
+  ],
+  tools: [
+    ...WORKSTREAM_CATALOG.tools,
+    {
+      name: 'integrations.list',
+      description:
+        'List integrations in the workspace catalog (slug, description, owning plugin kind). Connections authenticate against these.',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: false,
+    },
+    {
+      name: 'policies.create',
+      description:
+        'Create a tool policy. pattern matches a tool address tail; action is approve/require_approval/block. owner is org (workspace guardrail) or user (personal).',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: true,
+    },
+    {
+      name: 'connections.createHandoff',
+      description:
+        'Return a browser URL that opens the Add account flow for one integration. Use this for API keys/tokens so the user enters secrets directly in the web UI instead of sending them through the agent. Optionally preselect owner, auth template, and a non-secret label.',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: false,
+    },
+    {
+      name: 'connections.remove',
+      description:
+        'Remove a saved connection and its produced tools by owner, integration, and connection name.',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: true,
+    },
+  ],
+}
+
+describe('explicit tool integration selection', () => {
+  it('selects the named tool owner despite competing Executor terminology', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText:
+        'Restore the dedicated isolation participant now. Use Executor once: const result = await tools.workstream.user.workstream.workstream_actor_reactivate({actor_profile_id: "test-actor", body: {reason: "Restore isolation test participant after authorized Garden suspension proof"}, idempotency_key: "test-key"}); emit(result); return result; Do not change any other account or retry. If approval is required show its execution ID for confirmation.',
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('workstream')
+    expect(
+      isIntegrationToolAllowed(
+        decision,
+        'workstream',
+        'workstream_actor_reactivate',
+      ),
+    ).toBe(true)
+    expect(
+      isIntegrationToolAllowed(decision, 'executor', 'connections.remove'),
+    ).toBe(false)
+    expect(decision.routes[0]?.allowedToolNames).toHaveLength(8)
+  })
+  it('retains explicit Executor management requests', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText:
+        'Use Executor integrations.list to inspect my Workstream connection.',
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('executor')
+    expect(
+      isIntegrationToolAllowed(decision, 'executor', 'integrations.list'),
+    ).toBe(true)
+  })
+  it('keeps a named tool owner disconnected when no caller connection exists', () => {
+    const decision = selectIntegrationRoute({
+      catalog: {
+        ...COMPETING_CATALOG,
+        connections: COMPETING_CATALOG.connections.filter(
+          (connection) => connection.integration !== 'workstream',
+        ),
+      },
+      userText: 'Use Executor to call workstream_actor_reactivate.',
+    })
+    expect(decision.routes[0]).toMatchObject({
+      slug: 'workstream',
+      connected: false,
+    })
+    expect(requestNeedsConnectedTools(decision)).toBe(false)
+    expect(renderIntegrationRouteDirective(decision)).toContain(
+      'Ask the user to connect it.',
+    )
+  })
+
+  it('does not select one owner when exact tools name two integrations', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText: 'Call workstream_actor_reactivate and integrations.list.',
+    })
+    expect(decision.status).toBe('none')
+  })
+  it('does not promote an unavailable tool name over a real exact request', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText:
+        'Call workstream_actor_reactivate_unavailable and integrations.list.',
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('executor')
+    expect(decision.routes[0]?.allowedToolNames).not.toContain(
+      'workstream_actor_reactivate_unavailable',
+    )
+  })
+})
