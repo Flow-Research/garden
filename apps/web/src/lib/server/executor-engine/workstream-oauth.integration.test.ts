@@ -61,6 +61,13 @@ describe('Workstream public OAuth lifecycle', () => {
     const tokenRequests: URLSearchParams[] = []
     const challenges = new Map<string, string>()
     const tokenAuthorizations: (string | null)[] = []
+    const accessTokens = new Map<string, string>()
+    const refreshTokens = new Map<
+      string,
+      { member: string; generation: number }
+    >()
+    const callTokens: string[] = []
+    const rejectedAccessTokens: string[] = []
     const http = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init)
       if (request.url.includes('/.well-known/oauth-protected-resource')) {
@@ -88,6 +95,7 @@ describe('Workstream public OAuth lifecycle', () => {
         tokenRequests.push(body)
         tokenAuthorizations.push(request.headers.get('authorization'))
         let member: string
+        let generation = 0
         if (body.get('grant_type') === 'authorization_code') {
           const code = codes.get(body.get('code') ?? '')
           if (code === undefined)
@@ -100,14 +108,22 @@ describe('Workstream public OAuth lifecycle', () => {
               { error: 'unsupported_grant_type' },
               { status: 400 },
             )
-          member = (body.get('refresh_token') ?? '').replace('-refresh', '')
-          if (!['member-a', 'member-b'].includes(member))
+          const refreshToken = body.get('refresh_token') ?? ''
+          const grant = refreshTokens.get(refreshToken)
+          if (grant === undefined)
             return Response.json({ error: 'invalid_grant' }, { status: 400 })
+          refreshTokens.delete(refreshToken)
+          member = grant.member
+          generation = grant.generation + 1
           refreshes.push(member)
         }
+        const accessToken = `${member}-access-${generation}`
+        const refreshToken = `${member}-refresh-${generation}`
+        accessTokens.set(member, accessToken)
+        refreshTokens.set(refreshToken, { member, generation })
         return Response.json({
-          access_token: `${member}-access`,
-          refresh_token: `${member}-refresh`,
+          access_token: accessToken,
+          refresh_token: refreshToken,
           token_type: 'Bearer',
           expires_in: 3600,
           scope: scopes.join(' '),
@@ -124,6 +140,15 @@ describe('Workstream public OAuth lifecycle', () => {
               },
             },
           )
+        }
+        const bearer = request.headers.get('authorization') ?? ''
+        if (
+          ![...accessTokens.values()].some(
+            (token) => bearer === `Bearer ${token}`,
+          )
+        ) {
+          rejectedAccessTokens.push(bearer)
+          return Response.json({ error: 'stale_access_token' }, { status: 401 })
         }
         if (request.method !== 'POST')
           return new Response(null, { status: 405 })
@@ -151,6 +176,7 @@ describe('Workstream public OAuth lifecycle', () => {
             ],
           }
         } else if (message.method === 'tools/call') {
+          callTokens.push(bearer)
           result = {
             content: [
               { type: 'text', text: request.headers.get('authorization') },
@@ -326,17 +352,47 @@ describe('Workstream public OAuth lifecycle', () => {
         const bobTool = bobTools[0]
         if (aliceTool === undefined || bobTool === undefined) return
         const now = Date.now()
-        vi.spyOn(Date, 'now').mockReturnValue(now + 3601_000)
+        const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 3601_000)
+        const bobBeforeRefresh = yield* restoredBob.connections.list({
+          integration: slug,
+        })
         expect(
           JSON.stringify(yield* alice.execute(aliceTool.address, {})),
-        ).toContain('member-a-access')
+        ).toContain('member-a-access-1')
         expect(refreshes).toEqual(['member-a'])
         expect(
+          yield* restoredBob.connections.list({ integration: slug }),
+        ).toEqual(bobBeforeRefresh)
+
+        yield* alice.close()
+        members.splice(members.indexOf(alice), 1)
+        const restoredAlice = yield* open('member-a')
+        members.push(restoredAlice)
+        expect(
+          JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
+        ).toContain('member-a-access-1')
+        expect(refreshes).toEqual(['member-a'])
+
+        // Stagger the members' renewals so Alice's second expiry cannot also
+        // expire Bob's refreshed token during the isolation assertion.
+        clock.mockReturnValue(now + 5401_000)
+        expect(
           JSON.stringify(yield* restoredBob.execute(bobTool.address, {})),
-        ).toContain('member-b-access')
+        ).toContain('member-b-access-1')
         expect(refreshes).toEqual(['member-a', 'member-b'])
-        expect(tokenRequests).toHaveLength(4)
-        expect(tokenAuthorizations).toEqual([null, null, null, null])
+        const bobAfterRefresh = yield* restoredBob.connections.list({
+          integration: slug,
+        })
+        clock.mockReturnValue(now + 7202_000)
+        expect(
+          JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
+        ).toContain('member-a-access-2')
+        expect(refreshes).toEqual(['member-a', 'member-b', 'member-a'])
+        expect(
+          yield* restoredBob.connections.list({ integration: slug }),
+        ).toEqual(bobAfterRefresh)
+        expect(tokenRequests).toHaveLength(5)
+        expect(tokenAuthorizations).toEqual([null, null, null, null, null])
         for (const body of tokenRequests) {
           expect(body.get('client_id')).toBe('garden-dev')
           expect(body.has('client_secret')).toBe(false)
@@ -360,19 +416,43 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(refreshRequests.map((body) => body.get('scope'))).toEqual([
           scopes.join(' '),
           scopes.join(' '),
+          scopes.join(' '),
         ])
-        const ref = (yield* alice.connections.list({ integration: slug }))[0]
+        expect(
+          refreshRequests.map((body) => body.get('refresh_token')),
+        ).toEqual([
+          'member-a-refresh-0',
+          'member-b-refresh-0',
+          'member-a-refresh-1',
+        ])
+        for (const member of ['member-a', 'member-b']) {
+          expect(JSON.stringify(stored)).not.toContain(`${member}-access`)
+          expect(JSON.stringify(stored)).not.toContain(`${member}-refresh`)
+        }
+        const ref = (yield* restoredAlice.connections.list({
+          integration: slug,
+        }))[0]
         expect(ref).toBeDefined()
         if (ref === undefined) return
-        yield* alice.connections.remove(ref)
-        expect(yield* alice.connections.list({ integration: slug })).toEqual([])
+        yield* restoredAlice.connections.remove(ref)
+        expect(
+          yield* restoredAlice.connections.list({ integration: slug }),
+        ).toEqual([])
         expect(yield* bob.connections.list({ integration: slug })).toHaveLength(
           1,
         )
         expect(
           JSON.stringify(yield* restoredBob.execute(bobTool.address, {})),
-        ).toContain('member-b-access')
-        expect(refreshes).toEqual(['member-a', 'member-b'])
+        ).toContain('member-b-access-1')
+        expect(refreshes).toEqual(['member-a', 'member-b', 'member-a'])
+        expect(callTokens).toEqual([
+          'Bearer member-a-access-1',
+          'Bearer member-a-access-1',
+          'Bearer member-b-access-1',
+          'Bearer member-a-access-2',
+          'Bearer member-b-access-1',
+        ])
+        expect(rejectedAccessTokens).toEqual([])
       }),
     ).finally(async () => {
       await Effect.runPromise(
