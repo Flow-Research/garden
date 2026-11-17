@@ -82,6 +82,7 @@ import { Route as AuthenticatedAppWorkflowsRouteImport } from './routes/_authent
 import { Route as AuthenticatedAppTeamsRouteImport } from './routes/_authenticated/_app/teams'
 import { Route as AuthenticatedAppTasksRouteImport } from './routes/_authenticated/_app/tasks'
 import { Route as AuthenticatedAppSkillsRouteImport } from './routes/_authenticated/_app/skills'
+import { Route as AuthenticatedAppSettingsRouteImport } from './routes/_authenticated/_app/settings'
 import { Route as AuthenticatedAppInboxRouteImport } from './routes/_authenticated/_app/inbox'
 import { Route as AuthenticatedAppHomeRouteImport } from './routes/_authenticated/_app/home'
 import { Route as AuthenticatedAppFilesRouteImport } from './routes/_authenticated/_app/files'
@@ -91,6 +92,7 @@ import { Route as AuthenticatedAppAgentsRouteImport } from './routes/_authentica
 import { Route as AuthenticatedAppWorkflowsIndexRouteImport } from './routes/_authenticated/_app/workflows.index'
 import { Route as AuthenticatedAppTeamsIndexRouteImport } from './routes/_authenticated/_app/teams.index'
 import { Route as AuthenticatedAppTasksIndexRouteImport } from './routes/_authenticated/_app/tasks.index'
+import { Route as AuthenticatedAppSettingsIndexRouteImport } from './routes/_authenticated/_app/settings/index'
 import { Route as AuthenticatedAppChatsIndexRouteImport } from './routes/_authenticated/_app/chats.index'
 import { Route as AuthenticatedAppAgentsIndexRouteImport } from './routes/_authenticated/_app/agents.index'
 import { Route as ApiWorkspacesIdTeamSettingsRouteImport } from './routes/api/workspaces/$id/team-settings'
@@ -146,6 +148,10 @@ import { Route as AuthenticatedAppWorkflowsIdRouteImport } from './routes/_authe
 import { Route as AuthenticatedAppTeamsIssuesRouteImport } from './routes/_authenticated/_app/teams.issues'
 import { Route as AuthenticatedAppTeamsTeamIdRouteImport } from './routes/_authenticated/_app/teams.$teamId'
 import { Route as AuthenticatedAppTasksIssueIdRouteImport } from './routes/_authenticated/_app/tasks.$issueId'
+import { Route as AuthenticatedAppSettingsUserManagementRouteImport } from './routes/_authenticated/_app/settings/user-management'
+import { Route as AuthenticatedAppSettingsProfileRouteImport } from './routes/_authenticated/_app/settings/profile'
+import { Route as AuthenticatedAppSettingsPreferencesRouteImport } from './routes/_authenticated/_app/settings/preferences'
+import { Route as AuthenticatedAppSettingsGeneralRouteImport } from './routes/_authenticated/_app/settings/general'
 import { Route as AuthenticatedAppChatsThreadIdRouteImport } from './routes/_authenticated/_app/chats.$threadId'
 import { Route as AuthenticatedAppAgentsAgentIdRouteImport } from './routes/_authenticated/_app/agents.$agentId'
 import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api/workspaces/$id/members/$memberId'
@@ -541,6 +547,12 @@ const AuthenticatedAppSkillsRoute = AuthenticatedAppSkillsRouteImport.update({
   path: '/skills',
   getParentRoute: () => AuthenticatedAppRoute,
 } as any)
+const AuthenticatedAppSettingsRoute =
+  AuthenticatedAppSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
 const AuthenticatedAppInboxRoute = AuthenticatedAppInboxRouteImport.update({
   id: '/inbox',
   path: '/inbox',
@@ -589,6 +601,12 @@ const AuthenticatedAppTasksIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AuthenticatedAppTasksRoute,
+  } as any)
+const AuthenticatedAppSettingsIndexRoute =
+  AuthenticatedAppSettingsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
   } as any)
 const AuthenticatedAppChatsIndexRoute =
   AuthenticatedAppChatsIndexRouteImport.update({
@@ -884,6 +902,30 @@ const AuthenticatedAppTasksIssueIdRoute =
     path: '/$issueId',
     getParentRoute: () => AuthenticatedAppTasksRoute,
   } as any)
+const AuthenticatedAppSettingsUserManagementRoute =
+  AuthenticatedAppSettingsUserManagementRouteImport.update({
+    id: '/user-management',
+    path: '/user-management',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsProfileRoute =
+  AuthenticatedAppSettingsProfileRouteImport.update({
+    id: '/profile',
+    path: '/profile',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsPreferencesRoute =
+  AuthenticatedAppSettingsPreferencesRouteImport.update({
+    id: '/preferences',
+    path: '/preferences',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsGeneralRoute =
+  AuthenticatedAppSettingsGeneralRouteImport.update({
+    id: '/general',
+    path: '/general',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
 const AuthenticatedAppChatsThreadIdRoute =
   AuthenticatedAppChatsThreadIdRouteImport.update({
     id: '/$threadId',
@@ -1041,6 +1083,7 @@ export interface FileRoutesByFullPath {
   '/files': typeof AuthenticatedAppFilesRoute
   '/home': typeof AuthenticatedAppHomeRoute
   '/inbox': typeof AuthenticatedAppInboxRoute
+  '/settings': typeof AuthenticatedAppSettingsRouteWithChildren
   '/skills': typeof AuthenticatedAppSkillsRoute
   '/tasks': typeof AuthenticatedAppTasksRouteWithChildren
   '/teams': typeof AuthenticatedAppTeamsRouteWithChildren
@@ -1087,6 +1130,10 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
+  '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
+  '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
+  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1142,6 +1189,7 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/chats/': typeof AuthenticatedAppChatsIndexRoute
+  '/settings/': typeof AuthenticatedAppSettingsIndexRoute
   '/tasks/': typeof AuthenticatedAppTasksIndexRoute
   '/teams/': typeof AuthenticatedAppTeamsIndexRoute
   '/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
@@ -1240,6 +1288,10 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
+  '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
+  '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
+  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1295,6 +1347,7 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/agents': typeof AuthenticatedAppAgentsIndexRoute
   '/chats': typeof AuthenticatedAppChatsIndexRoute
+  '/settings': typeof AuthenticatedAppSettingsIndexRoute
   '/tasks': typeof AuthenticatedAppTasksIndexRoute
   '/teams': typeof AuthenticatedAppTeamsIndexRoute
   '/workflows': typeof AuthenticatedAppWorkflowsIndexRoute
@@ -1355,6 +1408,7 @@ export interface FileRoutesById {
   '/_authenticated/_app/files': typeof AuthenticatedAppFilesRoute
   '/_authenticated/_app/home': typeof AuthenticatedAppHomeRoute
   '/_authenticated/_app/inbox': typeof AuthenticatedAppInboxRoute
+  '/_authenticated/_app/settings': typeof AuthenticatedAppSettingsRouteWithChildren
   '/_authenticated/_app/skills': typeof AuthenticatedAppSkillsRoute
   '/_authenticated/_app/tasks': typeof AuthenticatedAppTasksRouteWithChildren
   '/_authenticated/_app/teams': typeof AuthenticatedAppTeamsRouteWithChildren
@@ -1401,6 +1455,10 @@ export interface FileRoutesById {
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
   '/_authenticated/_app/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/_authenticated/_app/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/_authenticated/_app/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
+  '/_authenticated/_app/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
+  '/_authenticated/_app/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
+  '/_authenticated/_app/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
   '/_authenticated/_app/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/_authenticated/_app/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/_authenticated/_app/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1456,6 +1514,7 @@ export interface FileRoutesById {
   '/api/workspaces/$id/team-settings': typeof ApiWorkspacesIdTeamSettingsRoute
   '/_authenticated/_app/agents/': typeof AuthenticatedAppAgentsIndexRoute
   '/_authenticated/_app/chats/': typeof AuthenticatedAppChatsIndexRoute
+  '/_authenticated/_app/settings/': typeof AuthenticatedAppSettingsIndexRoute
   '/_authenticated/_app/tasks/': typeof AuthenticatedAppTasksIndexRoute
   '/_authenticated/_app/teams/': typeof AuthenticatedAppTeamsIndexRoute
   '/_authenticated/_app/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
@@ -1515,6 +1574,7 @@ export interface FileRouteTypes {
     | '/files'
     | '/home'
     | '/inbox'
+    | '/settings'
     | '/skills'
     | '/tasks'
     | '/teams'
@@ -1561,6 +1621,10 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id'
     | '/agents/$agentId'
     | '/chats/$threadId'
+    | '/settings/general'
+    | '/settings/preferences'
+    | '/settings/profile'
+    | '/settings/user-management'
     | '/tasks/$issueId'
     | '/teams/$teamId'
     | '/teams/issues'
@@ -1616,6 +1680,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/team-settings'
     | '/agents/'
     | '/chats/'
+    | '/settings/'
     | '/tasks/'
     | '/teams/'
     | '/workflows/'
@@ -1714,6 +1779,10 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id'
     | '/agents/$agentId'
     | '/chats/$threadId'
+    | '/settings/general'
+    | '/settings/preferences'
+    | '/settings/profile'
+    | '/settings/user-management'
     | '/tasks/$issueId'
     | '/teams/$teamId'
     | '/teams/issues'
@@ -1769,6 +1838,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/team-settings'
     | '/agents'
     | '/chats'
+    | '/settings'
     | '/tasks'
     | '/teams'
     | '/workflows'
@@ -1828,6 +1898,7 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/files'
     | '/_authenticated/_app/home'
     | '/_authenticated/_app/inbox'
+    | '/_authenticated/_app/settings'
     | '/_authenticated/_app/skills'
     | '/_authenticated/_app/tasks'
     | '/_authenticated/_app/teams'
@@ -1874,6 +1945,10 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id'
     | '/_authenticated/_app/agents/$agentId'
     | '/_authenticated/_app/chats/$threadId'
+    | '/_authenticated/_app/settings/general'
+    | '/_authenticated/_app/settings/preferences'
+    | '/_authenticated/_app/settings/profile'
+    | '/_authenticated/_app/settings/user-management'
     | '/_authenticated/_app/tasks/$issueId'
     | '/_authenticated/_app/teams/$teamId'
     | '/_authenticated/_app/teams/issues'
@@ -1929,6 +2004,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/team-settings'
     | '/_authenticated/_app/agents/'
     | '/_authenticated/_app/chats/'
+    | '/_authenticated/_app/settings/'
     | '/_authenticated/_app/tasks/'
     | '/_authenticated/_app/teams/'
     | '/_authenticated/_app/workflows/'
@@ -2530,6 +2606,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppSkillsRouteImport
       parentRoute: typeof AuthenticatedAppRoute
     }
+    '/_authenticated/_app/settings': {
+      id: '/_authenticated/_app/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedAppSettingsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
     '/_authenticated/_app/inbox': {
       id: '/_authenticated/_app/inbox'
       path: '/inbox'
@@ -2592,6 +2675,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/tasks/'
       preLoaderRoute: typeof AuthenticatedAppTasksIndexRouteImport
       parentRoute: typeof AuthenticatedAppTasksRoute
+    }
+    '/_authenticated/_app/settings/': {
+      id: '/_authenticated/_app/settings/'
+      path: '/'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof AuthenticatedAppSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
     }
     '/_authenticated/_app/chats/': {
       id: '/_authenticated/_app/chats/'
@@ -2978,6 +3068,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppTasksIssueIdRouteImport
       parentRoute: typeof AuthenticatedAppTasksRoute
     }
+    '/_authenticated/_app/settings/user-management': {
+      id: '/_authenticated/_app/settings/user-management'
+      path: '/user-management'
+      fullPath: '/settings/user-management'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/profile': {
+      id: '/_authenticated/_app/settings/profile'
+      path: '/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof AuthenticatedAppSettingsProfileRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/preferences': {
+      id: '/_authenticated/_app/settings/preferences'
+      path: '/preferences'
+      fullPath: '/settings/preferences'
+      preLoaderRoute: typeof AuthenticatedAppSettingsPreferencesRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/general': {
+      id: '/_authenticated/_app/settings/general'
+      path: '/general'
+      fullPath: '/settings/general'
+      preLoaderRoute: typeof AuthenticatedAppSettingsGeneralRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
     '/_authenticated/_app/chats/$threadId': {
       id: '/_authenticated/_app/chats/$threadId'
       path: '/$threadId'
@@ -3159,6 +3277,30 @@ const AuthenticatedAppChatsRouteWithChildren =
     AuthenticatedAppChatsRouteChildren,
   )
 
+interface AuthenticatedAppSettingsRouteChildren {
+  AuthenticatedAppSettingsGeneralRoute: typeof AuthenticatedAppSettingsGeneralRoute
+  AuthenticatedAppSettingsPreferencesRoute: typeof AuthenticatedAppSettingsPreferencesRoute
+  AuthenticatedAppSettingsProfileRoute: typeof AuthenticatedAppSettingsProfileRoute
+  AuthenticatedAppSettingsUserManagementRoute: typeof AuthenticatedAppSettingsUserManagementRoute
+  AuthenticatedAppSettingsIndexRoute: typeof AuthenticatedAppSettingsIndexRoute
+}
+
+const AuthenticatedAppSettingsRouteChildren: AuthenticatedAppSettingsRouteChildren =
+  {
+    AuthenticatedAppSettingsGeneralRoute: AuthenticatedAppSettingsGeneralRoute,
+    AuthenticatedAppSettingsPreferencesRoute:
+      AuthenticatedAppSettingsPreferencesRoute,
+    AuthenticatedAppSettingsProfileRoute: AuthenticatedAppSettingsProfileRoute,
+    AuthenticatedAppSettingsUserManagementRoute:
+      AuthenticatedAppSettingsUserManagementRoute,
+    AuthenticatedAppSettingsIndexRoute: AuthenticatedAppSettingsIndexRoute,
+  }
+
+const AuthenticatedAppSettingsRouteWithChildren =
+  AuthenticatedAppSettingsRoute._addFileChildren(
+    AuthenticatedAppSettingsRouteChildren,
+  )
+
 interface AuthenticatedAppTasksRouteChildren {
   AuthenticatedAppTasksIssueIdRoute: typeof AuthenticatedAppTasksIssueIdRoute
   AuthenticatedAppTasksIndexRoute: typeof AuthenticatedAppTasksIndexRoute
@@ -3214,6 +3356,7 @@ interface AuthenticatedAppRouteChildren {
   AuthenticatedAppFilesRoute: typeof AuthenticatedAppFilesRoute
   AuthenticatedAppHomeRoute: typeof AuthenticatedAppHomeRoute
   AuthenticatedAppInboxRoute: typeof AuthenticatedAppInboxRoute
+  AuthenticatedAppSettingsRoute: typeof AuthenticatedAppSettingsRouteWithChildren
   AuthenticatedAppSkillsRoute: typeof AuthenticatedAppSkillsRoute
   AuthenticatedAppTasksRoute: typeof AuthenticatedAppTasksRouteWithChildren
   AuthenticatedAppTeamsRoute: typeof AuthenticatedAppTeamsRouteWithChildren
@@ -3227,6 +3370,7 @@ const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
   AuthenticatedAppFilesRoute: AuthenticatedAppFilesRoute,
   AuthenticatedAppHomeRoute: AuthenticatedAppHomeRoute,
   AuthenticatedAppInboxRoute: AuthenticatedAppInboxRoute,
+  AuthenticatedAppSettingsRoute: AuthenticatedAppSettingsRouteWithChildren,
   AuthenticatedAppSkillsRoute: AuthenticatedAppSkillsRoute,
   AuthenticatedAppTasksRoute: AuthenticatedAppTasksRouteWithChildren,
   AuthenticatedAppTeamsRoute: AuthenticatedAppTeamsRouteWithChildren,

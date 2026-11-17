@@ -14,3 +14,4 @@ file when a shipped user path needs repeatable proof.
 | [GitHub issue sync](./github-issue-sync.md) | Link a repository to a Team, see its open issues imported, see a new GitHub issue arrive assigned | Documented; route and UI tests pass; live check pending |
 | [Shared skills client](./shared-client.md) | Read skills, refuse access and switch sessions without stale data | Automated portable/HTTP/UI fixtures; local-app check recorded separately |
 | [Home dashboard](./dashboard.md) | Overview, distributions, detail panels, responsive layout, and navigation | Component regression coverage; local-app evidence recorded separately |
+| [Settings page](./settings.md) | Direct section links, browser history, responsive shell, and existing modal entry | Shell route regression coverage; local-app evidence recorded separately |
