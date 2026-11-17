@@ -382,7 +382,7 @@ describe('integration router tool relevance', () => {
       catalog: WORKSTREAM_CATALOG,
     })
     expect(decision.status).toBe('selected')
-    const allowed = decision.routes[0]?.allowedToolNames ?? []
+    const allowed = decision.routes[0]?.recommendedToolNames ?? []
     expect(allowed.slice(0, 2)).toEqual(
       expect.arrayContaining([PROFILE_TOOL, ADMIN_READ_TOOL]),
     )
@@ -397,12 +397,55 @@ describe('integration router tool relevance', () => {
     expect(renderIntegrationRouteDirective(decision)).toContain(ADMIN_READ_TOOL)
   })
 
+  it('permits a discovered same-integration tool outside the relevance shortlist', () => {
+    const requested = Array.from(
+      { length: 8 },
+      (_, index) =>
+        `workstream_catalogue_${String(100 + index).padStart(3, '0')}`,
+    )
+    const decision = selectIntegrationRoute({
+      userText: `Use Workstream. Call ${requested.join(', ')}.`,
+      catalog: WORKSTREAM_CATALOG,
+    })
+    expect(decision.routes[0]?.recommendedToolNames).not.toContain(PROFILE_TOOL)
+    expect(isIntegrationToolAllowed(decision, 'workstream', PROFILE_TOOL)).toBe(
+      true,
+    )
+    expect(
+      isIntegrationToolAllowed(decision, 'workstream', 'invented_tool'),
+    ).toBe(false)
+    expect(isIntegrationToolAllowed(decision, 'gmail', 'send_email')).toBe(
+      false,
+    )
+    const directive = renderIntegrationRouteDirective(decision)
+    expect(directive).not.toContain('Allowed tools:')
+    expect(directive).toContain('search for other tools')
+  })
+
+  it('refuses discovered tools when the selected integration is disconnected', () => {
+    const decision = selectIntegrationRoute({
+      userText: `Use Workstream to call ${PROFILE_TOOL}.`,
+      catalog: {
+        ...WORKSTREAM_CATALOG,
+        connections: WORKSTREAM_CATALOG.connections.filter(
+          (connection) => connection.integration !== 'workstream',
+        ),
+      },
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.connected).toBe(false)
+    expect(isIntegrationToolAllowed(decision, 'workstream', PROFILE_TOOL)).toBe(
+      false,
+    )
+    expect(renderIntegrationRouteDirective(decision)).toContain('not connected')
+  })
+
   it('ranks meaningful profile matches ahead of the shared provider prefix', () => {
     const decision = selectIntegrationRoute({
       userText: 'Use Workstream to read my authenticated caller profile.',
       catalog: WORKSTREAM_CATALOG,
     })
-    expect(decision.routes[0]?.allowedToolNames[0]).toBe(PROFILE_TOOL)
+    expect(decision.routes[0]?.recommendedToolNames[0]).toBe(PROFILE_TOOL)
   })
 
   it.each([
@@ -421,7 +464,7 @@ describe('integration router tool relevance', () => {
         userText: `Use Workstream. Call ${requested.join(', ')} and ${unavailable}.`,
         catalog: WORKSTREAM_CATALOG,
       })
-      const allowed = decision.routes[0]?.allowedToolNames ?? []
+      const allowed = decision.routes[0]?.recommendedToolNames ?? []
       expect(allowed).toHaveLength(8)
       expect(allowed).toEqual(expect.arrayContaining(requested))
       expect(allowed).not.toContain(PROFILE_TOOL)
@@ -441,7 +484,7 @@ describe('integration router tool relevance', () => {
     expect(isIntegrationToolAllowed(decision, 'gmail', 'send_email')).toBe(
       false,
     )
-    expect(decision.routes[0]?.allowedToolNames).not.toContain('send_email')
+    expect(decision.routes[0]?.recommendedToolNames).not.toContain('send_email')
   })
 })
 
@@ -520,7 +563,7 @@ describe('explicit tool integration selection', () => {
     expect(
       isIntegrationToolAllowed(decision, 'executor', 'connections.remove'),
     ).toBe(false)
-    expect(decision.routes[0]?.allowedToolNames).toHaveLength(8)
+    expect(decision.routes[0]?.recommendedToolNames).toHaveLength(8)
   })
   it('retains explicit Executor management requests', () => {
     const decision = selectIntegrationRoute({
@@ -581,7 +624,7 @@ describe('explicit tool integration selection', () => {
     })
     expect(decision.status).toBe('selected')
     expect(decision.routes[0]?.slug).toBe('executor')
-    expect(decision.routes[0]?.allowedToolNames).not.toContain(
+    expect(decision.routes[0]?.recommendedToolNames).not.toContain(
       'workstream_actor_reactivate_unavailable',
     )
   })

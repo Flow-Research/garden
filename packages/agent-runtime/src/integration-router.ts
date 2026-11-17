@@ -12,7 +12,8 @@ export type IntegrationRoute = {
   connected: boolean
   score: number
   matchedTerms: string[]
-  allowedToolNames: string[]
+  recommendedToolNames: string[]
+  discoveredToolNames: string[]
   connectionLabel: string | null
 }
 
@@ -228,7 +229,7 @@ function rankIntegration(args: {
       (term) => !integrationTerms.has(term),
     ),
   )
-  const allowedToolNames = toolRows
+  const recommendedToolNames = toolRows
     .map((tool) => {
       const nameTerms = terms(tool.name)
       const descriptionTerms = terms(tool.description)
@@ -269,7 +270,8 @@ function rankIntegration(args: {
       0,
       8,
     ),
-    allowedToolNames,
+    recommendedToolNames,
+    discoveredToolNames: toolRows.map((tool) => tool.name),
     connectionLabel: connectionLabel(catalog, integration.slug),
   }
 }
@@ -404,12 +406,15 @@ export function renderIntegrationRouteDirective(
       'Never poll, retry, or wait for the analysis, and never substitute a local analysis. Never mention run IDs or session IDs.',
     )
   }
-  if (route.slug !== 'decide' && route.allowedToolNames.length > 0) {
-    lines.push(`Allowed tools: ${route.allowedToolNames.join(', ')}.`)
+  if (route.slug !== 'decide' && route.recommendedToolNames.length > 0) {
+    lines.push(
+      `Suggested starting tools: ${route.recommendedToolNames.join(', ')}.`,
+    )
   }
   if (route.slug !== 'decide') {
     lines.push(
       'Load the Executor execute guide if needed, then search and call only this integration.',
+      'The suggestions are not a permission limit: search for other tools in this integration when needed. Existing connection permissions and approval rules still apply.',
     )
   }
   lines.push(
@@ -433,7 +438,7 @@ export function isIntegrationToolAllowed(
 ): boolean {
   if (decision?.status !== 'selected') return true
   const route = decision.routes[0]
-  if (route?.slug !== integrationSlug) return false
-  if (!toolName || route.allowedToolNames.length === 0) return true
-  return route.allowedToolNames.includes(toolName)
+  if (route?.slug !== integrationSlug || !route.connected) return false
+  if (!toolName) return true
+  return route.discoveredToolNames.includes(toolName)
 }
