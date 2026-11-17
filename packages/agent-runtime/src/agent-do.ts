@@ -1732,6 +1732,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       loadExecutorCatalog: (input) => this.loadChatExecutorCatalog(input),
       getSandbox: () => this.getAgentSandbox(),
       issueRunEnv: this.env,
+      files: this.env.FILES,
+      canUseTool: (runtimeToolName) =>
+        isChatToolAllowed(
+          this.currentPermissions,
+          this.currentTeamPolicy,
+          runtimeToolName,
+        ),
       brain: {
         ...(this.env.HELIX_URL === undefined
           ? {}

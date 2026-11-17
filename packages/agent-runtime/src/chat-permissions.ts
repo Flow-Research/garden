@@ -48,6 +48,7 @@ export const AGENT_TOOL_AREAS = {
   create_issue: 'tasks',
   assign_issue: 'tasks',
   read_issue: 'tasks',
+  read_issue_attachment: 'tasks',
   list_issues: 'tasks',
   update_issue_status: 'tasks',
   post_issue_comment: 'tasks',

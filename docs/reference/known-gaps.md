@@ -3,7 +3,7 @@ title: Known gaps
 description: The register of open Garden gaps, with the tracking issue, priority, and code evidence for each one.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-18
 ---
 
 This register lists gaps that are open in the code today. Each row names the code that shows the gap. Ideas that are not scheduled are on the [roadmap](../concepts/product/roadmap.md), not here.
@@ -14,6 +14,8 @@ FLO ids are Linear issues. The GitHub issues that tracked some of these gaps (#2
 
 | Area | Issue | Gap | Priority | Evidence | Last verified |
 | --- | --- | --- | --- | --- | --- |
+| Runtime | None | Workers AI chat requests keep only the text parts of a tool result. `workers-ai-provider` maps a `content` tool output to its text parts, so the `image-data` and `file-data` parts that `readDocument`, `read_attachment`, and `read_issue_attachment` emit reach the model on the OpenAI-compatible provider but not on the default Workers AI path. The tool metadata and note still arrive. | High | `convertToWorkersAIMessages` in `workers-ai-provider`; `documentReadModelOutput` in `packages/agent-runtime/src/chat-sub-agent-tools.ts`, `attachmentModelOutput` in `packages/agent-runtime/src/agent-tools/read-attachment.ts` | 2026-11-18 |
+| Runtime | None | Think compacts a serialized assistant message above 1,800,000 bytes, so accepted inline attachment text between that size and the 3.5 MiB cap is stored as a shortened preview. The read itself succeeds, but a follow-up turn works from the preview rather than the file. | Medium | compaction in `@cloudflare/think`; `attachmentModelOutput` in `packages/agent-runtime/src/agent-tools/read-attachment.ts` | 2026-11-18 |
 | Runtime | Security remediation | Qualify originating-run Brain grants and repeated write-back on the deployed runtime. Source checks and local tests do not prove deployment or recovery against retained production history. | High | `packages/agent-runtime/src/brain-run-authority.ts`, `brain-run-authorization.integration.test.ts` | 2026-11-10 |
 | Auth | Security remediation | Prove on the server that roles without permission cannot change permissions. A static test checks that every mutating route calls a permission check, but no test exercises each role against each route. Exploit details follow `SECURITY.md`. | Critical | `apps/web/src/routes/api/-authorization.test.ts` | 2026-11-03 |
 | Auth | FLO-30 | Garden checks workspace access in application code, but no test suite proves that one workspace cannot reach another through every product surface. | High | `resolveWorkspaceId` in `apps/web/src/lib/server/control-plane.ts` | 2026-11-03 |
