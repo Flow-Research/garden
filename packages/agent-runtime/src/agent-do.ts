@@ -2358,6 +2358,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           ),
       )
       if (disallowedRef) {
+        if (
+          !selectedRoute.connected &&
+          disallowedRef.executorSlug !== selectedRoute.slug
+        ) {
+          return {
+            action: 'block',
+            reason: `Only tools from the selected ${selectedRoute.name} integration can be used in this turn. Do not call executor:${disallowedRef.executorSlug}.${disallowedRef.tool}.`,
+          } as const
+        }
         return {
           action: 'block',
           reason: selectedRoute.connected
