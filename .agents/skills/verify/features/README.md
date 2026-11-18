@@ -15,3 +15,4 @@ file when a shipped user path needs repeatable proof.
 | [Shared skills client](./shared-client.md) | Read skills, refuse access and switch sessions without stale data | Automated portable/HTTP/UI fixtures; local-app check recorded separately |
 | [Home dashboard](./dashboard.md) | Overview, distributions, detail panels, responsive layout, and navigation | Component regression coverage; local-app evidence recorded separately |
 | [Settings page](./settings.md) | Direct section links, browser history, responsive shell, and existing modal entry | Shell route regression coverage; local-app evidence recorded separately |
+| [Responsive Skills library](./skills.md) | Browse, filter, read and edit complete skill bundles on mobile and desktop | Component/client regression tests; local offline browser proof |
