@@ -382,7 +382,7 @@ describe('integration router tool relevance', () => {
       catalog: WORKSTREAM_CATALOG,
     })
     expect(decision.status).toBe('selected')
-    const allowed = decision.routes[0]?.allowedToolNames ?? []
+    const allowed = decision.routes[0]?.recommendedToolNames ?? []
     expect(allowed.slice(0, 2)).toEqual(
       expect.arrayContaining([PROFILE_TOOL, ADMIN_READ_TOOL]),
     )
@@ -397,12 +397,55 @@ describe('integration router tool relevance', () => {
     expect(renderIntegrationRouteDirective(decision)).toContain(ADMIN_READ_TOOL)
   })
 
+  it('permits a discovered same-integration tool outside the relevance shortlist', () => {
+    const requested = Array.from(
+      { length: 8 },
+      (_, index) =>
+        `workstream_catalogue_${String(100 + index).padStart(3, '0')}`,
+    )
+    const decision = selectIntegrationRoute({
+      userText: `Use Workstream. Call ${requested.join(', ')}.`,
+      catalog: WORKSTREAM_CATALOG,
+    })
+    expect(decision.routes[0]?.recommendedToolNames).not.toContain(PROFILE_TOOL)
+    expect(isIntegrationToolAllowed(decision, 'workstream', PROFILE_TOOL)).toBe(
+      true,
+    )
+    expect(
+      isIntegrationToolAllowed(decision, 'workstream', 'invented_tool'),
+    ).toBe(false)
+    expect(isIntegrationToolAllowed(decision, 'gmail', 'send_email')).toBe(
+      false,
+    )
+    const directive = renderIntegrationRouteDirective(decision)
+    expect(directive).not.toContain('Allowed tools:')
+    expect(directive).toContain('search for other tools')
+  })
+
+  it('refuses discovered tools when the selected integration is disconnected', () => {
+    const decision = selectIntegrationRoute({
+      userText: `Use Workstream to call ${PROFILE_TOOL}.`,
+      catalog: {
+        ...WORKSTREAM_CATALOG,
+        connections: WORKSTREAM_CATALOG.connections.filter(
+          (connection) => connection.integration !== 'workstream',
+        ),
+      },
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.connected).toBe(false)
+    expect(isIntegrationToolAllowed(decision, 'workstream', PROFILE_TOOL)).toBe(
+      false,
+    )
+    expect(renderIntegrationRouteDirective(decision)).toContain('not connected')
+  })
+
   it('ranks meaningful profile matches ahead of the shared provider prefix', () => {
     const decision = selectIntegrationRoute({
       userText: 'Use Workstream to read my authenticated caller profile.',
       catalog: WORKSTREAM_CATALOG,
     })
-    expect(decision.routes[0]?.allowedToolNames[0]).toBe(PROFILE_TOOL)
+    expect(decision.routes[0]?.recommendedToolNames[0]).toBe(PROFILE_TOOL)
   })
 
   it.each([
@@ -421,7 +464,7 @@ describe('integration router tool relevance', () => {
         userText: `Use Workstream. Call ${requested.join(', ')} and ${unavailable}.`,
         catalog: WORKSTREAM_CATALOG,
       })
-      const allowed = decision.routes[0]?.allowedToolNames ?? []
+      const allowed = decision.routes[0]?.recommendedToolNames ?? []
       expect(allowed).toHaveLength(8)
       expect(allowed).toEqual(expect.arrayContaining(requested))
       expect(allowed).not.toContain(PROFILE_TOOL)
@@ -441,6 +484,195 @@ describe('integration router tool relevance', () => {
     expect(isIntegrationToolAllowed(decision, 'gmail', 'send_email')).toBe(
       false,
     )
-    expect(decision.routes[0]?.allowedToolNames).not.toContain('send_email')
+    expect(decision.routes[0]?.recommendedToolNames).not.toContain('send_email')
+  })
+})
+
+const COMPETING_CATALOG: ExecutorCatalog = {
+  integrations: [
+    ...WORKSTREAM_CATALOG.integrations,
+    {
+      slug: 'executor',
+      name: 'Executor',
+      description:
+        'Manage integrations and connections in the workspace catalog.',
+      capabilities: [],
+    },
+  ],
+  connections: [
+    ...WORKSTREAM_CATALOG.connections,
+    { owner: 'user', integration: 'executor', name: 'core' },
+  ],
+  tools: [
+    ...WORKSTREAM_CATALOG.tools,
+    {
+      name: 'integrations.list',
+      description:
+        'List integrations in the workspace catalog (slug, description, owning plugin kind). Connections authenticate against these.',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: false,
+    },
+    {
+      name: 'policies.create',
+      description:
+        'Create a tool policy. pattern matches a tool address tail; action is approve/require_approval/block. owner is org (workspace guardrail) or user (personal).',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: true,
+    },
+    {
+      name: 'connections.createHandoff',
+      description:
+        'Return a browser URL that opens the Add account flow for one integration. Use this for API keys/tokens so the user enters secrets directly in the web UI instead of sending them through the agent. Optionally preselect owner, auth template, and a non-secret label.',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: false,
+    },
+    {
+      name: 'connections.remove',
+      description:
+        'Remove a saved connection and its produced tools by owner, integration, and connection name.',
+      integration: 'executor',
+      connection: 'core',
+      owner: 'user',
+      requiresApproval: true,
+    },
+  ],
+}
+
+describe('explicit tool integration selection', () => {
+  it('selects the named tool owner despite competing Executor terminology', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText:
+        'Restore the dedicated isolation participant now. Use Executor once: const result = await tools.workstream.user.workstream.workstream_actor_reactivate({actor_profile_id: "test-actor", body: {reason: "Restore isolation test participant after authorized Garden suspension proof"}, idempotency_key: "test-key"}); emit(result); return result; Do not change any other account or retry. If approval is required show its execution ID for confirmation.',
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('workstream')
+    expect(
+      isIntegrationToolAllowed(
+        decision,
+        'workstream',
+        'workstream_actor_reactivate',
+      ),
+    ).toBe(true)
+    expect(
+      isIntegrationToolAllowed(decision, 'executor', 'connections.remove'),
+    ).toBe(false)
+    expect(decision.routes[0]?.recommendedToolNames).toHaveLength(8)
+  })
+  it('retains explicit Executor management requests', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText:
+        'Use Executor integrations.list to inspect my Workstream connection.',
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('executor')
+    expect(
+      isIntegrationToolAllowed(decision, 'executor', 'integrations.list'),
+    ).toBe(true)
+  })
+  it('keeps a named tool owner disconnected when no caller connection exists', () => {
+    const decision = selectIntegrationRoute({
+      catalog: {
+        ...COMPETING_CATALOG,
+        connections: COMPETING_CATALOG.connections.filter(
+          (connection) => connection.integration !== 'workstream',
+        ),
+      },
+      userText: 'Use Executor to call workstream_actor_reactivate.',
+    })
+    expect(decision.routes[0]).toMatchObject({
+      slug: 'workstream',
+      connected: false,
+    })
+    expect(requestNeedsConnectedTools(decision)).toBe(false)
+    expect(renderIntegrationRouteDirective(decision)).toContain(
+      'Ask the user to connect it.',
+    )
+  })
+
+  it('does not select one owner when exact tools name two integrations', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText: 'Call workstream_actor_reactivate and integrations.list.',
+    })
+    expect(decision.status).toBe('none')
+  })
+  it('retains both exact owners when an attachment selects a different skill', () => {
+    const decision = selectIntegrationRoute({
+      catalog: CATALOG,
+      userText: 'Call analyze_dataset and send_email.',
+      attachments: [{ filename: 'revenue.csv', mediaType: 'text/csv' }],
+    })
+    expect(decision.status).toBe('none')
+    expect(decision.routes.map((route) => route.slug)).toEqual(
+      expect.arrayContaining(['decide', 'gmail']),
+    )
+  })
+
+  it('does not treat a one-word tool name in plain prose as an explicit request', () => {
+    const catalog: ExecutorCatalog = {
+      ...CATALOG,
+      integrations: [
+        ...CATALOG.integrations,
+        {
+          slug: 'notes',
+          name: 'Notes',
+          description: 'Workspace notes and pages.',
+          capabilities: ['read workspace pages'],
+        },
+      ],
+      connections: [
+        ...CATALOG.connections,
+        {
+          owner: 'user',
+          integration: 'notes',
+          name: 'notes',
+          identityLabel: 'sam',
+        },
+      ],
+      tools: [
+        ...CATALOG.tools,
+        {
+          name: 'search',
+          description: 'Search pages.',
+          integration: 'notes',
+          connection: 'notes',
+          owner: 'user',
+          requiresApproval: false,
+        },
+      ],
+    }
+    const prose = selectIntegrationRoute({
+      catalog,
+      userText: 'search my email for the invoice',
+    })
+    expect(prose.routes[0]?.slug).toBe('gmail')
+
+    const quoted = selectIntegrationRoute({
+      catalog,
+      userText: 'Call `search` for the onboarding page.',
+    })
+    expect(quoted.status).toBe('selected')
+    expect(quoted.routes[0]?.slug).toBe('notes')
+  })
+
+  it('does not promote an unavailable tool name over a real exact request', () => {
+    const decision = selectIntegrationRoute({
+      catalog: COMPETING_CATALOG,
+      userText:
+        'Call workstream_actor_reactivate_unavailable and integrations.list.',
+    })
+    expect(decision.status).toBe('selected')
+    expect(decision.routes[0]?.slug).toBe('executor')
+    expect(decision.routes[0]?.recommendedToolNames).not.toContain(
+      'workstream_actor_reactivate_unavailable',
+    )
   })
 })
