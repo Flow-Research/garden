@@ -33,13 +33,7 @@ const deviceIcons: Record<SessionDeviceKind, LucideIcon> = {
   tablet: Tablet,
 }
 
-const columns = [
-  'Operating system',
-  'Application',
-  'IP address',
-  'Last active',
-  'Status',
-]
+const columns = ['Operating system', 'Application', 'Last active', 'Status']
 
 type SignOutTarget =
   | { kind: 'session'; token: string; device: string }
@@ -203,7 +197,7 @@ export function LoginSessions() {
       </header>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="w-full min-w-[520px] text-sm">
           <thead className="bg-background-main-secondary">
             <tr>
               {columns.map((column) => (
@@ -259,9 +253,6 @@ export function LoginSessions() {
                       </span>
                     </td>
                     <td className="px-4 py-3">{device.application}</td>
-                    <td className="px-4 py-3 tabular-nums">
-                      {session.ipAddress || 'Unavailable'}
-                    </td>
                     <td className="px-4 py-3">{timeAgo(session.updatedAt)}</td>
                     <td className="px-4 py-3">
                       {isCurrent ? (

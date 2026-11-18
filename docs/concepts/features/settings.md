@@ -30,11 +30,11 @@ The Profile section follows the new profile design as a guide and keeps every ac
 - **Identity.** Avatar tile (click to upload), Preferred name, member-since date, and the user's role in the active workspace. Save and Reset appear only after the name is edited.
 - **Sign-in.** Email with its verification state. A Password row with **Change password** opens a dialog for current, new and confirmed password, plus the option to sign out other sessions. The row is hidden when the account has no `credential` provider, such as Google-only sign-up, and while linked accounts load. The dialog states Better Auth's enforced rule: at least 8 characters.
 - **Linked identities.** The existing GitHub identity and Google connection sections.
-- **Login sessions.** A table of active Better Auth sessions with operating system, browser, IP address, last activity and status. `ua-parser-js` reads the stored user agent. The current device is listed first. Each other session can be signed out individually or together, and the card keeps Sign out of this device.
+- **Login sessions.** A table of active Better Auth sessions with operating system, browser, last activity and status. `ua-parser-js` reads the stored user agent. The current device is listed first. Each other session can be signed out individually or together, and the card keeps Sign out of this device.
 
 The modal still renders the earlier `AccountTab`. Both read the same session and linked-account queries from `features/settings/account-queries.ts`.
 
-Design elements without backend support are not shown: email change, two-factor authentication (app or SMS), session location, and signed-out session history. Add them only with the matching Better Auth configuration or API.
+Design elements without backend support are not shown: email change, two-factor authentication (app or SMS), session IP address and location, and signed-out session history. Better Auth reads the client IP only from `x-forwarded-for` unless `advanced.ipAddress.ipAddressHeaders` is set, and Garden does not set it, so stored session IPs are empty. Add them only with the matching Better Auth configuration or API.
 
 Teams remains at `/teams`. Moving Teams, adding User Management sub-tabs, implementing the remaining designs, and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
 

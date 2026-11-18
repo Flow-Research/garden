@@ -211,6 +211,9 @@ describe('ProfileSettings', () => {
     expect(within(rows[1]).getByText('macOS')).toBeInTheDocument()
     expect(within(rows[1]).getByText('This device')).toBeInTheDocument()
     expect(within(rows[2]).getByText('Firefox')).toBeInTheDocument()
+    // Garden does not record client IPs, so the column is not shown.
+    expect(screen.queryByText('IP address')).toBeNull()
+    expect(screen.queryByText('203.0.113.7')).toBeNull()
 
     await user.click(
       screen.getByRole('button', { name: 'Sign out Firefox on Windows' }),
