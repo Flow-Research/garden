@@ -215,8 +215,31 @@ describe('ProfileSettings', () => {
     await user.click(
       screen.getByRole('button', { name: 'Sign out Firefox on Windows' }),
     )
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Sign out this session?')).toBeVisible()
+    expect(mockRevokeSession).not.toHaveBeenCalled()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Sign out' }))
     expect(mockRevokeSession).toHaveBeenCalledWith({
       token: 'session-other-token',
     })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+  })
+
+  it('asks before signing out of this device and keeps the session on cancel', async () => {
+    const user = userEvent.setup()
+    const logout = vi.fn(async () => undefined)
+    useAuthStore.setState({ logout })
+    renderProfile()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Sign out of this device' }),
+    )
+    const dialog = await screen.findByRole('alertdialog')
+    expect(within(dialog).getByText('Sign out of this device?')).toBeVisible()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull())
+    expect(logout).not.toHaveBeenCalled()
   })
 })

@@ -16,7 +16,7 @@ import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { Spinner } from '@garden/ui/components/ui/spinner'
+import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import { useNavigationActions } from '@/features/navigation'
 import { authClient } from '@/lib/auth/client'
 import { authClientOperation } from '@/lib/auth/client-result'
@@ -41,7 +41,36 @@ const columns = [
   'Status',
 ]
 
-/** Active sign-in sessions with per-session and bulk sign-out. */
+type SignOutTarget =
+  | { kind: 'session'; token: string; device: string }
+  | { kind: 'others' }
+  | { kind: 'current' }
+
+function signOutConfirmCopy(target: SignOutTarget) {
+  switch (target.kind) {
+    case 'session':
+      return {
+        title: 'Sign out this session?',
+        description: `${target.device} will need to sign in again.`,
+        confirmLabel: 'Sign out',
+      }
+    case 'others':
+      return {
+        title: 'Log out of other sessions?',
+        description:
+          'Every device except this one will be signed out and need to sign in again.',
+        confirmLabel: 'Log out others',
+      }
+    case 'current':
+      return {
+        title: 'Sign out of this device?',
+        description: 'You will need to sign in again to use Garden here.',
+        confirmLabel: 'Sign out',
+      }
+  }
+}
+
+/** Active sign-in sessions with per-session and bulk sign-out, each confirmed first. */
 export function LoginSessions() {
   const queryClient = useQueryClient()
   const { replace } = useNavigationActions()
@@ -49,9 +78,11 @@ export function LoginSessions() {
   const { data: authSession, refetch: refetchAuthSession } =
     authClient.useSession()
   const sessionsQuery = useQuery(accountSessionsQueryOptions())
-  const [revokingOthers, setRevokingOthers] = useState(false)
-  const [revokingToken, setRevokingToken] = useState<string | null>(null)
-  const [signingOut, setSigningOut] = useState(false)
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  // Kept after close so the dialog copy does not blank out while it animates.
+  const [confirmTarget, setConfirmTarget] = useState<SignOutTarget>({
+    kind: 'current',
+  })
 
   const currentSessionId = authSession?.session?.id ?? null
   const sessions = [...(sessionsQuery.data ?? [])].sort((a, b) =>
@@ -71,52 +102,56 @@ export function LoginSessions() {
       refetchAuthSession(),
     ])
 
-  const handleRevokeOthers = async () => {
-    setRevokingOthers(true)
-    const result = await authClientOperation({
-      fallbackMessage: 'Failed to sign out other sessions',
-      operation: 'revoke-other-sessions',
-      request: () => authClient.revokeOtherSessions(),
-    })
-    await result.match({
+  const askToSignOut = (target: SignOutTarget) => {
+    setConfirmTarget(target)
+    setConfirmOpen(true)
+  }
+
+  // Each action rejects on failure so ConfirmDialog stays open for a retry.
+  const revokeOthers = async () =>
+    (
+      await authClientOperation({
+        fallbackMessage: 'Failed to sign out other sessions',
+        operation: 'revoke-other-sessions',
+        request: () => authClient.revokeOtherSessions(),
+      })
+    ).match({
       ok: async () => {
         await refreshSessions()
         toast.success('Other sessions signed out')
       },
-      err: async (error) => {
+      err: (error) => {
         toast.error(error.message)
+        return Promise.reject(error)
       },
     })
-    setRevokingOthers(false)
-  }
 
-  const handleRevokeSession = async (token: string) => {
-    setRevokingToken(token)
-    const result = await authClientOperation({
-      fallbackMessage: 'Failed to sign out session',
-      operation: 'revoke-session',
-      request: () => authClient.revokeSession({ token }),
-    })
-    await result.match({
+  const revokeSession = async (token: string) =>
+    (
+      await authClientOperation({
+        fallbackMessage: 'Failed to sign out session',
+        operation: 'revoke-session',
+        request: () => authClient.revokeSession({ token }),
+      })
+    ).match({
       ok: async () => {
         await refreshSessions()
         toast.success('Session signed out')
       },
-      err: async (error) => {
+      err: (error) => {
         toast.error(error.message)
+        return Promise.reject(error)
       },
     })
-    setRevokingToken(null)
-  }
 
-  const handleSignOut = async () => {
-    setSigningOut(true)
-    const result = await Result.tryPromise({
-      try: () => authLogout(),
-      catch: (cause) =>
-        cause instanceof Error ? cause.message : 'Failed to sign out',
-    })
-    result.match({
+  const signOutCurrent = async () =>
+    (
+      await Result.tryPromise({
+        try: () => authLogout(),
+        catch: (cause) =>
+          cause instanceof Error ? cause.message : 'Failed to sign out',
+      })
+    ).match({
       ok: () => {
         queryClient.clear()
         useWorkspaceStore.getState().clearWorkspace()
@@ -124,11 +159,12 @@ export function LoginSessions() {
         replace('/login')
       },
       err: (message) => {
-        setSigningOut(false)
         toast.error(message)
+        return Promise.reject(new Error(message))
       },
     })
-  }
+
+  const confirmCopy = signOutConfirmCopy(confirmTarget)
 
   return (
     <SettingsPanel className="overflow-hidden p-0 sm:p-0">
@@ -158,10 +194,9 @@ export function LoginSessions() {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => void handleRevokeOthers()}
-            disabled={revokingOthers || !hasOtherSessions}
+            onClick={() => askToSignOut({ kind: 'others' })}
+            disabled={!hasOtherSessions}
           >
-            {revokingOthers ? <Spinner aria-hidden="true" /> : null}
             Log out of other sessions
           </Button>
         </div>
@@ -212,7 +247,6 @@ export function LoginSessions() {
                 const device = describeSessionDevice(session.userAgent)
                 const DeviceIcon = deviceIcons[device.kind]
                 const isCurrent = session.id === currentSessionId
-                const revoking = revokingToken === session.token
                 return (
                   <tr key={session.id} className="text-center">
                     <td className="px-4 py-3">
@@ -246,15 +280,14 @@ export function LoginSessions() {
                           size="icon-sm"
                           aria-label={`Sign out ${device.application} on ${device.operatingSystem}`}
                           onClick={() =>
-                            void handleRevokeSession(session.token)
+                            askToSignOut({
+                              kind: 'session',
+                              token: session.token,
+                              device: `${device.application} on ${device.operatingSystem}`,
+                            })
                           }
-                          disabled={revoking}
                         >
-                          {revoking ? (
-                            <Spinner aria-hidden="true" />
-                          ) : (
-                            <LogOut aria-hidden="true" />
-                          )}
+                          <LogOut aria-hidden="true" />
                         </Button>
                       )}
                     </td>
@@ -271,17 +304,29 @@ export function LoginSessions() {
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => void handleSignOut()}
-          disabled={signingOut}
+          onClick={() => askToSignOut({ kind: 'current' })}
         >
-          {signingOut ? (
-            <Spinner aria-hidden="true" />
-          ) : (
-            <LogOut aria-hidden="true" className="size-4" />
-          )}
-          {signingOut ? 'Signing out...' : 'Sign out of this device'}
+          <LogOut aria-hidden="true" className="size-4" />
+          Sign out of this device
         </Button>
       </footer>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={confirmCopy.title}
+        description={confirmCopy.description}
+        confirmLabel={confirmCopy.confirmLabel}
+        pendingLabel="Signing out..."
+        tone="destructive"
+        onConfirm={() =>
+          confirmTarget.kind === 'session'
+            ? revokeSession(confirmTarget.token)
+            : confirmTarget.kind === 'others'
+              ? revokeOthers()
+              : signOutCurrent()
+        }
+      />
     </SettingsPanel>
   )
 }
