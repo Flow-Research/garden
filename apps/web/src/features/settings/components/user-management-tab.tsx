@@ -78,9 +78,14 @@ function TeamViewSkeleton() {
 export function UserManagementTab({ view }: { view: UserManagementView }) {
   const wsId = useWorkspaceId()
   const currentUserId = useAuthStore((s) => s.user?.id)
-  const { data: members } = useQuery(memberListOptions(wsId))
-  const role = members?.find((m) => m.user_id === currentUserId)?.role
+  const membersQuery = useQuery(memberListOptions(wsId))
+  const role = membersQuery.data?.find((m) => m.user_id === currentUserId)?.role
   const canManageTeams = role === 'owner' || role === 'admin'
+
+  // The role decides whether ?view=team is allowed, so hold the Team skeleton
+  // until it loads instead of flashing the member list on reload. A failed
+  // members query falls through to MembersTab, which owns the retry.
+  if (view === 'team' && membersQuery.isPending) return <TeamViewSkeleton />
 
   if (canManageTeams && view === 'team') {
     return (

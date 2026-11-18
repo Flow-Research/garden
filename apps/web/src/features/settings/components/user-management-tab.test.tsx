@@ -23,6 +23,11 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('./members-tab', () => ({
   MembersTab: () => <h2>Members content</h2>,
 }))
+const api = vi.hoisted(() => ({ listMembers: vi.fn() }))
+vi.mock('@/lib/api', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
+  api,
+}))
 
 function member(role: MemberWithUser['role']) {
   return {
@@ -46,11 +51,17 @@ const TEAM = {
   can_transfer_owner: true,
 } as TeamSummary
 
-function renderTab(role: MemberWithUser['role'], view: UserManagementView) {
+/** `role: null` leaves the members query loading, as on a cold reload. */
+function renderTab(
+  role: MemberWithUser['role'] | null,
+  view: UserManagementView,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
-  queryClient.setQueryData(workspaceKeys.members('ws-1'), [member(role)])
+  if (role) {
+    queryClient.setQueryData(workspaceKeys.members('ws-1'), [member(role)])
+  }
   queryClient.setQueryData(teamKeys.list('ws-1'), {
     teams: [TEAM],
     total: 1,
@@ -87,6 +98,15 @@ describe('UserManagementTab', () => {
     expect(screen.getByText('Platform')).toBeVisible()
     expect(screen.getByText('3 members')).toBeVisible()
     expect(screen.queryByText('Default team for new members')).toBeNull()
+    expect(
+      screen.queryByRole('heading', { name: 'Members content' }),
+    ).toBeNull()
+  })
+
+  it('holds the Team skeleton while the role loads on reload', () => {
+    api.listMembers.mockReturnValue(new Promise(() => {}))
+    renderTab(null, 'team')
+    expect(screen.getByLabelText('Loading teams')).toBeVisible()
     expect(
       screen.queryByRole('heading', { name: 'Members content' }),
     ).toBeNull()
