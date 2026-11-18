@@ -1,7 +1,6 @@
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { sendIssueAssignmentEmail } from '@/lib/server/email/issue-assignment'
 import { appEnv } from '@/lib/server/env'
 import {
   parseJsonBody,
@@ -34,11 +33,10 @@ import {
   addIssueSubscriberRows,
   assigneeToSubscriberType,
   deleteIssueRow,
-  getOrganizationName,
-  getUserEmail,
   isTeamAssigneeMember,
   updateIssueRow,
   upsertIssueAssignmentInboxItem,
+  upsertIssueMentionInboxItem,
   type IssueRowUpdate,
 } from '@/lib/server/queries/issues'
 
@@ -262,7 +260,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           // Best-effort per the note above: the assignment write is the source of
           // truth, so a participants-join failure (e.g. a not-yet-applied
           // issue_subscriber migration) must not 500 the assignment or skip the
-          // downstream inbox + assignment email.
+          // downstream inbox notification.
           const assigneeId = issue.assigneeId
           const subscriberResult = await Result.tryPromise({
             try: () =>
@@ -298,45 +296,15 @@ export const Route = createFileRoute('/api/issues/$id')({
             actorType: 'member',
             actorId: session.user.id,
           })
-
-          // Out-of-app nudge for the new assignee. Skip self-assignment (no
-          // point emailing yourself) and keep it best-effort so a Resend failure
-          // never fails the assignment write.
-          if (issue.assigneeId !== session.user.id) {
-            const assigneeEmail = await getUserEmail(db, issue.assigneeId)
-            const workspaceName = await getOrganizationName(
-              db,
-              existingIssue.workspaceId,
-            )
-
-            if (assigneeEmail) {
-              const assignerName =
-                session.user.name?.trim() || session.user.email
-              const emailResult = await Result.tryPromise({
-                try: () =>
-                  sendIssueAssignmentEmail({
-                    baseURL:
-                      appEnv.BETTER_AUTH_URL ?? new URL(request.url).origin,
-                    data: {
-                      issue: { id: issue.id, title: issue.title },
-                      workspace: {
-                        id: existingIssue.workspaceId,
-                        name: workspaceName ?? 'your workspace',
-                      },
-                      assignee: { email: assigneeEmail },
-                      assignerName,
-                    },
-                    env: appEnv,
-                  }),
-                catch: (cause) => cause,
-              })
-              if (emailResult.isErr())
-                logger.error(
-                  'issue.assignment_email_failed',
-                  errorFields(emailResult.error),
-                )
-            }
-          }
+        }
+        if (issue.description !== existingIssue.description) {
+          await upsertIssueMentionInboxItem(db, {
+            workspaceId: issue.workspaceId,
+            issueId: issue.id,
+            content: issue.description ?? '',
+            actorType: 'member',
+            actorId: session.user.id,
+          })
         }
         const updatedIssue = await applyIssueMutationSideEffects({
           db,

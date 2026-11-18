@@ -1,6 +1,7 @@
 import {
   archiveInboxItemsByKey,
   upsertIssueAssignmentInbox,
+  upsertIssueMentionInbox,
 } from '@garden/db/inbox'
 import type { Db } from '@/lib/server/db'
 
@@ -38,4 +39,12 @@ export async function upsertIssueAssignmentInboxItem(
     actorType: input.actorType,
     actorId: input.actorId,
   })
+}
+
+/** Queues explicit member mentions through the shared inbox writer. */
+export async function upsertIssueMentionInboxItem(
+  db: Db,
+  input: Omit<Parameters<typeof upsertIssueMentionInbox>[0], 'db'>,
+) {
+  return await upsertIssueMentionInbox({ db, ...input })
 }

@@ -54,7 +54,7 @@
     // The reconciler performs ledger cleanup without a durable deadline. A
     // 12-hour cadence avoids unnecessary database wakeups while still repairing
     // stale product state.
-    "crons": ["0 */12 * * *"],
+    "crons": ["0 */12 * * *", "* * * * *"],
   },
   "dev": {
     "enable_containers": false,

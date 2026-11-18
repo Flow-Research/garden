@@ -18,6 +18,7 @@ import { user } from './users.js'
 import { organization } from './workspaces.js'
 import { team } from './teams.js'
 import { agent } from './agents.js'
+import type { NotificationEmail } from './notification-email.js'
 import {
   activeIssueRunStatusValues,
   connectorIdValues,
@@ -568,6 +569,10 @@ export const inboxItem = pgTable(
     issueStatus: text('issue_status'),
     title: text('title').notNull(),
     body: text('body'),
+    emailDelivery: jsonb('email_delivery')
+      .$type<NotificationEmail>()
+      .notNull()
+      .default(sql`'{"kind":"pending"}'::jsonb`),
     details: jsonb('details')
       .notNull()
       .default(sql`'{}'::jsonb`),
@@ -592,6 +597,9 @@ export const inboxItem = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('inbox_item_pending_email_idx')
+      .on(table.createdAt)
+      .where(sql`${table.emailDelivery}->>'kind' in ('pending', 'sending')`),
     index('inbox_item_issue_id_idx').on(table.issueId),
     uniqueIndex('inbox_item_workspace_recipient_key_unique').on(
       table.workspaceId,

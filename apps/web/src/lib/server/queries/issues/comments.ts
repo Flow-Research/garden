@@ -1,3 +1,5 @@
+import { explicitMemberMentionIds } from '@garden/db/inbox'
+import { issueCommentMentionsSchema } from '@garden/db/validation'
 import { asc, eq, inArray } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
@@ -42,14 +44,27 @@ export async function getCommentIssueId(db: Db, commentId: string) {
   return comment?.issueId ?? null
 }
 
-/** Updates a comment body and returns the row, or null when missing. */
+/** Updates comment text and member mentions while preserving agent metadata. */
 export async function updateIssueCommentBody(
   db: Db,
-  input: { commentId: string; body: string },
+  input: {
+    commentId: string
+    body: string
+    previousMentions: typeof schema.issueComment.$inferSelect.mentions
+  },
 ) {
+  const previousMentions = issueCommentMentionsSchema.safeParse(
+    input.previousMentions,
+  )
   const [updated] = await db
     .update(schema.issueComment)
-    .set({ body: input.body })
+    .set({
+      body: input.body,
+      mentions: {
+        users: explicitMemberMentionIds(input.body),
+        agents: previousMentions.success ? previousMentions.data.agents : [],
+      },
+    })
     .where(eq(schema.issueComment.id, input.commentId))
     .returning()
   return updated ?? null
