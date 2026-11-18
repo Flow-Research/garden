@@ -196,7 +196,9 @@ export function LoginSessions() {
         </div>
       </header>
 
-      <div className="overflow-x-auto">
+      {/* `relative` keeps absolutely positioned children (the sr-only header)
+          inside the scroller; otherwise they widen the page on phones. */}
+      <div className="relative overflow-x-auto">
         <table className="w-full min-w-[600px] text-sm whitespace-nowrap">
           <thead className="bg-background-main-secondary">
             <tr>

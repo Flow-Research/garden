@@ -79,10 +79,11 @@ function IdentityCard() {
   const role = members?.find((member) => member.user_id === user?.id)?.role
 
   return (
-    <SettingsPanel className="flex flex-wrap items-center gap-4 sm:gap-6">
+    <SettingsPanel className="relative flex items-center gap-4 sm:gap-6">
       <AvatarUpload />
       <div className="min-w-0 flex-1 space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Right padding clears the corner Edit name button on phones. */}
+        <div className="flex flex-wrap items-center gap-2 pr-10 sm:pr-0">
           <h2 className="truncate text-lg font-semibold">
             {user?.name || user?.email}
           </h2>
@@ -110,11 +111,11 @@ function EditNameDialog() {
         type="button"
         variant="outline"
         size="sm"
-        className="w-full sm:w-auto"
+        className="absolute top-3 right-3 px-2 sm:static sm:px-3"
         onClick={() => setOpen(true)}
       >
         <Pencil aria-hidden="true" className="size-4" />
-        Edit name
+        <span className="sr-only sm:not-sr-only">Edit name</span>
       </Button>
       <DialogContent size="md" className="gap-6 p-6">
         {/* The popup unmounts on close, so each open starts from the saved name. */}
