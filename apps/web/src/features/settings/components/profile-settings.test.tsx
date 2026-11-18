@@ -228,11 +228,13 @@ describe('ProfileSettings', () => {
     renderProfile()
 
     await screen.findByText('This device')
-    const rows = screen.getAllByRole('row')
-    // Header row, then the current session.
-    expect(within(rows[1]).getByText('macOS')).toBeInTheDocument()
-    expect(within(rows[1]).getByText('This device')).toBeInTheDocument()
-    expect(within(rows[2]).getByText('Firefox')).toBeInTheDocument()
+    const [currentRow, otherRow] = screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => row.textContent)
+    expect(currentRow).toContain('macOS')
+    expect(currentRow).toContain('This device')
+    expect(otherRow).toContain('Firefox')
     // Garden does not record client IPs, so the column is not shown.
     expect(screen.queryByText('IP address')).toBeNull()
     expect(screen.queryByText('203.0.113.7')).toBeNull()
