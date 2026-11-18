@@ -1,12 +1,7 @@
 import { defaultTrustLevelForRisk } from '@garden/connectors/capabilities'
 import { schema, type Db } from '@/lib/server/db'
 
-/**
- * Seeds permission grants for every known capability onto a new agent.
- * Before: `lib/server/agent-bindings.ts` (also called from chat-agents default
- * recovery). After: queries own the SQL; callers import from here or the
- * thin `agent-bindings` re-export.
- */
+/** Seeds default-trust permission grants for every known capability onto an agent. */
 export async function bindExistingCapabilitiesToAgent(input: {
   db: Pick<Db, 'select' | 'insert'>
   agentId: string

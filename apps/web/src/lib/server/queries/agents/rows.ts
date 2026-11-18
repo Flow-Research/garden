@@ -1,12 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { requireReturnedRow, schema, type Db } from '@/lib/server/db'
 
-/**
- * Agent row reads/writes for `/api/agents*`. Before: Drizzle lived in the
- * route handlers and `agent-status.ts`. After: queries own SQL; services /
- * routes orchestrate. See `docs/decisions/2026-11-09-api-layering.md`.
- */
-
 export async function listAgentsByWorkspace(db: Db, workspaceId: string) {
   return await db
     .select()

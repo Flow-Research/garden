@@ -2,9 +2,8 @@ import { eq } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
 /**
- * Capability + grant rows for agent access review. Before: inline in
- * `routes/api/agents/$id/access.ts`. After: queries only. Capability load
- * stays global (no workspace filter) to match prior behavior.
+ * Capability and grant rows for agent access review. Capabilities are global,
+ * so `listAllCapabilities` has no workspace filter.
  */
 export async function listAllCapabilities(db: Db) {
   return await db

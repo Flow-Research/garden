@@ -17,9 +17,8 @@ export class AgentAccessError extends TaggedError('AgentAccessError')<{
 }>() {}
 
 /**
- * Assembles agent access review payload (connections + tools with effective
- * trust). Before: SQL + maps in `routes/api/agents/$id/access.ts`. After:
- * queries + assemble here. Auth stays in the route.
+ * Assembles the agent access review payload: connections and tools with
+ * effective trust. The route owns session and workspace checks.
  */
 export async function getAgentAccessState(input: {
   db: Db

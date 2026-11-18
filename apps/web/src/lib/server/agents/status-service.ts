@@ -12,10 +12,7 @@ export class AgentStatusError extends TaggedError('AgentStatusError')<{
 }>() {}
 
 /**
- * Archives or restores an agent row after the route has checked
- * `agentManage`. Before: `setAgentStatus` in `agent-status.ts` returned
- * `Response` and owned the permission check. After: route owns permission;
- * this returns `Result` + DTO. See api-layering ADR.
+ * Archives or restores an agent row. Callers must check `agentManage` first.
  */
 export async function updateAgentStatus(input: {
   db: Db

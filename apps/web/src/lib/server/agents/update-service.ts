@@ -54,9 +54,9 @@ function buildUpdateValues(
 }
 
 /**
- * Updates an agent after the route checked `agentManage`. Returns thread ids
- * so the route can refresh DO prompt config (post-success side effect; does
- * not roll back the agent row). Before: inline in `agents/$id.ts`.
+ * Updates an agent. Callers must check `agentManage` first. Returns the
+ * agent's chat thread ids so the caller can refresh their prompt config; that
+ * refresh does not roll back the update.
  */
 export async function updateWorkspaceAgent(input: {
   db: Db

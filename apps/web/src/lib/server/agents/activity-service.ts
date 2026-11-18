@@ -30,9 +30,8 @@ function grantDetail(payload: unknown) {
 }
 
 /**
- * Builds the merged agent activity feed. Before: SQL + merge in
- * `routes/api/agents/$id/activity.ts`. After: queries + assemble here.
- * Auth (session + resolveWorkspaceId) stays in the route.
+ * Merges tool decisions and grant changes into the newest 50 agent activity
+ * events. The route owns session and workspace checks.
  */
 export async function getAgentActivityFeed(input: {
   db: Db

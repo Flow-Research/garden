@@ -9,8 +9,8 @@ export class AgentGetError extends TaggedError('AgentGetError')<{
 }>() {}
 
 /**
- * Loads one agent by id. Route still runs `requireWorkspaceAccess` on
- * `workspaceId` after a successful load (same order as before).
+ * Loads one agent by id. Callers must check workspace access on the returned
+ * `workspaceId` before exposing the agent.
  */
 export async function getAgentRecord(
   db: Db,

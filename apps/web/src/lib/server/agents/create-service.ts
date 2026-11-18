@@ -26,11 +26,7 @@ export type CreateAgentInput = {
   runtimeConfig?: Record<string, unknown> | null
 }
 
-/**
- * Inserts an agent and seeds capability grants. Used by `POST /api/agents`.
- * Before: insert + `bindExistingCapabilitiesToAgent` in the route. After:
- * Result service over queries; PostHog stays in the route after success.
- */
+/** Inserts an agent and seeds its default capability grants. */
 export async function createWorkspaceAgent(
   input: CreateAgentInput,
 ): Promise<ResultValue<ReturnType<typeof toAgent>, AgentCreateError>> {

@@ -1,10 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
-/**
- * Agent activity feed sources (tool decisions + grant activity events).
- * Before: inline in `routes/api/agents/$id/activity.ts`. After: queries only.
- */
+/** Agent activity feed sources: tool decisions and grant activity events. */
 export async function listAgentToolDecisions(
   db: Db,
   input: { workspaceId: string; agentId: string; limit?: number },
