@@ -96,6 +96,20 @@ Each report must name the action, the expected result, the observed result, and
 the command or route that produced the evidence. Mark a scenario `PASS`,
 `FAIL`, or `INCONCLUSIVE`. A passing typecheck is not evidence for a user flow.
 
+Screenshots for a pull request are the exception: reviewers need to see them in
+the PR, and agents cannot upload images to a PR description. Convert them to
+WebP in the PR's own folder and commit them:
+
+```bash
+pnpm screenshot:webp <pr-number> ~/.garden/evidence/<scenario>/screenshots/*.png
+```
+
+The command writes `docs/assets/pr/<pr-number>/*.webp`. Link each file under
+`## Verification` with its `raw.githubusercontent.com` URL. The PR contract
+check fails when a UI change has no screenshots, or when a PR commits an image
+outside that folder or in another format. Mark Verification `INCONCLUSIVE` with
+the reason when screenshots are impossible.
+
 ## Cleanup
 
 Only stop resources that this run started. When the local stack is no longer
