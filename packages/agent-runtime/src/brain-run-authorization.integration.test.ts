@@ -778,8 +778,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           'ChatSubAgent.onChatResponse',
           'BrainWriteBackSubAgent.runWriteBack',
         ],
-        'rejects an unproven legacy issue transcript before any model request or shared output':
-          ['IssueRunSubAgent.executeWorkflowTurn'],
+        'starts a fresh agent context for an unproven legacy issue transcript and retains the old history':
+          ['IssueRunSubAgent.completeWorkflowTurn'],
         'preserves org-only retrieval through a real Workflow wait/resume and a later run on the same issue facet':
           [
             'IssueRunSubAgent.completeWorkflowTurn',
@@ -1954,7 +1954,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .flatMap((request) => request.messages)
             .filter((message) => message.role === 'tool')
             .map((message) => fixtureToolResult(message.content))
-          expect(thirdResults).toContainEqual({ ok: true, action: 'submitted' })
+          expect(thirdResults).toContainEqual({
+            ok: true,
+            action: 'submitted',
+          })
           expect(JSON.stringify(thirdResults)).not.toContain('duplicate')
           expect(JSON.stringify(thirdResults)).not.toContain(rows[0]!.id)
           expect(
@@ -3030,7 +3033,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       modelMode = 'issue'
     }, 90_000)
 
-    it('rejects an unproven legacy issue transcript before any model request or shared output', async () => {
+    it('starts a fresh agent context for an unproven legacy issue transcript and retains the old history', async () => {
       const input = await seedIssue('G06 legacy transcript')
       const seed = await harness!.fetch('/history', {
         method: 'POST',
@@ -3060,18 +3063,26 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         .select()
         .from(schema.issueRun)
         .where(eq(schema.issueRun.id, input.runId))
-      expect(run?.status).toBe('failed')
-      expect(run?.error).toBe('brain_output_authority_denied')
-      const outward = JSON.stringify({ run, logs: harness!.getLogs() })
-      expect(outward).not.toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
-      expect(outward).not.toContain('unverified Brain audience')
-      expect(modelRequests.slice(start)).toHaveLength(0)
+      expect(run?.status, run?.error ?? 'run did not succeed').toBe('succeeded')
+      const contextRows = await database!.db.execute<{ generation: number }>(
+        sql`select generation from issue_agent_context where issue_id = ${input.issueId} and agent_id = ${input.agentId}`,
+      )
+      expect(contextRows.rows[0]?.generation).toBe(1)
+      const resets = await database!.db
+        .select()
+        .from(schema.issueRunEvent)
+        .where(eq(schema.issueRunEvent.runId, input.runId))
       expect(
-        await database!.db
-          .select()
-          .from(schema.issueWorkProduct)
-          .where(eq(schema.issueWorkProduct.runId, input.runId)),
-      ).toHaveLength(0)
+        resets.filter((event) => event.eventType === 'issue_run:context_reset'),
+      ).toHaveLength(1)
+      const fresh = JSON.stringify(modelRequests.slice(start))
+      expect(modelRequests.slice(start).length).toBeGreaterThan(0)
+      expect(fresh).not.toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+      const retained = await harness!.fetch('/history-read', {
+        method: 'POST',
+        body: JSON.stringify({ ...input, facetName: input.issueId }),
+      })
+      expect(await retained.text()).toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
     }, 90_000)
     it('preserves org-only retrieval through a real Workflow wait/resume and a later run on the same issue facet', async () => {
       modelMode = 'pause'

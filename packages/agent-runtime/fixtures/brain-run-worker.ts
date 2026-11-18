@@ -805,8 +805,17 @@ export default {
       issueId: string
       runId: string
       threadId?: string
+      facetName?: string
     }>()
     const agent = await getAgentByName(env.AgentDO, input.agentId)
+    if (url.pathname === '/history-read') {
+      const facet = await getSubAgentByName(
+        agent,
+        IssueRunSubAgent,
+        input.facetName ?? input.issueId,
+      )
+      return Response.json({ messages: await facet.getMessages() })
+    }
     if (url.pathname === '/history') {
       const facet = await getSubAgentByName(
         agent,
