@@ -102,12 +102,12 @@ export function GithubWorkspaceIdentitySection() {
           Loading membership...
         </div>
       ) : (
-        <div className="flex min-w-0 items-center gap-3 rounded-lg border p-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border p-4">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
             <BrandGithubIcon className="size-5" aria-hidden="true" />
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
+          <div className="min-w-48 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="text-sm font-medium">GitHub</p>
               <Badge
                 variant={membership.github_login ? 'secondary' : 'outline'}

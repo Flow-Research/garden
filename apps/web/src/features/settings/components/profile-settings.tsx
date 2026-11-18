@@ -110,6 +110,7 @@ function EditNameDialog() {
         type="button"
         variant="outline"
         size="sm"
+        className="w-full sm:w-auto"
         onClick={() => setOpen(true)}
       >
         <Pencil aria-hidden="true" className="size-4" />
