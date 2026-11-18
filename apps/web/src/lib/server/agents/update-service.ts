@@ -3,7 +3,6 @@ import type { AgentPermissions } from '@garden/core/agents/permissions'
 import { toAgent } from '@/lib/server/control-plane'
 import { schema, type Db } from '@/lib/server/db'
 import {
-  getAgentWorkspaceHost,
   listChatThreadIdsForAgent,
   updateAgentById,
 } from '@/lib/server/queries/agents'
@@ -62,6 +61,7 @@ export async function updateWorkspaceAgent(input: {
   db: Db
   agentId: string
   workspaceId: string
+  hostName: string | null
   body: UpdateAgentBody
 }): Promise<ResultValue<UpdateAgentResult, AgentUpdateError>> {
   const updateValues = buildUpdateValues(input.body)
@@ -70,16 +70,6 @@ export async function updateWorkspaceAgent(input: {
       new AgentUpdateError({
         message: 'No valid agent changes submitted',
         status: 400,
-      }),
-    )
-  }
-
-  const existing = await getAgentWorkspaceHost(input.db, input.agentId)
-  if (!existing || existing.workspaceId !== input.workspaceId) {
-    return Result.err(
-      new AgentUpdateError({
-        message: 'Agent not found',
-        status: 404,
       }),
     )
   }
@@ -98,13 +88,13 @@ export async function updateWorkspaceAgent(input: {
     )
   }
 
-  const threads = existing.hostName
+  const threads = input.hostName
     ? await listChatThreadIdsForAgent(input.db, input.agentId)
     : []
 
   return Result.ok({
     agent: toAgent(agent),
-    hostName: existing.hostName,
+    hostName: input.hostName,
     threadIds: threads.map((thread) => thread.id),
   })
 }

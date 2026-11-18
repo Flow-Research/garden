@@ -66,6 +66,7 @@ export const Route = createFileRoute('/api/agents/$id')({
           db,
           agentId: params.id,
           workspaceId: existingAgent.workspaceId,
+          hostName: existingAgent.hostName,
           body,
         })
         if (updateResult.isErr()) {
