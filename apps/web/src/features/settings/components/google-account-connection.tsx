@@ -10,9 +10,9 @@ import { authClient } from '@/lib/auth/client'
 import { authClientOperation } from '@/lib/auth/client-result'
 import { hasPasswordSignInMethod } from '@/lib/auth/sign-in-methods'
 import { getAuthProviderAvailability } from '@/lib/server/auth-providers'
+import { linkedAccountsQueryOptions } from '../account-queries'
 
 const authProviderQueryKey = ['auth', 'provider-availability']
-const linkedAccountsQueryKey = ['account', 'linked-accounts']
 
 type LinkedAccountState = {
   accounts: Array<{ providerId: string }>
@@ -44,14 +44,8 @@ export function GoogleAccountConnection() {
     isPending: linkedAccountsPending,
     refetch: refetchLinkedAccounts,
   } = useQuery({
-    queryKey: linkedAccountsQueryKey,
+    ...linkedAccountsQueryOptions(),
     enabled: authProviders?.google === true,
-    queryFn: () =>
-      authClientOperation({
-        fallbackMessage: 'Could not load linked accounts',
-        operation: 'list-linked-accounts',
-        request: () => authClient.listAccounts(),
-      }),
   })
 
   if (authProvidersPending) return null
