@@ -4,7 +4,10 @@ import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { TeamManagementPanel } from '@/features/teams/components/team-management-panel'
+import {
+  TEAM_GRID_CLASS,
+  TeamManagementPanel,
+} from '@/features/teams/components/team-management-panel'
 import { teamListOptions } from '@/features/teams/queries'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { MembersTab } from './members-tab'
@@ -53,7 +56,7 @@ function TeamView() {
 function TeamViewSkeleton() {
   return (
     <div
-      className="flex flex-col gap-8"
+      className="@container flex flex-col gap-8"
       aria-busy="true"
       aria-label="Loading teams"
     >
@@ -61,7 +64,7 @@ function TeamViewSkeleton() {
         <UserManagementPills />
         <Skeleton className="h-10 w-32" />
       </div>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className={TEAM_GRID_CLASS}>
         <Skeleton className="h-[196px] rounded-xl" />
         <Skeleton className="h-[196px] rounded-xl" />
         <Skeleton className="h-[196px] rounded-xl" />

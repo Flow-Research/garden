@@ -79,20 +79,28 @@ function TeamCard({
           {team.description ?? 'No description'}
         </p>
       </div>
-      <div className="pointer-events-none flex items-center justify-between">
-        <span className="flex items-center gap-4">
-          <Users className="size-4 text-icon-neutral-secondary" />
-          <span className="text-sm text-text-secondary">
+      <div className="pointer-events-none flex items-center justify-between gap-3">
+        <span className="flex min-w-0 items-center gap-2">
+          <Users className="size-4 shrink-0 text-icon-neutral-secondary" />
+          <span className="truncate text-sm text-text-secondary">
             {team.member_count} {team.member_count === 1 ? 'member' : 'members'}
           </span>
         </span>
-        <span className="inline-flex h-8 items-center rounded-md border border-border-default bg-background-main-default px-3 text-sm shadow-1">
+        <span className="inline-flex h-8 shrink-0 items-center rounded-md border border-border-default bg-background-main-default px-3 text-sm shadow-1">
           View all
         </span>
       </div>
     </div>
   )
 }
+
+/**
+ * Team card grid sized by its `@container` rather than the viewport, so an
+ * open sidebar or a narrow settings column drops columns instead of
+ * squeezing cards. Caps at the design's three columns.
+ */
+export const TEAM_GRID_CLASS =
+  'grid grid-cols-1 gap-4 @xl:grid-cols-2 @4xl:grid-cols-3'
 
 /**
  * Owner/admin Team management from designs 25 and 29: the Create a Team
@@ -118,7 +126,7 @@ export function TeamManagementPanel({
   })
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="@container flex flex-col gap-8">
       <div className="flex flex-wrap items-center justify-between gap-4">
         {toolbar}
         <Button
@@ -136,7 +144,7 @@ export function TeamManagementPanel({
           </span>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div className={TEAM_GRID_CLASS}>
           {teams.map((team) => (
             <TeamCard
               key={team.id}
