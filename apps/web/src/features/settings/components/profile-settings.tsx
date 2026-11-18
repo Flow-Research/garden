@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { Result, TaggedError } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera, Pencil } from 'lucide-react'
+import { Camera, Pencil, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import type { MemberRole } from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -277,13 +277,21 @@ function SignInCard() {
   const queryClient = useQueryClient()
   const { data: authSession, refetch: refetchAuthSession } =
     authClient.useSession()
-  const { data: linkedAccounts } = useQuery(linkedAccountsQueryOptions())
-  // Hidden until accounts load: Google-only users have no password to change.
-  const hasPassword =
-    linkedAccounts?.match({
-      ok: (response) => hasPasswordSignInMethod(response.data ?? []),
-      err: () => false,
-    }) ?? false
+  const {
+    data: linkedAccounts,
+    isFetching: linkedAccountsFetching,
+    refetch: refetchLinkedAccounts,
+  } = useQuery(linkedAccountsQueryOptions())
+  // Hidden while loading and for Google-only users, who have no password.
+  const passwordRow = linkedAccounts?.match<
+    { kind: 'hidden' } | { kind: 'change' } | { kind: 'error'; message: string }
+  >({
+    ok: (response) =>
+      hasPasswordSignInMethod(response.data ?? [])
+        ? { kind: 'change' }
+        : { kind: 'hidden' },
+    err: (error) => ({ kind: 'error', message: error.message }),
+  }) ?? { kind: 'hidden' }
   const emailVerified = authSession?.user?.emailVerified === true
 
   const handlePasswordChanged = () => {
@@ -306,7 +314,7 @@ function SignInCard() {
           {emailVerified ? 'Verified' : 'Not verified'}
         </Badge>
       </div>
-      {hasPassword ? (
+      {passwordRow.kind === 'change' ? (
         <div className="flex flex-wrap items-center justify-between gap-3 py-4 sm:py-5">
           <div className="min-w-0 space-y-1">
             <h2 className="text-sm font-semibold">Password</h2>
@@ -315,6 +323,23 @@ function SignInCard() {
             </p>
           </div>
           <ChangePasswordDialog onChanged={handlePasswordChanged} />
+        </div>
+      ) : passwordRow.kind === 'error' ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 py-4 sm:py-5">
+          <div className="min-w-0 space-y-1">
+            <h2 className="text-sm font-semibold">Password</h2>
+            <p className="text-sm text-destructive">{passwordRow.message}</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={linkedAccountsFetching}
+            onClick={() => void refetchLinkedAccounts()}
+          >
+            <RefreshCw aria-hidden="true" className="size-4" />
+            Retry
+          </Button>
         </div>
       ) : null}
     </SettingsPanel>

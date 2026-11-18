@@ -28,7 +28,7 @@ User Management, Preferences and General reuse the same components, queries and 
 The Profile section follows the new profile design as a guide and keeps every account control the modal offers. It has four cards:
 
 - **Identity.** Avatar tile (click to upload), name, the user's role in the active workspace, and member-since date. **Edit name** opens a dialog with the Preferred name field. Save stays disabled until the name changes, and Cancel discards the edit.
-- **Sign-in.** Email with its verification state. A Password row with **Change password** opens a dialog for current, new and confirmed password, plus the option to sign out other sessions. The row is hidden when the account has no `credential` provider, such as Google-only sign-up, and while linked accounts load. The dialog states Better Auth's enforced rule: at least 8 characters.
+- **Sign-in.** Email with its verification state. A Password row with **Change password** opens a dialog for current, new and confirmed password, plus the option to sign out other sessions. The row is hidden when the account has no `credential` provider, such as Google-only sign-up, and while linked accounts load. If they fail to load, the row shows the error with Retry. The dialog states Better Auth's enforced rule: at least 8 characters.
 - **Linked identities.** The existing GitHub identity and Google connection sections.
 - **Login sessions.** A table of active Better Auth sessions with operating system, browser, last activity and status. `ua-parser-js` reads the stored user agent. The current device is listed first. Each other session can be signed out individually or together, and the card keeps Sign out of this device.
 

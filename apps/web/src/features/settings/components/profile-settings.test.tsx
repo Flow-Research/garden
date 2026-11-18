@@ -177,6 +177,26 @@ describe('ProfileSettings', () => {
     expect(screen.queryByRole('button', { name: 'Change password' })).toBeNull()
   })
 
+  it('offers a retry when sign-in methods fail to load', async () => {
+    const user = userEvent.setup()
+    mockListAccounts.mockResolvedValueOnce({
+      data: null,
+      error: { message: 'Could not load linked accounts' },
+    })
+    renderProfile()
+
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(screen.getByText('Could not load linked accounts')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Change password' })).toBeNull()
+
+    await user.click(retry)
+
+    expect(
+      await screen.findByRole('button', { name: 'Change password' }),
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull()
+  })
+
   it('changes the password once the confirmation matches', async () => {
     const user = userEvent.setup()
     renderProfile()
