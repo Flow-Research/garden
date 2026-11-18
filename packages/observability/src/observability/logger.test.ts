@@ -41,6 +41,34 @@ describe('createGardenLogger', () => {
     })
   })
 
+  it('preserves complete UUID correlation values that resemble Cloudflare tokens', () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const logger = createGardenLogger({
+      service: 'garden-staging',
+      component: 'agent-do',
+    })
+    const runId = 'a93f5417-cfa3-4f11-960e-b4a77d55a56e'
+    const workspaceId = 'cf123456-1234-4123-8123-123456789abc'
+
+    logger.info('agent_do.brain_write_back.completed', {
+      runId,
+      workspaceId,
+      apiKey: workspaceId,
+      nested: { correlation: runId, credential: 'cf_synthetic-secret-token' },
+      extended: `${workspaceId}-extra`,
+      bearer: `Bearer ${runId}`,
+    })
+
+    expect(info.mock.calls[0]?.[0]).toMatchObject({
+      runId,
+      workspaceId,
+      apiKey: '[redacted]',
+      nested: { correlation: runId, credential: '[redacted]' },
+      extended: '[redacted]',
+      bearer: '[redacted]',
+    })
+  })
+
   it('filters records below the configured log level', () => {
     const info = vi.spyOn(console, 'info').mockImplementation(() => {})
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})

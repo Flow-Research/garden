@@ -335,9 +335,9 @@ export abstract class RunSubAgentBase<
    * The run facet knows these from its loaded context; the shared base must not
    * assume fields that differ between issue and automation ledgers.
    */
-  protected brainInjectionIdentity(
+  protected async brainInjectionIdentity(
     _loaded: TLoaded,
-  ): { workspaceId: string; userId: string | undefined } | null {
+  ): Promise<{ workspaceId: string; userId: string | undefined } | null> {
     return null
   }
 
@@ -352,6 +352,20 @@ export abstract class RunSubAgentBase<
   protected async prepareRun(
     _loaded: TLoaded,
     _initializeEmpty: boolean,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
+  /** Validates the exact originating run before a mutating Workflow RPC. */
+  protected async verifyRunEntry(
+    _runId: string,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
+  /** Run facets can refuse the final analytics copy of retained context. */
+  protected async authorizeFinalObservation(
+    _runId: string,
   ): Promise<ResultValue<void, RunSubAgentError>> {
     return Result.ok(undefined)
   }
@@ -471,16 +485,19 @@ export abstract class RunSubAgentBase<
     }
 
     const loadedResult = await this.loadTurnContext(runId)
-    if (loadedResult.isErr()) throw loadedResult.error
+    if (loadedResult.isErr())
+      throw await this.errorForOutput(runId, loadedResult.error)
 
     const guardResult = await this.applyRunBoundaryGuards(loadedResult.value)
-    if (guardResult.isErr()) throw guardResult.error
+    if (guardResult.isErr())
+      throw await this.errorForOutput(runId, guardResult.error)
     if (guardResult.value !== 'continue') {
       throw new RunTurnStopped(this.turnStoppedName(), guardResult.value)
     }
 
     const prepareResult = await this.prepareRun(loadedResult.value, false)
-    if (prepareResult.isErr()) throw prepareResult.error
+    if (prepareResult.isErr())
+      throw await this.errorForOutput(runId, prepareResult.error)
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
@@ -520,7 +537,7 @@ export abstract class RunSubAgentBase<
       },
     )
 
-    const brainIdentity = this.brainInjectionIdentity(loadedResult.value)
+    const brainIdentity = await this.brainInjectionIdentity(loadedResult.value)
     const brainContext = brainIdentity
       ? (
           await Result.tryPromise({
@@ -608,7 +625,9 @@ export abstract class RunSubAgentBase<
     const payload: RunWorkflowTurnCompleteEvent = {
       submissionId: submission.submissionId,
       status: submission.status,
-      ...(submission.error ? { error: submission.error } : {}),
+      ...(submission.error
+        ? { error: await this.failureReasonForOutput(runId, submission.error) }
+        : {}),
     }
     // RunWorkflow also reconciles from Think's submission state when this
     // event never arrives, so a delivery that still fails after these retries
@@ -686,7 +705,7 @@ export abstract class RunSubAgentBase<
           ...errorFields(cancelResult.error),
         })
       } else if (!cancelResult.value) {
-        const failedResult = await this.forceCloseFailed(runId, 'turn_aborted')
+        const failedResult = await this.closeFailedRun(runId, 'turn_aborted')
         if (failedResult.isErr()) {
           this.logRunWarning('close_failed', {
             runId,
@@ -696,7 +715,7 @@ export abstract class RunSubAgentBase<
         }
       }
     } else if (result.status === 'error') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         runId,
         result.error ?? 'chat_error',
       )
@@ -711,7 +730,9 @@ export abstract class RunSubAgentBase<
       await this.finishSettledTurn(runId, result)
     }
 
-    this.aiObservation.finishTurn(result)
+    const observationAuthority = await this.authorizeFinalObservation(runId)
+    if (observationAuthority.isOk()) this.aiObservation.finishTurn(result)
+    else this.aiObservation.discardTurn()
     this.clearTurnState()
   }
 
@@ -729,6 +750,9 @@ export abstract class RunSubAgentBase<
     mode: RunTurnMode,
     input: TInput,
   ): Promise<RunWorkflowTurnStartResult> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const table = this.runTable()
     const [runRow] = await this.getDb()
       .select({
@@ -745,22 +769,22 @@ export abstract class RunSubAgentBase<
         'cancelled',
       )
       if (cancelResult.isErr()) {
-        await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw cancelResult.error
+        await this.closeFailedRun(input.runId, cancelResult.error.message)
+        throw await this.errorForOutput(input.runId, cancelResult.error)
       }
       return { kind: 'run_status', status: 'cancelled' }
     }
 
     const driveResult = await this.driveTurn(mode, input)
     if (driveResult.isErr()) {
-      await this.forceCloseFailed(input.runId, driveResult.error.message)
-      throw driveResult.error
+      await this.closeFailedRun(input.runId, driveResult.error.message)
+      throw await this.errorForOutput(input.runId, driveResult.error)
     }
     if (driveResult.value.kind === 'stopped') {
       const statusResult = await this.readRunStatus(input.runId)
       if (statusResult.isErr()) {
-        await this.forceCloseFailed(input.runId, statusResult.error.message)
-        throw statusResult.error
+        await this.closeFailedRun(input.runId, statusResult.error.message)
+        throw await this.errorForOutput(input.runId, statusResult.error)
       }
       return { kind: 'run_status', status: statusResult.value }
     }
@@ -787,20 +811,27 @@ export abstract class RunSubAgentBase<
     summary: string
     waitingOn?: RunWorkflowWait
   }> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const kind = this.runConfig().kind
     const inspectionResult = await Result.tryPromise({
       try: async () => await this.inspectSubmission(input.submissionId),
       catch: (cause) => cause,
     })
     if (inspectionResult.isErr()) {
-      await this.forceCloseFailed(input.runId, String(inspectionResult.error))
-      throw this.runtimeFailure(inspectionResult.error)
+      const reason = await this.failureReasonForOutput(
+        input.runId,
+        String(inspectionResult.error),
+      )
+      await this.forceCloseFailed(input.runId, reason)
+      throw this.runtimeFailure(reason)
     }
 
     const inspection = inspectionResult.value
     if (!inspection) {
       const message = `Submitted ${kind} turn ${input.submissionId} was not found.`
-      await this.forceCloseFailed(input.runId, message)
+      await this.closeFailedRun(input.runId, message)
       throw this.runError({ code: 'not_found', message })
     }
     if (!isTerminalSubmissionStatus(inspection.status)) {
@@ -811,41 +842,44 @@ export abstract class RunSubAgentBase<
     }
 
     if (inspection.status === 'error') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         input.runId,
         inspection.error ?? `Submitted ${kind} turn failed.`,
       )
-      if (failedResult.isErr()) throw failedResult.error
+      if (failedResult.isErr())
+        throw await this.errorForOutput(input.runId, failedResult.error)
       this.clearTurnState()
     }
     if (inspection.status === 'aborted') {
       const cancelResult = await this.cancelRunIfRequested(input.runId)
       if (cancelResult.isErr()) {
-        await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw cancelResult.error
+        await this.closeFailedRun(input.runId, cancelResult.error.message)
+        throw await this.errorForOutput(input.runId, cancelResult.error)
       }
       if (!cancelResult.value) {
-        const failedResult = await this.forceCloseFailed(
+        const failedResult = await this.closeFailedRun(
           input.runId,
           'turn_aborted',
         )
-        if (failedResult.isErr()) throw failedResult.error
+        if (failedResult.isErr())
+          throw await this.errorForOutput(input.runId, failedResult.error)
       }
       this.clearTurnState()
     }
     if (inspection.status === 'skipped') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         input.runId,
         'turn_skipped',
       )
-      if (failedResult.isErr()) throw failedResult.error
+      if (failedResult.isErr())
+        throw await this.errorForOutput(input.runId, failedResult.error)
       this.clearTurnState()
     }
 
     const statusResult = await this.readRunStatus(input.runId)
     if (statusResult.isErr()) {
-      await this.forceCloseFailed(input.runId, statusResult.error.message)
-      throw statusResult.error
+      await this.closeFailedRun(input.runId, statusResult.error.message)
+      throw await this.errorForOutput(input.runId, statusResult.error)
     }
     const waitingOn = await this.readWorkflowWait(
       input.runId,
@@ -910,7 +944,7 @@ export abstract class RunSubAgentBase<
       catch: (cause) => cause,
     })
     if (inspectionResult.isErr()) {
-      throw this.runtimeFailure(inspectionResult.error)
+      throw this.runtimeFailure('Cannot inspect submitted run status.')
     }
     return { status: inspectionResult.value?.status ?? null }
   }
@@ -923,16 +957,24 @@ export abstract class RunSubAgentBase<
     runId: string
     reason: string
   }): Promise<{ status: string }> {
-    const failedResult = await this.forceCloseFailed(input.runId, input.reason)
-    if (failedResult.isErr()) throw failedResult.error
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
+    const failedResult = await this.closeFailedRun(input.runId, input.reason)
+    if (failedResult.isErr())
+      throw await this.errorForOutput(input.runId, failedResult.error)
     this.clearTurnState()
 
     const statusResult = await this.readRunStatus(input.runId)
-    if (statusResult.isErr()) throw statusResult.error
+    if (statusResult.isErr())
+      throw await this.errorForOutput(input.runId, statusResult.error)
     return { status: statusResult.value }
   }
 
   async requestCancel(input: { runId: string }): Promise<void> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
       this.logRunWarning('cancel_request_failed', {
@@ -1059,6 +1101,36 @@ export abstract class RunSubAgentBase<
       submissionId: submitResult.value.submissionId,
       status: submitResult.value.status,
     })
+  }
+
+  /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
+  private async failureReasonForOutput(runId: string, reason: string) {
+    const authority = await this.authorizeFinalObservation(runId)
+    if (authority.isOk()) return reason
+    this.aiObservation.discardTurn()
+    return 'brain_output_authority_denied'
+  }
+
+  private async errorForOutput(runId: string, error: RunSubAgentError) {
+    const authority = await this.authorizeFinalObservation(runId)
+    if (authority.isOk()) return error
+    this.aiObservation.discardTurn()
+    return this.runError({
+      code: 'runtime_failed',
+      message: 'brain_output_authority_denied',
+    })
+  }
+
+  private async closeFailedRun(
+    runId: string,
+    reason: string,
+    loaded?: TLoaded,
+  ) {
+    return this.forceCloseFailed(
+      runId,
+      await this.failureReasonForOutput(runId, reason),
+      loaded,
+    )
   }
 
   /** Logs `<kind>_run.<event>` at warn level through the run's logger. */
@@ -1244,7 +1316,7 @@ export abstract class RunSubAgentBase<
         'timeout',
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         loaded.run.id,
         'timeout',
         loaded,
