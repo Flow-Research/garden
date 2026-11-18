@@ -84,7 +84,7 @@ function IdentityCard() {
       <div className="min-w-0 flex-1 space-y-1">
         {/* Right padding clears the corner Edit name button on phones. */}
         <div className="flex flex-wrap items-center gap-2 pr-10 sm:pr-0">
-          <h2 className="truncate text-lg font-semibold">
+          <h2 className="line-clamp-2 text-base leading-snug font-semibold break-words sm:text-lg">
             {user?.name || user?.email}
           </h2>
           {role ? (
@@ -92,7 +92,7 @@ function IdentityCard() {
           ) : null}
         </div>
         {user?.created_at ? (
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs text-muted-foreground sm:text-sm">
             Member since {format(new Date(user.created_at), 'MMM d, yyyy')}
           </p>
         ) : null}
@@ -233,7 +233,7 @@ function AvatarUpload() {
     <>
       <button
         type="button"
-        className="group relative flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-info/15 text-lg font-semibold text-info focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="group relative flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-info/15 text-base font-semibold text-info sm:size-16 sm:text-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         onClick={() => fileInputRef.current?.click()}
         disabled={uploading}
         aria-label={uploading ? 'Uploading avatar' : 'Change avatar'}
