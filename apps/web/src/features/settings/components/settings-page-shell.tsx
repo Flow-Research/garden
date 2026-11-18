@@ -22,6 +22,19 @@ const sections = [
   { to: '/settings/general', label: 'General', icon: Settings },
 ] as const
 
+/**
+ * Primary-surface card for settings content that sits on the shell's
+ * secondary container. Sections whose design places content directly on the
+ * secondary surface, like User Management's Team grid, skip it.
+ */
+export function SettingsPanel({ children }: { children: ReactNode }) {
+  return (
+    <div className="min-w-0 rounded-2xl bg-background p-4 sm:p-6">
+      {children}
+    </div>
+  )
+}
+
 /** Shared frame for routed settings while section content is redesigned. */
 export function SettingsPageShell({ children }: { children: ReactNode }) {
   return (
@@ -53,9 +66,7 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
           </div>
         </nav>
         <div className="mt-10 min-w-0 rounded-2xl bg-background-main-secondary p-4 sm:p-6 lg:p-10">
-          <div className="min-w-0 rounded-2xl bg-background p-4 sm:p-6">
-            {children}
-          </div>
+          {children}
         </div>
       </div>
     </div>

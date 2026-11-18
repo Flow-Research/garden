@@ -148,12 +148,12 @@ import { Route as AuthenticatedAppWorkflowsIdRouteImport } from './routes/_authe
 import { Route as AuthenticatedAppTeamsIssuesRouteImport } from './routes/_authenticated/_app/teams.issues'
 import { Route as AuthenticatedAppTeamsTeamIdRouteImport } from './routes/_authenticated/_app/teams.$teamId'
 import { Route as AuthenticatedAppTasksIssueIdRouteImport } from './routes/_authenticated/_app/tasks.$issueId'
-import { Route as AuthenticatedAppSettingsUserManagementRouteImport } from './routes/_authenticated/_app/settings/user-management'
 import { Route as AuthenticatedAppSettingsProfileRouteImport } from './routes/_authenticated/_app/settings/profile'
 import { Route as AuthenticatedAppSettingsPreferencesRouteImport } from './routes/_authenticated/_app/settings/preferences'
 import { Route as AuthenticatedAppSettingsGeneralRouteImport } from './routes/_authenticated/_app/settings/general'
 import { Route as AuthenticatedAppChatsThreadIdRouteImport } from './routes/_authenticated/_app/chats.$threadId'
 import { Route as AuthenticatedAppAgentsAgentIdRouteImport } from './routes/_authenticated/_app/agents.$agentId'
+import { Route as AuthenticatedAppSettingsUserManagementIndexRouteImport } from './routes/_authenticated/_app/settings/user-management/index'
 import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api/workspaces/$id/members/$memberId'
 import { Route as ApiWorkspacesIdInvitationsInvitationIdRouteImport } from './routes/api/workspaces/$id/invitations/$invitationId'
 import { Route as ApiTeamsTeamIdRepositoriesAvailableRouteImport } from './routes/api/teams/$teamId/repositories/available'
@@ -171,8 +171,11 @@ import { Route as ApiBrainFilesIdTextRouteImport } from './routes/api/brain/file
 import { Route as ApiBrainFilesIdDocxRouteImport } from './routes/api/brain/files/$id/docx'
 import { Route as ApiBrainFilesIdContentRouteImport } from './routes/api/brain/files/$id/content'
 import { Route as ApiAutomationsIdTriggersTriggerIdRouteImport } from './routes/api/automations/$id/triggers/$triggerId'
+import { Route as AuthenticatedAppSettingsUserManagementMembersRouteImport } from './routes/_authenticated/_app/settings/user-management/members'
+import { Route as AuthenticatedAppSettingsUserManagementTeamsIndexRouteImport } from './routes/_authenticated/_app/settings/user-management/teams/index'
 import { Route as ApiTeamsTeamIdRepositoriesRepositoryIdRetryRouteImport } from './routes/api/teams/$teamId/repositories/$repositoryId/retry'
 import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './routes/api/connections/$connectorId/tools/$name/grant'
+import { Route as AuthenticatedAppSettingsUserManagementTeamsTeamIdRouteImport } from './routes/_authenticated/_app/settings/user-management/teams/$teamId'
 
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
@@ -902,12 +905,6 @@ const AuthenticatedAppTasksIssueIdRoute =
     path: '/$issueId',
     getParentRoute: () => AuthenticatedAppTasksRoute,
   } as any)
-const AuthenticatedAppSettingsUserManagementRoute =
-  AuthenticatedAppSettingsUserManagementRouteImport.update({
-    id: '/user-management',
-    path: '/user-management',
-    getParentRoute: () => AuthenticatedAppSettingsRoute,
-  } as any)
 const AuthenticatedAppSettingsProfileRoute =
   AuthenticatedAppSettingsProfileRouteImport.update({
     id: '/profile',
@@ -937,6 +934,12 @@ const AuthenticatedAppAgentsAgentIdRoute =
     id: '/$agentId',
     path: '/$agentId',
     getParentRoute: () => AuthenticatedAppAgentsRoute,
+  } as any)
+const AuthenticatedAppSettingsUserManagementIndexRoute =
+  AuthenticatedAppSettingsUserManagementIndexRouteImport.update({
+    id: '/user-management/',
+    path: '/user-management/',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
   } as any)
 const ApiWorkspacesIdMembersMemberIdRoute =
   ApiWorkspacesIdMembersMemberIdRouteImport.update({
@@ -1036,6 +1039,18 @@ const ApiAutomationsIdTriggersTriggerIdRoute =
     path: '/$triggerId',
     getParentRoute: () => ApiAutomationsIdTriggersRoute,
   } as any)
+const AuthenticatedAppSettingsUserManagementMembersRoute =
+  AuthenticatedAppSettingsUserManagementMembersRouteImport.update({
+    id: '/user-management/members',
+    path: '/user-management/members',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsUserManagementTeamsIndexRoute =
+  AuthenticatedAppSettingsUserManagementTeamsIndexRouteImport.update({
+    id: '/user-management/teams/',
+    path: '/user-management/teams/',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
 const ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute =
   ApiTeamsTeamIdRepositoriesRepositoryIdRetryRouteImport.update({
     id: '/retry',
@@ -1047,6 +1062,12 @@ const ApiConnectionsConnectorIdToolsNameGrantRoute =
     id: '/tools/$name/grant',
     path: '/tools/$name/grant',
     getParentRoute: () => ApiConnectionsConnectorIdRoute,
+  } as any)
+const AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute =
+  AuthenticatedAppSettingsUserManagementTeamsTeamIdRouteImport.update({
+    id: '/user-management/teams/$teamId',
+    path: '/user-management/teams/$teamId',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -1133,7 +1154,6 @@ export interface FileRoutesByFullPath {
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
-  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1193,6 +1213,7 @@ export interface FileRoutesByFullPath {
   '/tasks/': typeof AuthenticatedAppTasksIndexRoute
   '/teams/': typeof AuthenticatedAppTeamsIndexRoute
   '/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
+  '/settings/user-management/members': typeof AuthenticatedAppSettingsUserManagementMembersRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
   '/api/brain/files/$id/docx': typeof ApiBrainFilesIdDocxRoute
@@ -1210,8 +1231,11 @@ export interface FileRoutesByFullPath {
   '/api/teams/$teamId/repositories/available': typeof ApiTeamsTeamIdRepositoriesAvailableRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
+  '/settings/user-management/': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
   '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
+  '/settings/user-management/teams/': typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -1291,7 +1315,6 @@ export interface FileRoutesByTo {
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
-  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1351,6 +1374,7 @@ export interface FileRoutesByTo {
   '/tasks': typeof AuthenticatedAppTasksIndexRoute
   '/teams': typeof AuthenticatedAppTeamsIndexRoute
   '/workflows': typeof AuthenticatedAppWorkflowsIndexRoute
+  '/settings/user-management/members': typeof AuthenticatedAppSettingsUserManagementMembersRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
   '/api/brain/files/$id/docx': typeof ApiBrainFilesIdDocxRoute
@@ -1368,8 +1392,11 @@ export interface FileRoutesByTo {
   '/api/teams/$teamId/repositories/available': typeof ApiTeamsTeamIdRepositoriesAvailableRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
+  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
   '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
+  '/settings/user-management/teams': typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -1458,7 +1485,6 @@ export interface FileRoutesById {
   '/_authenticated/_app/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/_authenticated/_app/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/_authenticated/_app/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
-  '/_authenticated/_app/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
   '/_authenticated/_app/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/_authenticated/_app/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/_authenticated/_app/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1518,6 +1544,7 @@ export interface FileRoutesById {
   '/_authenticated/_app/tasks/': typeof AuthenticatedAppTasksIndexRoute
   '/_authenticated/_app/teams/': typeof AuthenticatedAppTeamsIndexRoute
   '/_authenticated/_app/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
+  '/_authenticated/_app/settings/user-management/members': typeof AuthenticatedAppSettingsUserManagementMembersRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
   '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
   '/api/brain/files/$id/docx': typeof ApiBrainFilesIdDocxRoute
@@ -1535,8 +1562,11 @@ export interface FileRoutesById {
   '/api/teams/$teamId/repositories/available': typeof ApiTeamsTeamIdRepositoriesAvailableRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
+  '/_authenticated/_app/settings/user-management/': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/_authenticated/_app/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
   '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
+  '/_authenticated/_app/settings/user-management/teams/': typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1624,7 +1654,6 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
-    | '/settings/user-management'
     | '/tasks/$issueId'
     | '/teams/$teamId'
     | '/teams/issues'
@@ -1684,6 +1713,7 @@ export interface FileRouteTypes {
     | '/tasks/'
     | '/teams/'
     | '/workflows/'
+    | '/settings/user-management/members'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
     | '/api/brain/files/$id/docx'
@@ -1701,8 +1731,11 @@ export interface FileRouteTypes {
     | '/api/teams/$teamId/repositories/available'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
+    | '/settings/user-management/'
+    | '/settings/user-management/teams/$teamId'
     | '/api/connections/$connectorId/tools/$name/grant'
     | '/api/teams/$teamId/repositories/$repositoryId/retry'
+    | '/settings/user-management/teams/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1782,7 +1815,6 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
-    | '/settings/user-management'
     | '/tasks/$issueId'
     | '/teams/$teamId'
     | '/teams/issues'
@@ -1842,6 +1874,7 @@ export interface FileRouteTypes {
     | '/tasks'
     | '/teams'
     | '/workflows'
+    | '/settings/user-management/members'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
     | '/api/brain/files/$id/docx'
@@ -1859,8 +1892,11 @@ export interface FileRouteTypes {
     | '/api/teams/$teamId/repositories/available'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
+    | '/settings/user-management'
+    | '/settings/user-management/teams/$teamId'
     | '/api/connections/$connectorId/tools/$name/grant'
     | '/api/teams/$teamId/repositories/$repositoryId/retry'
+    | '/settings/user-management/teams'
   id:
     | '__root__'
     | '/'
@@ -1948,7 +1984,6 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/settings/general'
     | '/_authenticated/_app/settings/preferences'
     | '/_authenticated/_app/settings/profile'
-    | '/_authenticated/_app/settings/user-management'
     | '/_authenticated/_app/tasks/$issueId'
     | '/_authenticated/_app/teams/$teamId'
     | '/_authenticated/_app/teams/issues'
@@ -2008,6 +2043,7 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/tasks/'
     | '/_authenticated/_app/teams/'
     | '/_authenticated/_app/workflows/'
+    | '/_authenticated/_app/settings/user-management/members'
     | '/api/automations/$id/triggers/$triggerId'
     | '/api/brain/files/$id/content'
     | '/api/brain/files/$id/docx'
@@ -2025,8 +2061,11 @@ export interface FileRouteTypes {
     | '/api/teams/$teamId/repositories/available'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
+    | '/_authenticated/_app/settings/user-management/'
+    | '/_authenticated/_app/settings/user-management/teams/$teamId'
     | '/api/connections/$connectorId/tools/$name/grant'
     | '/api/teams/$teamId/repositories/$repositoryId/retry'
+    | '/_authenticated/_app/settings/user-management/teams/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -3068,13 +3107,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppTasksIssueIdRouteImport
       parentRoute: typeof AuthenticatedAppTasksRoute
     }
-    '/_authenticated/_app/settings/user-management': {
-      id: '/_authenticated/_app/settings/user-management'
-      path: '/user-management'
-      fullPath: '/settings/user-management'
-      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementRouteImport
-      parentRoute: typeof AuthenticatedAppSettingsRoute
-    }
     '/_authenticated/_app/settings/profile': {
       id: '/_authenticated/_app/settings/profile'
       path: '/profile'
@@ -3109,6 +3141,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/agents/$agentId'
       preLoaderRoute: typeof AuthenticatedAppAgentsAgentIdRouteImport
       parentRoute: typeof AuthenticatedAppAgentsRoute
+    }
+    '/_authenticated/_app/settings/user-management/': {
+      id: '/_authenticated/_app/settings/user-management/'
+      path: '/user-management'
+      fullPath: '/settings/user-management/'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementIndexRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
     }
     '/api/workspaces/$id/members/$memberId': {
       id: '/api/workspaces/$id/members/$memberId'
@@ -3229,6 +3268,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAutomationsIdTriggersTriggerIdRouteImport
       parentRoute: typeof ApiAutomationsIdTriggersRoute
     }
+    '/_authenticated/_app/settings/user-management/members': {
+      id: '/_authenticated/_app/settings/user-management/members'
+      path: '/user-management/members'
+      fullPath: '/settings/user-management/members'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementMembersRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/user-management/teams/': {
+      id: '/_authenticated/_app/settings/user-management/teams/'
+      path: '/user-management/teams'
+      fullPath: '/settings/user-management/teams/'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementTeamsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
     '/api/teams/$teamId/repositories/$repositoryId/retry': {
       id: '/api/teams/$teamId/repositories/$repositoryId/retry'
       path: '/retry'
@@ -3242,6 +3295,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/connections/$connectorId/tools/$name/grant'
       preLoaderRoute: typeof ApiConnectionsConnectorIdToolsNameGrantRouteImport
       parentRoute: typeof ApiConnectionsConnectorIdRoute
+    }
+    '/_authenticated/_app/settings/user-management/teams/$teamId': {
+      id: '/_authenticated/_app/settings/user-management/teams/$teamId'
+      path: '/user-management/teams/$teamId'
+      fullPath: '/settings/user-management/teams/$teamId'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
     }
   }
 }
@@ -3281,8 +3341,11 @@ interface AuthenticatedAppSettingsRouteChildren {
   AuthenticatedAppSettingsGeneralRoute: typeof AuthenticatedAppSettingsGeneralRoute
   AuthenticatedAppSettingsPreferencesRoute: typeof AuthenticatedAppSettingsPreferencesRoute
   AuthenticatedAppSettingsProfileRoute: typeof AuthenticatedAppSettingsProfileRoute
-  AuthenticatedAppSettingsUserManagementRoute: typeof AuthenticatedAppSettingsUserManagementRoute
   AuthenticatedAppSettingsIndexRoute: typeof AuthenticatedAppSettingsIndexRoute
+  AuthenticatedAppSettingsUserManagementMembersRoute: typeof AuthenticatedAppSettingsUserManagementMembersRoute
+  AuthenticatedAppSettingsUserManagementIndexRoute: typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute: typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
+  AuthenticatedAppSettingsUserManagementTeamsIndexRoute: typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
 }
 
 const AuthenticatedAppSettingsRouteChildren: AuthenticatedAppSettingsRouteChildren =
@@ -3291,9 +3354,15 @@ const AuthenticatedAppSettingsRouteChildren: AuthenticatedAppSettingsRouteChildr
     AuthenticatedAppSettingsPreferencesRoute:
       AuthenticatedAppSettingsPreferencesRoute,
     AuthenticatedAppSettingsProfileRoute: AuthenticatedAppSettingsProfileRoute,
-    AuthenticatedAppSettingsUserManagementRoute:
-      AuthenticatedAppSettingsUserManagementRoute,
     AuthenticatedAppSettingsIndexRoute: AuthenticatedAppSettingsIndexRoute,
+    AuthenticatedAppSettingsUserManagementMembersRoute:
+      AuthenticatedAppSettingsUserManagementMembersRoute,
+    AuthenticatedAppSettingsUserManagementIndexRoute:
+      AuthenticatedAppSettingsUserManagementIndexRoute,
+    AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute:
+      AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute,
+    AuthenticatedAppSettingsUserManagementTeamsIndexRoute:
+      AuthenticatedAppSettingsUserManagementTeamsIndexRoute,
   }
 
 const AuthenticatedAppSettingsRouteWithChildren =
