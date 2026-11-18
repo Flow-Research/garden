@@ -132,13 +132,17 @@ function ChangePasswordForm({ onChanged }: { onChanged: () => void }) {
           htmlFor="revoke-other-sessions"
           className="flex items-start gap-3 text-sm"
         >
-          <Checkbox
-            id="revoke-other-sessions"
-            checked={revokeOtherSessions}
-            onCheckedChange={(checked) =>
-              setRevokeOtherSessions(checked === true)
-            }
-          />
+          {/* One line tall, so the box centers on the first line even when
+              the label wraps. */}
+          <span className="flex h-lh items-center">
+            <Checkbox
+              id="revoke-other-sessions"
+              checked={revokeOtherSessions}
+              onCheckedChange={(checked) =>
+                setRevokeOtherSessions(checked === true)
+              }
+            />
+          </span>
           <span>Sign out other sessions after changing password</span>
         </label>
 
