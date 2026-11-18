@@ -8,5 +8,8 @@
 6. Open Settings from the existing account or workspace menu. Expect the original modal, including its existing tabs.
 7. Sign out and open `/settings/profile`. Expect the existing login redirect, with no account data rendered.
 8. Confirm Notifications is absent and Teams still uses its existing routes.
+9. As a workspace owner or admin, open `/settings/user-management`. Expect Members and Team pills with Members active. Select Team. Expect `?view=team`, Create a Team and the Team grid or the No Teams empty state.
+10. On Team, create a Team with a name and one member. Expect the "A new team has been added" toast and a new card with its member count. Use the card menu's Add team member and Delete, and View all to open `/teams/$teamId`.
+11. As a workspace member, open `/settings/user-management?view=team`. Expect the member list without pills or Team management.
 
-Section redesigns and Teams migration are outside this scenario.
+Remaining section redesigns are outside this scenario.
