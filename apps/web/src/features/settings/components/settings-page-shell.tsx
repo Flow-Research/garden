@@ -53,7 +53,7 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
             ))}
           </div>
         </nav>
-        <div className="mt-6 min-w-0 sm:mt-10 sm:rounded-xl sm:bg-background-main-secondary sm:p-6 lg:p-10">
+        <div className="mt-6 min-w-0 sm:mt-10 lg:rounded-xl lg:bg-background-main-secondary lg:p-10">
           {children}
         </div>
       </div>
@@ -66,8 +66,8 @@ export function SettingsPanel({ className, ...props }: ComponentProps<'div'>) {
   return (
     <div
       className={cn(
-        // Phones drop the grey container, so cards need their own edge.
-        'min-w-0 rounded-lg border bg-background p-4 sm:border-0 sm:p-6',
+        // Below lg there is no grey container, so cards need their own edge.
+        'min-w-0 rounded-lg border bg-background p-4 sm:p-6 lg:border-0',
         className,
       )}
       {...props}
