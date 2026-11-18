@@ -55,6 +55,10 @@ const MAX_DEPTH = 5
 const SECRET_KEY_PATTERN =
   /authorization|cookie|token|secret|password|passwd|private.?key|api.?key|client.?secret|database.?url|connection.?string|session/i
 
+// Whole UUIDs are correlation values; a hex segment can resemble a cf token.
+const UUID_VALUE_PATTERN =
+  /^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i
+
 const SECRET_VALUE_PATTERNS = [
   /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi,
   /\bcf[a-z0-9_-]{16,}\b/gi,
@@ -345,7 +349,10 @@ function redactValue(value: unknown, depth: number): unknown {
   return String(value)
 }
 
+/** Keep UUID correlation intact without changing secret-key or credential redaction. */
 function redactString(value: string) {
+  if (UUID_VALUE_PATTERN.test(value)) return value
+
   const clipped =
     value.length > MAX_STRING_LENGTH
       ? `${value.slice(0, MAX_STRING_LENGTH)}…[truncated]`

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { evidenceFailures } from './pr-evidence.mjs'
 
 const REQUIRED_HEADINGS = [
   '## What changed',
@@ -238,6 +239,15 @@ function main() {
         'behavior changes need a documentation change or a documented reason that docs are not needed',
       )
     }
+
+    failures.push(
+      ...evidenceFailures({
+        files,
+        body,
+        prNumber: pullRequest.number,
+        verification,
+      }),
+    )
   }
 
   if (failures.length > 0) {
