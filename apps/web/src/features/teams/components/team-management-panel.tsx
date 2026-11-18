@@ -130,8 +130,12 @@ export function TeamManagementPanel({
   const [createOpen, setCreateOpen] = useState(false)
   const [addMemberTeam, setAddMemberTeam] = useState<TeamSummary | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TeamSummary | null>(null)
+  // No placeholder: the shared options keep the previous Team's members,
+  // which would open the dialog filtering candidates against the wrong Team.
+  // Cached members for the selected Team still return immediately.
   const { data: addMemberExisting } = useQuery({
     ...teamMemberListOptions(wsId, addMemberTeam?.id ?? ''),
+    placeholderData: undefined,
     enabled: Boolean(addMemberTeam),
   })
 
