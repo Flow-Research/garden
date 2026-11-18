@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import type { MemberWithUser } from '@garden/core/types'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button, buttonVariants } from '@garden/ui/components/ui/button'
+import { cn } from '@garden/ui/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -115,7 +116,7 @@ export function GithubWorkspaceIdentitySection() {
                 {membership.github_login ? 'Linked' : 'Not linked'}
               </Badge>
             </div>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="text-xs break-words text-muted-foreground">
               {membership.github_login
                 ? `@${membership.github_login}`
                 : 'Not linked yet. Agents cannot assign GitHub issues to you.'}
@@ -126,6 +127,7 @@ export function GithubWorkspaceIdentitySection() {
               type="button"
               size="sm"
               variant="ghost"
+              className="w-full sm:w-auto"
               disabled={unlinking}
               onClick={() => void handleUnlink()}
             >
@@ -135,7 +137,11 @@ export function GithubWorkspaceIdentitySection() {
           ) : (
             <a
               href="/api/github/identity/start"
-              className={buttonVariants({ size: 'sm', variant: 'outline' })}
+              className={cn(
+                // cn resolves the base border-transparent against outline's border.
+                buttonVariants({ size: 'sm', variant: 'outline' }),
+                'w-full sm:w-auto',
+              )}
             >
               Link with GitHub
             </a>
