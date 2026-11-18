@@ -63,7 +63,11 @@ export async function startTestDb(
     })
     .withExposedPorts(5432)
     .withWaitStrategy(
-      Wait.forLogMessage(/database system is ready to accept connections/, 2),
+      // Logs can arrive before Docker's mapped host port accepts connections.
+      Wait.forAll([
+        Wait.forLogMessage(/database system is ready to accept connections/, 2),
+        Wait.forListeningPorts(),
+      ]),
     )
     .start()
 
