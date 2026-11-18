@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { KeyRound } from 'lucide-react'
+import { Eye, EyeOff, KeyRound } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@garden/ui/components/ui/button'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
@@ -101,9 +100,6 @@ function ChangePasswordForm({ onChanged }: { onChanged: () => void }) {
         <DialogTitle className="text-xl font-semibold">
           Change password
         </DialogTitle>
-        <DialogDescription>
-          Use at least {MIN_PASSWORD_LENGTH} characters.
-        </DialogDescription>
       </DialogHeader>
 
       <form className="space-y-5" onSubmit={handleSubmit}>
@@ -121,6 +117,7 @@ function ChangePasswordForm({ onChanged }: { onChanged: () => void }) {
           onChange={setNewPassword}
           autoComplete="new-password"
           minLength={MIN_PASSWORD_LENGTH}
+          hint={`Use at least ${MIN_PASSWORD_LENGTH} characters.`}
         />
         <PasswordField
           id="confirm-password"
@@ -161,6 +158,7 @@ function PasswordField({
   onChange,
   autoComplete,
   minLength,
+  hint = null,
   error = null,
 }: {
   id: string
@@ -169,24 +167,55 @@ function PasswordField({
   onChange: (value: string) => void
   autoComplete: string
   minLength?: number
+  hint?: string | null
   error?: string | null
 }) {
+  const [revealed, setRevealed] = useState(false)
+  const hintId = `${id}-hint`
   const errorId = `${id}-error`
+  const describedBy =
+    [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') ||
+    undefined
+
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        type="password"
-        className="h-10 bg-muted"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        autoComplete={autoComplete}
-        minLength={minLength}
-        required
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-      />
+      <div className="relative">
+        <Input
+          id={id}
+          type={revealed ? 'text' : 'password'}
+          className="h-10 bg-muted pr-10"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          autoComplete={autoComplete}
+          minLength={minLength}
+          required
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+        />
+        <button
+          type="button"
+          aria-label={
+            revealed
+              ? `Hide ${label.toLowerCase()}`
+              : `Show ${label.toLowerCase()}`
+          }
+          aria-pressed={revealed}
+          onClick={() => setRevealed((current) => !current)}
+          className="absolute top-1/2 right-2 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+        >
+          {revealed ? (
+            <EyeOff aria-hidden="true" className="size-4" />
+          ) : (
+            <Eye aria-hidden="true" className="size-4" />
+          )}
+        </button>
+      </div>
+      {hint ? (
+        <p id={hintId} className="text-xs text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
       {error ? (
         <p id={errorId} className="text-xs text-destructive">
           {error}

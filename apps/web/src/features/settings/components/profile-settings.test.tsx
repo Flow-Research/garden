@@ -177,8 +177,18 @@ describe('ProfileSettings', () => {
       name: 'Change password',
     })
 
+    const newPassword = within(dialog).getByLabelText('New password')
+    expect(newPassword).toHaveAccessibleDescription(
+      'Use at least 8 characters.',
+    )
+    expect(newPassword).toHaveAttribute('type', 'password')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Show new password' }),
+    )
+    expect(newPassword).toHaveAttribute('type', 'text')
+
     await user.type(within(dialog).getByLabelText('Current password'), 'old')
-    await user.type(within(dialog).getByLabelText('New password'), 'new-pass1')
+    await user.type(newPassword, 'new-pass1')
     await user.type(
       within(dialog).getByLabelText('Confirm new password'),
       'new-pass2',
