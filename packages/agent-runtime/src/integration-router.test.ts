@@ -616,6 +616,48 @@ describe('explicit tool integration selection', () => {
     )
   })
 
+  it('does not treat a one-word tool name in plain prose as an explicit request', () => {
+    const catalog: ExecutorCatalog = {
+      ...CATALOG,
+      integrations: [
+        ...CATALOG.integrations,
+        {
+          slug: 'notes',
+          name: 'Notes',
+          description: 'Workspace notes and pages.',
+          capabilities: ['read workspace pages'],
+        },
+      ],
+      connections: [
+        ...CATALOG.connections,
+        { owner: 'user', integration: 'notes', name: 'notes', identityLabel: 'sam' },
+      ],
+      tools: [
+        ...CATALOG.tools,
+        {
+          name: 'search',
+          description: 'Search pages.',
+          integration: 'notes',
+          connection: 'notes',
+          owner: 'user',
+          requiresApproval: false,
+        },
+      ],
+    }
+    const prose = selectIntegrationRoute({
+      catalog,
+      userText: 'search my email for the invoice',
+    })
+    expect(prose.routes[0]?.slug).toBe('gmail')
+
+    const quoted = selectIntegrationRoute({
+      catalog,
+      userText: 'Call `search` for the onboarding page.',
+    })
+    expect(quoted.status).toBe('selected')
+    expect(quoted.routes[0]?.slug).toBe('notes')
+  })
+
   it('does not promote an unavailable tool name over a real exact request', () => {
     const decision = selectIntegrationRoute({
       catalog: COMPETING_CATALOG,

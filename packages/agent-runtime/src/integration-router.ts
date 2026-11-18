@@ -79,8 +79,17 @@ function intersection(left: Set<string>, right: Set<string>): string[] {
   return [...left].filter((term) => right.has(term))
 }
 
+/**
+ * A tool name counts as explicitly requested only when it cannot be ordinary
+ * prose: it contains `_`, `.` or `-`, or the user quoted it. One-word MCP tool
+ * names such as `search` or `fetch` would otherwise hijack routing for any
+ * message that uses the word.
+ */
 function explicitlyRequestsTool(userText: string, toolName: string): boolean {
   const escapedName = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (!/[_.-]/.test(toolName)) {
+    return new RegExp(`[\`'"]${escapedName}[\`'"]`, 'i').test(userText)
+  }
   return new RegExp(
     `(?:^|[^a-z0-9_-])${escapedName}(?=$|[^a-z0-9_-])`,
     'i',
