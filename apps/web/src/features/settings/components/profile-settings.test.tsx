@@ -116,41 +116,53 @@ describe('ProfileSettings', () => {
     mockRevokeSession.mockResolvedValue({ data: {}, error: null })
   })
 
-  it('shows the workspace role and email verification', () => {
+  it('shows the name, workspace role and email verification', () => {
     renderProfile()
+    expect(screen.getByRole('heading', { name: 'Ada' })).toBeInTheDocument()
     expect(screen.getByText('Admin')).toBeInTheDocument()
     expect(screen.getByText('ada@example.com')).toBeInTheDocument()
     expect(screen.getByText('Verified')).toBeInTheDocument()
   })
 
-  it('shows Save and Reset only after the name is edited', async () => {
-    const user = userEvent.setup()
-    renderProfile()
-    const input = screen.getByLabelText('Preferred name')
-
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Reset' })).toBeNull()
-
-    await user.type(input, ' Lovelace')
-    expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Reset' }))
-    expect(input).toHaveValue('Ada')
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull()
-  })
-
-  it('saves the trimmed name', async () => {
+  it('edits the name in a dialog and saves only a changed name', async () => {
     const user = userEvent.setup()
     mockUpdateMe.mockResolvedValue({ ...USER, name: 'Ada Lovelace' })
     renderProfile()
 
-    await user.type(screen.getByLabelText('Preferred name'), ' Lovelace  ')
-    await user.click(screen.getByRole('button', { name: 'Save' }))
+    await user.click(screen.getByRole('button', { name: 'Edit name' }))
+    const dialog = await screen.findByRole('dialog')
+    const input = within(dialog).getByLabelText('Preferred name')
+    const save = within(dialog).getByRole('button', { name: 'Save' })
+    expect(input).toHaveValue('Ada')
+    expect(save).toBeDisabled()
+
+    await user.type(input, ' Lovelace  ')
+    await user.click(save)
 
     expect(mockUpdateMe).toHaveBeenCalledWith({ name: 'Ada Lovelace' })
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Save' })).toBeNull(),
-    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(
+      screen.getByRole('heading', { name: 'Ada Lovelace' }),
+    ).toBeInTheDocument()
+  })
+
+  it('discards an unsaved name on cancel', async () => {
+    const user = userEvent.setup()
+    renderProfile()
+
+    await user.click(screen.getByRole('button', { name: 'Edit name' }))
+    const dialog = await screen.findByRole('dialog')
+    await user.type(within(dialog).getByLabelText('Preferred name'), ' X')
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    await user.click(screen.getByRole('button', { name: 'Edit name' }))
+    expect(
+      within(await screen.findByRole('dialog')).getByLabelText(
+        'Preferred name',
+      ),
+    ).toHaveValue('Ada')
+    expect(mockUpdateMe).not.toHaveBeenCalled()
   })
 
   it('hides the password row for Google-only accounts', async () => {

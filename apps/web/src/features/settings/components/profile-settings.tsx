@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { format } from 'date-fns'
 import { Result, TaggedError } from 'better-result'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { Camera } from 'lucide-react'
+import { Camera, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import type { MemberRole } from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -10,6 +10,12 @@ import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@garden/ui/components/ui/dialog'
 import { Input } from '@garden/ui/components/ui/input'
 import { Label } from '@garden/ui/components/ui/label'
 import { Spinner } from '@garden/ui/components/ui/spinner'
@@ -68,23 +74,75 @@ export function ProfileSettings() {
 
 function IdentityCard() {
   const user = useAuthStore((s) => s.user)
-  const setUser = useAuthStore((s) => s.setUser)
   const wsId = useWorkspaceId()
   const { data: members } = useQuery(memberListOptions(wsId))
   const role = members?.find((member) => member.user_id === user?.id)?.role
 
-  // Unsaved edits only, so a user object update (e.g. an avatar upload)
-  // never overwrites a name being typed.
-  const [nameDraft, setNameDraft] = useState<string | null>(null)
+  return (
+    <SettingsPanel className="flex flex-wrap items-center gap-4 sm:gap-6">
+      <AvatarUpload />
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="truncate text-lg font-semibold">
+            {user?.name || user?.email}
+          </h2>
+          {role ? (
+            <Badge className="bg-info/10 text-info">{roleLabels[role]}</Badge>
+          ) : null}
+        </div>
+        {user?.created_at ? (
+          <p className="text-sm text-muted-foreground">
+            Member since {format(new Date(user.created_at), 'MMM d, yyyy')}
+          </p>
+        ) : null}
+      </div>
+      <EditNameDialog />
+    </SettingsPanel>
+  )
+}
+
+function EditNameDialog() {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen(true)}
+      >
+        <Pencil aria-hidden="true" className="size-4" />
+        Edit name
+      </Button>
+      <DialogContent size="md" className="gap-6 p-6">
+        {/* The popup unmounts on close, so each open starts from the saved name. */}
+        <EditNameForm
+          onCancel={() => setOpen(false)}
+          onSaved={() => setOpen(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function EditNameForm({
+  onCancel,
+  onSaved,
+}: {
+  onCancel: () => void
+  onSaved: () => void
+}) {
+  const savedName = useAuthStore((s) => s.user?.name ?? '')
+  const setUser = useAuthStore((s) => s.setUser)
+  const [name, setName] = useState(savedName)
   const [saving, setSaving] = useState(false)
-  const savedName = user?.name ?? ''
-  const name = nameDraft ?? savedName
-  const edited = nameDraft !== null && nameDraft !== savedName
+  const trimmed = name.trim()
+  const canSave = !saving && trimmed.length > 0 && trimmed !== savedName
 
   const handleSave = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    const trimmed = name.trim()
-    if (!edited || !trimmed || saving) return
+    if (!canSave) return
     setSaving(true)
     const result = await profileUpdate('Failed to update name', () =>
       api.updateMe({ name: trimmed }),
@@ -92,56 +150,48 @@ function IdentityCard() {
     result.match({
       ok: (updated) => {
         setUser(updated)
-        setNameDraft(null)
         toast.success('Name updated')
+        onSaved()
       },
-      err: (error) => toast.error(error.message),
+      err: (error) => {
+        setSaving(false)
+        toast.error(error.message)
+      },
     })
-    setSaving(false)
   }
 
   return (
-    <SettingsPanel className="flex flex-wrap items-start gap-4 sm:gap-6">
-      <AvatarUpload />
-      <form className="min-w-0 flex-1 space-y-1.5" onSubmit={handleSave}>
+    <form className="space-y-6" onSubmit={handleSave}>
+      <DialogHeader>
+        <DialogTitle className="text-lg font-semibold">Edit name</DialogTitle>
+      </DialogHeader>
+      <div className="space-y-1.5">
         <Label htmlFor="preferred-name">Preferred name</Label>
-        <div className="flex flex-wrap items-center gap-2">
-          <Input
-            id="preferred-name"
-            className="h-10 max-w-sm bg-muted"
-            value={name}
-            onChange={(event) => setNameDraft(event.target.value)}
-            placeholder="Your name"
-            autoComplete="name"
-          />
-          {edited ? (
-            <>
-              <Button type="submit" size="sm" disabled={saving || !name.trim()}>
-                {saving ? <Spinner aria-hidden="true" /> : null}
-                {saving ? 'Saving...' : 'Save'}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => setNameDraft(null)}
-                disabled={saving}
-              >
-                Reset
-              </Button>
-            </>
-          ) : null}
-        </div>
-        {user?.created_at ? (
-          <p className="text-xs text-muted-foreground">
-            Member since {format(new Date(user.created_at), 'MMM d, yyyy')}
-          </p>
-        ) : null}
-      </form>
-      {role ? (
-        <Badge className="bg-info/10 text-info">{roleLabels[role]}</Badge>
-      ) : null}
-    </SettingsPanel>
+        <Input
+          id="preferred-name"
+          className="h-10 bg-muted"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Your name"
+          autoComplete="name"
+          required
+        />
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={onCancel}
+          disabled={saving}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={!canSave}>
+          {saving ? <Spinner aria-hidden="true" /> : null}
+          {saving ? 'Saving...' : 'Save'}
+        </Button>
+      </div>
+    </form>
   )
 }
 
