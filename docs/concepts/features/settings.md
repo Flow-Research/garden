@@ -28,7 +28,7 @@ These sections reuse the same components, queries and mutations as the modal and
 User Management has Members and Team sub-tabs, shown as pills. `?view=team` selects Team, so the sub-tab survives reload and browser history. Members is the default.
 
 - **Members** keeps every existing workspace member control: invite with role and Teams, role changes, removal, GitHub identity linking, and pending invitation resend and revoke.
-- **Team** is visible only to workspace owners and admins, because creating, deleting and staffing Teams needs the `teamManage` permission. Others see Members only, even with `?view=team`. It shows the same Team management panel as `/teams`: Create a Team, the Team card grid with member counts, the card menu's Add team member and Delete, and workspace invite settings. View all opens the Team at `/teams/$teamId`.
+- **Team** is visible only to workspace owners and admins, because creating, deleting and staffing Teams needs the `teamManage` permission. Others see Members only, even with `?view=team`. It shows the same Team management panel as `/teams`: Create a Team, the Team card grid with member counts, and the card menu's Add team member and Delete. View all opens the Team at `/teams/$teamId`. The default Team for new members stays on `/teams` only.
 
 The design also shows Roles and Guests sub-tabs. Workspace roles are the fixed owner, admin and member set and Garden has no guest access, so neither sub-tab exists until the backend supports it.
 

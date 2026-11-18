@@ -23,16 +23,6 @@ vi.mock('@tanstack/react-router', () => ({
 vi.mock('./members-tab', () => ({
   MembersTab: () => <h2>Members content</h2>,
 }))
-const api = vi.hoisted(() => ({
-  getWorkspaceTeamSettings: vi.fn(async () => ({
-    team_owners_can_invite: false,
-    default_invite_team_id: null,
-  })),
-}))
-vi.mock('@/lib/api', async (importActual) => ({
-  ...(await importActual<Record<string, unknown>>()),
-  api,
-}))
 
 function member(role: MemberWithUser['role']) {
   return {
@@ -96,6 +86,7 @@ describe('UserManagementTab', () => {
     ).toBeVisible()
     expect(screen.getByText('Platform')).toBeVisible()
     expect(screen.getByText('3 members')).toBeVisible()
+    expect(screen.queryByText('Default team for new members')).toBeNull()
     expect(
       screen.queryByRole('heading', { name: 'Members content' }),
     ).toBeNull()

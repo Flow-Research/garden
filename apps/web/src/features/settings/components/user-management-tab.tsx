@@ -4,7 +4,6 @@ import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import { TeamInviteSettings } from '@/features/teams/components/team-invite-settings'
 import { TeamManagementPanel } from '@/features/teams/components/team-management-panel'
 import { teamListOptions } from '@/features/teams/queries'
 import { memberListOptions } from '@/lib/workspace/queries'
@@ -47,13 +46,7 @@ function TeamView() {
   const wsId = useWorkspaceId()
   const { data } = useSuspenseQuery(teamListOptions(wsId))
   return (
-    <div className="flex flex-col gap-10">
-      <TeamManagementPanel
-        teams={data.teams}
-        toolbar={<UserManagementPills />}
-      />
-      <TeamInviteSettings teams={data.teams} />
-    </div>
+    <TeamManagementPanel teams={data.teams} toolbar={<UserManagementPills />} />
   )
 }
 
