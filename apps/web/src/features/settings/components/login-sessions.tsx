@@ -197,7 +197,7 @@ export function LoginSessions() {
       </header>
 
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-sm">
+        <table className="w-full min-w-[600px] text-sm whitespace-nowrap">
           <thead className="bg-background-main-secondary">
             <tr>
               {columns.map((column) => (
@@ -209,7 +209,7 @@ export function LoginSessions() {
                   {column}
                 </th>
               ))}
-              <th scope="col" className="w-12 px-2">
+              <th scope="col" className="px-4">
                 <span className="sr-only">Actions</span>
               </th>
             </tr>
@@ -263,12 +263,12 @@ export function LoginSessions() {
                         <span className="text-muted-foreground">Active</span>
                       )}
                     </td>
-                    <td className="px-2 py-3">
+                    <td className="px-4 py-3">
                       {isCurrent ? null : (
                         <Button
                           type="button"
                           variant="ghost"
-                          size="icon-sm"
+                          size="sm"
                           aria-label={`Sign out ${device.application} on ${device.operatingSystem}`}
                           onClick={() =>
                             askToSignOut({
@@ -279,6 +279,7 @@ export function LoginSessions() {
                           }
                         >
                           <LogOut aria-hidden="true" />
+                          Sign out
                         </Button>
                       )}
                     </td>
