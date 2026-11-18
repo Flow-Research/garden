@@ -1,4 +1,3 @@
-import { and, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
@@ -6,37 +5,41 @@ import {
   updateAgentBodySchema,
 } from '@/lib/server/validation/agents'
 import { refreshChatThreadPromptConfig } from '@/lib/server/chat-agents'
-import { schema } from '@/lib/server/db'
 import {
   badRequest,
   notFound,
   requireWorkspaceAccess,
-  toAgent,
 } from '@/lib/server/control-plane'
 import {
   requireWorkspaceMember,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { getAgentRecord } from '@/lib/server/agents/get-service'
+import { updateWorkspaceAgent } from '@/lib/server/agents/update-service'
+import { getAgentWorkspaceHost } from '@/lib/server/queries/agents'
 
+/**
+ * `/api/agents/$id` get/update. Auth + Zod here; row writes in agents
+ * services / queries. Prompt refresh stays a post-success route side effect.
+ */
 export const Route = createFileRoute('/api/agents/$id')({
   server: {
     handlers: {
       GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const db = await appContext.db()
-        const [agent] = await db
-          .select()
-          .from(schema.agent)
-          .where(eq(schema.agent.id, params.id))
-        if (!agent) return notFound('Agent not found')
+        const result = await getAgentRecord(db, params.id)
+        if (result.isErr()) {
+          return notFound(result.error.message)
+        }
 
         const access = await requireWorkspaceAccess(
           appContext,
-          agent.workspaceId,
+          result.value.workspaceId,
         )
         if (access instanceof Response) return access
 
-        return Response.json(toAgent(agent))
+        return Response.json(result.value.agent)
       },
       PUT: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
@@ -48,35 +51,8 @@ export const Route = createFileRoute('/api/agents/$id')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const updateValues: Partial<typeof schema.agent.$inferInsert> = {}
-        if (typeof body.name === 'string') updateValues.name = body.name
-        if (typeof body.description === 'string') {
-          updateValues.roleTitle = body.description
-        }
-        if (typeof body.instructions === 'string') {
-          updateValues.instructions = body.instructions
-        }
-        if (Object.prototype.hasOwnProperty.call(body, 'runtime_config')) {
-          updateValues.persona =
-            body.runtime_config && typeof body.runtime_config === 'object'
-              ? JSON.stringify(body.runtime_config)
-              : null
-        }
-        if (
-          Object.prototype.hasOwnProperty.call(body, 'permissions') &&
-          body.permissions !== undefined
-        ) {
-          updateValues.permissions = body.permissions
-        }
-
         const db = await appContext.db()
-        const [existingAgent] = await db
-          .select({
-            workspaceId: schema.agent.workspaceId,
-            hostName: schema.agent.hostName,
-          })
-          .from(schema.agent)
-          .where(eq(schema.agent.id, params.id))
+        const existingAgent = await getAgentWorkspaceHost(db, params.id)
         if (!existingAgent) return notFound('Agent not found')
 
         const access = await requireWorkspaceMember(
@@ -85,42 +61,33 @@ export const Route = createFileRoute('/api/agents/$id')({
           workspacePermissions.agentManage,
         )
         if (access instanceof Response) return access
-        if (Object.keys(updateValues).length === 0) {
-          return badRequest('No valid agent changes submitted')
+
+        const updateResult = await updateWorkspaceAgent({
+          db,
+          agentId: params.id,
+          workspaceId: existingAgent.workspaceId,
+          body,
+        })
+        if (updateResult.isErr()) {
+          return Response.json(
+            { error: updateResult.error.message },
+            { status: updateResult.error.status },
+          )
         }
 
-        const [agent] = await db
-          .update(schema.agent)
-          .set(updateValues)
-          .where(
-            and(
-              eq(schema.agent.id, params.id),
-              eq(schema.agent.workspaceId, existingAgent.workspaceId),
-            ),
-          )
-          .returning()
-        if (!agent) return notFound('Agent not found')
-
-        if (existingAgent.hostName) {
-          const hostName = existingAgent.hostName
-          const threads = await db
-            .select({
-              id: schema.chatThread.id,
-            })
-            .from(schema.chatThread)
-            .where(eq(schema.chatThread.agentId, params.id))
-
+        const { agent, hostName, threadIds } = updateResult.value
+        if (hostName) {
           await Promise.all(
-            threads.map((thread) =>
+            threadIds.map((threadId) =>
               refreshChatThreadPromptConfig({
-                threadId: thread.id,
+                threadId,
                 hostName,
               }),
             ),
           )
         }
 
-        return Response.json(toAgent(agent))
+        return Response.json(agent)
       },
     },
   },

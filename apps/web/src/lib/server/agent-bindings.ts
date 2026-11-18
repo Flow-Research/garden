@@ -1,33 +1,20 @@
-import { defaultTrustLevelForRisk } from '@garden/connectors/capabilities'
+import { bindExistingCapabilitiesToAgent as bindFromQueries } from '@/lib/server/queries/agents'
 import type { Db, schema } from './db'
 
+/**
+ * Compatibility wrapper for default-agent recovery in `chat-agents.ts`.
+ * SQL lives in `queries/agents/bindings.ts`; this keeps the prior call shape
+ * (`schema` arg ignored) so chat-agents does not need a wider refactor.
+ */
 export async function bindExistingCapabilitiesToAgent(input: {
   db: Pick<Db, 'select' | 'insert'>
   schema: typeof schema
   agentId: string
   grantedBy: string
 }) {
-  const capabilities = await input.db
-    .select({
-      id: input.schema.capability.id,
-      riskClass: input.schema.capability.riskClass,
-    })
-    .from(input.schema.capability)
-
-  if (capabilities.length === 0) return
-
-  await input.db
-    .insert(input.schema.permissionGrant)
-    .values(
-      capabilities.map((capability) => ({
-        id: crypto.randomUUID(),
-        agentId: input.agentId,
-        capabilityId: capability.id,
-        trustLevel: defaultTrustLevelForRisk(capability.riskClass),
-        grantedBy: input.grantedBy,
-        grantedAt: new Date(),
-        expiresAt: null,
-      })),
-    )
-    .onConflictDoNothing()
+  await bindFromQueries({
+    db: input.db,
+    agentId: input.agentId,
+    grantedBy: input.grantedBy,
+  })
 }
