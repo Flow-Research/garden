@@ -630,7 +630,12 @@ describe('explicit tool integration selection', () => {
       ],
       connections: [
         ...CATALOG.connections,
-        { owner: 'user', integration: 'notes', name: 'notes', identityLabel: 'sam' },
+        {
+          owner: 'user',
+          integration: 'notes',
+          name: 'notes',
+          identityLabel: 'sam',
+        },
       ],
       tools: [
         ...CATALOG.tools,
