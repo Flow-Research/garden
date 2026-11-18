@@ -130,7 +130,7 @@ function ChangePasswordForm({ onChanged }: { onChanged: () => void }) {
 
         <label
           htmlFor="revoke-other-sessions"
-          className="flex items-start gap-3 text-sm"
+          className="flex items-start gap-2 text-sm"
         >
           {/* One line tall, so the box centers on the first line even when
               the label wraps. */}
