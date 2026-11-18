@@ -2,7 +2,7 @@
 title: Pull request contract
 description: What the PR contract check enforces on a pull request body and diff, and what it cannot prove.
 status: current
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-03
 ---
 
@@ -10,10 +10,10 @@ The `PR contract` job in `.github/workflows/pr-contract.yml` runs `pnpm verify:p
 
 ## Triggers
 
-| Event          | Branches      | Behavior                                                                                                    |
-| -------------- | ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `pull_request` | `dev`, `main` | Full check. Runs on `opened`, `synchronize`, `reopened`, `edited`, and `ready_for_review`.                  |
-| `push`         | `dev`, `main` | Records a passing "not applicable" status, so `PR contract` appears in the branch-rule check list.          |
+| Event          | Branches      | Behavior                                                                                           |
+| -------------- | ------------- | -------------------------------------------------------------------------------------------------- |
+| `pull_request` | `dev`, `main` | Full check. Runs on `opened`, `synchronize`, `reopened`, `edited`, and `ready_for_review`.         |
+| `push`         | `dev`, `main` | Records a passing "not applicable" status, so `PR contract` appears in the branch-rule check list. |
 
 The job checks out with `fetch-depth: 0` because it diffs the base and head commits from the event.
 
@@ -25,6 +25,10 @@ The job checks out with `fetch-depth: 0` because it diffs the base and head comm
 | `main` | `dev` only, for a release |
 
 The check rejects any other target. The title must have at least 10 characters.
+
+## Dependency updates
+
+Pull requests opened by `dependabot[bot]` skip the contract. Dependabot writes its own title and body, and security updates always target the default branch (`main`). Dependency bumps are still gated by the `Verify` check and a maintainer review.
 
 ## Draft pull requests
 
@@ -45,21 +49,21 @@ A pull request that is ready for review must contain each of these level-two hea
 
 ## Section rules
 
-| Section               | Rule                                                                                                                                                                 |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Section               | Rule                                                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Contribution standard | These three items are checked: "I stated the outcome and non-goals.", "I read `docs/README.md` and the relevant code, tests, and documentation", and "I reviewed the final diff and considered its wider effects." |
-| Documentation         | Has a checked item that names a feature doc, architecture, design, verification, maintainer, or workflow doc, or states `Documentation: not needed` (or `not required`). |
-| Checks                | Lists at least one command in code font or a `pnpm`, `npm`, `yarn`, `bun`, or `git` command.                                                                           |
-| Verification          | States `PASS`, `FAIL`, or `INCONCLUSIVE` and contains the word "evidence".                                                                                           |
+| Documentation         | Has a checked item that names a feature doc, architecture, design, verification, maintainer, or workflow doc, or states `Documentation: not needed` (or `not required`).                                           |
+| Checks                | Lists at least one command in code font or a `pnpm`, `npm`, `yarn`, `bun`, or `git` command.                                                                                                                       |
+| Verification          | States `PASS`, `FAIL`, or `INCONCLUSIVE` and contains the word "evidence".                                                                                                                                         |
 
 ## Behavior changes need documentation
 
 The check reads the changed paths between the base and head commits.
 
-| Path class    | Paths                                                                                  |
-| ------------- | -------------------------------------------------------------------------------------- |
-| Behavior      | `apps/`, `packages/`, `workers/`, `scripts/`, `alchemy.run.ts`, `deploy-targets.mjs`   |
-| Documentation | `docs/`, `.agents/skills/`, `AGENTS.md`, `CONTRIBUTING.md`                             |
+| Path class    | Paths                                                                                |
+| ------------- | ------------------------------------------------------------------------------------ |
+| Behavior      | `apps/`, `packages/`, `workers/`, `scripts/`, `alchemy.run.ts`, `deploy-targets.mjs` |
+| Documentation | `docs/`, `.agents/skills/`, `AGENTS.md`, `CONTRIBUTING.md`                           |
 
 If the diff changes a behavior path and no documentation path, the Documentation section must state `Documentation: not needed`. Otherwise the check fails.
 

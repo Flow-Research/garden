@@ -1,13 +1,6 @@
-import { asc, eq, inArray } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import {
-  postIssueComment,
-  toIssueAttachment,
-  toIssueComment,
-} from '@garden/server/issues/server'
-import { archiveInboxItemsByKey } from '@garden/db/inbox'
-import { schema } from '@/lib/server/db'
+import { postIssueComment } from '@garden/server/issues/server'
 import { appEnv } from '@/lib/server/env'
 import {
   commentBodySchema,
@@ -16,6 +9,9 @@ import {
 import { badRequest } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
+import { listIssueComments } from '@/lib/server/issues/comments-service'
+import { archiveIssueInboxItemsByKey } from '@/lib/server/queries/issues'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 
 export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
@@ -24,39 +20,12 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         const appContext = requireAppRequestContext(context)
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
-        const db = access.db
 
-        const comments = await db
-          .select()
-          .from(schema.issueComment)
-          .where(eq(schema.issueComment.issueId, params.id))
-        const commentIds = comments.map((comment) => comment.id)
-        const attachments = commentIds.length
-          ? (
-              await db
-                .select()
-                .from(schema.issueAttachment)
-                .where(inArray(schema.issueAttachment.commentId, commentIds))
-                .orderBy(asc(schema.issueAttachment.createdAt))
-            ).map(toIssueAttachment)
-          : []
-        const attachmentsByCommentId = new Map(
-          commentIds.map((commentId) => [
-            commentId,
-            attachments.filter(
-              (attachment) => attachment.comment_id === commentId,
-            ),
-          ]),
-        )
-
-        return Response.json(
-          comments.map((comment) =>
-            toIssueComment(
-              comment,
-              attachmentsByCommentId.get(comment.id) ?? [],
-            ),
-          ),
-        )
+        const commentsResult = await listIssueComments(access.db, params.id)
+        return commentsResult.match({
+          ok: (comments) => Response.json(comments),
+          err: (error) => serviceErrorResponse(error),
+        })
       },
       POST: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
@@ -86,8 +55,7 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (commentResult.isErr())
           return badRequest(commentResult.error.message)
         if (existingIssue.activeRunId) {
-          await archiveInboxItemsByKey({
-            db,
+          await archiveIssueInboxItemsByKey(db, {
             workspaceId: existingIssue.workspaceId,
             itemKeys: [`waiting_for_input:${existingIssue.activeRunId}`],
           })

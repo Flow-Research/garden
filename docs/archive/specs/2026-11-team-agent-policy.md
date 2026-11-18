@@ -1,14 +1,14 @@
 ---
 title: Team agent policy
-description: Proposal to let workspace admins cap what agents may do when they act for a Team's members, which connectors they may use, and which actions need the Team owner's approval.
-status: proposal
+description: Archived proposal to let workspace admins cap what agents may do when they act for a Team's members, which connectors they may use, and which actions need the Team owner's approval.
+status: archived
 owner: '@Umoren'
 last_reviewed: 2026-11-05
 ---
 
 **Date:** 2026-11-05. **Audience:** product, frontend, backend, and QA engineers.
 
-> **Not built.** As of 2026-11-05, Teams play no part in agent permission or approval decisions. This proposal follows the Teams Settings entry (PR #288), and covers screens 34 to 38 of the Teams admin designs.
+> **Historical snapshot.** Built on 2026-11-05. The current behavior is in [Teams](../../concepts/features/teams.md#agent-policy-caps-what-agents-do-for-a-teams-members) and [Permissions](../../concepts/features/permissions.md). Where the build differs from this proposal, the Teams page lists the difference.
 
 ## The problem
 

@@ -167,8 +167,8 @@ describe('AssigneePicker', () => {
     // Archived agents are not assignable, workspace outsiders are not members.
     expect(screen.queryByText('Archived Agent')).toBeNull()
     expect(screen.queryByText('Outside Member')).toBeNull()
-    // Team issues must always carry a Team member assignee.
-    expect(screen.queryByText('Unassigned')).toBeNull()
+    // Team issues may be unassigned, so the picker can clear the assignee.
+    expect(screen.getAllByText('Unassigned').length).toBeGreaterThan(0)
     expect(mocks.listTeamMembers).toHaveBeenCalledWith('team-1')
     expect(mocks.listMembers).not.toHaveBeenCalled()
     expect(mocks.listAgents).not.toHaveBeenCalled()

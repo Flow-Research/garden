@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   deploymentTargets,
+  databaseEnvForTarget,
   deploymentTargetFromBranch,
   deploymentTargetFromEnv,
 } from '../deploy-targets.mjs'
@@ -427,10 +428,37 @@ assert.equal(deploymentTargets.preview.branch, null)
 assert.equal(packageJson.scripts['deploy:ci'], 'node scripts/deploy-ci.mjs')
 assert.equal(
   packageJson.scripts['deploy:dev'],
-  'pnpm typecheck && pnpm run deploy:dev:alchemy',
+  'pnpm typecheck && node scripts/deploy-dev.mjs',
+)
+// Dev migrates its own Neon branch and must never fall back to the shared URL.
+assert.equal(deploymentTargets.dev.databaseUrlEnv, 'DEV_DATABASE_URL')
+assert.equal(deploymentTargets.staging.databaseUrlEnv, 'DATABASE_URL')
+assert.equal(
+  databaseEnvForTarget(deploymentTargets.dev, {
+    DATABASE_URL: 'postgres://shared',
+    DEV_DATABASE_URL: 'postgres://dev',
+  }).DATABASE_URL,
+  'postgres://dev',
+)
+assert.throws(
+  () =>
+    databaseEnvForTarget(deploymentTargets.dev, {
+      DATABASE_URL: 'postgres://shared',
+    }),
+  /DEV_DATABASE_URL must be set to deploy garden-dev/,
 )
 assert.match(
   packageJson.scripts['deploy:dev:alchemy'],
   /GARDEN_DEPLOY_TARGET=dev.*alchemy deploy --stage dev --yes/,
 )
 assert.match(alchemySource, /Alchemy.Stack\(\s*deployTarget.stackName/)
+
+// Hyperdrive caches read queries by default (alchemy Cloudflare/Hyperdrive/
+// Connection.ts: maxAge 60s, staleWhileRevalidate 15s) and writes do not
+// invalidate it. Garden reads its own writes (cancel a run, then read the
+// issue and its active run), so cached reads served cancelled runs as live.
+assert.match(
+  alchemySource,
+  /Cloudflare\.Hyperdrive\.Connection\([^)]*caching:\s*\{\s*disabled:\s*true\s*\}/s,
+  'Hyperdrive query caching must be disabled for read-after-write correctness',
+)

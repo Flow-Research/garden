@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Result } from 'better-result'
 import { Check, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { MemberWithUser } from '@garden/core/types'
 import { Badge } from '@garden/ui/components/ui/badge'
-import { Button } from '@garden/ui/components/ui/button'
+import { Button, buttonVariants } from '@garden/ui/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -41,20 +41,44 @@ export function githubIdentityStatusLabel(member: {
 }
 
 /**
- * Account settings card showing the current user's workspace-member GitHub
- * identity, read-only. Before: members could self-link any GitHub id here,
- * which let them claim another person's account and its mirrored issue
- * assignments. Now only owners/admins edit identities from Members until
- * Garden verifies ownership via GitHub OAuth (docs/reference/known-gaps.md).
+ * Account settings card for the current user's workspace-member GitHub
+ * identity. Before: read-only, because Garden could not prove a typed GitHub
+ * login belonged to the member, so only owners/admins linked it. Now the member
+ * links it themselves through GitHub's own sign-in (the Garden App's user
+ * authorization, `/api/github/identity/start`), which proves ownership, and can
+ * unlink their own row. Owners/admins can still link anyone from Members.
  */
 export function GithubWorkspaceIdentitySection() {
   const user = useAuthStore((state) => state.user)
   const workspace = useWorkspaceStore((state) => state.workspace)
   const wsId = useWorkspaceId()
+  const queryClient = useQueryClient()
+  const [unlinking, setUnlinking] = useState(false)
   const { data: members = [], isPending } = useQuery({
     ...memberListOptions(wsId),
     enabled: Boolean(wsId),
   })
+
+  const handleUnlink = async () => {
+    setUnlinking(true)
+    const result = await Result.tryPromise({
+      try: () => api.unlinkOwnGithubIdentity(),
+      catch: (cause) =>
+        cause instanceof Error ? cause.message : 'Failed to unlink GitHub',
+    })
+    setUnlinking(false)
+    await result.match({
+      ok: async () => {
+        await queryClient.invalidateQueries({
+          queryKey: memberListOptions(wsId).queryKey,
+        })
+        toast.success('GitHub unlinked')
+      },
+      err: async (message) => {
+        toast.error(message)
+      },
+    })
+  }
 
   if (!workspace || !user) return null
 
@@ -66,9 +90,9 @@ export function GithubWorkspaceIdentitySection() {
       <header>
         <h2 className="text-base font-semibold">GitHub identity</h2>
         <p className="text-sm text-muted-foreground">
-          Agents use this GitHub user to assign mirrored GitHub issues to you. A
-          workspace owner or admin links it from Members. This is separate from
-          installing the GitHub App under Connections.
+          Agents use this GitHub user to assign mirrored GitHub issues to you.
+          GitHub confirms the account is yours when you link it. This is
+          separate from installing the GitHub App under Connections.
         </p>
       </header>
 
@@ -82,7 +106,7 @@ export function GithubWorkspaceIdentitySection() {
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
             <BrandGithubIcon className="size-5" aria-hidden="true" />
           </span>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium">GitHub</p>
               <Badge
@@ -94,9 +118,28 @@ export function GithubWorkspaceIdentitySection() {
             <p className="truncate text-xs text-muted-foreground">
               {membership.github_login
                 ? `@${membership.github_login}`
-                : 'Ask a workspace owner or admin to link your GitHub user.'}
+                : 'Not linked yet. Agents cannot assign GitHub issues to you.'}
             </p>
           </div>
+          {membership.github_login ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={unlinking}
+              onClick={() => void handleUnlink()}
+            >
+              {unlinking ? <Loader2 className="size-4 animate-spin" /> : null}
+              Unlink
+            </Button>
+          ) : (
+            <a
+              href="/api/github/identity/start"
+              className={buttonVariants({ size: 'sm', variant: 'outline' })}
+            >
+              Link with GitHub
+            </a>
+          )}
         </div>
       )}
     </section>

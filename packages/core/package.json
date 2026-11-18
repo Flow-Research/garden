@@ -14,11 +14,15 @@
     "./types": "./src/types/index.ts",
     "./types/*": "./src/types/*.ts",
     "./agents/permissions": "./src/agents/permissions.ts",
+    "./teams/agent-policy": "./src/teams/agent-policy.ts",
+    "./teams/agent-policy-store": "./src/teams/agent-policy-store.ts",
     "./automations/templates": "./src/automations/templates.ts",
     "./issues/deep-link": "./src/issues/deep-link.ts",
     "./issues/identifier": "./src/issues/identifier.ts",
     "./issues/order-key": "./src/issues/order-key.ts",
     "./issues/run-sync": "./src/issues/run-sync.ts",
+    "./issues/work-product-pr-target": "./src/issues/work-product-pr-target.ts",
+    "./issues/work-product-saved-file": "./src/issues/work-product-saved-file.ts",
     "./issues/triggers": "./src/issues/triggers.ts",
     "./issues/config": "./src/issues/config/index.ts",
     "./issues/config/status": "./src/issues/config/status.ts",
@@ -36,7 +40,7 @@
     "drizzle-orm": "catalog:",
     "effect": "catalog:",
     "fractional-indexing": "3.2.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",

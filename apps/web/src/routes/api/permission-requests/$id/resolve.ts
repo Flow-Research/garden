@@ -13,13 +13,17 @@ import {
 import { schema, type Db } from '@/lib/server/db'
 import { json } from '@/lib/server/control-plane'
 import { parseJsonBody } from '@/lib/server/validation/common'
-import { resolveConnectorWritePermissionRequests } from '@/lib/server/permission-request'
+import {
+  resolveConnectorWritePermissionRequests,
+  teamOwnerApprovalScope,
+} from '@/lib/server/permission-request'
 import {
   loadAgentProposalRequest,
   resolveAgentProposalRequest,
 } from '@/lib/server/agent-proposal-request'
 import {
   requireWorkspaceMember,
+  requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 
@@ -175,15 +179,39 @@ export const Route = createFileRoute('/api/permission-requests/$id/resolve')({
         const access = await requireWorkspaceMember(
           appContext,
           connectorRequest.workspaceId,
-          workspacePermissions.permissionManage,
         )
         if (access instanceof Response) return access
+
+        // Workspace approvers decide any request. A Team owner decides only
+        // requests their Team's agent policy held; other Team owners get 403.
+        const denied = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: connectorRequest.workspaceId,
+          permissions: workspacePermissions.permissionManage,
+        })
+        const teamScopeResult = denied
+          ? await teamOwnerApprovalScope({
+              db,
+              workspaceId: connectorRequest.workspaceId,
+              actorUserId: access.session.user.id,
+              permissionRequestId: connectorRequest.id,
+            })
+          : Result.ok(null)
+        if (teamScopeResult.isErr()) {
+          return json(
+            { error: teamScopeResult.error.message },
+            teamScopeResult.error.status,
+          )
+        }
+        if (denied && !teamScopeResult.value) return denied
 
         const resolutionResult = await resolveConnectorWritePermissionRequests({
           approved: bodyResult.value.approved,
           actorUserId: access.session.user.id,
           db,
           permissionRequestId: connectorRequest.id,
+          ...(teamScopeResult.value ? { teamId: teamScopeResult.value } : {}),
           workspaceId: connectorRequest.workspaceId,
         })
         if (resolutionResult.isErr()) {

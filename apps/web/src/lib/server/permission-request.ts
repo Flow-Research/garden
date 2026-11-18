@@ -34,6 +34,11 @@ export type ResolveConnectorWritePermissionInput = {
   issueId?: string
   permissionRequestId?: string
   toolCallId?: string
+  /**
+   * Set when the actor decides as a Team owner rather than as a workspace
+   * approver. Scopes the resolution, batch included, to that Team's requests.
+   */
+  teamId?: string
   workspaceId: string
 }
 
@@ -89,6 +94,9 @@ async function loadReferenceRequest(
   const issueFilter = input.issueId
     ? eq(schema.permissionRequest.issueId, input.issueId)
     : undefined
+  const teamFilter = input.teamId
+    ? eq(schema.permissionRequest.teamId, input.teamId)
+    : undefined
 
   const requestResult = await Result.tryPromise({
     try: async () =>
@@ -114,6 +122,7 @@ async function loadReferenceRequest(
             eq(schema.permissionRequest.status, 'pending'),
             eq(schema.agent.workspaceId, input.workspaceId),
             issueFilter,
+            teamFilter,
           ),
         )
         .limit(1),
@@ -147,6 +156,7 @@ async function loadReferenceRequest(
 async function loadMatchingPendingRequests(args: {
   db: ServerDb
   referenceRequest: ConnectorWritePermissionRequestRow
+  teamId?: string
 }) {
   const issueScope = args.referenceRequest.issueId
     ? eq(schema.permissionRequest.issueId, args.referenceRequest.issueId)
@@ -174,6 +184,9 @@ async function loadMatchingPendingRequests(args: {
             isNotNull(schema.permissionRequest.capabilityId),
             eq(schema.permissionRequest.status, 'pending'),
             issueScope,
+            args.teamId
+              ? eq(schema.permissionRequest.teamId, args.teamId)
+              : undefined,
           ),
         ),
     catch: (cause) =>
@@ -266,6 +279,7 @@ export async function resolveConnectorWritePermissionRequests(
   const matchingRequestsResult = await loadMatchingPendingRequests({
     db: input.db,
     referenceRequest: referenceRequestResult.value,
+    teamId: input.teamId,
   })
   if (matchingRequestsResult.isErr())
     return Result.err(matchingRequestsResult.error)
@@ -330,5 +344,53 @@ export async function resolveConnectorWritePermissionRequests(
     permissionRequestIds: matchingRequestIds,
     retryToolCalls,
     toolCallIds: updateResult.value.map((request) => request.toolCallId),
+  })
+}
+
+/**
+ * Finds the Team whose owner may decide a pending connector approval. A Team
+ * agent policy records `team_id` on the requests it holds; the Team's current
+ * `owner_user_id` is read here, at decision time, so open requests follow an
+ * ownership transfer. Returns null when the actor owns no matching request's
+ * Team, which leaves the decision to `permissionManage` holders.
+ */
+export async function teamOwnerApprovalScope(input: {
+  db: ServerDb
+  workspaceId: string
+  actorUserId: string
+  permissionRequestId?: string
+  toolCallId?: string
+}): Promise<ResultValue<string | null, PermissionRequestServiceError>> {
+  const requestFilter = input.permissionRequestId
+    ? eq(schema.permissionRequest.id, input.permissionRequestId)
+    : eq(schema.permissionRequest.toolCallId, input.toolCallId ?? '')
+  return Result.tryPromise({
+    try: async () => {
+      const rows = await input.db
+        .select({ teamId: schema.team.id })
+        .from(schema.permissionRequest)
+        .innerJoin(
+          schema.team,
+          eq(schema.team.id, schema.permissionRequest.teamId),
+        )
+        .where(
+          and(
+            requestFilter,
+            eq(schema.permissionRequest.kind, 'connector_write'),
+            eq(schema.permissionRequest.status, 'pending'),
+            eq(schema.team.workspaceId, input.workspaceId),
+            eq(schema.team.ownerUserId, input.actorUserId),
+          ),
+        )
+        .limit(1)
+      return rows[0]?.teamId ?? null
+    },
+    catch: (cause) =>
+      new PermissionRequestServiceError({
+        code: 'database_failed',
+        status: 500,
+        message: 'Failed to load Team approval scope',
+        cause,
+      }),
   })
 }

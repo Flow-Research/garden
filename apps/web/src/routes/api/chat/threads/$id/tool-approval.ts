@@ -1,3 +1,4 @@
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { archiveInboxItemsByKey } from '@garden/db/inbox'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
@@ -8,7 +9,10 @@ import {
 } from '@/lib/server/validation/chat'
 import { json } from '@/lib/server/control-plane'
 import { getThreadAccess } from '@/lib/server/chat-threads'
-import { resolveConnectorWritePermissionRequests } from '@/lib/server/permission-request'
+import {
+  resolveConnectorWritePermissionRequests,
+  teamOwnerApprovalScope,
+} from '@/lib/server/permission-request'
 import { resolveAgentProposalRequest } from '@/lib/server/agent-proposal-request'
 import { appEnv } from '@/lib/server/env'
 import {
@@ -42,12 +46,12 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
           workspaceId: access.thread.workspaceId,
           permissions: workspacePermissions.permissionManage,
         })
-        if (permission) return permission
 
         const { approved, permission_request_id: permissionRequestId } =
           bodyResult.value
 
         if (permissionRequestId) {
+          if (permission) return permission
           const proposalResult = await resolveAgentProposalRequest({
             actorUserId: access.session.user.id,
             approved,
@@ -112,11 +116,30 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
           return json({ error: 'Tool call id is required' }, 400)
         }
 
+        // Workspace approvers decide any call. A Team owner decides only calls
+        // their Team's agent policy held; other Team owners get 403.
+        const teamScopeResult = permission
+          ? await teamOwnerApprovalScope({
+              db: access.db,
+              workspaceId: access.thread.workspaceId,
+              actorUserId: access.session.user.id,
+              toolCallId,
+            })
+          : Result.ok(null)
+        if (teamScopeResult.isErr()) {
+          return json(
+            { error: teamScopeResult.error.message },
+            teamScopeResult.error.status,
+          )
+        }
+        if (permission && !teamScopeResult.value) return permission
+
         const resolutionResult = await resolveConnectorWritePermissionRequests({
           approved,
           actorUserId: access.session.user.id,
           db: access.db,
           toolCallId,
+          ...(teamScopeResult.value ? { teamId: teamScopeResult.value } : {}),
           workspaceId: access.thread.workspaceId,
         })
         if (resolutionResult.isErr()) {

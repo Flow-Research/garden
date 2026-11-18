@@ -23,7 +23,16 @@ import {
   type GardenLogFields,
   type GardenLogger,
 } from '@garden/observability/logger'
-import { evaluateRuntimeToolPermission } from './chat-permissions'
+import {
+  evaluateExecutorCallTeamPolicy,
+  evaluateRuntimeToolPermission,
+  isTeamToolAllowed,
+} from './chat-permissions'
+import {
+  NO_TEAM_AGENT_POLICY,
+  type EffectiveTeamAgentPolicy,
+} from '@garden/core/teams/agent-policy'
+import { loadTeamAgentPolicyForUser } from '@garden/core/teams/agent-policy-store'
 import {
   type AgentModelEnv,
   createAgentModel,
@@ -67,6 +76,7 @@ import {
   errorMessage,
   isTerminalSubmissionStatus,
   operationFailedMessage,
+  unresolvedSettledTurnReason,
 } from './runtime-utils'
 
 /**
@@ -223,6 +233,8 @@ export abstract class RunSubAgentBase<
 
   protected currentRunId: string | null = null
   protected currentPermissions: AgentPermissions | null = null
+  /** Team policies of the user who started the run, reloaded every turn. */
+  protected currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   protected aggUsage: RunUsageSnapshot | null = null
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
   private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
@@ -323,9 +335,9 @@ export abstract class RunSubAgentBase<
    * The run facet knows these from its loaded context; the shared base must not
    * assume fields that differ between issue and automation ledgers.
    */
-  protected brainInjectionIdentity(
+  protected async brainInjectionIdentity(
     _loaded: TLoaded,
-  ): { workspaceId: string; userId: string | undefined } | null {
+  ): Promise<{ workspaceId: string; userId: string | undefined } | null> {
     return null
   }
 
@@ -340,6 +352,20 @@ export abstract class RunSubAgentBase<
   protected async prepareRun(
     _loaded: TLoaded,
     _initializeEmpty: boolean,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
+  /** Validates the exact originating run before a mutating Workflow RPC. */
+  protected async verifyRunEntry(
+    _runId: string,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
+  /** Run facets can refuse the final analytics copy of retained context. */
+  protected async authorizeFinalObservation(
+    _runId: string,
   ): Promise<ResultValue<void, RunSubAgentError>> {
     return Result.ok(undefined)
   }
@@ -459,19 +485,25 @@ export abstract class RunSubAgentBase<
     }
 
     const loadedResult = await this.loadTurnContext(runId)
-    if (loadedResult.isErr()) throw loadedResult.error
+    if (loadedResult.isErr())
+      throw await this.errorForOutput(runId, loadedResult.error)
 
     const guardResult = await this.applyRunBoundaryGuards(loadedResult.value)
-    if (guardResult.isErr()) throw guardResult.error
+    if (guardResult.isErr())
+      throw await this.errorForOutput(runId, guardResult.error)
     if (guardResult.value !== 'continue') {
       throw new RunTurnStopped(this.turnStoppedName(), guardResult.value)
     }
 
     const prepareResult = await this.prepareRun(loadedResult.value, false)
-    if (prepareResult.isErr()) throw prepareResult.error
+    if (prepareResult.isErr())
+      throw await this.errorForOutput(runId, prepareResult.error)
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
+    const teamPolicyResult = await this.loadActingUserTeamPolicy()
+    if (teamPolicyResult.isErr()) throw teamPolicyResult.error
+    this.currentTeamPolicy = teamPolicyResult.value
     this.activateRun(loadedResult.value)
     this.startTurnState(runId, loadedResult.value)
     this.aggUsage = null
@@ -505,7 +537,7 @@ export abstract class RunSubAgentBase<
       },
     )
 
-    const brainIdentity = this.brainInjectionIdentity(loadedResult.value)
+    const brainIdentity = await this.brainInjectionIdentity(loadedResult.value)
     const brainContext = brainIdentity
       ? (
           await Result.tryPromise({
@@ -568,10 +600,12 @@ export abstract class RunSubAgentBase<
       stopWhen: this.turnStopConditions(),
       system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
       tools: stableMcpTools,
-      activeTools: mcpController.activeToolKeysWithoutRawMcp({
-        assembledTools: ctx.tools,
-        stableMcpTools,
-      }),
+      activeTools: mcpController
+        .activeToolKeysWithoutRawMcp({
+          assembledTools: ctx.tools,
+          stableMcpTools,
+        })
+        .filter((key) => isTeamToolAllowed(this.currentTeamPolicy, key)),
     } satisfies TurnConfig
   }
 
@@ -591,7 +625,9 @@ export abstract class RunSubAgentBase<
     const payload: RunWorkflowTurnCompleteEvent = {
       submissionId: submission.submissionId,
       status: submission.status,
-      ...(submission.error ? { error: submission.error } : {}),
+      ...(submission.error
+        ? { error: await this.failureReasonForOutput(runId, submission.error) }
+        : {}),
     }
     // RunWorkflow also reconciles from Think's submission state when this
     // event never arrives, so a delivery that still fails after these retries
@@ -669,7 +705,7 @@ export abstract class RunSubAgentBase<
           ...errorFields(cancelResult.error),
         })
       } else if (!cancelResult.value) {
-        const failedResult = await this.forceCloseFailed(runId, 'turn_aborted')
+        const failedResult = await this.closeFailedRun(runId, 'turn_aborted')
         if (failedResult.isErr()) {
           this.logRunWarning('close_failed', {
             runId,
@@ -679,7 +715,7 @@ export abstract class RunSubAgentBase<
         }
       }
     } else if (result.status === 'error') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         runId,
         result.error ?? 'chat_error',
       )
@@ -694,7 +730,9 @@ export abstract class RunSubAgentBase<
       await this.finishSettledTurn(runId, result)
     }
 
-    this.aiObservation.finishTurn(result)
+    const observationAuthority = await this.authorizeFinalObservation(runId)
+    if (observationAuthority.isOk()) this.aiObservation.finishTurn(result)
+    else this.aiObservation.discardTurn()
     this.clearTurnState()
   }
 
@@ -712,6 +750,9 @@ export abstract class RunSubAgentBase<
     mode: RunTurnMode,
     input: TInput,
   ): Promise<RunWorkflowTurnStartResult> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const table = this.runTable()
     const [runRow] = await this.getDb()
       .select({
@@ -728,22 +769,22 @@ export abstract class RunSubAgentBase<
         'cancelled',
       )
       if (cancelResult.isErr()) {
-        await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw cancelResult.error
+        await this.closeFailedRun(input.runId, cancelResult.error.message)
+        throw await this.errorForOutput(input.runId, cancelResult.error)
       }
       return { kind: 'run_status', status: 'cancelled' }
     }
 
     const driveResult = await this.driveTurn(mode, input)
     if (driveResult.isErr()) {
-      await this.forceCloseFailed(input.runId, driveResult.error.message)
-      throw driveResult.error
+      await this.closeFailedRun(input.runId, driveResult.error.message)
+      throw await this.errorForOutput(input.runId, driveResult.error)
     }
     if (driveResult.value.kind === 'stopped') {
       const statusResult = await this.readRunStatus(input.runId)
       if (statusResult.isErr()) {
-        await this.forceCloseFailed(input.runId, statusResult.error.message)
-        throw statusResult.error
+        await this.closeFailedRun(input.runId, statusResult.error.message)
+        throw await this.errorForOutput(input.runId, statusResult.error)
       }
       return { kind: 'run_status', status: statusResult.value }
     }
@@ -770,20 +811,27 @@ export abstract class RunSubAgentBase<
     summary: string
     waitingOn?: RunWorkflowWait
   }> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const kind = this.runConfig().kind
     const inspectionResult = await Result.tryPromise({
       try: async () => await this.inspectSubmission(input.submissionId),
       catch: (cause) => cause,
     })
     if (inspectionResult.isErr()) {
-      await this.forceCloseFailed(input.runId, String(inspectionResult.error))
-      throw this.runtimeFailure(inspectionResult.error)
+      const reason = await this.failureReasonForOutput(
+        input.runId,
+        String(inspectionResult.error),
+      )
+      await this.forceCloseFailed(input.runId, reason)
+      throw this.runtimeFailure(reason)
     }
 
     const inspection = inspectionResult.value
     if (!inspection) {
       const message = `Submitted ${kind} turn ${input.submissionId} was not found.`
-      await this.forceCloseFailed(input.runId, message)
+      await this.closeFailedRun(input.runId, message)
       throw this.runError({ code: 'not_found', message })
     }
     if (!isTerminalSubmissionStatus(inspection.status)) {
@@ -794,54 +842,93 @@ export abstract class RunSubAgentBase<
     }
 
     if (inspection.status === 'error') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         input.runId,
         inspection.error ?? `Submitted ${kind} turn failed.`,
       )
-      if (failedResult.isErr()) throw failedResult.error
+      if (failedResult.isErr())
+        throw await this.errorForOutput(input.runId, failedResult.error)
       this.clearTurnState()
     }
     if (inspection.status === 'aborted') {
       const cancelResult = await this.cancelRunIfRequested(input.runId)
       if (cancelResult.isErr()) {
-        await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw cancelResult.error
+        await this.closeFailedRun(input.runId, cancelResult.error.message)
+        throw await this.errorForOutput(input.runId, cancelResult.error)
       }
       if (!cancelResult.value) {
-        const failedResult = await this.forceCloseFailed(
+        const failedResult = await this.closeFailedRun(
           input.runId,
           'turn_aborted',
         )
-        if (failedResult.isErr()) throw failedResult.error
+        if (failedResult.isErr())
+          throw await this.errorForOutput(input.runId, failedResult.error)
       }
       this.clearTurnState()
     }
     if (inspection.status === 'skipped') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         input.runId,
         'turn_skipped',
       )
-      if (failedResult.isErr()) throw failedResult.error
+      if (failedResult.isErr())
+        throw await this.errorForOutput(input.runId, failedResult.error)
       this.clearTurnState()
     }
 
     const statusResult = await this.readRunStatus(input.runId)
     if (statusResult.isErr()) {
-      await this.forceCloseFailed(input.runId, statusResult.error.message)
-      throw statusResult.error
+      await this.closeFailedRun(input.runId, statusResult.error.message)
+      throw await this.errorForOutput(input.runId, statusResult.error)
     }
-    const turnSummary = await this.readWorkflowTurnSummary(input.runId)
     const waitingOn = await this.readWorkflowWait(
       input.runId,
       statusResult.value,
     )
+    const status = await this.closeUnresolvedSettledTurn({
+      runId: input.runId,
+      submissionStatus: inspection.status,
+      runStatus: statusResult.value,
+      waiting: waitingOn !== null,
+    })
+    const turnSummary = await this.readWorkflowTurnSummary(input.runId)
     return {
-      status: statusResult.value,
+      status,
       workspaceId: turnSummary.workspaceId,
       ownerUserId: turnSummary.ownerUserId,
       summary: turnSummary.summary,
       ...(waitingOn === null ? {} : { waitingOn }),
     }
+  }
+
+  /**
+   * Fails a run whose Think turn completed without settling it, and returns
+   * the run status the Workflow should act on. Before, `completeWorkflowTurn`
+   * returned the still-live `running` status and the Workflow completed,
+   * stranding the run row (FLO-150). The policy lives in
+   * `unresolvedSettledTurnReason`; `forceCloseFailed` writes the failed row
+   * and its `issue_run:failed` / automation failure event.
+   */
+  private async closeUnresolvedSettledTurn(input: {
+    runId: string
+    submissionStatus: string
+    runStatus: string
+    waiting: boolean
+  }) {
+    const reason = unresolvedSettledTurnReason(input)
+    if (reason === null) return input.runStatus
+
+    this.logRunWarning('turn_ended_without_resolution', {
+      runId: input.runId,
+      runStatus: input.runStatus,
+    })
+    const failedResult = await this.forceCloseFailed(input.runId, reason)
+    if (failedResult.isErr()) throw failedResult.error
+    this.clearTurnState()
+
+    const statusResult = await this.readRunStatus(input.runId)
+    if (statusResult.isErr()) throw statusResult.error
+    return statusResult.value
   }
 
   /**
@@ -857,7 +944,7 @@ export abstract class RunSubAgentBase<
       catch: (cause) => cause,
     })
     if (inspectionResult.isErr()) {
-      throw this.runtimeFailure(inspectionResult.error)
+      throw this.runtimeFailure('Cannot inspect submitted run status.')
     }
     return { status: inspectionResult.value?.status ?? null }
   }
@@ -870,16 +957,24 @@ export abstract class RunSubAgentBase<
     runId: string
     reason: string
   }): Promise<{ status: string }> {
-    const failedResult = await this.forceCloseFailed(input.runId, input.reason)
-    if (failedResult.isErr()) throw failedResult.error
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
+    const failedResult = await this.closeFailedRun(input.runId, input.reason)
+    if (failedResult.isErr())
+      throw await this.errorForOutput(input.runId, failedResult.error)
     this.clearTurnState()
 
     const statusResult = await this.readRunStatus(input.runId)
-    if (statusResult.isErr()) throw statusResult.error
+    if (statusResult.isErr())
+      throw await this.errorForOutput(input.runId, statusResult.error)
     return { status: statusResult.value }
   }
 
   async requestCancel(input: { runId: string }): Promise<void> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
       this.logRunWarning('cancel_request_failed', {
@@ -1008,6 +1103,36 @@ export abstract class RunSubAgentBase<
     })
   }
 
+  /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
+  private async failureReasonForOutput(runId: string, reason: string) {
+    const authority = await this.authorizeFinalObservation(runId)
+    if (authority.isOk()) return reason
+    this.aiObservation.discardTurn()
+    return 'brain_output_authority_denied'
+  }
+
+  private async errorForOutput(runId: string, error: RunSubAgentError) {
+    const authority = await this.authorizeFinalObservation(runId)
+    if (authority.isOk()) return error
+    this.aiObservation.discardTurn()
+    return this.runError({
+      code: 'runtime_failed',
+      message: 'brain_output_authority_denied',
+    })
+  }
+
+  private async closeFailedRun(
+    runId: string,
+    reason: string,
+    loaded?: TLoaded,
+  ) {
+    return this.forceCloseFailed(
+      runId,
+      await this.failureReasonForOutput(runId, reason),
+      loaded,
+    )
+  }
+
   /** Logs `<kind>_run.<event>` at warn level through the run's logger. */
   protected logRunWarning(event: string, fields: GardenLogFields) {
     const config = this.runConfig()
@@ -1060,14 +1185,61 @@ export abstract class RunSubAgentBase<
     })
   }
 
-  /** Applies the agent's tool permissions to a runtime tool call. */
+  /**
+   * Loads the Team policies of the run's acting user, the same identity that
+   * drives connector bindings. Read per turn, never cached, so a saved policy
+   * applies from the next turn.
+   */
+  private async loadActingUserTeamPolicy(): Promise<
+    ResultValue<EffectiveTeamAgentPolicy, RunSubAgentError>
+  > {
+    const identityResult = await this.resolveMcpIdentity()
+    if (identityResult.isErr()) {
+      return Result.err(
+        this.runError({
+          code: 'runtime_failed',
+          message: identityResult.error.message,
+        }),
+      )
+    }
+    return Result.tryPromise({
+      try: () =>
+        loadTeamAgentPolicyForUser(
+          getPooledDb(this.env.HYPERDRIVE.connectionString),
+          {
+            workspaceId: identityResult.value.workspaceId,
+            userId: identityResult.value.userId,
+          },
+        ),
+      catch: (cause) =>
+        this.runError({
+          code: 'runtime_failed',
+          message:
+            cause instanceof Error
+              ? cause.message
+              : 'Failed to load Team agent policy',
+        }),
+    })
+  }
+
+  /**
+   * Applies the agent's tool permissions and the acting user's Team policies
+   * to a runtime tool call. Executor calls are also checked against the
+   * connectors their code names, which only the input reveals.
+   */
   protected assertToolAllowed(
     runtimeToolName: string,
+    input?: unknown,
   ): ResultValue<void, RunSubAgentError> {
-    const decision = evaluateRuntimeToolPermission(
+    const permissionDecision = evaluateRuntimeToolPermission(
       this.currentPermissions,
+      this.currentTeamPolicy,
       runtimeToolName,
     )
+    const decision =
+      permissionDecision.allowed && input !== undefined
+        ? evaluateExecutorCallTeamPolicy(this.currentTeamPolicy, input)
+        : permissionDecision
     if (decision.allowed) return Result.ok()
     return Result.err(
       this.runError({
@@ -1144,7 +1316,7 @@ export abstract class RunSubAgentBase<
         'timeout',
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         loaded.run.id,
         'timeout',
         loaded,

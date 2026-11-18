@@ -1141,5 +1141,276 @@ describe('POST /api/github/webhook (integration)', () => {
       })
       expect((await readIssue(issueId))?.status).toBe('done')
     })
+
+    describe('pull requests', () => {
+      let prNumber = 5000
+      let prClock = 0
+
+      function nextUpdatedAt() {
+        prClock += 1
+        return new Date(Date.UTC(2026, 5, 1, 0, 0, prClock)).toISOString()
+      }
+
+      function prPayload(args: {
+        action: string
+        number: number
+        body: string | null
+        draft?: boolean
+        merged?: boolean
+        state?: 'open' | 'closed'
+        baseRef?: string
+        repoId?: number
+        fullName?: string
+      }) {
+        const fullName = args.fullName ?? LINKED_REPO
+        const [owner, name] = fullName.split('/')
+        return {
+          action: args.action,
+          number: args.number,
+          installation: { id: 99 },
+          repository: {
+            id: args.repoId ?? LINKED_REPO_ID,
+            name,
+            full_name: fullName,
+            owner: { login: owner },
+          },
+          pull_request: {
+            number: args.number,
+            html_url: `https://github.com/${fullName}/pull/${args.number}`,
+            body: args.body,
+            draft: args.draft ?? false,
+            merged: args.merged ?? false,
+            state: args.state ?? 'open',
+            base: { ref: args.baseRef ?? 'dev' },
+            updated_at: nextUpdatedAt(),
+          },
+          sender: { login: 'pr-author', type: 'User' },
+        }
+      }
+
+      async function deliverPr(
+        args: Parameters<typeof prPayload>[0],
+        deliveryId?: string,
+      ) {
+        return deliver({
+          payload: prPayload(args),
+          event: 'pull_request',
+          deliveryId,
+        })
+      }
+
+      async function setStatus(issueId: string, status: string) {
+        await testDb.db
+          .update(schema.issue)
+          .set({ status })
+          .where(eq(schema.issue.id, issueId))
+      }
+
+      async function prComments(issueId: string) {
+        return testDb.db
+          .select()
+          .from(schema.issueComment)
+          .where(eq(schema.issueComment.issueId, issueId))
+      }
+
+      function newPr() {
+        prNumber += 1
+        return prNumber
+      }
+
+      it('moves a card through draft, review, and merge into dev, noting each PR', async () => {
+        const { number, issueId } = await openLinkedIssue()
+        const runId = randomUUID()
+        await testDb.db.insert(schema.issueRun).values({
+          id: runId,
+          workspaceId,
+          issueId,
+          agentId,
+          hostName: 'test',
+          status: 'running',
+        })
+        const pr = newPr()
+        const body = `Work for the card.\n\nCloses #${number}`
+
+        const opened = await deliverPr({
+          action: 'opened',
+          number: pr,
+          body,
+          draft: true,
+        })
+        expect(opened.status).toBe(200)
+        expect(opened.body).toMatchObject({
+          status: 'applied',
+          fields: ['status'],
+          issue_id: issueId,
+        })
+        expect((await readIssue(issueId))?.status).toBe('in_progress')
+
+        await deliverPr({ action: 'ready_for_review', number: pr, body })
+        expect((await readIssue(issueId))?.status).toBe('in_review')
+
+        await deliverPr({
+          action: 'closed',
+          number: pr,
+          body,
+          state: 'closed',
+          merged: true,
+          baseRef: 'dev',
+        })
+        expect((await readIssue(issueId))?.status).toBe('done')
+        expect(runService.cancelIssueRun).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({ runId, reason: 'issue_changed' }),
+        )
+
+        const comments = await prComments(issueId)
+        expect(comments).toHaveLength(3)
+        for (const comment of comments) {
+          expect(comment.authorType).toBe('connector')
+          expect(comment.body).toContain(`#${pr}`)
+          expect(comment.body).toContain(
+            `https://github.com/${LINKED_REPO}/pull/${pr}`,
+          )
+          expect(comment.metadata).toMatchObject({
+            connector_id: 'github',
+            pull_request_number: pr,
+            pull_request_url: `https://github.com/${LINKED_REPO}/pull/${pr}`,
+          })
+        }
+      })
+
+      it('moves a card to in review when a ready PR opens, with case-insensitive and owner/repo keywords', async () => {
+        const first = await openLinkedIssue()
+        const second = await openLinkedIssue()
+        await deliverPr({
+          action: 'opened',
+          number: newPr(),
+          body: `fixes #${first.number}\nRESOLVES ${LINKED_REPO}#${second.number}`,
+        })
+        expect((await readIssue(first.issueId))?.status).toBe('in_review')
+        expect((await readIssue(second.issueId))?.status).toBe('in_review')
+      })
+
+      it('moves an in review card back to in progress when its PR returns to draft', async () => {
+        const { number, issueId } = await openLinkedIssue()
+        const pr = newPr()
+        const body = `Closes #${number}`
+        await deliverPr({ action: 'opened', number: pr, body })
+        expect((await readIssue(issueId))?.status).toBe('in_review')
+        await deliverPr({ action: 'converted_to_draft', number: pr, body })
+        expect((await readIssue(issueId))?.status).toBe('in_progress')
+      })
+
+      it('moves a card back to in progress when its only PR closes unmerged', async () => {
+        const { number, issueId } = await openLinkedIssue()
+        const pr = newPr()
+        const body = `Closes #${number}`
+        await deliverPr({ action: 'opened', number: pr, body })
+        await deliverPr({ action: 'closed', number: pr, body, state: 'closed' })
+        expect((await readIssue(issueId))?.status).toBe('in_progress')
+      })
+
+      it('keeps a card in review when another open PR still links it', async () => {
+        const { number, issueId } = await openLinkedIssue()
+        const body = `Closes #${number}`
+        const prA = newPr()
+        const prB = newPr()
+        await deliverPr({ action: 'opened', number: prA, body })
+        await deliverPr({ action: 'opened', number: prB, body })
+        await deliverPr({
+          action: 'closed',
+          number: prA,
+          body,
+          state: 'closed',
+        })
+        expect((await readIssue(issueId))?.status).toBe('in_review')
+      })
+
+      it('never moves a card backwards on a draft PR, or out of done or cancelled', async () => {
+        const inReview = await openLinkedIssue()
+        await setStatus(inReview.issueId, 'in_review')
+        await deliverPr({
+          action: 'opened',
+          number: newPr(),
+          body: `Closes #${inReview.number}`,
+          draft: true,
+        })
+        expect((await readIssue(inReview.issueId))?.status).toBe('in_review')
+
+        const done = await openLinkedIssue()
+        await setStatus(done.issueId, 'done')
+        const donePr = newPr()
+        await deliverPr({
+          action: 'opened',
+          number: donePr,
+          body: `Closes #${done.number}`,
+        })
+        await deliverPr({
+          action: 'closed',
+          number: donePr,
+          body: `Closes #${done.number}`,
+          state: 'closed',
+        })
+        expect((await readIssue(done.issueId))?.status).toBe('done')
+
+        const cancelled = await openLinkedIssue()
+        await setStatus(cancelled.issueId, 'cancelled')
+        await deliverPr({
+          action: 'closed',
+          number: newPr(),
+          body: `Closes #${cancelled.number}`,
+          state: 'closed',
+          merged: true,
+        })
+        expect((await readIssue(cancelled.issueId))?.status).toBe('cancelled')
+        expect(await prComments(cancelled.issueId)).toHaveLength(0)
+      })
+
+      it('treats a redelivered PR event as a no-op', async () => {
+        const { number, issueId } = await openLinkedIssue()
+        const pr = newPr()
+        const payload = prPayload({
+          action: 'opened',
+          number: pr,
+          body: `Closes #${number}`,
+        })
+        const deliveryId = randomUUID()
+        await deliver({ payload, event: 'pull_request', deliveryId })
+        await setStatus(issueId, 'todo')
+        const again = await deliver({
+          payload,
+          event: 'pull_request',
+          deliveryId,
+        })
+        expect(again.body).toMatchObject({ status: 'duplicate' })
+        expect((await readIssue(issueId))?.status).toBe('todo')
+        expect(await prComments(issueId)).toHaveLength(1)
+      })
+
+      it('ignores a PR on a repository no Team links', async () => {
+        // The binding matches by name, but no Team links repository 777001.
+        const { number, issueId } = await openLinkedIssue()
+        const response = await deliverPr({
+          action: 'opened',
+          number: newPr(),
+          body: `Closes #${number}`,
+          repoId: 777_001,
+        })
+        expect(response.status).toBe(200)
+        expect(response.json).toMatchObject({ ok: true, status: 'unbound' })
+        expect((await readIssue(issueId))?.status).toBe('todo')
+      })
+
+      it('ignores a PR without closing keywords', async () => {
+        const { number, issueId } = await openLinkedIssue()
+        const response = await deliverPr({
+          action: 'opened',
+          number: newPr(),
+          body: `Related to #${number}`,
+        })
+        expect(response.json).toEqual({ ok: true, status: 'ignored' })
+        expect((await readIssue(issueId))?.status).toBe('todo')
+      })
+    })
   })
 })

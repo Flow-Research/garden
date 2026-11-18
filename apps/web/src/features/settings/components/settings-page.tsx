@@ -93,7 +93,7 @@ export function SettingsPage({
           className={cn(
             'gap-1 px-1',
             isMobile
-              ? 'w-full flex-row justify-start overflow-x-auto group-data-horizontal/tabs:h-auto'
+              ? 'w-full flex-row justify-start overflow-x-auto group-data-[orientation=horizontal]/tabs:h-auto'
               : 'w-full flex-col items-stretch',
           )}
         >

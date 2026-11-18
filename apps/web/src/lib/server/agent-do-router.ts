@@ -114,3 +114,52 @@ export async function requireAgentAccess(
     workspaceId: parsedAgent.data.workspaceId,
   })
 }
+
+/** Applies the private thread owner contract to a public chat facet request. */
+export async function requireChatFacetAccess(
+  env: AgentDoEnv,
+  parent: { agentId: string; workspaceId: string },
+  threadName: string,
+  session: AgentSession,
+): Promise<ResultValue<void, AgentDoRouterError>> {
+  const userId = session?.user?.id
+  const parsedName = uuidSchema.safeParse(threadName)
+  if (!userId || !parsedName.success) {
+    return Result.err(
+      new AgentDoRouterError({
+        code: 'access_denied',
+        message: 'Chat thread not found.',
+      }),
+    )
+  }
+  const result = await Result.tryPromise({
+    try: async () => {
+      const db = await getDb(env)
+      const [row] = await db
+        .select({ thread: schema.chatThread })
+        .from(schema.chatThread)
+        .where(
+          or(
+            eq(schema.chatThread.id, parsedName.data),
+            eq(schema.chatThread.runtimeKey, parsedName.data),
+          ),
+        )
+        .limit(1)
+      return row?.thread
+    },
+    catch: (cause) => dbError('check chat facet access', cause),
+  })
+  return result.andThen((thread) =>
+    thread &&
+    thread.ownerUserId === userId &&
+    thread.agentId === parent.agentId &&
+    thread.workspaceId === parent.workspaceId
+      ? Result.ok(undefined)
+      : Result.err(
+          new AgentDoRouterError({
+            code: 'access_denied',
+            message: 'Chat thread not found.',
+          }),
+        ),
+  )
+}

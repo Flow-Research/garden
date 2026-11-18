@@ -1,3 +1,7 @@
+import {
+  BrainRunAuthorityError,
+  resolveBrainRuntimeAgentId,
+} from './brain-run-authority'
 // ─────────────────────────────────────────────────────────────────────────────
 // Per-agent Durable Object + multi-agent data-driven personas
 // ─────────────────────────────────────────────────────────────────────────────
@@ -44,7 +48,7 @@ import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
 import { Workspace } from '@cloudflare/shell'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
-import { and, asc, eq, or, type SQL } from 'drizzle-orm'
+import { and, asc, eq, or } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { Effect, Layer, ManagedRuntime, Option, Schema, Stream } from 'effect'
 import { connectorRegistry } from '@garden/connectors'
@@ -110,7 +114,16 @@ import {
   stopAfterDecideAnalysisStarts,
 } from './decide-analysis-chat'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
-import { isChatToolAllowed } from './chat-permissions'
+import {
+  evaluateExecutorCallTeamPolicy,
+  isChatToolAllowed,
+  isTeamToolAllowed,
+} from './chat-permissions'
+import {
+  NO_TEAM_AGENT_POLICY,
+  type EffectiveTeamAgentPolicy,
+} from '@garden/core/teams/agent-policy'
+import { loadTeamAgentPolicyForUser } from '@garden/core/teams/agent-policy-store'
 import {
   getDocumentBytes,
   getDocumentVersionBytes,
@@ -422,8 +435,6 @@ const agentRuntimeLogger = createGardenLogger({
 /** Run statuses whose summary is worth writing into workspace memory. */
 const ISSUE_WRITE_BACK_STATUSES = new Set(['succeeded', 'blocked'])
 const AUTOMATION_WRITE_BACK_STATUSES = new Set(['completed'])
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 const documentArtifactEventJson = Schema.fromJsonString(DocumentArtifactEvent)
 const documentArtifactEventEncoder = new TextEncoder()
 
@@ -515,7 +526,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     })
   }
 
-  @callable()
   async ensureThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     await this.subAgent(ChatSubAgent, threadId)
@@ -530,14 +540,12 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
    * Think docs say MCP tools are automatically merged into every turn, and
    * installed `think.js` merges `this.mcp.getAITools()` in `_runInferenceLoop`.
    */
-  @callable()
   async warmThreadRuntime(threadId: string): Promise<RuntimePreparePayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return await thread.warmRuntime()
   }
 
-  @callable()
   async deleteThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
@@ -546,7 +554,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return { ok: true }
   }
 
-  @callable()
   async pauseThread(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
@@ -554,7 +561,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return { ok: true }
   }
 
-  @callable()
   async debugThreadMeta(threadId: string): Promise<DebugMetaPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
@@ -566,35 +572,30 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     }
   }
 
-  @callable()
   async debugThreadWorkspace(threadId: string): Promise<DebugWorkspacePayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugWorkspace()
   }
 
-  @callable()
   async debugThreadSandbox(threadId: string): Promise<DebugSandboxPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugSandbox()
   }
 
-  @callable()
   async debugThreadTools(threadId: string): Promise<DebugToolsPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugTools()
   }
 
-  @callable()
   async debugThreadPrompt(threadId: string): Promise<DebugPromptPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
     return thread.debugPrompt()
   }
 
-  @callable()
   async runThreadFixtureTurn(
     threadId: string,
     input: { clear?: boolean; message: string },
@@ -617,7 +618,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     }
   }
 
-  @callable()
   async uploadThreadDocument(
     threadId: string,
     input: { base64: string; filename: string; mediaType?: string | null },
@@ -627,7 +627,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.uploadDocument(input)
   }
 
-  @callable()
   async readThreadDocumentBytes(
     threadId: string,
     documentId: string,
@@ -690,7 +689,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return { delivered: true }
   }
 
-  @callable()
   async readThreadDocumentVersionBytes(
     threadId: string,
     input: {
@@ -704,7 +702,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.readDocumentVersionBytes(input)
   }
 
-  @callable()
   async listThreadDocumentVersions(
     threadId: string,
     documentId: string,
@@ -714,7 +711,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.listDocumentVersions(documentId)
   }
 
-  @callable()
   async readThreadDocumentArtifact(
     threadId: string,
     documentId: string,
@@ -724,7 +720,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.readDocumentArtifact(documentId)
   }
 
-  @callable()
   async applyThreadDocumentArtifactOperation(
     threadId: string,
     input: { documentId: string; operation: unknown },
@@ -742,7 +737,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
    * used by reads and writes. Native Workers RPC transfers the backpressured
    * stream; the browser-facing Effect HttpApi adapter supplies SSE semantics.
    */
-  @callable()
   async subscribeThreadDocumentArtifact(
     threadId: string,
     documentId: string,
@@ -752,7 +746,6 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.subscribeDocumentArtifact(documentId)
   }
 
-  @callable()
   async refreshThreadPrompt(threadId: string): Promise<RuntimeOkPayload> {
     await this.requireThreadAccess(threadId)
     const thread = await this.subAgent(ChatSubAgent, threadId)
@@ -942,6 +935,34 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return true
   }
 
+  /** Re-reads provenance on the real origin facet before a separate memory turn. */
+  async validateBrainWriteBackOrigin(
+    input: Pick<BrainWriteBackRunInput, 'runKind' | 'runId' | 'originObjectId'>,
+  ): Promise<void> {
+    const validated = await Result.tryPromise({
+      try: async () => {
+        if (input.runKind === 'issue') {
+          const origin = await this.subAgent(
+            IssueRunSubAgent,
+            input.originObjectId,
+          )
+          await origin.validateBrainSummaryAccess(input.runId)
+        } else {
+          const origin = await this.subAgent(
+            AutomationRunSubAgent,
+            input.originObjectId,
+          )
+          await origin.validateBrainSummaryAccess(input.runId)
+        }
+      },
+      catch: () =>
+        new BrainRunAuthorityError({
+          message: 'Brain origin authority is unavailable.',
+        }),
+    })
+    if (validated.isErr()) throw validated.error
+  }
+
   async startBrainWriteBack(
     input: Omit<BrainWriteBackRunInput, 'agentId'>,
   ): Promise<{ ok: true; status: 'completed' }> {
@@ -1071,6 +1092,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       summary: result.summary,
       status: result.status,
       runKind: 'issue',
+      originObjectId: input.issueId,
       statuses: ISSUE_WRITE_BACK_STATUSES,
     })
     return { status: result.status }
@@ -1087,6 +1109,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     summary: string
     status: string
     runKind: 'issue' | 'automation'
+    originObjectId: string
     statuses: ReadonlySet<string>
   }) {
     const summary = input.summary.trim()
@@ -1113,6 +1136,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
               runId: input.runId,
               workspaceId: input.workspaceId as string,
               runKind: input.runKind,
+              originObjectId: input.originObjectId,
               ownerUserId: input.ownerUserId,
               summary: bounded,
             }),
@@ -1175,6 +1199,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       summary: result.summary,
       status: result.status,
       runKind: 'automation',
+      originObjectId: input.runId,
       statuses: AUTOMATION_WRITE_BACK_STATUSES,
     })
     return result.waitingOn === undefined
@@ -1282,32 +1307,17 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return getPooledDb(this.env.HYPERDRIVE.connectionString)
   }
 
-  private agentRuntimeWhere(): SQL {
-    if (!UUID_PATTERN.test(this.name)) {
-      return eq(schema.agent.hostName, this.name)
-    }
-
-    const condition = or(
-      eq(schema.agent.id, this.name),
-      eq(schema.agent.hostName, this.name),
-    )
-    return condition ?? eq(schema.agent.hostName, this.name)
-  }
-
+  /** Uses the same exact id/alias resolver as originating Brain authorization. */
   private async resolveRuntimeAgentId() {
     if (this.runtimeAgentIdValue) return this.runtimeAgentIdValue
-
-    const [row] = await this.getDb()
-      .select({ id: schema.agent.id })
-      .from(schema.agent)
-      .where(this.agentRuntimeWhere())
-      .limit(1)
-
-    if (row) {
-      this.runtimeAgentIdValue = row.id
-    }
-
-    return this.runtimeAgentIdValue ?? this.name
+    const resolved = await resolveBrainRuntimeAgentId(
+      this.env.HYPERDRIVE.connectionString,
+      this.name,
+    )
+    if (resolved.isErr())
+      throw new BrainRunAuthorityError({ message: resolved.error.message })
+    this.runtimeAgentIdValue = resolved.value
+    return resolved.value
   }
 
   private async syncAgentIdentityState() {
@@ -1327,7 +1337,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
         status: schema.agent.status,
       })
       .from(schema.agent)
-      .where(this.agentRuntimeWhere())
+      .where(eq(schema.agent.id, await this.resolveRuntimeAgentId()))
       .limit(1)
 
     if (!row) return
@@ -1507,7 +1517,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     const [row] = await this.getDb()
       .select({ workspaceId: schema.agent.workspaceId })
       .from(schema.agent)
-      .where(this.agentRuntimeWhere())
+      .where(eq(schema.agent.id, await this.resolveRuntimeAgentId()))
       .limit(1)
 
     if (row?.workspaceId === workspaceId) return
@@ -1573,6 +1583,8 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   override classifyChatError = classifyGardenContextOverflow
   private readonly aiObservation = new AiObservation(this.ctx, this.env)
   private currentPermissions: AgentPermissions | null = null
+  /** Team policies of the thread owner, reloaded every turn. */
+  private currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   private currentIntegrationRoute: IntegrationRouteDecision | null = null
   private currentIntegrationFailure: ExecutorToolFailure | null = null
   private mcpController: RuntimeMcpController | null = null
@@ -2101,6 +2113,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     this.currentPermissions = identity
       ? derivePermissions({ agent: { permissions: identity.agentPermissions } })
       : null
+    // The thread owner is the acting user; their Teams cap this turn's tools.
+    this.currentTeamPolicy = identity
+      ? await loadTeamAgentPolicyForUser(this.getDb(), {
+          workspaceId: identity.workspaceId,
+          userId: identity.ownerUserId,
+        })
+      : NO_TEAM_AGENT_POLICY
     if (identity) {
       this.aiObservation.startTurn(
         {
@@ -2228,8 +2247,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       stableMcpTools,
     })
     const isToolVisible = (key: string) =>
-      key.startsWith(EXECUTOR_TOOL_KEY_PREFIX) ||
-      isChatToolAllowed(this.currentPermissions, key)
+      key.startsWith(EXECUTOR_TOOL_KEY_PREFIX)
+        ? isTeamToolAllowed(this.currentTeamPolicy, key)
+        : isChatToolAllowed(
+            this.currentPermissions,
+            this.currentTeamPolicy,
+            key,
+          )
     const visibleTools = Object.fromEntries(
       Object.entries(stableMcpTools).filter(([key]) => isToolVisible(key)),
     ) as ToolSet
@@ -2277,10 +2301,28 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async beforeToolCall(ctx: ToolCallContext) {
-    if (!isChatToolAllowed(this.currentPermissions, ctx.toolName)) {
+    const isExecutorCall = ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)
+    if (
+      isExecutorCall
+        ? !isTeamToolAllowed(this.currentTeamPolicy, ctx.toolName)
+        : !isChatToolAllowed(
+            this.currentPermissions,
+            this.currentTeamPolicy,
+            ctx.toolName,
+          )
+    ) {
       throw new ChatToolDeniedError({
         message: `Tool ${ctx.toolName} is not allowed for this agent.`,
       })
+    }
+    if (isExecutorCall) {
+      const executorDecision = evaluateExecutorCallTeamPolicy(
+        this.currentTeamPolicy,
+        ctx.input,
+      )
+      if (!executorDecision.allowed) {
+        throw new ChatToolDeniedError({ message: executorDecision.reason })
+      }
     }
     const selectedRoute = this.currentIntegrationRoute?.routes[0]
     if (selectedRoute && this.currentIntegrationFailure) {
@@ -2316,9 +2358,20 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           ),
       )
       if (disallowedRef) {
+        if (
+          !selectedRoute.connected &&
+          disallowedRef.executorSlug !== selectedRoute.slug
+        ) {
+          return {
+            action: 'block',
+            reason: `Only tools from the selected ${selectedRoute.name} integration can be used in this turn. Do not call executor:${disallowedRef.executorSlug}.${disallowedRef.tool}.`,
+          } as const
+        }
         return {
           action: 'block',
-          reason: `This turn is scoped to the selected ${selectedRoute.name} tools. Do not call executor:${disallowedRef.executorSlug}.${disallowedRef.tool}.`,
+          reason: selectedRoute.connected
+            ? `This turn can use discovered tools from the connected ${selectedRoute.name} integration. Do not call executor:${disallowedRef.executorSlug}.${disallowedRef.tool}.`
+            : `${selectedRoute.name} is not connected. Ask the user to connect it before calling its tools.`,
         } as const
       }
     }

@@ -12,7 +12,8 @@ export type IntegrationRoute = {
   connected: boolean
   score: number
   matchedTerms: string[]
-  allowedToolNames: string[]
+  recommendedToolNames: string[]
+  discoveredToolNames: string[]
   connectionLabel: string | null
 }
 
@@ -76,6 +77,23 @@ function terms(value: string): Set<string> {
 
 function intersection(left: Set<string>, right: Set<string>): string[] {
   return [...left].filter((term) => right.has(term))
+}
+
+/**
+ * A tool name counts as explicitly requested only when it cannot be ordinary
+ * prose: it contains `_`, `.` or `-`, or the user quoted it. One-word MCP tool
+ * names such as `search` or `fetch` would otherwise hijack routing for any
+ * message that uses the word.
+ */
+function explicitlyRequestsTool(userText: string, toolName: string): boolean {
+  const escapedName = toolName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (!/[_.-]/.test(toolName)) {
+    return new RegExp(`[\`'"]${escapedName}[\`'"]`, 'i').test(userText)
+  }
+  return new RegExp(
+    `(?:^|[^a-z0-9_-])${escapedName}(?=$|[^a-z0-9_-])`,
+    'i',
+  ).test(userText)
 }
 
 function attachmentText(attachments: readonly RouteAttachment[]): string {
@@ -182,23 +200,25 @@ function rankIntegration(args: {
   catalog: ExecutorCatalog
   integration: ExecutorCatalog['integrations'][number]
   query: string
+  userText: string
   skill: IntegrationSkill | null
 }): IntegrationRoute | null {
-  const { catalog, integration, query, skill } = args
+  const { catalog, integration, query, userText, skill } = args
   const connected = catalog.connections.some(
     (connection) => connection.integration === integration.slug,
   )
   const queryTerms = terms(query)
-  const directTerms = intersection(
-    queryTerms,
-    terms(`${integration.slug} ${integration.name}`),
-  )
+  const integrationTerms = terms(`${integration.slug} ${integration.name}`)
+  const directTerms = intersection(queryTerms, integrationTerms)
   const directMention = directTerms.length > 0
-  if (!connected && !directMention) return null
-
   const toolRows = catalog.tools.filter(
     (tool) => tool.integration === integration.slug,
   )
+  const exactToolMention = toolRows.some((tool) =>
+    explicitlyRequestsTool(userText, tool.name),
+  )
+  if (!connected && !directMention && !exactToolMention) return null
+
   const capabilityTerms = terms(
     [
       integration.description,
@@ -209,18 +229,42 @@ function rankIntegration(args: {
   const requiredTerms = terms(skill?.requiredCapabilities.join(' ') ?? query)
   const capabilityMatches = intersection(requiredTerms, capabilityTerms)
   const queryMatches = intersection(queryTerms, capabilityTerms)
-  if (!directMention && capabilityMatches.length === 0) return null
+  if (!directMention && !exactToolMention && capabilityMatches.length === 0)
+    return null
 
-  const allowedToolNames = toolRows
-    .filter((tool) => {
-      const toolTerms = terms(`${tool.name} ${tool.description}`)
-      return (
-        intersection(toolTerms, requiredTerms).length > 0 ||
-        intersection(toolTerms, queryTerms).length > 0
-      )
+  // A shared provider prefix selects the integration, not its most relevant tools.
+  const relevanceTerms = new Set(
+    [...queryTerms, ...requiredTerms].filter(
+      (term) => !integrationTerms.has(term),
+    ),
+  )
+  const recommendedToolNames = toolRows
+    .map((tool) => {
+      const nameTerms = terms(tool.name)
+      const descriptionTerms = terms(tool.description)
+      const toolTerms = new Set([...nameTerms, ...descriptionTerms])
+      const explicitlyRequested = explicitlyRequestsTool(userText, tool.name)
+      return {
+        tool,
+        explicitlyRequested,
+        matches:
+          explicitlyRequested ||
+          intersection(toolTerms, requiredTerms).length > 0 ||
+          intersection(toolTerms, queryTerms).length > 0,
+        relevance:
+          intersection(nameTerms, relevanceTerms).length * 2 +
+          intersection(descriptionTerms, relevanceTerms).length,
+      }
     })
+    .filter((candidate) => candidate.matches)
+    .sort(
+      (left, right) =>
+        Number(right.explicitlyRequested) - Number(left.explicitlyRequested) ||
+        right.relevance - left.relevance ||
+        left.tool.name.localeCompare(right.tool.name),
+    )
     .slice(0, 8)
-    .map((tool) => tool.name)
+    .map(({ tool }) => tool.name)
 
   return {
     slug: integration.slug,
@@ -235,7 +279,8 @@ function rankIntegration(args: {
       0,
       8,
     ),
-    allowedToolNames,
+    recommendedToolNames,
+    discoveredToolNames: toolRows.map((tool) => tool.name),
     connectionLabel: connectionLabel(catalog, integration.slug),
   }
 }
@@ -273,12 +318,27 @@ export function selectIntegrationRoute(args: {
   }
 
   const catalog = args.catalog
-  const routes = catalog.integrations
+  const rankedRoutes = catalog.integrations
     .map((integration) =>
-      rankIntegration({ catalog, integration, query, skill }),
+      rankIntegration({
+        catalog,
+        integration,
+        query,
+        userText: args.userText,
+        skill,
+      }),
     )
     .filter((route): route is IntegrationRoute => route !== null)
     .sort((left, right) => right.score - left.score)
+  const explicitlyRequestedOwners = new Set(
+    catalog.tools
+      .filter((tool) => explicitlyRequestsTool(args.userText, tool.name))
+      .map((tool) => tool.integration),
+  )
+  const explicitRoutes = rankedRoutes.filter((route) =>
+    explicitlyRequestedOwners.has(route.slug),
+  )
+  const routes = explicitRoutes.length > 0 ? explicitRoutes : rankedRoutes
   const [top, second] = routes
 
   if (isInformationalRequest(args.userText, attachments.length > 0)) {
@@ -289,7 +349,7 @@ export function selectIntegrationRoute(args: {
       reason: 'The request asks for an explanation, not an integration run.',
     }
   }
-  if (!top || top.score < 6) {
+  if (!top || (explicitRoutes.length === 0 && top.score < 6)) {
     return {
       status: 'none',
       skill,
@@ -297,7 +357,7 @@ export function selectIntegrationRoute(args: {
       reason: 'No integration matched with enough confidence.',
     }
   }
-  if (second && second.score >= top.score - 2) {
+  if (second && (explicitRoutes.length > 1 || second.score >= top.score - 2)) {
     return {
       status: 'none',
       skill,
@@ -355,12 +415,15 @@ export function renderIntegrationRouteDirective(
       'Never poll, retry, or wait for the analysis, and never substitute a local analysis. Never mention run IDs or session IDs.',
     )
   }
-  if (route.slug !== 'decide' && route.allowedToolNames.length > 0) {
-    lines.push(`Allowed tools: ${route.allowedToolNames.join(', ')}.`)
+  if (route.slug !== 'decide' && route.recommendedToolNames.length > 0) {
+    lines.push(
+      `Suggested starting tools: ${route.recommendedToolNames.join(', ')}.`,
+    )
   }
   if (route.slug !== 'decide') {
     lines.push(
       'Load the Executor execute guide if needed, then search and call only this integration.',
+      'The suggestions are not a permission limit: search for other tools in this integration when needed. Existing connection permissions and approval rules still apply.',
     )
   }
   lines.push(
@@ -384,7 +447,7 @@ export function isIntegrationToolAllowed(
 ): boolean {
   if (decision?.status !== 'selected') return true
   const route = decision.routes[0]
-  if (route?.slug !== integrationSlug) return false
-  if (!toolName || route.allowedToolNames.length === 0) return true
-  return route.allowedToolNames.includes(toolName)
+  if (route?.slug !== integrationSlug || !route.connected) return false
+  if (!toolName) return true
+  return route.discoveredToolNames.includes(toolName)
 }

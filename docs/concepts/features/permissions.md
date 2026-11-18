@@ -3,7 +3,7 @@ title: One permission story covers direct tools, codemode, and connectors
 description: How agent permissions, capability risk classes, and trust levels decide whether a tool call runs, asks for approval, or is blocked, and the rules that keep approvals out of codemode.
 status: current
 owner: "@Flow-Research/security"
-last_reviewed: 2026-11-07
+last_reviewed: 2026-11-10
 ---
 
 An agent can act through direct tools, through codemode, and through connector tools that Executor serves over MCP. Approval behavior should not depend on which of those paths a call took. Garden is not fully there yet, but every path already reads the same two inputs: the agent's permissions and the capability's trust level.
@@ -18,6 +18,29 @@ An agent can act through direct tools, through codemode, and through connector t
 - `approval_overrides` sets `send_external` and `destructive` approval to `auto` or `manual`.
 
 `evaluateToolPermission` is the single tool gate for chat, issue runs, and automation runs. `derivePermissions` merges an issue's `permissions_override` over the agent's permissions. If stored permissions cannot be parsed, the agent loses full access and every skill. Corrupt settings never grant more than an admin chose.
+
+## Team agent policy is a second ceiling
+
+A Team can cap what any agent does for its members. The runtime loads the policies of every Team the acting user belongs to and combines them strictest-wins. The acting user is the chat owner, or the user who started the issue or automation run.
+
+- **Existence.** A tool exists only when the agent's permissions allow it and no applicable Team blocks its area, its connector, or its risk class. `evaluateRuntimeToolPermission` in `packages/agent-runtime/src/chat-permissions.ts` applies both, so a Team policy never grants a tool the agent lacks.
+- **Approval.** A connector call needs approval when trust resolution says `ask` or any applicable Team marks its risk class **Approval required**. A Team rule wins over the agent's `approval_overrides`. The request records `permission_request.team_id`, and that Team's current owner may decide it alongside `permissionManage` holders.
+
+[Teams](./teams.md#agent-policy-caps-what-agents-do-for-a-teams-members) describes the policy shape, the UI, and the approval routing.
+
+## Connector installation requires current workspace authority
+
+GitHub App and Discord bot callbacks verify signed state, then read the current membership of the actor in that state. The actor must still have connection-management permission in the workspace in that state. The callbacks use the same role policy as Garden's organization permission checks. A request header cannot select a different workspace for this check. Garden checks this authority before it calls the provider or writes the installation, callback record, capabilities, or grants.
+
+GitHub keeps its session check outside the development environment. Discord uses verified signed state and does not require a browser cookie. These callbacks do not give authority to an agent or to task content.
+
+## Default-agent recovery requires current creation authority
+
+Workspace creation normally supplies the default Garden agent. Chat listing reads existing records and does not create agents or grants. Chat creation validates a selected issue or agent before it can request default-agent recovery. A selected existing agent does not require a new default.
+
+When the default is missing, only a current workspace member with agent-management permission can repair it. The new default belongs to that authorized person. Members can use an existing default without changing its owner, settings or grants. The same rule applies when Brain file indexing needs a default agent for its audit. If recovery is denied, the indexed file remains, and Garden records the audit failure.
+
+Recovery serializes concurrent attempts for the workspace. It writes the default and its initial grants in one database transaction. A failed grant write rolls back the new agent. Workspace creation uses the same lock and preserves a default that an authorized recovery already created. This repairs a missing default agent; it does not repeat all workspace setup or skill seeding.
 
 ## Capabilities carry a risk class and a trust level
 
@@ -41,10 +64,10 @@ An approval surfaces in the chat timeline through `apps/web/src/features/chat/us
 
 Garden has two ways to run code. They do not share files.
 
-| Surface | Runtime | Best for | Storage |
-| --- | --- | --- | --- |
-| Codemode `execute` | `@cloudflare/codemode` in a Dynamic Worker through the `LOADER` binding | Bounded JavaScript that plans several file or tool steps | The Think workspace |
-| Container sandbox tools | `@cloudflare/sandbox` through the `Sandbox` binding | Shell, native binaries, package installs, previews, and long-running processes | The container's `/workspace` |
+| Surface                 | Runtime                                                                 | Best for                                                                       | Storage                      |
+| ----------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------- |
+| Codemode `execute`      | `@cloudflare/codemode` in a Dynamic Worker through the `LOADER` binding | Bounded JavaScript that plans several file or tool steps                       | The Think workspace          |
+| Container sandbox tools | `@cloudflare/sandbox` through the `Sandbox` binding                     | Shell, native binaries, package installs, previews, and long-running processes | The container's `/workspace` |
 
 `createExecuteTool` builds the codemode tool in `packages/agent-runtime/src/chat-sub-agent-tools.ts` and `automation-run-sub-agent.ts`. The sandbox tools live in `packages/agent-runtime/src/sandbox-tools.ts`. The [execution runtimes](../architecture/execution-runtimes.md) page explains both.
 
@@ -64,7 +87,7 @@ Open policy gaps are tracked in [known gaps](../../reference/known-gaps.md).
 
 ## Issue tools see the workspace as the chat owner does
 
-A chat agent's issue tools act for the person who owns the chat. `list_issues` applies the Team issue rule to that person, so the agent lists workspace issues and the boards of Teams the owner belongs to, and every Team issue when the owner is a workspace owner or admin. `listIssues` in `packages/server/src/issues/server.ts` reads the owner's workspace role and applies `teamIssueVisibilityCondition`. See [Teams](teams.md#team-members-work-the-whole-team-board) for the rule. `read_issue` and `post_issue_comment` do not apply it yet. [Known gaps](../../reference/known-gaps.md) tracks that.
+A chat agent's issue tools act for the person who owns the chat. `list_issues`, `read_issue`, `post_issue_comment`, `assign_issue`, and `update_issue_status` apply the Team issue rule to that person, so the agent reaches workspace issues and the boards of Teams the owner belongs to, and every Team issue when the owner is a workspace owner or admin. A Team issue outside the owner's reach returns `Issue not found.`, so the agent cannot confirm that it exists. `issueVisibilityFor` in `packages/server/src/issues/server.ts` reads the owner's workspace role and builds `teamIssueVisibilityCondition`; `listIssues`, `readIssue`, and `resolveVisibleIssue` apply it. See [Teams](teams.md#team-members-work-the-whole-team-board) for the rule. `read_run` does not apply it yet. [Known gaps](../../reference/known-gaps.md) tracks that.
 
 ## Rules for permission changes
 
@@ -73,3 +96,17 @@ A chat agent's issue tools act for the person who owns the chat. `list_issues` a
 - Do not hide approval-required behavior inside codemode. Expose actions that may pause for approval as direct outer tools.
 - Keep connector token injection inside Executor. Agent Durable Objects never see upstream tokens.
 - Use `better-result` for new TypeScript error handling.
+
+## Brain grants for issue and automation runs
+
+Issue and automation runs read the current agent permissions and issue override before each Brain operation. The check binds the run to its workspace, agent, owner, and originating runtime object. An exact agent ID takes precedence over a hostname. A hostname must identify one agent.
+
+The runtime stores a record of the Brain tools exposed to a run in the run facet configuration. Before it resumes retained history or sends a summary to a separate write-back model, it checks that record against current permissions. Missing or invalid records cannot authorize retained history. Permission removal can therefore block a resume even when the next action does not call a Brain tool. The runtime retains the history for review; it does not rewrite it.
+
+Automatic issue context uses organization memory. Automatic context requires `brain_search`. A write-back run requires both read and write permission from its originating run. Each later Brain operation checks its own permission and the origin's retained-context grants again. Write-back repeats these checks before proposal deduplication and before it saves a proposal or writes a Brain item. Permission for `brain_search` and `add_to_brain` does not authorize content retained through a revoked `brain_neighborhood` or `brain_read_file` grant. These checks use the existing empty-list permission rule above.
+
+An active issue or automation turn also checks its retained Brain grants before it dispatches any tool, records tool observations, or stores final output. This prevents a later action from copying context whose read grant was removed. A denial retains the transcript for review and stops the affected output. Workflow still owns run recovery.
+
+Final analytics observations require the same fresh authority. Denied observations are discarded. Model-generation analytics for issue and automation runs contain metadata rather than prompts or results, because a provider callback can complete after a permission change. These rules do not recall requests already sent to a model provider or remove output published before the change.
+
+Failure output uses the same authority check. If current retained-context authority is unavailable, Garden stores and sends a fixed failure reason rather than the raw runtime error. This covers run failure records, Workflow error events, and error responses from run RPCs. The status-only inspection RPC returns a fixed error message. Model-generation analytics use an explicit metadata list, fixed error text, and no exception autocapture for issue and automation runs.

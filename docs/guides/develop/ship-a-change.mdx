@@ -3,7 +3,7 @@ title: Ship a change to dev
 description: Take one focused change from a new branch to a merged pull request.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-17
 ---
 
 Every change reaches `dev` through a pull request. GitHub blocks the merge until the `Verify` and `PR contract` checks pass. These steps get a change through both checks and through review. They apply to people and agents alike.
@@ -40,6 +40,16 @@ cp docs/templates/feature.md docs/concepts/features/feature-name.md
 
 Fill in the outcome, scope, user-visible states, permissions, external services, and verification steps. Update the document in the same pull request as the code. A bug fix that changes no behavior needs no feature document. For the full steps, see [Write a feature doc](./write-a-feature-doc.md).
 
+## Keep generated routes consistent
+
+Use root `pnpm dev` or the web build to regenerate `apps/web/src/routeTree.gen.ts` through the TanStack Start Vite plugin. Commit the generated output when routes or generator output change. A standalone Router generator does not include Start's type registration.
+
+Start appends a `declare module '@tanstack/react-start'` block with the router, SSR, and Start configuration types. Keep this block in the generated file. The `declare module '@tanstack/react-router'` block in `apps/web/src/router.tsx` registers a different module and remains necessary.
+
+Declare global request middleware with `createMiddleware({ type: 'request' })` so Start's generated configuration types do not infer a request-or-function middleware union.
+
+Deleting the Start block makes the next development run or build restore it. Keep generator synchronization in a separate change when it is unrelated to a feature. Package versions come from `apps/web/package.json` and `pnpm-lock.yaml`.
+
 ## Run the checks that cover your change
 
 Run the checks for the files you changed first. Before a broad change merges, run the full set:
@@ -47,6 +57,7 @@ Run the checks for the files you changed first. Before a broad change merges, ru
 ```bash
 pnpm format
 pnpm lint
+pnpm verify:code-policy
 pnpm typecheck
 pnpm test
 pnpm build

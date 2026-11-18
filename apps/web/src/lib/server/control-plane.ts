@@ -291,19 +291,8 @@ export function toInvitation(record: InvitationRecord) {
  * service resolves the real prefix internally). Routes that map issue rows
  * must pass this value through.
  */
-export async function getWorkspaceIssuePrefix(
-  db: Db,
-  workspaceId: string,
-): Promise<string> {
-  const [row] = await db
-    .select({ issuePrefix: schema.organization.issuePrefix })
-    .from(schema.organization)
-    .where(eq(schema.organization.id, workspaceId))
-    .limit(1)
-  return row && typeof row.issuePrefix === 'string' && row.issuePrefix
-    ? row.issuePrefix
-    : 'ISS'
-}
+/** Re-export: prefix lookup lives in the issues query layer. */
+export { getWorkspaceIssuePrefix } from '@/lib/server/queries/issues/issue-prefix'
 
 /** The issue DTO mapper lives with the issue services; re-exported for routes. */
 export { toIssue } from '@garden/server/issues/server'

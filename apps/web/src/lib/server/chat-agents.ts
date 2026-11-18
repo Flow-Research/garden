@@ -1,4 +1,6 @@
-import { and, eq } from 'drizzle-orm'
+import { Result, TaggedError } from 'better-result'
+import { workspaceRoleHasPermission } from '@/lib/auth/instance'
+import { and, eq, sql } from 'drizzle-orm'
 import { getAgentByName } from 'agents'
 import { z } from 'zod'
 import type { AgentDO } from '@garden/agent-runtime'
@@ -34,53 +36,113 @@ async function callChatThreadRuntime<T>(
   return disposeRpcResult(await call(stub, input.threadId))
 }
 
+export class DefaultAgentRecoveryError extends TaggedError(
+  'DefaultAgentRecoveryError',
+)<{
+  status: 403 | 503
+  message: string
+  cause?: unknown
+}>() {}
+
+/** Workspace bootstrap and fallback recovery must use the same lock. */
+export async function lockDefaultAgentProvisioning(
+  db: Pick<Db, 'execute'>,
+  workspaceId: string,
+) {
+  await db.execute(
+    sql`select pg_advisory_xact_lock(hashtextextended(${`default-agent:${workspaceId}`}, 0))`,
+  )
+}
+
+/** Resolves a default for a current member; only an agent manager can repair it. */
 export async function ensureAgentRow(input: {
   workspaceId: string
   ownerUserId: string
   db?: Db
 }) {
-  const db = input.db ?? (await getDb(appEnv))
-  const [existingAgent] = await db
-    .select()
-    .from(schema.agent)
-    .where(
-      and(
-        eq(schema.agent.workspaceId, input.workspaceId),
-        eq(schema.agent.isDefault, true),
-      ),
-    )
+  const result = await Result.tryPromise({
+    try: async () => {
+      const db = input.db ?? (await getDb(appEnv))
+      return db.transaction(async (tx) => {
+        await lockDefaultAgentProvisioning(tx, input.workspaceId)
+        // Hold membership stable through the repair, including grant writes.
+        const [membership] = await tx
+          .select({ role: schema.member.role })
+          .from(schema.member)
+          .where(
+            and(
+              eq(schema.member.organizationId, input.workspaceId),
+              eq(schema.member.userId, input.ownerUserId),
+            ),
+          )
+          .for('share')
+        if (!membership)
+          return Result.err(
+            new DefaultAgentRecoveryError({
+              status: 403,
+              message: 'Workspace access denied',
+            }),
+          )
 
-  if (existingAgent) {
-    return existingAgent
-  }
+        const [existingAgent] = await tx
+          .select()
+          .from(schema.agent)
+          .where(
+            and(
+              eq(schema.agent.workspaceId, input.workspaceId),
+              eq(schema.agent.isDefault, true),
+            ),
+          )
+        if (existingAgent) return Result.ok(existingAgent)
+        if (
+          !workspaceRoleHasPermission(membership.role, {
+            agent: ['create', 'update', 'delete'],
+          })
+        ) {
+          return Result.err(
+            new DefaultAgentRecoveryError({
+              status: 403,
+              message:
+                'Workspace default agent requires an owner or admin to repair setup',
+            }),
+          )
+        }
 
-  const agentId = crypto.randomUUID()
-  const createdAgent = requireReturnedRow(
-    await db
-      .insert(schema.agent)
-      .values({
-        id: agentId,
-        workspaceId: input.workspaceId,
-        ownerUserId: input.ownerUserId,
-        name: 'Garden',
-        roleTitle: null,
-        isDefault: true,
-        status: 'active',
-        hostName: agentId,
-        permissions: DEFAULT_AGENT_PERMISSIONS,
+        const agentId = crypto.randomUUID()
+        const createdAgent = requireReturnedRow(
+          await tx
+            .insert(schema.agent)
+            .values({
+              id: agentId,
+              workspaceId: input.workspaceId,
+              ownerUserId: input.ownerUserId,
+              name: 'Garden',
+              roleTitle: null,
+              isDefault: true,
+              status: 'active',
+              hostName: agentId,
+              permissions: DEFAULT_AGENT_PERMISSIONS,
+            })
+            .returning(),
+          'default agent',
+        )
+        await bindExistingCapabilitiesToAgent({
+          db: tx,
+          schema,
+          agentId,
+          grantedBy: input.ownerUserId,
+        })
+        return Result.ok(createdAgent)
       })
-      .returning(),
-    'default agent',
-  )
-
-  await bindExistingCapabilitiesToAgent({
-    db,
-    schema,
-    agentId: createdAgent.id,
-    grantedBy: input.ownerUserId,
+    },
+    catch: (cause) =>
+      new DefaultAgentRecoveryError({
+        status: 503,
+        message: 'Workspace default agent recovery is unavailable',
+        cause,
+      }),
   })
-
-  return createdAgent
+  return result.isErr() ? Result.err(result.error) : result.value
 }
 
 export async function ensureChatThreadAgent(input: {
