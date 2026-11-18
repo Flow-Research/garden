@@ -3,7 +3,7 @@ title: Teams group people and agents, and scope who sees which issues
 description: How Teams work in a workspace, who can manage them, how invites add people to Teams, how admins reach them from Settings, how a Team agent policy caps agents, and why Team realtime events carry identifiers only.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-18
 ---
 
 Related issue: [#155](https://github.com/Flow-Research/garden/issues/155)
@@ -75,9 +75,9 @@ The invite form in **Settings › Members** has a Team picker. Leaving it empty 
 
 Team owners cannot invite people yet. Plain members do not hold Better Auth's `invitation:create` permission. A follow-up will grant Team owners that permission through Better Auth access control, rather than bypassing Better Auth.
 
-## The default Team lives on the Teams page
+## Default Team settings stay in the API
 
-Owners and admins see an **Invites** section on `/teams` with one setting, **Default team for new members**. It is stored in the typed `organization.default_team_id` column, and it is unset by default.
+The Teams overview has no **Invites** section or **Default team for new members** control. The API retains the setting in the typed `organization.default_team_id` column, unset by default. Existing defaults still apply to invitations without explicit Teams.
 
 `GET /api/workspaces/:id/team-settings` returns `{ default_team_id }` to any workspace member. `PATCH` changes it and is limited to owners and admins. A `default_team_id` from another workspace returns `404 TEAM_NOT_FOUND`. The column has a plain foreign key to `team.id` with `ON DELETE SET NULL`, so deleting the default Team clears the setting. The service checks the workspace, because a composite `(default_team_id, id)` key would try to null `organization.id` on delete.
 
@@ -87,7 +87,7 @@ Teams has one home in the app:
 
 | Route            | What it shows                                                                                                                                                                                                                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/teams`         | Owners and admins see one card holding **Create a Team** and the Team grid (or the **No Teams** empty state), then the **Invites** settings. Each Team card menu has **Add team member** and **Delete**. Members see a Team selector and their Team's issues.                                      |
+| `/teams`         | Owners and admins see one card holding **Create a Team** and the Team grid (or the **No Teams** empty state). Each Team card menu has **Add team member** and **Delete**. Members see a Team selector and their Team's issues.                                      |
 | `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md). |
 | `/teams/issues`  | Issues across every Team, for owners and admins                                                                                                                                                                                                                                                    |
 
