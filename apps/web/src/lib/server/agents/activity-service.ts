@@ -29,6 +29,39 @@ function grantDetail(payload: unknown) {
   }
 }
 
+function mergeActivityEvents(
+  decisions: Awaited<ReturnType<typeof listAgentToolDecisions>>,
+  grantChanges: Awaited<ReturnType<typeof listAgentGrantActivity>>,
+) {
+  return [
+    ...decisions.map((decision) => ({
+      id: decision.id,
+      kind: 'tool_decision' as const,
+      tool_call_id: decision.toolCallId,
+      connector_id: decision.connectorId,
+      tool_name: decision.toolName,
+      result_status: decision.resultStatus,
+      error: decision.error,
+      timestamp: decision.timestamp,
+    })),
+    ...grantChanges.map((change) => ({
+      id: change.id,
+      kind: 'grant_change' as const,
+      event_type: change.eventType,
+      ...grantDetail(change.payload),
+      timestamp: change.timestamp,
+    })),
+  ]
+    .sort(
+      (left, right) =>
+        new Date(right.timestamp ?? 0).getTime() -
+        new Date(left.timestamp ?? 0).getTime(),
+    )
+    .slice(0, 50)
+}
+
+type AgentActivityEvent = ReturnType<typeof mergeActivityEvents>[number]
+
 /**
  * Merges tool decisions and grant changes into the newest 50 agent activity
  * events. The route owns session and workspace checks.
@@ -37,7 +70,7 @@ export async function getAgentActivityFeed(input: {
   db: Db
   workspaceId: string
   agentId: string
-}): Promise<ResultValue<{ events: unknown[] }, AgentActivityError>> {
+}): Promise<ResultValue<{ events: AgentActivityEvent[] }, AgentActivityError>> {
   const existsResult = await Result.tryPromise({
     try: async () =>
       await agentExistsInWorkspace(input.db, {
@@ -82,31 +115,10 @@ export async function getAgentActivityFeed(input: {
   })
   if (feedResult.isErr()) return Result.err(feedResult.error)
 
-  const events = [
-    ...feedResult.value.decisions.map((decision) => ({
-      id: decision.id,
-      kind: 'tool_decision' as const,
-      tool_call_id: decision.toolCallId,
-      connector_id: decision.connectorId,
-      tool_name: decision.toolName,
-      result_status: decision.resultStatus,
-      error: decision.error,
-      timestamp: decision.timestamp,
-    })),
-    ...feedResult.value.grantChanges.map((change) => ({
-      id: change.id,
-      kind: 'grant_change' as const,
-      event_type: change.eventType,
-      ...grantDetail(change.payload),
-      timestamp: change.timestamp,
-    })),
-  ]
-    .sort(
-      (left, right) =>
-        new Date(right.timestamp ?? 0).getTime() -
-        new Date(left.timestamp ?? 0).getTime(),
-    )
-    .slice(0, 50)
+  const events = mergeActivityEvents(
+    feedResult.value.decisions,
+    feedResult.value.grantChanges,
+  )
 
   return Result.ok({ events })
 }
