@@ -49,6 +49,16 @@ documented compatibility changes:
    installation requires successful OAuth discovery and reports unavailability
    without offering a manual token template or registering an integration.
 
+10. The SDK's MCP template has no caller-specific scope option. For the exact
+    Flow issuer and Workstream resource, a dedicated `garden-` authorization-code
+    client additionally requests `offline_access`. Other clients and providers
+    keep discovered scopes unchanged. The issuer bounds the retained grant.
+11. SDK connection projection prioritizes its durable reauthorization marker over
+    later catalogue health observations. Removing a Workstream connection revokes
+    its refresh credential at the pinned issuer before deleting connection state;
+    provider failure leaves the connection available for a retry. An in-flight
+    refresh in the same Executor is awaited before reading the current credential.
+
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's
 duplicate Cloudflare R2 adapter are not reachable from Garden's Worker and are

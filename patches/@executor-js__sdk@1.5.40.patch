@@ -184,10 +184,9 @@ index 34cf72783eabf91bab4ff90a9028c8b51689546e..cfc8a8bb664353cd9669c8d42ae643b2
    { state: OAuthState }
  ) {
 diff --git a/dist/chunk-VWFZ6OPE.js b/dist/chunk-VWFZ6OPE.js
-index 6cf936862fbea4d8f6a106fe9282aa7571336c76..a18e463b920aef3cdc4f8fc57bf02c0631d98160 100644
 --- a/dist/chunk-VWFZ6OPE.js
 +++ b/dist/chunk-VWFZ6OPE.js
-@@ -4177,6 +4177,8 @@ var discoverProtectedResourceMetadata = (resourceUrl, options = {}) => Effect6.g
+@@ -4177,6 +4177,8 @@
  });
  var wellKnownUrlFor = (issuerOrigin2, algorithm, issuerPath) => {
    const suffix = algorithm === "oauth2" ? "oauth-authorization-server" : "openid-configuration";
@@ -196,7 +195,20 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..a18e463b920aef3cdc4f8fc57bf02c06
    return issuerPath && issuerPath !== "/" ? `${issuerOrigin2}/.well-known/${suffix}${issuerPath}` : `${issuerOrigin2}/.well-known/${suffix}`;
  };
  var discoverAuthorizationServerMetadata = (issuer, options = {}) => Effect6.gen(function* () {
-@@ -5028,7 +5030,8 @@ var makeOAuthService = (deps) => {
+@@ -4873,6 +4875,12 @@
+         })
+       )
+     ) : dedupeScopes(scopePolicy.scopes);
++    if (client.resource === "https://workstream.flowresearch.tech/mcp" &&
++        client.authorizationUrl === "https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/auth" &&
++        client.tokenUrl === "https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/token" &&
++        client.grant === "authorization_code" && client.clientId.startsWith("garden-")) {
++      if (!requestedScopes.includes("offline_access")) requestedScopes.push("offline_access");
++    }
+     if (client.grant === "client_credentials") {
+       const token = yield* exchangeClientCredentials({
+         tokenUrl: client.tokenUrl,
+@@ -5028,7 +5036,8 @@
      }
      const tokenUrl = rebindTokenEndpointHostToCallbackDomain(
        client.tokenUrl,
@@ -206,6 +218,72 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..a18e463b920aef3cdc4f8fc57bf02c06
      );
      const token = yield* exchangeAuthorizationCode({
        tokenUrl,
+@@ -5307,6 +5316,7 @@
+ );
+ var oauthReauthRequiredFromProviderState = (value) => Option4.getOrNull(decodeOAuthReauthRequiredProviderState(decodeJsonColumn(value)));
+ var rowToConnection = (row) => {
++  const reauth = oauthReauthRequiredFromProviderState(row.provider_state);
+   const owner = row.owner;
+   const integration = IntegrationSlug.make(row.integration);
+   const name = ConnectionName.make(row.name);
+@@ -5324,7 +5334,11 @@
+     oauthClientOwner: row.oauth_client_owner == null ? null : String(row.oauth_client_owner),
+     oauthScope: row.oauth_scope == null ? null : String(row.oauth_scope),
+     missingOAuthScopes: missingOAuthScopesFromProviderState(row.provider_state),
+-    lastHealth: Option4.getOrNull(decodeLastHealth(row.last_health))
++    lastHealth: reauth ? {
++      status: "expired",
++      checkedAt: reauth.oauthReauthRequiredAt,
++      detail: "Authorization expired or was revoked. Reconnect to continue."
++    } : Option4.getOrNull(decodeLastHealth(row.last_health))
+   };
+ };
+ var grantedScopesFromRow = (row) => {
+@@ -6807,7 +6821,34 @@
+     const updated = yield* findConnectionRow(ref);
+     return rowToConnection(updated ?? row);
+   });
+-  const connectionsRemove = (ref) => transaction(
++  const revokeWorkstreamConnection = (ref) => Effect8.gen(function* () {
++    let row = yield* findConnectionRow(ref);
++    if (!row || !row.refresh_item_id || !row.oauth_client) return;
++    const client = yield* loadOAuthClientRow(row.oauth_client_owner ?? row.owner, String(row.oauth_client));
++    if (!client || client.resource !== "https://workstream.flowresearch.tech/mcp") return;
++    if (client.token_url !== "https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/token" ||
++        !String(client.client_id).startsWith("garden-")) {
++      return yield* new StorageError({ message: "Workstream client binding must be repaired before disconnect." });
++    }
++    const pending = refreshInFlight.get(connectionKey(row));
++    if (pending) yield* pending.pipe(Effect8.ignore);
++    row = yield* findConnectionRow(ref);
++    if (!row) return;
++    const provider = credentialProviders.get(row.provider);
++    if (!provider) return yield* new StorageError({ message: "Credential provider unavailable; disconnection was not completed." });
++    const token = yield* provider.get(ProviderItemId.make(row.refresh_item_id));
++    if (!token) return yield* new StorageError({ message: "Refresh credential unavailable; disconnection was not completed." });
++    const response = yield* Effect8.tryPromise({
++      try: () => (config.fetch ?? globalThis.fetch)("https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/revoke", {
++        method: "POST", redirect: "error", signal: AbortSignal.timeout(OAUTH2_DEFAULT_TIMEOUT_MS),
++        headers: { "Content-Type": "application/x-www-form-urlencoded" },
++        body: new URLSearchParams({ client_id: String(client.client_id), token_type_hint: "refresh_token", token })
++      }),
++      catch: () => new StorageError({ message: "Identity provider unavailable; retry disconnection." })
++    });
++    if (!response.ok) return yield* new StorageError({ message: "Identity provider refused revocation; retry disconnection." });
++  });
++  const connectionsRemove = (ref) => revokeWorkstreamConnection(ref).pipe(Effect8.flatMap(() => transaction(
+     Effect8.gen(function* () {
+       const row = yield* findConnectionRow(ref);
+       if (!row) {
+@@ -6845,7 +6886,7 @@
+         )
+       });
+     })
+-  );
++  )));
+   const connectionsRefresh = (ref) => Effect8.gen(function* () {
+     const row = yield* findConnectionRow(ref);
+     if (!row) {
 diff --git a/dist/host-internal.js b/dist/host-internal.js
 index c7bab565f4f3c3f833ddf1237dc0ccbd44f1eab5..ef2a81cee2376670cff978e70649ba5da5937789 100644
 --- a/dist/host-internal.js

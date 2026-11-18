@@ -43,7 +43,8 @@ const issuer = 'https://identity.flowresearch.tech/realms/flow'
 const tokenUrl = `${issuer}/protocol/openid-connect/token`
 const callback =
   'https://garden-dev.flow-research.workers.dev/api/oauth/callback'
-const scopes = ['workstream:access', 'workstream-mcp-audience']
+const resourceScopes = ['workstream:access', 'workstream-mcp-audience']
+const scopes = [...resourceScopes, 'offline_access']
 const slug = IntegrationSlug.make('workstream')
 
 /** Exercises the installed OAuth/MCP engine and encrypted provider over a shared
@@ -68,13 +69,14 @@ describe('Workstream public OAuth lifecycle', () => {
     >()
     const callTokens: string[] = []
     const rejectedAccessTokens: string[] = []
+    let revocationAvailable = true
     const http = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init)
       if (request.url.includes('/.well-known/oauth-protected-resource')) {
         return Response.json({
           resource,
           authorization_servers: [issuer],
-          scopes_supported: scopes,
+          scopes_supported: resourceScopes,
         })
       }
       if (request.url === `${issuer}/.well-known/openid-configuration`) {
@@ -89,6 +91,16 @@ describe('Workstream public OAuth lifecycle', () => {
       }
       if (request.url.includes('/.well-known/')) {
         return new Response(null, { status: 404 })
+      }
+      if (request.url === `${issuer}/protocol/openid-connect/revoke`) {
+        if (!revocationAvailable) return new Response(null, { status: 503 })
+        const body = new URLSearchParams(await request.text())
+        expect(body.get('client_id')).toBe('garden-dev')
+        expect(body.get('token_type_hint')).toBe('refresh_token')
+        const token = body.get('token') ?? ''
+        expect(refreshTokens.has(token)).toBe(true)
+        refreshTokens.delete(token)
+        return new Response(null, { status: 200 })
       }
       if (request.url === tokenUrl) {
         const body = new URLSearchParams(await request.text())
@@ -434,7 +446,19 @@ describe('Workstream public OAuth lifecycle', () => {
         }))[0]
         expect(ref).toBeDefined()
         if (ref === undefined) return
+        revocationAvailable = false
+        const unavailableRemoval = yield* restoredAlice.connections
+          .remove(ref)
+          .pipe(Effect.result)
+        expect(Result.isFailure(unavailableRemoval)).toBe(true)
+        expect(
+          yield* restoredAlice.connections.list({ integration: slug }),
+        ).toHaveLength(1)
+        expect(refreshTokens.has('member-a-refresh-2')).toBe(true)
+        revocationAvailable = true
         yield* restoredAlice.connections.remove(ref)
+        expect(refreshTokens.has('member-a-refresh-2')).toBe(false)
+        expect(refreshTokens.has('member-b-refresh-1')).toBe(true)
         expect(
           yield* restoredAlice.connections.list({ integration: slug }),
         ).toEqual([])
@@ -453,6 +477,32 @@ describe('Workstream public OAuth lifecycle', () => {
           'Bearer member-b-access-1',
         ])
         expect(rejectedAccessTokens).toEqual([])
+        refreshTokens.delete('member-b-refresh-1')
+        clock.mockReturnValue(now + 10803_000)
+        const rejectedCall = yield* restoredBob
+          .execute(bobTool.address, {})
+          .pipe(Effect.result)
+        expect(Result.isFailure(rejectedCall)).toBe(true)
+        const retained = Object.values(stored)
+          .flat()
+          .find(
+            (row) =>
+              row.subject === 'member-b' &&
+              row.integration === 'workstream' &&
+              'refresh_item_id' in row,
+          )
+        expect(retained).toBeDefined()
+        if (retained === undefined) return
+        retained.last_health = {
+          status: 'degraded',
+          checkedAt: now + 10804_000,
+          detail: 'Catalogue unavailable',
+        }
+        const expiredConnections = yield* restoredBob.connections.list({
+          integration: slug,
+        })
+        expect(expiredConnections).toHaveLength(1)
+        expect(expiredConnections[0]?.lastHealth?.status).toBe('expired')
       }),
     ).finally(async () => {
       await Effect.runPromise(
