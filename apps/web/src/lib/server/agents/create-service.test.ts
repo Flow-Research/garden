@@ -80,7 +80,8 @@ describe('createWorkspaceAgent', () => {
     if (!result.isErr()) return
     expect(result.error._tag).toBe('AgentCreateError')
     expect(result.error.status).toBe(500)
-    expect(result.error.message).toBe('db down')
+    expect(result.error.message).toBe('Failed to create agent')
+    expect(result.error.cause).toBeInstanceOf(Error)
     expect(mocks.bindExistingCapabilitiesToAgent).not.toHaveBeenCalled()
   })
 })
