@@ -17,7 +17,7 @@ The page follows the supplied All settings design: heading and description, hori
 | Section | URL | Existing content reused |
 | --- | --- | --- |
 | Profile | `/settings/profile` | Account profile, password, sessions and linked identities |
-| User Management | `/settings/user-management` | Workspace members and invitations; Team management for owners and admins |
+| User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins |
 | Preferences | `/settings/preferences` | Appearance and theme selection |
 | General | `/settings/general` | Workspace settings |
 
@@ -25,10 +25,16 @@ These sections reuse the same components, queries and mutations as the modal and
 
 ## User Management
 
-User Management has Members and Team sub-tabs, shown as pills. `?view=team` selects Team, so the sub-tab survives reload and browser history. Members is the default.
+User Management has Members and Team sub-tabs, shown as pills, each with its own path. `/settings/user-management` redirects to `/settings/user-management/members`.
+
+| Page | URL |
+| --- | --- |
+| Members | `/settings/user-management/members` |
+| Team list | `/settings/user-management/teams` |
+| Team detail | `/settings/user-management/teams/$teamId` |
 
 - **Members** keeps every existing workspace member control: invite with role and Teams, role changes, removal, GitHub identity linking, and pending invitation resend and revoke.
-- **Team** is visible only to workspace owners and admins, because creating, deleting and staffing Teams needs the `teamManage` permission. Others see Members only, even with `?view=team`. It shows the same Team management panel as `/teams`: Create a Team, the Team card grid with member counts, and the card menu's Add team member and Delete. View all opens the Team at `/teams/$teamId`. The default Team for new members stays on `/teams` only.
+- **Team** is visible only to workspace owners and admins, because creating, deleting and staffing Teams needs the `teamManage` permission. Others see Members only; Team paths redirect them to Members. It shows the same Team management panel as `/teams`: Create a Team, the Team card grid with member counts, and the card menu's Add team member and Delete. A Team card opens the Settings Team detail page, which shows only the Team's name and description until its design is implemented. Team cards on `/teams` still open `/teams/$teamId`. The default Team for new members stays on `/teams` only.
 
 The design also shows Roles and Guests sub-tabs. Workspace roles are the fixed owner, admin and member set and Garden has no guest access, so neither sub-tab exists until the backend supports it.
 

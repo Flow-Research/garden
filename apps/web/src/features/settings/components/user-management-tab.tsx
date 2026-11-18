@@ -1,5 +1,5 @@
-import { Suspense } from 'react'
-import { Link } from '@tanstack/react-router'
+import { Suspense, type ReactNode } from 'react'
+import { Link, Navigate } from '@tanstack/react-router'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
@@ -8,52 +8,87 @@ import {
   TEAM_GRID_CLASS,
   TeamManagementPanel,
 } from '@/features/teams/components/team-management-panel'
-import { teamListOptions } from '@/features/teams/queries'
+import { teamDetailOptions, teamListOptions } from '@/features/teams/queries'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { MembersTab } from './members-tab'
 import { SettingsPanel } from './settings-page-shell'
-
-export type UserManagementView = 'members' | 'team'
 
 const PILL_CLASS =
   'inline-flex h-7 items-center rounded-full border border-border-default bg-background-main-default px-4 text-sm text-text-default transition-colors hover:bg-background-main-default-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring aria-[current=page]:border-border-brand-default aria-[current=page]:bg-background-brand-tertiary aria-[current=page]:text-text-brand-default'
 
 /**
- * Members and Team sub-tabs. Each pill is a link so the view survives reload
- * and history; `exact` makes the search params part of the active match.
+ * Members and Team sub-tabs. Team stays active on Team detail pages because
+ * its link matches every path under `/teams`.
  */
 function UserManagementPills() {
   return (
     <nav aria-label="User management views" className="flex gap-2">
-      <Link
-        to="/settings/user-management"
-        search={{}}
-        activeOptions={{ exact: true }}
-        className={PILL_CLASS}
-      >
+      <Link to="/settings/user-management/members" className={PILL_CLASS}>
         Members
       </Link>
-      <Link
-        to="/settings/user-management"
-        search={{ view: 'team' }}
-        activeOptions={{ exact: true }}
-        className={PILL_CLASS}
-      >
+      <Link to="/settings/user-management/teams" className={PILL_CLASS}>
         Team
       </Link>
     </nav>
   )
 }
 
-function TeamView() {
+/** Owners and admins hold `teamManage`; null while the role is loading. */
+function useCanManageTeams() {
   const wsId = useWorkspaceId()
-  const { data } = useSuspenseQuery(teamListOptions(wsId))
+  const currentUserId = useAuthStore((s) => s.user?.id)
+  const membersQuery = useQuery(memberListOptions(wsId))
+  if (membersQuery.isPending) return null
+  const role = membersQuery.data?.find((m) => m.user_id === currentUserId)?.role
+  return role === 'owner' || role === 'admin'
+}
+
+/**
+ * Team pages wait for the viewer's role, then send anyone without
+ * `teamManage` to Members. A failed members query lands there too, where
+ * MembersTab owns the retry.
+ */
+function TeamManagerOnly({
+  loading,
+  children,
+}: {
+  loading: ReactNode
+  children: ReactNode
+}) {
+  const canManageTeams = useCanManageTeams()
+  if (canManageTeams === null) return loading
+  if (!canManageTeams) {
+    return <Navigate to="/settings/user-management/members" replace />
+  }
+  return children
+}
+
+/** Settings › User Management › Members: everyone's member list. */
+export function UserManagementMembers() {
+  const canManageTeams = useCanManageTeams()
   return (
-    <TeamManagementPanel teams={data.teams} toolbar={<UserManagementPills />} />
+    <div className="flex flex-col gap-8">
+      {canManageTeams ? <UserManagementPills /> : null}
+      <SettingsPanel>
+        <MembersTab />
+      </SettingsPanel>
+    </div>
   )
 }
 
-function TeamViewSkeleton() {
+function TeamList() {
+  const wsId = useWorkspaceId()
+  const { data } = useSuspenseQuery(teamListOptions(wsId))
+  return (
+    <TeamManagementPanel
+      teams={data.teams}
+      teamLink="/settings/user-management/teams/$teamId"
+      toolbar={<UserManagementPills />}
+    />
+  )
+}
+
+function TeamListSkeleton() {
   return (
     <div
       className="@container flex flex-col gap-8"
@@ -73,37 +108,49 @@ function TeamViewSkeleton() {
   )
 }
 
-/**
- * Settings › User Management. Everyone sees workspace members and
- * invitations. Owners and admins also get the Team sub-tab, because creating,
- * deleting and staffing Teams requires the `teamManage` permission.
- */
-export function UserManagementTab({ view }: { view: UserManagementView }) {
-  const wsId = useWorkspaceId()
-  const currentUserId = useAuthStore((s) => s.user?.id)
-  const membersQuery = useQuery(memberListOptions(wsId))
-  const role = membersQuery.data?.find((m) => m.user_id === currentUserId)?.role
-  const canManageTeams = role === 'owner' || role === 'admin'
-
-  // The role decides whether ?view=team is allowed, so hold the Team skeleton
-  // until it loads instead of flashing the member list on reload. A failed
-  // members query falls through to MembersTab, which owns the retry.
-  if (view === 'team' && membersQuery.isPending) return <TeamViewSkeleton />
-
-  if (canManageTeams && view === 'team') {
-    return (
-      <Suspense fallback={<TeamViewSkeleton />}>
-        <TeamView />
+/** Settings › User Management › Team: owner/admin Team management. */
+export function UserManagementTeams() {
+  return (
+    <TeamManagerOnly loading={<TeamListSkeleton />}>
+      <Suspense fallback={<TeamListSkeleton />}>
+        <TeamList />
       </Suspense>
+    </TeamManagerOnly>
+  )
+}
+
+function TeamSummaryHeader({ teamId }: { teamId: string }) {
+  const wsId = useWorkspaceId()
+  const { data: team, isPending } = useQuery(teamDetailOptions(wsId, teamId))
+  if (isPending) return <Skeleton className="h-6 w-40" />
+  if (!team) {
+    return (
+      <p className="text-sm text-text-secondary">Could not load this team.</p>
     )
   }
-
   return (
-    <div className="flex flex-col gap-8">
-      {canManageTeams ? <UserManagementPills /> : null}
-      <SettingsPanel>
-        <MembersTab />
-      </SettingsPanel>
-    </div>
+    <header>
+      <h2 className="text-base font-semibold">{team.name}</h2>
+      {team.description ? (
+        <p className="text-sm text-text-secondary">{team.description}</p>
+      ) : null}
+    </header>
+  )
+}
+
+/**
+ * Settings › User Management › Team detail. The Team cards link here; its
+ * content is still to be designed, so it shows the Team's name only.
+ */
+export function UserManagementTeamDetail({ teamId }: { teamId: string }) {
+  return (
+    <TeamManagerOnly loading={<Skeleton className="h-7 w-40 rounded-full" />}>
+      <div className="flex flex-col gap-8">
+        <UserManagementPills />
+        <SettingsPanel>
+          <TeamSummaryHeader teamId={teamId} />
+        </SettingsPanel>
+      </div>
+    </TeamManagerOnly>
   )
 }

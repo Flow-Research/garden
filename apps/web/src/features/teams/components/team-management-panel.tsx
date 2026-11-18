@@ -23,10 +23,12 @@ import { AddTeamMemberDialog, DeleteTeamDialog } from './team-dialogs'
  */
 function TeamCard({
   team,
+  link,
   onAddMember,
   onDelete,
 }: {
   team: TeamSummary
+  link: TeamLink
   onAddMember: (team: TeamSummary) => void
   onDelete: (team: TeamSummary) => void
 }) {
@@ -35,7 +37,7 @@ function TeamCard({
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between gap-2">
           <Link
-            to="/teams/$teamId"
+            to={link}
             params={{ teamId: team.id }}
             className="truncate text-base font-semibold after:absolute after:inset-0 after:content-['']"
           >
@@ -102,18 +104,26 @@ function TeamCard({
 export const TEAM_GRID_CLASS =
   'grid grid-cols-1 gap-4 @xl:grid-cols-2 @4xl:grid-cols-3'
 
+/** Where a Team card opens: the Teams area or Settings › User Management. */
+export type TeamLink =
+  | '/teams/$teamId'
+  | '/settings/user-management/teams/$teamId'
+
 /**
  * Owner/admin Team management from designs 25 and 29: the Create a Team
  * action, the "No Teams" empty state or three-column Team grid, and the
  * create, add-member and delete dialogs. Shared by the Teams overview and
  * Settings › User Management so both surfaces stay identical. `toolbar`
  * fills the left of the action row; Settings puts its sub-tab pills there.
+ * `teamLink` is the route each card opens.
  */
 export function TeamManagementPanel({
   teams,
+  teamLink,
   toolbar,
 }: {
   teams: TeamSummary[]
+  teamLink: TeamLink
   toolbar?: ReactNode
 }) {
   const wsId = useWorkspaceId()
@@ -149,6 +159,7 @@ export function TeamManagementPanel({
             <TeamCard
               key={team.id}
               team={team}
+              link={teamLink}
               onAddMember={setAddMemberTeam}
               onDelete={setDeleteTarget}
             />

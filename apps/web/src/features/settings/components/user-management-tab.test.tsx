@@ -1,24 +1,40 @@
+import type { ReactElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { MemberWithUser, TeamSummary, User } from '@garden/core/types'
+import type {
+  MemberWithUser,
+  Team,
+  TeamSummary,
+  User,
+} from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { teamKeys } from '@/features/teams/queries'
 import { workspaceKeys } from '@/lib/workspace/queries'
 import {
-  UserManagementTab,
-  type UserManagementView,
+  UserManagementMembers,
+  UserManagementTeamDetail,
+  UserManagementTeams,
 } from './user-management-tab'
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     children,
-    search,
+    to,
+    params,
   }: {
     children: React.ReactNode
-    search?: { view?: string }
-  }) => <a href={`?view=${search?.view ?? 'members'}`}>{children}</a>,
+    to: string
+    params?: { teamId?: string }
+  }) => (
+    <a href={params?.teamId ? to.replace('$teamId', params.teamId) : to}>
+      {children}
+    </a>
+  ),
+  Navigate: ({ to }: { to: string }) => (
+    <div data-testid="navigate" data-to={to} />
+  ),
 }))
 vi.mock('./members-tab', () => ({
   MembersTab: () => <h2>Members content</h2>,
@@ -52,10 +68,7 @@ const TEAM = {
 } as TeamSummary
 
 /** `role: null` leaves the members query loading, as on a cold reload. */
-function renderTab(
-  role: MemberWithUser['role'] | null,
-  view: UserManagementView,
-) {
+function renderWithRole(role: MemberWithUser['role'] | null, ui: ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
@@ -67,57 +80,75 @@ function renderTab(
     total: 1,
     unique_member_count: 3,
   })
+  const detail: Team = { ...TEAM, created_by: 'user-1', activity_count: 0 }
+  queryClient.setQueryData(teamKeys.detail('ws-1', TEAM.id), detail)
   render(
     <QueryClientProvider client={queryClient}>
-      <WorkspaceIdProvider wsId="ws-1">
-        <UserManagementTab view={view} />
-      </WorkspaceIdProvider>
+      <WorkspaceIdProvider wsId="ws-1">{ui}</WorkspaceIdProvider>
     </QueryClientProvider>,
   )
 }
 
-describe('UserManagementTab', () => {
+describe('User Management', () => {
   beforeEach(() => {
     useAuthStore.setState({ user: { id: 'user-1' } as User })
   })
 
-  it('gives admins Members and Team sub-tabs', () => {
-    renderTab('admin', 'members')
-    expect(screen.getByRole('link', { name: 'Members' })).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Team' })).toBeVisible()
+  it('gives admins Members and Team sub-tab links', () => {
+    renderWithRole('admin', <UserManagementMembers />)
+    expect(screen.getByRole('link', { name: 'Members' })).toHaveAttribute(
+      'href',
+      '/settings/user-management/members',
+    )
+    expect(screen.getByRole('link', { name: 'Team' })).toHaveAttribute(
+      'href',
+      '/settings/user-management/teams',
+    )
     expect(
       screen.getByRole('heading', { name: 'Members content' }),
     ).toBeVisible()
   })
 
-  it('shows Team management on the Team sub-tab', async () => {
-    renderTab('owner', 'team')
-    expect(
-      await screen.findByRole('button', { name: 'Create a Team' }),
-    ).toBeVisible()
-    expect(screen.getByText('Platform')).toBeVisible()
-    expect(screen.getByText('3 members')).toBeVisible()
-    expect(screen.queryByText('Default team for new members')).toBeNull()
-    expect(
-      screen.queryByRole('heading', { name: 'Members content' }),
-    ).toBeNull()
-  })
-
-  it('holds the Team skeleton while the role loads on reload', () => {
-    api.listMembers.mockReturnValue(new Promise(() => {}))
-    renderTab(null, 'team')
-    expect(screen.getByLabelText('Loading teams')).toBeVisible()
-    expect(
-      screen.queryByRole('heading', { name: 'Members content' }),
-    ).toBeNull()
-  })
-
-  it('keeps members on the member list without Team management', () => {
-    renderTab('member', 'team')
+  it('shows members the member list without sub-tabs', () => {
+    renderWithRole('member', <UserManagementMembers />)
     expect(
       screen.getByRole('heading', { name: 'Members content' }),
     ).toBeVisible()
     expect(screen.queryByRole('link', { name: 'Team' })).toBeNull()
+  })
+
+  it('opens Team cards in Settings', async () => {
+    renderWithRole('owner', <UserManagementTeams />)
+    expect(
+      await screen.findByRole('button', { name: 'Create a Team' }),
+    ).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Platform' })).toHaveAttribute(
+      'href',
+      '/settings/user-management/teams/team-1',
+    )
+    expect(screen.getByText('3 members')).toBeVisible()
+    expect(screen.queryByText('Default team for new members')).toBeNull()
+  })
+
+  it('holds the Team skeleton while the role loads on reload', () => {
+    api.listMembers.mockReturnValue(new Promise(() => {}))
+    renderWithRole(null, <UserManagementTeams />)
+    expect(screen.getByLabelText('Loading teams')).toBeVisible()
+    expect(screen.queryByTestId('navigate')).toBeNull()
+  })
+
+  it('sends members from Team pages to Members', () => {
+    renderWithRole('member', <UserManagementTeams />)
+    expect(screen.getByTestId('navigate')).toHaveAttribute(
+      'data-to',
+      '/settings/user-management/members',
+    )
     expect(screen.queryByRole('button', { name: 'Create a Team' })).toBeNull()
+  })
+
+  it('names the Team on its detail page', () => {
+    renderWithRole('admin', <UserManagementTeamDetail teamId="team-1" />)
+    expect(screen.getByRole('heading', { name: 'Platform' })).toBeVisible()
+    expect(screen.getByRole('link', { name: 'Team' })).toBeVisible()
   })
 })

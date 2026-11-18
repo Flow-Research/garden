@@ -53,7 +53,7 @@ export function TeamOverview() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex w-full max-w-[80rem] flex-col gap-10 px-6 py-6">
           <div className="rounded-2xl bg-background-main-secondary p-10">
-            <TeamManagementPanel teams={teams} />
+            <TeamManagementPanel teams={teams} teamLink="/teams/$teamId" />
           </div>
           <TeamInviteSettings teams={teams} />
         </div>
