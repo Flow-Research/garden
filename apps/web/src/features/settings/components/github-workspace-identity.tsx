@@ -103,30 +103,30 @@ export function GithubWorkspaceIdentitySection() {
           Loading membership...
         </div>
       ) : (
-        <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg border p-4">
+        <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-4 rounded-lg border p-4 sm:items-center">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
             <BrandGithubIcon className="size-5" aria-hidden="true" />
           </span>
-          <div className="min-w-48 flex-1">
+          <div className="min-w-48 flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-medium">GitHub</p>
+              <p className="text-sm leading-5 font-medium">GitHub</p>
               <Badge
                 variant={membership.github_login ? 'secondary' : 'outline'}
               >
                 {membership.github_login ? 'Linked' : 'Not linked'}
               </Badge>
             </div>
-            <p className="text-xs break-words text-muted-foreground">
+            <p className="text-xs leading-5 break-words text-muted-foreground">
               {membership.github_login
                 ? `@${membership.github_login}`
-                : 'Not linked yet. Agents cannot assign GitHub issues to you.'}
+                : 'Link your account so agents can assign GitHub issues to you.'}
             </p>
           </div>
           {membership.github_login ? (
             <Button
               type="button"
               size="sm"
-              variant="ghost"
+              variant="outline"
               className="w-full sm:w-auto"
               disabled={unlinking}
               onClick={() => void handleUnlink()}
