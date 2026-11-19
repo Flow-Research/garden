@@ -3,7 +3,7 @@ title: Settings page rollout
 description: The routed Settings shell, its existing functional sections, and the separate modal entry during design rollout.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-19
 ---
 
 Settings has an authenticated page at `/settings` for direct-link review during the staging rollout. Existing account and workspace menu entries still open the Settings modal. The page is not linked from application navigation yet.
@@ -19,9 +19,9 @@ The page follows the supplied All settings design: heading and description, hori
 | Profile | `/settings/profile` | Redesigned; see [Profile](#profile) |
 | User Management | `/settings/user-management` | Workspace members and invitations |
 | Preferences | `/settings/preferences` | Appearance and theme selection |
-| General | `/settings/general` | Workspace settings |
+| General | `/settings/general` | Redesigned; see [General](#general) |
 
-User Management, Preferences and General reuse the same components, queries and mutations as the modal. Their content redesigns are separate changes. Notifications has no tab or route until its behavior is implemented. This shell adds no new account operations, APIs or permissions.
+User Management and Preferences reuse the same components, queries and mutations as the modal. Their content redesigns are separate changes. Notifications has no tab or route until its behavior is implemented. This shell adds no new account operations, APIs or permissions.
 
 ## Profile
 
@@ -37,6 +37,15 @@ The modal still renders the earlier `AccountTab`. Both read the same session and
 Design elements without backend support are not shown: email change, two-factor authentication (app or SMS), session IP address and location, and signed-out session history. Better Auth reads the client IP only from `x-forwarded-for` unless `advanced.ipAddress.ipAddressHeaders` is set, and Garden does not set it, so stored session IPs are empty. Add them only with the matching Better Auth configuration or API.
 
 Teams remains at `/teams`. Moving Teams, adding User Management sub-tabs, implementing the remaining designs, and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
+
+## General
+
+The General section restyles the workspace settings and keeps every control the modal offers. It has two cards:
+
+- **Workspace.** Name, Description and Context fields, with a hint that agents read Context as background. The slug is a read-only row. Save and Reset appear only after a field changes, ignoring leading and trailing spaces. Save is disabled while the name is empty, and it sends trimmed values. A successful save updates the workspace store and the cached workspace list. Unsaved edits are tied to the workspace they were typed in, so switching workspaces discards them. Members who are not admins or owners see the fields disabled, with a note at the top of the card.
+- **Danger zone.** Leave workspace, with the existing confirmation. The dialog stays open if leaving fails, so the action can be retried.
+
+The modal still renders the earlier `WorkspaceTab`. Both use `api.updateWorkspace` and `useLeaveWorkspace`.
 
 ## Verification
 
