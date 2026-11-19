@@ -323,8 +323,6 @@ export async function ensureBrainRunHistory(input: {
       )
     tools = []
   }
-  if (input.exposeTool !== undefined)
-    tools = [...new Set([...tools, input.exposeTool])]
   if (tools.some((tool) => !isBrainRunToolAllowed(input.permissions, tool)))
     return Result.err(
       new BrainRunAuthorityError({
@@ -332,6 +330,15 @@ export async function ensureBrainRunHistory(input: {
         message: HISTORY_UNVERIFIED_MESSAGES.grantUnavailable,
       }),
     )
+  if (input.exposeTool !== undefined) {
+    if (!isBrainRunToolAllowed(input.permissions, input.exposeTool))
+      return Result.err(
+        new BrainRunAuthorityError({
+          message: `Brain operation ${input.exposeTool} is not permitted.`,
+        }),
+      )
+    tools = [...new Set([...tools, input.exposeTool])]
+  }
   return Result.try({
     try: () => input.persist({ identity: input.identity, tools }),
     catch: (cause) =>
