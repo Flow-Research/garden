@@ -67,7 +67,7 @@ function PreferenceRow({
   control: ReactNode
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-start justify-between gap-4 sm:items-center">
       <div className="min-w-0 flex-1 space-y-1">
         {label}
         {description}
@@ -154,10 +154,14 @@ function DebugModeRow() {
         </Label>
       }
       description={
-        <p id={descriptionId} className="text-sm text-muted-foreground">
-          Show a debug drawer on each agent chat tab with live Durable Object,
-          session, VFS, and sandbox state.
-        </p>
+        <div id={descriptionId} className="space-y-1.5 text-muted-foreground">
+          <p className="text-sm">
+            Show live debugging details in each agent chat.
+          </p>
+          <p className="text-xs leading-5">
+            Includes Durable Object, session, VFS, and sandbox state.
+          </p>
+        </div>
       }
       control={
         <Switch
