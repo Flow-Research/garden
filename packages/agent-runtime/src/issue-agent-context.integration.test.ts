@@ -149,6 +149,28 @@ describe('resetIssueAgentContext (integration)', () => {
     })
   })
 
+  it('keeps the generation when the run was cancelled before the reset', async () => {
+    const { issueId, agentId, runIds } = await seedIssueWithRuns(1)
+    const runId = runIds[0]!
+    await testDb.db
+      .update(schema.issueRun)
+      .set({ cancelRequestedAt: new Date() })
+      .where(eq(schema.issueRun.id, runId))
+    const reset = await resetIssueAgentContext(testDb.db, {
+      issueId,
+      agentId,
+      runId,
+      observedGeneration: 0,
+    })
+    expect(reset.unwrap(), 'cancelled run stays on its observed facet').toBe(0)
+    expect(
+      (
+        await readIssueAgentContextGeneration(testDb.db, { issueId, agentId })
+      ).unwrap(),
+    ).toBe(0)
+    expect(await resetEvents(runId)).toHaveLength(0)
+  })
+
   it('moves to an already-bumped generation without bumping again', async () => {
     const { issueId, agentId, runIds } = await seedIssueWithRuns(2)
     const [winner, stale] = runIds as [string, string]

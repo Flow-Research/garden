@@ -89,6 +89,14 @@ export async function resetIssueAgentContext(
           .from(schema.issueAgentContext)
           .where(issueAgentContextKey(input))
           .for('update')) as [{ generation: number }]
+        // Cancellation can commit after the facet's start check. A cancelled
+        // run keeps its observed facet, whose start path settles the cancel.
+        const [run] = await tx
+          .select({ cancelRequestedAt: schema.issueRun.cancelRequestedAt })
+          .from(schema.issueRun)
+          .where(eq(schema.issueRun.id, input.runId))
+          .for('update')
+        if (run?.cancelRequestedAt) return input.observedGeneration
         const [existing] = await tx
           .select({ id: schema.issueRunEvent.id })
           .from(schema.issueRunEvent)
