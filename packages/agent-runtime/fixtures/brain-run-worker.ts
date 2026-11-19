@@ -272,6 +272,7 @@ export default {
         configure: () => undefined,
         session: { getHistory: async () => [] },
         verifyRunEntry(runId: string) { return Reflect.get(facet.prototype, 'verifyRunEntry').call(this, runId) },
+        runObjectId() { return Reflect.get(facet.prototype, 'runObjectId').call(this) },
         runConfig() { return Reflect.get(facet.prototype, 'runConfig').call(this) },
         runError(fields: unknown) { return Reflect.get(facet.prototype, 'runError').call(this, fields) },
         loadTurnContext(runId: string) { return Reflect.get(facet.prototype, 'loadTurnContext').call(this, runId) },
