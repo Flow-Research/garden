@@ -229,6 +229,7 @@ export default {
         '/writeback-origin',
         '/automation-resume',
         '/history',
+        '/history-read',
         '/chat',
         '/resume',
         '/writeback',
@@ -820,7 +821,7 @@ export default {
       const facet = await getSubAgentByName(
         agent,
         IssueRunSubAgent,
-        input.issueId,
+        input.facetName ?? input.issueId,
       )
       await facet.addMessages([
         {

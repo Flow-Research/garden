@@ -11,7 +11,7 @@ import {
 } from 'testcontainers'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import * as schema from '@garden/db/schema'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { Result } from 'better-result'
 
 const ownerId = crypto.randomUUID()
@@ -780,6 +780,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         ],
         'starts a fresh agent context for an unproven legacy issue transcript and retains the old history':
           ['IssueRunSubAgent.completeWorkflowTurn'],
+        'fails with the specific reason when the fresh agent context is also unverified':
+          ['IssueRunSubAgent.executeWorkflowTurn'],
         'preserves org-only retrieval through a real Workflow wait/resume and a later run on the same issue facet':
           [
             'IssueRunSubAgent.completeWorkflowTurn',
@@ -3064,10 +3066,16 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         .from(schema.issueRun)
         .where(eq(schema.issueRun.id, input.runId))
       expect(run?.status, run?.error ?? 'run did not succeed').toBe('succeeded')
-      const contextRows = await database!.db.execute<{ generation: number }>(
-        sql`select generation from issue_agent_context where issue_id = ${input.issueId} and agent_id = ${input.agentId}`,
-      )
-      expect(contextRows.rows[0]?.generation).toBe(1)
+      const [context] = await database!.db
+        .select({ generation: schema.issueAgentContext.generation })
+        .from(schema.issueAgentContext)
+        .where(
+          and(
+            eq(schema.issueAgentContext.issueId, input.issueId),
+            eq(schema.issueAgentContext.agentId, input.agentId),
+          ),
+        )
+      expect(context?.generation).toBe(1)
       const resets = await database!.db
         .select()
         .from(schema.issueRunEvent)
@@ -3083,6 +3091,62 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         body: JSON.stringify({ ...input, facetName: input.issueId }),
       })
       expect(await retained.text()).toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+    }, 90_000)
+    it('fails with the specific reason when the fresh agent context is also unverified', async () => {
+      const input = await seedIssue('G06 legacy transcript twice')
+      for (const facetName of [input.issueId, `${input.issueId}:ctx1`]) {
+        const seed = await harness!.fetch('/history', {
+          method: 'POST',
+          body: JSON.stringify({ ...input, facetName }),
+        })
+        expect(seed.status, await seed.clone().text()).toBe(200)
+      }
+      const start = modelRequests.length
+      const response = await harness!.fetch('/start', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+      expect(response.status, await response.clone().text()).toBe(200)
+      await expect
+        .poll(
+          async () => {
+            const [run] = await database!.db
+              .select()
+              .from(schema.issueRun)
+              .where(eq(schema.issueRun.id, input.runId))
+            return run?.status
+          },
+          { timeout: 60_000 },
+        )
+        .toMatch(/^(succeeded|failed|cancelled|blocked)$/)
+      const [run] = await database!.db
+        .select()
+        .from(schema.issueRun)
+        .where(eq(schema.issueRun.id, input.runId))
+      expect(run?.status).toBe('failed')
+      expect(run?.error).toBe(
+        'Issue transcript has an unverified Brain audience. Retained history cannot be resumed.',
+      )
+      const [context] = await database!.db
+        .select({ generation: schema.issueAgentContext.generation })
+        .from(schema.issueAgentContext)
+        .where(
+          and(
+            eq(schema.issueAgentContext.issueId, input.issueId),
+            eq(schema.issueAgentContext.agentId, input.agentId),
+          ),
+        )
+      expect(context?.generation, 'one fresh context per run, no loop').toBe(1)
+      const events = await database!.db
+        .select()
+        .from(schema.issueRunEvent)
+        .where(eq(schema.issueRunEvent.runId, input.runId))
+      expect(
+        events.filter((event) => event.eventType === 'issue_run:context_reset'),
+      ).toHaveLength(1)
+      const outward = JSON.stringify({ run, events, logs: harness!.getLogs() })
+      expect(outward).not.toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+      expect(modelRequests.slice(start)).toHaveLength(0)
     }, 90_000)
     it('preserves org-only retrieval through a real Workflow wait/resume and a later run on the same issue facet', async () => {
       modelMode = 'pause'
@@ -3219,6 +3283,23 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           observed.includes(marker),
           `resumed run disclosed ${marker}`,
         ).toBe(false)
+      const [context] = await database!.db
+        .select({ generation: schema.issueAgentContext.generation })
+        .from(schema.issueAgentContext)
+        .where(
+          and(
+            eq(schema.issueAgentContext.issueId, input.issueId),
+            eq(schema.issueAgentContext.agentId, input.agentId),
+          ),
+        )
+      expect(context, 'a stamped facet keeps its context').toBeUndefined()
+      const resets = await database!.db
+        .select()
+        .from(schema.issueRunEvent)
+        .where(eq(schema.issueRunEvent.issueId, input.issueId))
+      expect(
+        resets.filter((event) => event.eventType === 'issue_run:context_reset'),
+      ).toHaveLength(0)
     }, 120_000)
     it('denies private mutation targets without metadata or edge changes while allowing org mutations', async () => {
       const inspect = async () => {
@@ -3697,7 +3778,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         expect(response.status, await response.clone().text()).toBe(200)
         expect(await response.json()).toEqual({
           denied: true,
-          code: failRead || failPersist ? 'runtime_failed' : 'invalid_state',
+          code:
+            failRead || failPersist ? 'runtime_failed' : 'history_unverified',
           durableReads: 1,
           cacheReads: 0,
           stamps: [],
