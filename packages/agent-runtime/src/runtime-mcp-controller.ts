@@ -420,6 +420,17 @@ type ActiveNativeConnectorAccount = {
   status: 'connected' | 'degraded'
 }
 
+/**
+ * Owner scoping is a write-only guard: reads of public repositories outside
+ * the installation are useful context, while a wrong-owner write cannot be
+ * allowed. Unknown risk classes fail closed.
+ */
+function githubOwnerGateMode(
+  riskClass: string | null | undefined,
+): 'read' | 'write' {
+  return riskClass === 'read' ? 'read' : 'write'
+}
+
 type GithubAssigneesInput =
   | { kind: 'absent' }
   | { kind: 'invalid' }
@@ -1096,11 +1107,12 @@ export class RuntimeMcpController {
                 inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
                 execute: async (input) => {
                   // Owner identity gate (#332): reject a hallucinated owner
-                  // (or correct its casing) before any GitHub request is
-                  // built, on the same boundary as the assignee gate below.
+                  // on writes and canonicalize casing on every call before
+                  // any GitHub request is built, beside the assignee gate.
                   const ownerGate = resolveGithubToolOwner({
                     accountLogin: githubAccount.accountLogin,
                     input,
+                    mode: githubOwnerGateMode(nativeTool.riskClass),
                   })
                   if (ownerGate.kind === 'reject') {
                     return { error: true, message: ownerGate.message }
@@ -1194,10 +1206,15 @@ export class RuntimeMcpController {
                 inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
                 execute: async (input) => {
                   // Same owner identity gate as the native surface (#332):
-                  // the hosted server takes free-hand owner/repo too.
+                  // the hosted server takes free-hand owner/repo too. Its
+                  // risk class comes from the same connector registry.
                   const ownerGate = resolveGithubToolOwner({
                     accountLogin: githubAccount.accountLogin,
                     input,
+                    mode: githubOwnerGateMode(
+                      getConnectorById('github')?.tools[hostedTool.name]
+                        ?.riskClass,
+                    ),
                   })
                   if (ownerGate.kind === 'reject') {
                     return { error: true, message: ownerGate.message }

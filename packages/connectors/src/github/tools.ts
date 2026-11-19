@@ -12,13 +12,13 @@ const Pagination = {
  * Shared `owner`/`repo` parameters (#332). Both are free-hand strings the
  * model supplies, which is how a hallucinated org name (`flowresearch`
  * instead of `Flow-Research`) reached the API as a 404. The runtime owner
- * gate (`identity.ts`) rejects a mismatched owner before any request; these
- * descriptions steer the model at the schema level toward the
- * inventory-derived login instead of a guess.
+ * gate (`identity.ts`) rejects a mismatched owner on writes and canonicalizes
+ * casing on every call; these descriptions steer the model at the schema level
+ * toward the inventory-derived login instead of a guess.
  */
 const OwnerParam = Schema.String.annotate({
   description:
-    'Repository owner. Must be the connected GitHub account login with its exact casing — take it from list_workspace_inventory or a prior GitHub tool result; never guess or re-case it.',
+    'Repository owner. Write tools require the connected GitHub account login with its exact casing — take it from list_workspace_inventory or a prior GitHub tool result; never guess or re-case it. Read tools may address other owners; a case variant is corrected automatically.',
 })
 const RepoParam = Schema.String.annotate({
   description: 'Repository name exactly as GitHub stores it, including casing.',

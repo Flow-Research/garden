@@ -112,7 +112,7 @@ describe('GitHub App tool surface', () => {
         | undefined
     )?.properties
     expect(properties?.owner?.description).toContain(
-      'connected GitHub account login',
+      'Write tools require the connected GitHub account login',
     )
     expect(properties?.repo?.description).toContain(
       'exactly as GitHub stores it',

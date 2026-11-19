@@ -410,6 +410,7 @@ async function callConnectorTool(args: {
   const ownerGate = resolveGithubToolOwner({
     accountLogin: installation.accountLogin,
     input: args.toolArgs,
+    mode: 'write',
   })
   if (ownerGate.kind === 'reject') {
     return Result.err(invalidState(ownerGate.message))

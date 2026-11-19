@@ -25,7 +25,7 @@ const MINTED_TOKEN = 'ghs_e2e'
 /**
  * A real RSA key so the mint path signs a real GitHub App JWT. GitHub is the
  * only stubbed boundary: the fetch dispatcher answers the token mint and the
- * repository read, so the test runs the production path from tool assembly
+ * repository calls, so the test runs the production path from tool assembly
  * through the owner gate, JWT signing, REST client, and response decoding.
  */
 const appPrivateKey = generateKeyPairSync('rsa', {
@@ -79,44 +79,55 @@ const githubHttp = vi.hoisted(() => {
 })
 
 /**
- * Answers the two GitHub endpoints this scenario needs and records every call
- * so the test can assert on the exact path and credential that crossed the
+ * Answers the GitHub endpoints this scenario needs and records every call so
+ * the test can assert on the exact path and credential that crossed the
  * network boundary. `branchesStatus: 404` simulates a wrong repository name.
  */
 function stubGithub(options: GithubStubOptions = {}): GithubCall[] {
   githubHttp.state.calls = []
-  githubHttp.state.handler = async (input) => {
+  githubHttp.state.handler = async (input, init) => {
     const url =
       input instanceof URL
         ? input
         : new URL(typeof input === 'string' ? input : input.url)
+    const json = (body: unknown, status = 200) =>
+      new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      })
     if (
       url.pathname === `/app/installations/${INSTALLATION_ID}/access_tokens`
     ) {
-      return new Response(
-        JSON.stringify({
+      return json(
+        {
           token: MINTED_TOKEN,
           expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-        }),
-        { status: 201, headers: { 'content-type': 'application/json' } },
+        },
+        201,
       )
     }
     if (url.pathname === `/repos/${ACCOUNT}/garden/branches`) {
       if (options.branchesStatus === 404) {
-        return new Response(JSON.stringify({ message: 'Not Found' }), {
-          status: 404,
-          headers: { 'content-type': 'application/json' },
-        })
+        return json({ message: 'Not Found' }, 404)
       }
-      return new Response(
-        JSON.stringify([{ name: 'dev', commit: { sha: 'abc123' } }]),
-        { status: 200, headers: { 'content-type': 'application/json' } },
+      return json([{ name: 'dev', commit: { sha: 'abc123' } }])
+    }
+    if (url.pathname === '/repos/cloudflare/agents/branches') {
+      return json([{ name: 'main', commit: { sha: 'def456' } }])
+    }
+    if (
+      url.pathname === `/repos/${ACCOUNT}/garden/issues` &&
+      init?.method === 'POST'
+    ) {
+      return json(
+        {
+          number: 7,
+          html_url: `https://github.com/${ACCOUNT}/garden/issues/7`,
+        },
+        201,
       )
     }
-    return new Response(JSON.stringify({ message: 'Not Found' }), {
-      status: 404,
-      headers: { 'content-type': 'application/json' },
-    })
+    return json({ message: 'Not Found' }, 404)
   }
   return githubHttp.state.calls
 }
@@ -138,50 +149,73 @@ function githubToolSurface() {
     userId: randomUUID(),
     agentId: randomUUID(),
   }
-  const host = {
+  const host: McpHost = {
     name: 'github-owner-e2e',
     env: {
+      BETTER_AUTH_SECRET: '',
+      BETTER_AUTH_URL: 'http://localhost:3000',
+      HYPERDRIVE: {
+        connectionString: '',
+      } as McpHost['env']['HYPERDRIVE'],
       GITHUB_APP_ID: '151515',
       GITHUB_CLIENT_ID: 'Iv1.e2e',
       GITHUB_APP_PRIVATE_KEY: appPrivateKey,
     },
-    ctx: { storage: { sql: {} } },
+    ctx: { storage: { sql: {} as McpHost['ctx']['storage']['sql'] } },
     mcp: {
       getAITools: () => ({}) as ToolSet,
+      callTool: async () => ({}),
       listTools: () => [],
       listServers: () => [],
+      discoverIfConnected: async () => ({ success: false }),
     },
+    removeMcpServer: async () => {},
     githubHostedMcp: { listTools: async () => [], callTool: callHostedTool },
     resolveRuntimeIdentity: async () => Result.ok(identity),
-  } as unknown as McpHost
+  }
 
   const controller = new RuntimeMcpController(host)
-  const internals = controller as unknown as {
-    activeNativeConnectorAccounts: Map<string, unknown>
-    activeGitHubHostedMcpTools: unknown[]
-  }
-  internals.activeNativeConnectorAccounts.set('github', {
+  const accounts = Reflect.get(
+    controller,
+    'activeNativeConnectorAccounts',
+  ) as Map<
+    string,
+    {
+      accountId: string | null
+      accountLogin?: string | null
+      status: 'connected' | 'degraded'
+    }
+  >
+  accounts.set('github', {
     accountId: INSTALLATION_ID,
     accountLogin: ACCOUNT,
     status: 'connected',
   })
-  internals.activeGitHubHostedMcpTools = [
+  Reflect.set(controller, 'activeGitHubHostedMcpTools', [
     { name: 'list_issues', description: 'hosted', inputSchema: {} },
-  ]
+    { name: 'issue_write', description: 'hosted', inputSchema: {} },
+  ])
 
   const tools = controller.wrapGetAITools(() => ({}) as ToolSet, undefined)
-  const native = tools[
-    buildMcpAiToolKey('github', 'list_branches')
-  ] as unknown as ExecutableTool
-  const hosted = tools[
-    buildMcpAiToolKey('github-mcp', 'list_issues')
-  ] as unknown as ExecutableTool
+  const tool = (connectorId: string, name: string) =>
+    tools[buildMcpAiToolKey(connectorId, name)] as ExecutableTool | undefined
+  const run = (
+    selected: ExecutableTool | undefined,
+    input: unknown,
+  ): Promise<unknown> => {
+    if (!selected) throw new Error('Expected tool to be assembled')
+    return selected.execute(input, { toolCallId: randomUUID(), messages: [] })
+  }
   return {
     callHostedTool,
-    runNative: (input: unknown) =>
-      native.execute(input, { toolCallId: randomUUID(), messages: [] }),
-    runHosted: (input: unknown) =>
-      hosted.execute(input, { toolCallId: randomUUID(), messages: [] }),
+    runNativeRead: (input: unknown) =>
+      run(tool('github', 'list_branches'), input),
+    runNativeWrite: (input: unknown) =>
+      run(tool('github', 'issue_write'), input),
+    runHostedRead: (input: unknown) =>
+      run(tool('github-mcp', 'list_issues'), input),
+    runHostedWrite: (input: unknown) =>
+      run(tool('github-mcp', 'issue_write'), input),
   }
 }
 
@@ -198,13 +232,17 @@ afterAll(() => {
 })
 
 describe('GitHub owner gate end to end (#332)', () => {
-  // The incident: the model called the repo as `flowresearch/garden`. The
-  // call must be refused before a token is even minted.
-  it('refuses a hallucinated owner without minting a token or calling GitHub', async () => {
+  // The #332 owner guess, now on a write: it must be refused before a token
+  // is even minted. The read that originally hit the 404 is allowed through.
+  it('refuses a hallucinated owner on a write without minting or calling GitHub', async () => {
     const calls = stubGithub()
-    const { runNative } = githubToolSurface()
+    const { runNativeWrite } = githubToolSurface()
 
-    const result = await runNative({ owner: 'flowresearch', repo: 'garden' })
+    const result = await runNativeWrite({
+      owner: 'flowresearch',
+      repo: 'garden',
+      title: 'Fix',
+    })
 
     expect(result).toMatchObject({
       error: true,
@@ -215,9 +253,12 @@ describe('GitHub owner gate end to end (#332)', () => {
 
   it('corrects a re-cased owner and reads the repository with the canonical path', async () => {
     const calls = stubGithub()
-    const { runNative } = githubToolSurface()
+    const { runNativeRead } = githubToolSurface()
 
-    const result = await runNative({ owner: 'flow-research', repo: 'garden' })
+    const result = await runNativeRead({
+      owner: 'flow-research',
+      repo: 'garden',
+    })
 
     expect(result).toEqual([{ name: 'dev', commit: { sha: 'abc123' } }])
     expect(calls.map((call) => call.path)).toEqual([
@@ -231,21 +272,33 @@ describe('GitHub owner gate end to end (#332)', () => {
 
   it('trims a padded owner before the request leaves the worker', async () => {
     const calls = stubGithub()
-    const { runNative } = githubToolSurface()
+    const { runNativeRead } = githubToolSurface()
 
     await expect(
-      runNative({ owner: ` ${ACCOUNT} `, repo: 'garden' }),
+      runNativeRead({ owner: ` ${ACCOUNT} `, repo: 'garden' }),
     ).resolves.toEqual([{ name: 'dev', commit: { sha: 'abc123' } }])
     expect(calls.at(-1)?.path).toBe(`/repos/${ACCOUNT}/garden/branches`)
+  })
+
+  // Reads can't change GitHub state, so a public repo outside the install
+  // account is useful context: the owner must reach GitHub unchanged.
+  it('reads a repository outside the connected account unchanged', async () => {
+    const calls = stubGithub()
+    const { runNativeRead } = githubToolSurface()
+
+    await expect(
+      runNativeRead({ owner: 'cloudflare', repo: 'agents' }),
+    ).resolves.toEqual([{ name: 'main', commit: { sha: 'def456' } }])
+    expect(calls.at(-1)?.path).toBe('/repos/cloudflare/agents/branches')
   })
 
   // Wrong repository name (right owner) still 404s at GitHub; the tool result
   // must carry the retry hint through the real error classification.
   it('returns the list_repositories hint when the repository name 404s', async () => {
     const calls = stubGithub({ branchesStatus: 404 })
-    const { runNative } = githubToolSurface()
+    const { runNativeRead } = githubToolSurface()
 
-    const result = await runNative({ owner: ACCOUNT, repo: 'garden-cli' })
+    const result = await runNativeRead({ owner: ACCOUNT, repo: 'garden-cli' })
 
     expect(result).toMatchObject({
       error: true,
@@ -254,14 +307,33 @@ describe('GitHub owner gate end to end (#332)', () => {
     expect(calls.at(-1)?.path).toBe(`/repos/${ACCOUNT}/garden-cli/branches`)
   })
 
-  it('refuses a hallucinated owner on the hosted surface too', async () => {
+  it('refuses a hallucinated owner on the hosted write too', async () => {
     const calls = stubGithub()
-    const { runHosted, callHostedTool } = githubToolSurface()
+    const { runHostedWrite, callHostedTool } = githubToolSurface()
 
-    const result = await runHosted({ owner: 'flowresearch', repo: 'garden' })
+    const result = await runHostedWrite({
+      owner: 'flowresearch',
+      repo: 'garden',
+      title: 'Fix',
+    })
 
     expect(result).toMatchObject({ error: true })
     expect(callHostedTool).not.toHaveBeenCalled()
     expect(calls).toEqual([])
+  })
+
+  it('corrects a re-cased owner on a native write before POSTing', async () => {
+    const calls = stubGithub()
+    const { runNativeWrite } = githubToolSurface()
+
+    const result = await runNativeWrite({
+      owner: 'flow-research',
+      repo: 'garden',
+      title: 'Fix',
+    })
+
+    expect(result).toMatchObject({ number: 7 })
+    expect(calls.at(-1)?.path).toBe(`/repos/${ACCOUNT}/garden/issues`)
+    expect(calls.at(-1)?.method).toBe('POST')
   })
 })

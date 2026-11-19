@@ -12,9 +12,12 @@
  * Before this gate: no check existed between the model's `owner` argument
  * and the installation account, on either the native or hosted surface.
  * After: a case-variant of the connected login is corrected to the
- * canonical casing, any other owner is rejected with the connected account
- * named, and a call with no canonical login available proceeds untouched
- * (degraded installs must not brick the tool surface).
+ * canonical casing on every call, a mutating call with any other owner is
+ * rejected with the connected account named, and a call with no canonical
+ * login available proceeds untouched (degraded installs must not brick the
+ * tool surface). Reads accept any owner: public repositories outside the
+ * installation are useful context and a read cannot change GitHub state, so
+ * a wrong-owner read falls through to GitHub's 404 and its retry hint.
  *
  * Industry pattern: resolve identity from the authenticated session rather
  * than the model's memory (gh CLI `--repo`/`GH_REPO`/git-remote precedence;
@@ -52,11 +55,13 @@ export type GithubOwnerGate =
  * - case-insensitive match → proceed with `owner` set to the canonical
  *   login (GitHub logins are case-insensitive, but paths are not reliably
  *   so, and the canonical casing keeps transcripts unambiguous);
- * - otherwise → reject with an actionable message naming both logins.
+ * - a different owner → reject on `write`, proceed untouched on `read`.
  */
 export function resolveGithubToolOwner(args: {
   readonly accountLogin?: string | null
   readonly input: unknown
+  /** Read calls may address any owner; only writes are account-scoped. */
+  readonly mode: 'read' | 'write'
 }): GithubOwnerGate {
   const account = args.accountLogin?.trim()
   if (!account) return { kind: 'proceed', input: args.input }
@@ -74,9 +79,10 @@ export function resolveGithubToolOwner(args: {
 
   const trimmed = owner.trim()
   if (trimmed.toLowerCase() !== account.toLowerCase()) {
+    if (args.mode === 'read') return { kind: 'proceed', input }
     return {
       kind: 'reject',
-      message: `GitHub owner "${trimmed}" is not the connected GitHub account "${account}". This installation only covers repositories under "${account}". Retry with owner "${account}", or call list_repositories to see the repositories available to this installation.`,
+      message: `GitHub owner "${trimmed}" is not the connected GitHub account "${account}". This installation only covers writes to repositories under "${account}". Retry with owner "${account}", or call list_repositories to see the repositories available to this installation.`,
     }
   }
   // Canonicalize padded / re-cased values; an exact match keeps the original
