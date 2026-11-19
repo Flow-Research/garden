@@ -18,14 +18,33 @@ import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
   issueSourceBindingSelectSchema,
   issueWorkProductSelectSchema,
+  type issueWorkProductTypeSchema,
 } from '@garden/db/validation'
 import type { AppEnv } from './env'
 import { getDb, schema } from './db'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
-import { addBrainFolderFile, getBrainFolder } from './brain-folders'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+import {
+  addBrainFolderFile,
+  createBrainFolder,
+  listBrainFolders,
+} from './brain-folders'
 import { overwriteBrainFile, saveBrainFileUpload } from './brain-file-upload'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
+
+const workProductLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'work-products',
+})
+
+/** Document work products; approving one saves it to Files & Folders. */
+const documentWorkProductTypes: ReadonlySet<string> = new Set([
+  'brief',
+  'plan',
+  'report',
+  'checklist',
+] satisfies Array<z.infer<typeof issueWorkProductTypeSchema>>)
 
 /**
  * Review request body. Before FLO-150, `approve` always moved an in_review
@@ -50,9 +69,6 @@ export const workProductReviewBodySchema = z.discriminatedUnion('action', [
     .strict(),
   z.object({ action: z.literal('apply') }).strict(),
   z.object({ action: z.literal('apply_pr') }).strict(),
-  z
-    .object({ action: z.literal('save_to_files'), folder_id: z.uuid() })
-    .strict(),
 ])
 
 export type WorkProductReviewInput = z.infer<typeof workProductReviewBodySchema>
@@ -62,7 +78,6 @@ export class WorkProductReviewError extends TaggedError(
 )<{
   code:
     | 'database_failed'
-    | 'folder_not_found'
     | 'invalid_state'
     | 'save_failed'
     | 'unsupported_writeback'
@@ -113,9 +128,27 @@ type ConnectorToolCallOutcome =
   | { kind: 'needs_approval'; requestId: string }
   | ({ kind: 'success' } & ConnectorToolResponse)
 
+/**
+ * What approval did in Files & Folders. `failed` is a value, not an error:
+ * the approval stands, and the client shows the message.
+ */
+export type WorkProductFilesSave =
+  | {
+      status: 'saved'
+      fileId: string
+      fileName: string
+      folderId: string
+      folderName: string
+      url: string
+      overwritten: boolean
+    }
+  | { status: 'skipped' }
+  | { status: 'failed'; message: string }
+
 export type WorkProductReviewOutcome =
   | {
       action: 'approve'
+      files: WorkProductFilesSave
       workProductId: string
     }
   | {
@@ -124,7 +157,7 @@ export type WorkProductReviewOutcome =
       workProductId: string
     }
   | ({
-      action: 'apply' | 'apply_pr' | 'save_to_files'
+      action: 'apply' | 'apply_pr'
       workProductId: string
     } & ConnectorToolSuccess)
 
@@ -534,13 +567,15 @@ async function approveWorkProduct(args: {
   closeIssue: boolean
   editedBody?: string
   env: AppEnv
+  waitUntil?: (promise: Promise<unknown>) => void
   workProductId: string
   workspaceId: string
 }): Promise<ResultValue<WorkProductReviewOutcome, WorkProductReviewError>> {
   const contextResult = await loadWorkProductContext(args)
   if (contextResult.isErr()) return Result.err(contextResult.error)
   const { issue, workProduct } = contextResult.value
-  if (!workProduct.runId) {
+  const runId = workProduct.runId
+  if (!runId) {
     return Result.err(invalidState('Work product is not tied to an issue run'))
   }
 
@@ -642,8 +677,19 @@ async function approveWorkProduct(args: {
   })
   if (result.isErr()) return Result.err(result.error)
 
+  const files = await saveApprovalToFiles({
+    actorUserId: args.actorUserId,
+    body: (editedBody ?? workProduct.body ?? '').trim(),
+    env: args.env,
+    runId,
+    teamId: issue.teamId,
+    waitUntil: args.waitUntil,
+    workProduct,
+    workspaceId: args.workspaceId,
+  })
   return Result.ok({
     action: 'approve',
+    files,
     workProductId: workProduct.id,
   })
 }
@@ -1370,187 +1416,302 @@ function savedFileName(workProduct: WorkProductRow) {
   return `${slug || `work-product-${workProduct.id.slice(0, 8)}`}.md`
 }
 
+function saveFailed(message: string, cause?: unknown) {
+  return new WorkProductReviewError({
+    code: 'save_failed',
+    status: 503,
+    message,
+    cause,
+  })
+}
+
 /**
- * "Save to Files" (#381). Before this, an approved work product could only
- * leave Garden as a GitHub comment or PR; getting it into Files & Folders
- * meant a manual upload. This saves the approved body as a Markdown file in
- * a folder the approving person can see, through `saveBrainFileUpload` (the
- * same stage → index → audit path `POST /api/brain/files` uses), so the file
- * is indexed and searchable like an upload and the person is its owner.
- *
- * Saving is a copy, not an apply: status and `applied_external_*` stay as
- * they are, so Apply and Apply as PR remain available. The link is recorded
- * in `payload.saved_file` and an `issue_run:work_product_saved_to_files`
- * event. Saving again creates a new file and replaces the recorded link.
+ * The folder an approved document lands in: the one named after the issue's
+ * Team, or after the workspace for a workspace issue (no Team), which every
+ * member can see just as every member sees the Team-less issue. Matched by
+ * name among the folders the approver can see; created as a shared folder
+ * when none matches.
  */
-async function saveWorkProductToFiles(args: {
+async function resolveDestinationFolder(args: {
   actorUserId: string
   env: AppEnv
-  folderId: string
-  waitUntil?: (promise: Promise<unknown>) => void
-  workProductId: string
+  teamId: string | null
   workspaceId: string
-}): Promise<ResultValue<WorkProductReviewOutcome, WorkProductReviewError>> {
-  const contextResult = await loadWorkProductContext(args)
-  if (contextResult.isErr()) return Result.err(contextResult.error)
-  const { workProduct } = contextResult.value
-  if (workProduct.status !== 'approved' && workProduct.status !== 'applied') {
-    return Result.err(
-      invalidState('Only approved work products can be saved to Files'),
-    )
-  }
-  const body = workProduct.body?.trim()
-  if (!body) return Result.err(invalidState('Work product body is empty'))
-  const runId = workProduct.runId
-  if (!runId) {
-    return Result.err(invalidState('Work product is not tied to an issue run'))
-  }
-
-  // getBrainFolder scopes by workspace and hides another member's private
-  // folder, the same visibility the Files page and folder routes enforce.
-  const folderResult = await Result.tryPromise({
-    try: () =>
-      getBrainFolder({
-        env: args.env,
-        workspaceId: args.workspaceId,
-        userId: args.actorUserId,
-        folderId: args.folderId,
-      }),
-    catch: (cause) => dbError('Failed to load folder', cause),
-  })
-  if (folderResult.isErr()) return Result.err(folderResult.error)
-  if (!folderResult.value) {
-    return Result.err(
-      new WorkProductReviewError({
-        code: 'folder_not_found',
-        status: 404,
-        message: 'Folder not found',
+}): Promise<ResultValue<{ id: string; name: string }, WorkProductReviewError>> {
+  const teamId = args.teamId
+  return Result.gen(async function* () {
+    const db = await getDb(args.env)
+    const [named] = yield* Result.await(
+      Result.tryPromise({
+        try: () =>
+          teamId
+            ? db
+                .select({ name: schema.team.name })
+                .from(schema.team)
+                .where(
+                  and(
+                    eq(schema.team.id, teamId),
+                    eq(schema.team.workspaceId, args.workspaceId),
+                  ),
+                )
+                .limit(1)
+            : db
+                .select({ name: schema.organization.name })
+                .from(schema.organization)
+                .where(eq(schema.organization.id, args.workspaceId))
+                .limit(1),
+        catch: (cause) => saveFailed('Failed to load the folder name', cause),
       }),
     )
-  }
-
-  // A re-save after revise → re-approve overwrites the recorded file so
-  // Files keeps one current copy; if that file was deleted, save a new one.
-  const previous = parseWorkProductSavedFile(workProduct.payload)
-  const overwritten = previous
-    ? await overwriteBrainFile({
-        env: args.env,
-        fileId: previous.file_id,
-        body,
-        ownerUserId: args.actorUserId,
-        waitUntil: args.waitUntil,
-        workspaceId: args.workspaceId,
-      })
-    : Result.ok(null)
-  const saved = await overwritten.andThenAsync(async (item) =>
-    item
-      ? Result.ok(item)
-      : saveBrainFileUpload({
+    if (!named) {
+      return Result.err(
+        saveFailed(teamId ? 'Team not found' : 'Workspace not found'),
+      )
+    }
+    const name = named.name
+    return Result.tryPromise({
+      try: async () => {
+        const folders = await listBrainFolders({
           env: args.env,
-          file: new File([body], savedFileName(workProduct), {
+          workspaceId: args.workspaceId,
+          userId: args.actorUserId,
+        })
+        const existing = folders.find((folder) => folder.name === name)
+        if (existing) return { id: existing.id, name }
+        const created = await createBrainFolder({
+          env: args.env,
+          workspaceId: args.workspaceId,
+          userId: args.actorUserId,
+          name,
+          privacy: 'shared',
+        })
+        return { id: created.id, name }
+      },
+      catch: (cause) => saveFailed(`Failed to open the ${name} folder`, cause),
+    })
+  })
+}
+
+/**
+ * Saves an approved document work product as Markdown in its Team's folder
+ * through `saveBrainFileUpload`, the same stage, index, and audit path as
+ * `POST /api/brain/files`. A later approval of a revised version overwrites
+ * the file recorded in `payload.saved_file`; a deleted file is saved anew.
+ */
+async function saveApprovedWorkProductToFiles(args: {
+  actorUserId: string
+  body: string
+  env: AppEnv
+  runId: string
+  teamId: string | null
+  waitUntil?: (promise: Promise<unknown>) => void
+  workProduct: WorkProductRow
+  workspaceId: string
+}): Promise<
+  ResultValue<
+    Extract<WorkProductFilesSave, { status: 'saved' }>,
+    WorkProductReviewError
+  >
+> {
+  if (!args.body) {
+    return Result.err(saveFailed('The approved work product is empty'))
+  }
+  return Result.gen(async function* () {
+    const folder = yield* Result.await(resolveDestinationFolder(args))
+    const previous = parseWorkProductSavedFile(args.workProduct.payload)
+    const overwritten = previous
+      ? yield* Result.await(
+          overwriteBrainFile({
+            env: args.env,
+            fileId: previous.file_id,
+            body: args.body,
+            ownerUserId: args.actorUserId,
+            waitUntil: args.waitUntil,
+            workspaceId: args.workspaceId,
+          }).then((result) =>
+            result.mapError((error) => saveFailed(error.message, error)),
+          ),
+        )
+      : null
+    const saved =
+      overwritten ??
+      (yield* Result.await(
+        saveBrainFileUpload({
+          env: args.env,
+          file: new File([args.body], savedFileName(args.workProduct), {
             type: 'text/markdown',
           }),
           ownerUserId: args.actorUserId,
           waitUntil: args.waitUntil,
           workspaceId: args.workspaceId,
-        }),
-  )
-  if (saved.isErr()) {
-    return Result.err(
-      new WorkProductReviewError({
-        code: 'save_failed',
-        status: saved.error.code === 'brain_unconfigured' ? 400 : 503,
-        message: saved.error.message,
+        }).then((result) =>
+          result.mapError((error) => saveFailed(error.message, error)),
+        ),
+      ))
+    const outcome = {
+      status: 'saved',
+      fileId: saved.id,
+      fileName: saved.label,
+      folderId: folder.id,
+      folderName: folder.name,
+      url: `/api/brain/files/${encodeURIComponent(saved.id)}/content`,
+      overwritten: overwritten !== null,
+    } as const
+    const savedFile = {
+      file_id: outcome.fileId,
+      file_name: outcome.fileName,
+      folder_id: outcome.folderId,
+      url: outcome.url,
+      saved_by: args.actorUserId,
+      saved_at: new Date().toISOString(),
+    } satisfies WorkProductSavedFile
+
+    const db = await getDb(args.env)
+    yield* Result.await(
+      Result.tryPromise({
+        try: async () => {
+          await addBrainFolderFile({
+            env: args.env,
+            workspaceId: args.workspaceId,
+            folderId: folder.id,
+            fileId: outcome.fileId,
+            userId: args.actorUserId,
+          })
+          await db.transaction(async (tx) => {
+            // jsonb_set, not a spread of the loaded payload: approval may have
+            // just appended to previous_versions in its own write.
+            await tx
+              .update(schema.issueWorkProduct)
+              .set({
+                payload: sql`
+                  jsonb_set(
+                    coalesce(${schema.issueWorkProduct.payload}, '{}'::jsonb),
+                    '{saved_file}',
+                    ${JSON.stringify(savedFile)}::jsonb,
+                    true
+                  )
+                ` as never,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(schema.issueWorkProduct.id, args.workProduct.id),
+                  eq(schema.issueWorkProduct.workspaceId, args.workspaceId),
+                ),
+              )
+            await insertRunEvent(tx, {
+              runId: args.runId,
+              workProduct: args.workProduct,
+              eventType: 'issue_run:work_product_saved_to_files',
+              level: 'info',
+              message: `Work product ${outcome.overwritten ? 'updated in' : 'saved to'} ${folder.name} as ${outcome.fileName}`,
+              payload: {
+                actor_user_id: args.actorUserId,
+                external_url: outcome.url,
+                file_id: outcome.fileId,
+                file_name: outcome.fileName,
+                folder_id: folder.id,
+                overwritten: outcome.overwritten,
+                work_product_id: args.workProduct.id,
+              },
+            })
+          })
+        },
+        catch: (cause) => saveFailed('Failed to record the saved file', cause),
       }),
     )
+    return Result.ok(outcome)
+  })
+}
+
+type DbTransaction = Parameters<
+  Parameters<Awaited<ReturnType<typeof getDb>>['transaction']>[0]
+>[0]
+
+/** Appends one system event to a run under the run's sequence lock. */
+async function insertRunEvent(
+  tx: DbTransaction,
+  event: {
+    runId: string
+    workProduct: WorkProductRow
+    eventType: string
+    level: 'info' | 'error'
+    message: string
+    payload: Record<string, unknown>
+  },
+) {
+  await tx.execute(sql`
+    select pg_advisory_xact_lock(hashtextextended(${event.runId}::text, 0))
+  `)
+  const [seqRow] = await tx
+    .select({
+      nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
+    })
+    .from(schema.issueRunEvent)
+    .where(eq(schema.issueRunEvent.runId, event.runId))
+  await tx.insert(schema.issueRunEvent).values({
+    id: crypto.randomUUID(),
+    workspaceId: event.workProduct.workspaceId,
+    issueId: event.workProduct.issueId,
+    runId: event.runId,
+    seq: seqRow?.nextSeq ?? 1,
+    eventType: event.eventType,
+    stream: 'system',
+    level: event.level,
+    message: event.message,
+    payload: event.payload,
+  })
+}
+
+/**
+ * Runs the Files save after an approval commits. A failed save keeps the
+ * approval: it comes back as `{ status: 'failed' }` on the approve response,
+ * which the client shows, and as an `issue_run:work_product_save_failed`
+ * error event on the run, so it stays visible after the toast is gone.
+ */
+async function saveApprovalToFiles(args: {
+  actorUserId: string
+  body: string
+  env: AppEnv
+  runId: string
+  teamId: string | null
+  waitUntil?: (promise: Promise<unknown>) => void
+  workProduct: WorkProductRow
+  workspaceId: string
+}): Promise<WorkProductFilesSave> {
+  if (!documentWorkProductTypes.has(args.workProduct.type)) {
+    return { status: 'skipped' }
   }
-  const fileId = saved.value.id
-  const fileName = saved.value.label
-  const isOverwrite = overwritten.isOk() && overwritten.value !== null
-  const fileUrl = `/api/brain/files/${encodeURIComponent(fileId)}/content`
-
+  const saved = await saveApprovedWorkProductToFiles(args)
+  if (saved.isOk()) return saved.value
+  const message = saved.error.message
   const db = await getDb(args.env)
-  const now = new Date()
-  const recorded = await Result.tryPromise({
-    try: async () => {
-      await addBrainFolderFile({
-        env: args.env,
-        workspaceId: args.workspaceId,
-        folderId: args.folderId,
-        fileId,
-        userId: args.actorUserId,
-      })
-      await db.transaction(async (tx) => {
-        await tx
-          .update(schema.issueWorkProduct)
-          .set({
-            payload: {
-              ...objectOrNull(workProduct.payload),
-              saved_file: {
-                file_id: fileId,
-                file_name: fileName,
-                folder_id: args.folderId,
-                url: fileUrl,
-                saved_by: args.actorUserId,
-                saved_at: now.toISOString(),
-              } satisfies WorkProductSavedFile,
-            },
-            updatedAt: now,
-          })
-          .where(
-            and(
-              eq(schema.issueWorkProduct.id, workProduct.id),
-              eq(schema.issueWorkProduct.workspaceId, args.workspaceId),
-            ),
-          )
-        await tx.execute(sql`
-          select pg_advisory_xact_lock(hashtextextended(${runId}::text, 0))
-        `)
-        const [seqRow] = await tx
-          .select({
-            nextSeq: sql<number>`cast(coalesce(max(${schema.issueRunEvent.seq}), 0) + 1 as int)`,
-          })
-          .from(schema.issueRunEvent)
-          .where(eq(schema.issueRunEvent.runId, runId))
-        await tx.insert(schema.issueRunEvent).values({
-          id: crypto.randomUUID(),
-          workspaceId: workProduct.workspaceId,
-          issueId: workProduct.issueId,
-          runId,
-          seq: seqRow?.nextSeq ?? 1,
-          eventType: 'issue_run:work_product_saved_to_files',
-          stream: 'system',
-          level: 'info',
-          message: `Work product ${isOverwrite ? 'updated in' : 'saved to'} Files as ${fileName}`,
-          payload: {
-            actor_user_id: args.actorUserId,
-            external_url: fileUrl,
-            file_id: fileId,
-            file_name: fileName,
-            folder_id: args.folderId,
-            overwritten: isOverwrite,
-            work_product_id: workProduct.id,
-          },
-        })
-      })
-    },
-    catch: (cause) => dbError('Failed to record saved file', cause),
-  })
-  if (recorded.isErr()) return Result.err(recorded.error)
-
-  return Result.ok({
-    action: 'save_to_files',
-    workProductId: workProduct.id,
-    externalId: fileId,
-    externalUrl: fileUrl,
-  })
+  const logged = await Result.tryPromise(() =>
+    db.transaction((tx) =>
+      insertRunEvent(tx, {
+        runId: args.runId,
+        workProduct: args.workProduct,
+        eventType: 'issue_run:work_product_save_failed',
+        level: 'error',
+        message: `Approved, but saving to Files failed: ${message}`,
+        payload: { error: message, work_product_id: args.workProduct.id },
+      }),
+    ),
+  )
+  logged.tapError((cause) =>
+    workProductLogger.error('work product save failure event failed', {
+      workProductId: args.workProduct.id,
+      ...errorFields(cause),
+    }),
+  )
+  return { status: 'failed', message }
 }
 
 export async function reviewWorkProduct(args: {
   actorUserId: string
   env: AppEnv
   input: WorkProductReviewInput
-  /** Lets Save to Files index the new file after the response, like uploads. */
+  /** Lets approval index the saved file after the response, like uploads. */
   waitUntil?: (promise: Promise<unknown>) => void
   workProductId: string
   workspaceId: string
@@ -1564,6 +1725,7 @@ export async function reviewWorkProduct(args: {
         closeIssue: args.input.close_issue,
         editedBody: args.input.edited_body,
         env: args.env,
+        waitUntil: args.waitUntil,
         workProductId: args.workProductId,
         workspaceId: args.workspaceId,
       })
@@ -1586,15 +1748,6 @@ export async function reviewWorkProduct(args: {
       return applyWorkProductAsPr({
         actorUserId: args.actorUserId,
         env: args.env,
-        workProductId: args.workProductId,
-        workspaceId: args.workspaceId,
-      })
-    case 'save_to_files':
-      return saveWorkProductToFiles({
-        actorUserId: args.actorUserId,
-        env: args.env,
-        folderId: args.input.folder_id,
-        waitUntil: args.waitUntil,
         workProductId: args.workProductId,
         workspaceId: args.workspaceId,
       })

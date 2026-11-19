@@ -313,13 +313,6 @@ function WorkProductInboxAction({
       onApplyPr={() =>
         reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply_pr' })
       }
-      onSaveToFiles={(folderId) =>
-        reviewMutation.mutateAsync({
-          id: workProduct.id,
-          action: 'save_to_files',
-          folderId,
-        })
-      }
     />
   )
 }
@@ -479,13 +472,6 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
             }
             onApplyPr={(id) =>
               reviewMutation.mutateAsync({ id, action: 'apply_pr' })
-            }
-            onSaveToFiles={(id, folderId) =>
-              reviewMutation.mutateAsync({
-                id,
-                action: 'save_to_files',
-                folderId,
-              })
             }
           />
         </div>
