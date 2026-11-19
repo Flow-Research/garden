@@ -229,6 +229,7 @@ export default {
         '/writeback-origin',
         '/automation-resume',
         '/history',
+        '/history-read',
         '/chat',
         '/resume',
         '/writeback',
@@ -271,6 +272,7 @@ export default {
         configure: () => undefined,
         session: { getHistory: async () => [] },
         verifyRunEntry(runId: string) { return Reflect.get(facet.prototype, 'verifyRunEntry').call(this, runId) },
+        runObjectId() { return Reflect.get(facet.prototype, 'runObjectId').call(this) },
         runConfig() { return Reflect.get(facet.prototype, 'runConfig').call(this) },
         runError(fields: unknown) { return Reflect.get(facet.prototype, 'runError').call(this, fields) },
         loadTurnContext(runId: string) { return Reflect.get(facet.prototype, 'loadTurnContext').call(this, runId) },
@@ -730,6 +732,7 @@ export default {
         runKind: 'issue' | 'automation'
         runId: string
         originObjectId: string
+        originGeneration?: number
         workspaceId: string
         ownerUserId: string
       }>()
@@ -743,6 +746,7 @@ export default {
         try: () =>
           facet.runWriteBack({
             ...input,
+            originGeneration: input.originGeneration ?? 0,
             agentId: input.claimedAgentId,
             summary: 'Origin binding probe.',
           }),
@@ -796,6 +800,7 @@ export default {
           ...input,
           runKind: 'automation',
           originObjectId: input.runId,
+          originGeneration: 0,
           summary: 'Inspect G06 knowledge. No new durable claim is present.',
         }),
       )
@@ -805,13 +810,22 @@ export default {
       issueId: string
       runId: string
       threadId?: string
+      facetName?: string
     }>()
     const agent = await getAgentByName(env.AgentDO, input.agentId)
+    if (url.pathname === '/history-read') {
+      const facet = await getSubAgentByName(
+        agent,
+        IssueRunSubAgent,
+        input.facetName ?? input.issueId,
+      )
+      return Response.json({ messages: await facet.getMessages() })
+    }
     if (url.pathname === '/history') {
       const facet = await getSubAgentByName(
         agent,
         IssueRunSubAgent,
-        input.issueId,
+        input.facetName ?? input.issueId,
       )
       await facet.addMessages([
         {
