@@ -3,7 +3,7 @@ title: Settings page rollout
 description: The routed Settings shell, its existing functional sections, and the separate modal entry during design rollout.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-19
 ---
 
 Settings has an authenticated page at `/settings` for direct-link review during the staging rollout. Existing account and workspace menu entries still open the Settings modal. The page is not linked from application navigation yet.
@@ -18,10 +18,10 @@ The page follows the supplied All settings design: heading and description, hori
 | --- | --- | --- |
 | Profile | `/settings/profile` | Redesigned; see [Profile](#profile) |
 | User Management | `/settings/user-management` | Workspace members and invitations |
-| Preferences | `/settings/preferences` | Appearance and theme selection |
+| Preferences | `/settings/preferences` | Redesigned; see [Preferences](#preferences) |
 | General | `/settings/general` | Workspace settings |
 
-User Management, Preferences and General reuse the same components, queries and mutations as the modal. Their content redesigns are separate changes. Notifications has no tab or route until its behavior is implemented. This shell adds no new account operations, APIs or permissions.
+User Management and General reuse the same components, queries and mutations as the modal. Their content redesigns are separate changes. Notifications has no tab or route until its behavior is implemented. This shell adds no new account operations, APIs or permissions.
 
 ## Profile
 
@@ -36,7 +36,18 @@ The modal still renders the earlier `AccountTab`. Both read the same session and
 
 Design elements without backend support are not shown: email change, two-factor authentication (app or SMS), session IP address and location, and signed-out session history. Better Auth reads the client IP only from `x-forwarded-for` unless `advanced.ipAddress.ipAddressHeaders` is set, and Garden does not set it, so stored session IPs are empty. Add them only with the matching Better Auth configuration or API.
 
-Teams remains at `/teams`. Moving Teams, adding User Management sub-tabs, implementing the remaining designs, and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
+## Preferences
+
+The Preferences section is one card with two sections:
+
+- **Appearance.** A Theme row with a dropdown of Light, Dark and System. It calls `next-themes`, so the choice applies to this device only. Until `next-themes` reads the stored choice, the trigger shows no option.
+- **Developer.** A Debug mode switch bound to the client-side `useDevSettingsStore`. It shows the agent chat debug drawer on this device.
+
+The modal keeps its separate Appearance and Developer tabs, which read the same theme and store.
+
+Design elements without backend support are not shown: Agent preferences (communication style, proactivity, decision autonomy), Language and time, and Privacy (cookie settings, view history). Garden has no setting, schema or API for them. Notifications is also left out, as above.
+
+Teams remains at `/teams`. Moving Teams, adding User Management sub-tabs, implementing the remaining designs, and switching menu entries from the modal to this page are follow-up work. The modal's platform-specific tabs remain in the modal.
 
 ## Verification
 

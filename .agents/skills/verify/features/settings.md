@@ -18,4 +18,12 @@
 5. Sign in from a second browser. Expect the current device first with "This device", and the other session with its OS, browser and a sign-out button. Sign it out, then expect the row removed.
 6. At phone width, expect the sessions table to scroll horizontally inside its card without page overflow.
 
+## Preferences section
+
+1. Open `/settings/preferences`. Expect one card with Appearance and Developer sections, and the Theme trigger showing the current theme with its icon.
+2. Open the Theme dropdown and choose each of Light, Dark and System. Expect the page to switch mode at once, the trigger to follow, and the choice to persist after reload.
+3. Toggle Debug mode on, then open an agent chat tab. Expect the debug drawer. Toggle it off and expect the drawer gone.
+4. Open the Settings modal. Expect its Appearance and Developer tabs to show the same theme and Debug mode state.
+5. At 375px wide, expect rows to fit without horizontal overflow.
+
 Redesigns of the other sections and Teams migration are outside this scenario.
