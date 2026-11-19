@@ -954,13 +954,19 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 
   /** Re-reads provenance on the real origin facet before a separate memory turn. */
   async validateBrainWriteBackOrigin(
-    input: Pick<BrainWriteBackRunInput, 'runKind' | 'runId' | 'originObjectId'>,
+    input: Pick<
+      BrainWriteBackRunInput,
+      'runKind' | 'runId' | 'originObjectId' | 'originGeneration'
+    >,
   ): Promise<void> {
     const validated = await Result.tryPromise({
       try: async () => {
         if (input.runKind === 'issue') {
-          const origin = await this.issueRunFacet(input.originObjectId)
-          await origin.facet.validateBrainSummaryAccess(input.runId)
+          const origin = await this.subAgent(
+            IssueRunSubAgent,
+            issueRunFacetName(input.originObjectId, input.originGeneration),
+          )
+          await origin.validateBrainSummaryAccess(input.runId)
         } else {
           const origin = await this.subAgent(
             AutomationRunSubAgent,
@@ -1157,6 +1163,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       status: result.status,
       runKind: 'issue',
       originObjectId: input.issueId,
+      originGeneration: issueAgent.generation,
       statuses: ISSUE_WRITE_BACK_STATUSES,
     })
     return { status: result.status }
@@ -1174,6 +1181,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     status: string
     runKind: 'issue' | 'automation'
     originObjectId: string
+    originGeneration: number
     statuses: ReadonlySet<string>
   }) {
     const summary = input.summary.trim()
@@ -1201,6 +1209,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
               workspaceId: input.workspaceId as string,
               runKind: input.runKind,
               originObjectId: input.originObjectId,
+              originGeneration: input.originGeneration,
               ownerUserId: input.ownerUserId,
               summary: bounded,
             }),
@@ -1266,6 +1275,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       status: result.status,
       runKind: 'automation',
       originObjectId: input.runId,
+      originGeneration: 0,
       statuses: AUTOMATION_WRITE_BACK_STATUSES,
     })
     return result.waitingOn === undefined

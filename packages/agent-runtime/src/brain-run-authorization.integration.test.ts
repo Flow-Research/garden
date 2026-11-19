@@ -780,6 +780,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         ],
         'starts a fresh agent context for an unproven legacy issue transcript and retains the old history':
           ['IssueRunSubAgent.completeWorkflowTurn'],
+        'validates a delayed issue write-back against the context generation that produced its summary':
+          [
+            'BrainWriteBackSubAgent.runWriteBack',
+            'IssueRunSubAgent.validateBrainSummaryAccess',
+          ],
         'fails with the specific reason when the fresh agent context is also unverified':
           ['IssueRunSubAgent.executeWorkflowTurn'],
         'preserves org-only retrieval through a real Workflow wait/resume and a later run on the same issue facet':
@@ -3091,6 +3096,40 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         body: JSON.stringify({ ...input, facetName: input.issueId }),
       })
       expect(await retained.text()).toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+    }, 90_000)
+    it('validates a delayed issue write-back against the context generation that produced its summary', async () => {
+      const input = await seedIssue('G06 write-back origin generation')
+      const seed = await harness!.fetch('/history', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+      expect(seed.status, await seed.clone().text()).toBe(200)
+      await database!.db
+        .insert(schema.issueAgentContext)
+        .values({
+          issueId: input.issueId,
+          agentId: input.agentId,
+          generation: 1,
+        })
+      const response = await harness!.fetch('/writeback-origin', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...input,
+          claimedAgentId: agentId,
+          runKind: 'issue',
+          originObjectId: input.issueId,
+          originGeneration: 0,
+          workspaceId,
+          ownerUserId: ownerId,
+        }),
+      })
+      expect(
+        await response.json(),
+        'generation 0 produced the summary and cannot verify its history',
+      ).toMatchObject({ ok: false })
+      expect(
+        await database!.db.select().from(schema.brainWriteProposal),
+      ).toHaveLength(0)
     }, 90_000)
     it('fails with the specific reason when the fresh agent context is also unverified', async () => {
       const input = await seedIssue('G06 legacy transcript twice')

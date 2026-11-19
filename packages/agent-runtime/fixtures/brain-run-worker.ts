@@ -732,6 +732,7 @@ export default {
         runKind: 'issue' | 'automation'
         runId: string
         originObjectId: string
+        originGeneration?: number
         workspaceId: string
         ownerUserId: string
       }>()
@@ -745,6 +746,7 @@ export default {
         try: () =>
           facet.runWriteBack({
             ...input,
+            originGeneration: input.originGeneration ?? 0,
             agentId: input.claimedAgentId,
             summary: 'Origin binding probe.',
           }),
@@ -798,6 +800,7 @@ export default {
           ...input,
           runKind: 'automation',
           originObjectId: input.runId,
+          originGeneration: 0,
           summary: 'Inspect G06 knowledge. No new durable claim is present.',
         }),
       )
