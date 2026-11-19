@@ -8,6 +8,7 @@ import { getConnectorById } from '@garden/connectors'
 import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
 import { makeDiscordBaseLayer } from '@garden/connectors/discord/services'
+import { resolveGithubToolOwner } from '@garden/connectors/github/identity'
 import {
   GitHubHostedMcpClient,
   makeGitHubHostedMcpBaseLayer,
@@ -410,7 +411,24 @@ export function isMcpFailedConnectionStateMessage(message: string | undefined) {
 
 type ActiveNativeConnectorAccount = {
   accountId: string | null
+  /**
+   * Canonical account login from the active binding (GitHub: the install
+   * account login). The GitHub owner gate (#332) checks repo-scoped tool
+   * calls against it before any GitHub request is built.
+   */
+  accountLogin?: string | null
   status: 'connected' | 'degraded'
+}
+
+/**
+ * Owner scoping is a write-only guard: reads of public repositories outside
+ * the installation are useful context, while a wrong-owner write cannot be
+ * allowed. Unknown risk classes fail closed.
+ */
+function githubOwnerGateMode(
+  riskClass: string | null | undefined,
+): 'read' | 'write' {
+  return riskClass === 'read' ? 'read' : 'write'
 }
 
 type GithubAssigneesInput =
@@ -1088,10 +1106,21 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
                 execute: async (input) => {
+                  // Owner identity gate (#332): reject a hallucinated owner
+                  // on writes and canonicalize casing on every call before
+                  // any GitHub request is built, beside the assignee gate.
+                  const ownerGate = resolveGithubToolOwner({
+                    accountLogin: githubAccount.accountLogin,
+                    input,
+                    mode: githubOwnerGateMode(nativeTool.riskClass),
+                  })
+                  if (ownerGate.kind === 'reject') {
+                    return { error: true, message: ownerGate.message }
+                  }
                   const rejection = await this.rejectGithubIssueWrite(
                     'native',
                     nativeTool.name,
-                    input,
+                    ownerGate.input,
                   )
                   if (rejection !== null) {
                     return { error: true, message: rejection }
@@ -1099,7 +1128,7 @@ export class RuntimeMcpController {
                   const outcome = await Effect.runPromise(
                     Effect.match(
                       nativeTool
-                        .execute(input)
+                        .execute(ownerGate.input)
                         .pipe(
                           Effect.provide(
                             makeGitHubBaseLayer(
@@ -1176,10 +1205,24 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
                 execute: async (input) => {
+                  // Same owner identity gate as the native surface (#332):
+                  // the hosted server takes free-hand owner/repo too. Its
+                  // risk class comes from the same connector registry.
+                  const ownerGate = resolveGithubToolOwner({
+                    accountLogin: githubAccount.accountLogin,
+                    input,
+                    mode: githubOwnerGateMode(
+                      getConnectorById('github')?.tools[hostedTool.name]
+                        ?.riskClass,
+                    ),
+                  })
+                  if (ownerGate.kind === 'reject') {
+                    return { error: true, message: ownerGate.message }
+                  }
                   const rejection = await this.rejectGithubIssueWrite(
                     'hosted',
                     hostedTool.name,
-                    input,
+                    ownerGate.input,
                   )
                   if (rejection !== null) {
                     return { error: true, message: rejection }
@@ -1187,7 +1230,7 @@ export class RuntimeMcpController {
                   const outcome = await this.callGitHubHostedMcpTool(
                     githubAccount,
                     hostedTool.name,
-                    input,
+                    ownerGate.input,
                   )
                   if (outcome.isOk()) return outcome.value
 
@@ -1869,6 +1912,7 @@ export class RuntimeMcpController {
       if (connector && isNativeConnector(connector)) {
         nativeConnectorAccounts.set(connector.id, {
           accountId: binding.accountId,
+          accountLogin: binding.accountLogin,
           status: binding.status === 'degraded' ? 'degraded' : 'connected',
         })
         continue

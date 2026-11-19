@@ -2,6 +2,13 @@ export type ActiveConnectorBinding = {
   connectorId: string
   accountId: string | null
   /**
+   * Canonical account login from `listAvailableConnectorBindings` (GitHub:
+   * `github_app_installation.account_login`, written from GitHub's install
+   * API). The GitHub owner gate (#332) validates repo-scoped tool calls
+   * against it, so native activations must not drop it.
+   */
+  accountLogin?: string | null
+  /**
    * Install health from `listAvailableConnectorBindings`. Degraded installs
    * still expose tools so calls return a repair hint (#163 phase 3).
    */
