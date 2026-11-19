@@ -74,6 +74,31 @@ describe('resetIssueAgentContext (integration)', () => {
     return { workspaceId, userId, agentId, issueId, runIds }
   }
 
+  async function seedSecondAgentRun(seeded: {
+    workspaceId: string
+    userId: string
+    issueId: string
+  }) {
+    const agentId = randomUUID()
+    const runId = randomUUID()
+    await testDb.db.insert(schema.agent).values({
+      id: agentId,
+      workspaceId: seeded.workspaceId,
+      ownerUserId: seeded.userId,
+      name: 'Second agent',
+      hostName: agentId,
+    })
+    await testDb.db.insert(schema.issueRun).values({
+      id: runId,
+      workspaceId: seeded.workspaceId,
+      issueId: seeded.issueId,
+      agentId,
+      hostName: agentId,
+      workflowInstanceId: runId,
+    })
+    return { agentId, runId }
+  }
+
   async function resetEvents(runId: string) {
     return (
       await testDb.db
@@ -170,4 +195,47 @@ describe('resetIssueAgentContext (integration)', () => {
     ).toBe(1)
   })
 
+  it("leaves another agent's context on the same issue untouched (#408)", async () => {
+    const seeded = await seedIssueWithRuns(1)
+    const { issueId } = seeded
+    const agentA = seeded.agentId
+    const agentB = await seedSecondAgentRun(seeded)
+    const facetFor = async (agentId: string) =>
+      issueRunFacetName(
+        issueId,
+        (
+          await readIssueAgentContextGeneration(testDb.db, { issueId, agentId })
+        ).unwrap(),
+      )
+    expect(await facetFor(agentB.agentId)).toBe(issueId)
+
+    expect(
+      (
+        await resetIssueAgentContext(testDb.db, {
+          issueId,
+          agentId: agentA,
+          runId: seeded.runIds[0]!,
+          observedGeneration: 0,
+        })
+      ).unwrap(),
+    ).toBe(1)
+
+    expect(await facetFor(agentA)).toBe(`${issueId}:ctx1`)
+    expect(
+      await facetFor(agentB.agentId),
+      'agent B keeps its retained facet',
+    ).toBe(issueId)
+    expect(
+      (
+        await resetIssueAgentContext(testDb.db, {
+          issueId,
+          agentId: agentB.agentId,
+          runId: agentB.runId,
+          observedGeneration: 0,
+        })
+      ).unwrap(),
+      "agent B's own reset is not blocked by agent A's",
+    ).toBe(1)
+    expect(await resetEvents(agentB.runId)).toHaveLength(1)
+  })
 })
