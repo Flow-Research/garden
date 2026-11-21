@@ -9,7 +9,8 @@ import {
 // One `AgentDO` per agent runtime name. New agents use their UUID as that
 // name; migrated chat agents can keep their saved `agent.host_name` so their
 // Durable Object storage remains addressable. Inside, `ChatSubAgent` facets
-// are keyed by threadId, `IssueRunSubAgent` facets by issueId, and
+// are keyed by threadId, `IssueRunSubAgent` facets by issueId plus this
+// agent's context generation on the issue (`issueRunFacetName`), and
 // `AutomationRunSubAgent` facets by automation run id. Ephemeral
 // `BrainAuditSubAgent` facets are keyed by indexed item id and reclaimed after
 // one programmatic turn. Per-agent personality (name, role, skills,
@@ -167,6 +168,13 @@ import {
 } from './documents/document-artifact-projection'
 import { makeDocumentArtifactDurableRepositoryLayer } from './documents/document-artifact-repository'
 import { IssueRunSubAgent } from './issue-run-sub-agent'
+import type { RunFacetTurnStartResult } from './run-sub-agent-base'
+import {
+  issueIdFromFacetName,
+  issueRunFacetName,
+  readIssueAgentContextGeneration,
+  resetIssueAgentContext,
+} from './issue-agent-context'
 import { AutomationRunSubAgent } from './automation-run-sub-agent'
 import { BrainAuditSubAgent } from './brain-audit-sub-agent'
 import type { BrainAuditRunInput } from './brain-audit'
@@ -508,6 +516,15 @@ type LiveAgentStatePayload = DebugMetaPayload & {
   sandbox: DebugSandboxPayload
   tools: DebugToolsPayload
   prompt: DebugPromptPayload
+}
+
+/** Narrows a facet turn start whose caller did not ask for `'report'`. */
+function startedTurn(
+  result: RunFacetTurnStartResult,
+): RunWorkflowTurnStartResult {
+  if (result.kind === 'history_unverified')
+    throw new Error('Run facet reported unverified history without a request.')
+  return result
 }
 
 export class AgentDO extends Agent<AgentRuntimeEnv> {
@@ -979,14 +996,17 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
 
   /** Re-reads provenance on the real origin facet before a separate memory turn. */
   async validateBrainWriteBackOrigin(
-    input: Pick<BrainWriteBackRunInput, 'runKind' | 'runId' | 'originObjectId'>,
+    input: Pick<
+      BrainWriteBackRunInput,
+      'runKind' | 'runId' | 'originObjectId' | 'originGeneration'
+    >,
   ): Promise<void> {
     const validated = await Result.tryPromise({
       try: async () => {
         if (input.runKind === 'issue') {
           const origin = await this.subAgent(
             IssueRunSubAgent,
-            input.originObjectId,
+            issueRunFacetName(input.originObjectId, input.originGeneration),
           )
           await origin.validateBrainSummaryAccess(input.runId)
         } else {
@@ -1063,9 +1083,9 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     issueId: string
   }): Promise<void> {
     await this.requireIssueAccess(input.issueId)
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
-    await issueAgent.requestCancel(input)
-    this.abortSubAgent(IssueRunSubAgent, input.issueId)
+    const issueAgent = await this.issueRunFacet(input.issueId)
+    await issueAgent.facet.requestCancel(input)
+    this.abortSubAgent(IssueRunSubAgent, issueAgent.name)
   }
 
   async cancelAutomationRun(input: { runId: string }): Promise<void> {
@@ -1088,8 +1108,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     activeForm: string
   }> | null> {
     await this.requireIssueAccess(input.issueId)
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
-    return issueAgent.getRunPlan(input.runId)
+    const issueAgent = await this.issueRunFacet(input.issueId)
+    return issueAgent.facet.getRunPlan(input.runId)
   }
 
   /**
@@ -1104,12 +1124,62 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     turn: number
   }): Promise<RunWorkflowTurnStartResult> {
     await this.requireIssueAccess(input.issueId)
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
-    return await issueAgent.executeWorkflowTurn(input.mode, {
+    const turn = {
       runId: input.runId,
       issueId: input.issueId,
       turn: input.turn,
+    }
+    const issueAgent = await this.issueRunFacet(input.issueId)
+    if (input.mode === 'resume')
+      return startedTurn(
+        await issueAgent.facet.executeWorkflowTurn('resume', turn),
+      )
+    const started = await issueAgent.facet.executeWorkflowTurn(
+      'start',
+      turn,
+      'report',
+    )
+    if (started.kind !== 'history_unverified') return started
+    const reset = await resetIssueAgentContext(this.getDb(), {
+      issueId: input.issueId,
+      agentId: issueAgent.agentId,
+      runId: input.runId,
+      observedGeneration: issueAgent.generation,
     })
+    if (reset.isErr()) throw reset.error
+    agentRuntimeLogger.info('agent_do.issue_run.context_reset', {
+      issueId: input.issueId,
+      runId: input.runId,
+      fromGeneration: issueAgent.generation,
+      toGeneration: reset.value,
+    })
+    // One fresh context per run: a refusal on this facet fails the run.
+    const fresh = await this.subAgent(
+      IssueRunSubAgent,
+      issueRunFacetName(input.issueId, reset.value),
+    )
+    return startedTurn(await fresh.executeWorkflowTurn('start', turn))
+  }
+
+  /**
+   * Addresses the issue-run facet for this agent's current context generation
+   * on the issue. Every issue-run facet RPC goes through here so a context
+   * reset moves all of them together.
+   */
+  private async issueRunFacet(issueId: string) {
+    const agentId = await this.resolveRuntimeAgentId()
+    const generation = await readIssueAgentContextGeneration(this.getDb(), {
+      issueId,
+      agentId,
+    })
+    if (generation.isErr()) throw generation.error
+    const name = issueRunFacetName(issueId, generation.value)
+    return {
+      facet: await this.subAgent(IssueRunSubAgent, name),
+      name,
+      agentId,
+      generation: generation.value,
+    }
   }
 
   /**
@@ -1122,8 +1192,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     submissionId: string
   }): Promise<{ status: string }> {
     await this.requireIssueAccess(input.issueId)
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
-    const result = await issueAgent.completeWorkflowTurn({
+    const issueAgent = await this.issueRunFacet(input.issueId)
+    const result = await issueAgent.facet.completeWorkflowTurn({
       runId: input.runId,
       submissionId: input.submissionId,
     })
@@ -1135,6 +1205,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       status: result.status,
       runKind: 'issue',
       originObjectId: input.issueId,
+      originGeneration: issueAgent.generation,
       statuses: ISSUE_WRITE_BACK_STATUSES,
     })
     return { status: result.status }
@@ -1152,6 +1223,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     status: string
     runKind: 'issue' | 'automation'
     originObjectId: string
+    originGeneration: number
     statuses: ReadonlySet<string>
   }) {
     const summary = input.summary.trim()
@@ -1179,6 +1251,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
               workspaceId: input.workspaceId as string,
               runKind: input.runKind,
               originObjectId: input.originObjectId,
+              originGeneration: input.originGeneration,
               ownerUserId: input.ownerUserId,
               summary: bounded,
             }),
@@ -1211,13 +1284,15 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       AutomationRunSubAgent,
       input.runId,
     )
-    return await automationAgent.executeWorkflowTurn(input.mode, {
-      runId: input.runId,
-      turn: input.turn,
-      ...(input.decideRunId === undefined
-        ? {}
-        : { decideRunId: input.decideRunId }),
-    })
+    return startedTurn(
+      await automationAgent.executeWorkflowTurn(input.mode, {
+        runId: input.runId,
+        turn: input.turn,
+        ...(input.decideRunId === undefined
+          ? {}
+          : { decideRunId: input.decideRunId }),
+      }),
+    )
   }
 
   /**
@@ -1242,6 +1317,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       status: result.status,
       runKind: 'automation',
       originObjectId: input.runId,
+      originGeneration: 0,
       statuses: AUTOMATION_WRITE_BACK_STATUSES,
     })
     return result.waitingOn === undefined
@@ -1259,8 +1335,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     submissionId: string
   }): Promise<{ status: string | null }> {
     await this.requireIssueAccess(input.issueId)
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
-    return await issueAgent.readWorkflowTurnStatus(input)
+    const issueAgent = await this.issueRunFacet(input.issueId)
+    return await issueAgent.facet.readWorkflowTurnStatus(input)
   }
 
   /** Automation counterpart of `readRunTurnStatus`. */
@@ -1285,8 +1361,8 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     reason: string
   }): Promise<{ status: string }> {
     await this.requireIssueAccess(input.issueId)
-    const issueAgent = await this.subAgent(IssueRunSubAgent, input.issueId)
-    return await issueAgent.failWorkflowTurn(input)
+    const issueAgent = await this.issueRunFacet(input.issueId)
+    return await issueAgent.facet.failWorkflowTurn(input)
   }
 
   /** Automation counterpart of `failRunTurn`. */
@@ -1318,7 +1394,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
       child.className === ChatSubAgent.name
         ? await this.checkThreadAccess(child.name)
         : child.className === IssueRunSubAgent.name
-          ? await this.checkIssueAccess(child.name)
+          ? await this.checkIssueAccess(issueIdFromFacetName(child.name))
           : await this.checkAutomationRunAccess(child.name)
     if (!access) {
       return new Response('Not found', { status: 404 })

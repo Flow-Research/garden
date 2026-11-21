@@ -43,7 +43,7 @@ describe('issue Think history audience provenance', () => {
       const input = { ...fixture(), config }
       const result = await ensureIssueBrainAudience(input)
       expect(result.isErr()).toBe(true)
-      expect(result.isErr() && result.error.code).toBe('invalid_state')
+      expect(result.isErr() && result.error.code).toBe('history_unverified')
       expect(input.persistAudience).not.toHaveBeenCalled()
     },
   )

@@ -52,7 +52,7 @@ boundaries, an issue-run trace, and change verification.
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org) 22.12 or newer
+- [Node.js](https://nodejs.org) 22.19 or newer
 - pnpm 10.33.0 — `corepack enable` installs the pinned version for you in
   step 1
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (or any

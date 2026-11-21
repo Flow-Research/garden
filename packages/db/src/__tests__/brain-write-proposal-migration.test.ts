@@ -104,17 +104,18 @@ describe('0069 populated Brain proposal migration (PostgreSQL CLI)', () => {
     const journal = JSON.parse(
       await readFile(resolve(migrations, 'meta/_journal.json'), 'utf8'),
     )
-    if (journal.entries.at(-1).tag !== migrationTag)
-      throw new Error('Candidate migration must be the last journal entry')
-    await writeFile(
-      resolve(preFolder, 'meta/_journal.json'),
-      JSON.stringify({
-        ...journal,
-        entries: journal.entries.filter(
-          (entry: { tag: string }) => entry.tag !== migrationTag,
-        ),
-      }),
+    const candidateIndex = journal.entries.findIndex(
+      (entry: { tag: string }) => entry.tag === migrationTag,
     )
+    if (candidateIndex < 0)
+      throw new Error(`Journal has no ${migrationTag} entry`)
+    const writeJournal = (folder: string, end: number) =>
+      writeFile(
+        resolve(folder, 'meta/_journal.json'),
+        JSON.stringify({ ...journal, entries: journal.entries.slice(0, end) }),
+      )
+    await writeJournal(preFolder, candidateIndex)
+    await writeJournal(fullFolder, candidateIndex + 1)
     postgres = await new GenericContainer('postgres:16-alpine')
       .withEnvironment({
         POSTGRES_USER: 'test',

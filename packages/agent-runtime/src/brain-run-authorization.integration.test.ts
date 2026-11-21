@@ -11,7 +11,7 @@ import {
 } from 'testcontainers'
 import { startTestDb, type TestDb } from '@garden/db/testing'
 import * as schema from '@garden/db/schema'
-import { eq, sql } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { Result } from 'better-result'
 
 const ownerId = crypto.randomUUID()
@@ -50,6 +50,7 @@ let grantScenario:
       mutation?: 'create' | 'update' | 'mention' | 'link'
       mutationRevoke?: boolean
       revokeBeforeInjection?: boolean
+      revokeBeforeExposure?: boolean
     }
   | undefined
 let brainRequests: string[] = []
@@ -297,6 +298,24 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       model = createServer(async (request, response) => {
         let raw = ''
         for await (const chunk of request) raw += String(chunk)
+        if (request.url?.endsWith('/before-exposure')) {
+          if (grantScenario?.revokeBeforeExposure) {
+            grantScenario.revokeBeforeExposure = false
+            await database!.db
+              .update(schema.agent)
+              .set({
+                permissions: {
+                  full_access: false,
+                  allowed_tools: ['create_work_product', 'complete_automation'],
+                },
+              })
+              .where(eq(schema.agent.id, agentId))
+            revokedAtBrainRequest = brainRequests.length
+          }
+          response.writeHead(200)
+          response.end('ready')
+          return
+        }
         if (request.url?.endsWith('/before-injection')) {
           if (grantScenario?.revokeBeforeInjection) {
             await database!.db
@@ -778,7 +797,14 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           'ChatSubAgent.onChatResponse',
           'BrainWriteBackSubAgent.runWriteBack',
         ],
-        'rejects an unproven legacy issue transcript before any model request or shared output':
+        'starts a fresh agent context for an unproven legacy issue transcript and retains the old history':
+          ['IssueRunSubAgent.completeWorkflowTurn'],
+        'validates a delayed issue write-back against the context generation that produced its summary':
+          [
+            'BrainWriteBackSubAgent.runWriteBack',
+            'IssueRunSubAgent.validateBrainSummaryAccess',
+          ],
+        'fails with the specific reason when the fresh agent context is also unverified':
           ['IssueRunSubAgent.executeWorkflowTurn'],
         'preserves org-only retrieval through a real Workflow wait/resume and a later run on the same issue facet':
           [
@@ -907,7 +933,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             'BrainWriteBackSubAgent.runWriteBack',
           ]
         for (const state of kind === 'automation'
-          ? ['revoked', 'always-denied', 'owner-changed']
+          ? [
+              'revoked',
+              'revoked-before-exposure',
+              'always-denied',
+              'owner-changed',
+            ]
           : ['revoked', 'always-denied'])
           rolesByScenario[
             `protects ${state} retained ${kind} history on resume`
@@ -1954,7 +1985,10 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             .flatMap((request) => request.messages)
             .filter((message) => message.role === 'tool')
             .map((message) => fixtureToolResult(message.content))
-          expect(thirdResults).toContainEqual({ ok: true, action: 'submitted' })
+          expect(thirdResults).toContainEqual({
+            ok: true,
+            action: 'submitted',
+          })
           expect(JSON.stringify(thirdResults)).not.toContain('duplicate')
           expect(JSON.stringify(thirdResults)).not.toContain(rows[0]!.id)
           expect(
@@ -2406,7 +2440,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
 
     for (const kind of ['issue', 'automation'] as const)
       for (const state of kind === 'automation'
-        ? (['revoked', 'always-denied', 'owner-changed'] as const)
+        ? ([
+            'revoked',
+            'revoked-before-exposure',
+            'always-denied',
+            'owner-changed',
+          ] as const)
         : (['revoked', 'always-denied'] as const)) {
         it(`protects ${state} retained ${kind} history on resume`, async () => {
           const read = state !== 'always-denied'
@@ -2497,22 +2536,25 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             expect(JSON.stringify(modelRequests)).not.toContain(allowedMarker)
           if (state === 'owner-changed')
             expect(JSON.stringify(modelRequests)).toContain(deniedMarkers[0])
-          await database!.db
-            .update(schema.agent)
-            .set(
-              state === 'owner-changed'
-                ? {
-                    ownerUserId: initiatorId,
-                    permissions: { full_access: true },
-                  }
-                : {
-                    permissions: {
-                      full_access: false,
-                      allowed_tools: nonBrainTools,
+          if (state === 'revoked-before-exposure')
+            grantScenario.revokeBeforeExposure = true
+          else
+            await database!.db
+              .update(schema.agent)
+              .set(
+                state === 'owner-changed'
+                  ? {
+                      ownerUserId: initiatorId,
+                      permissions: { full_access: true },
+                    }
+                  : {
+                      permissions: {
+                        full_access: false,
+                        allowed_tools: nonBrainTools,
+                      },
                     },
-                  },
-            )
-            .where(eq(schema.agent.id, agentId))
+              )
+              .where(eq(schema.agent.id, agentId))
           grantScenario.pause = false
           grantScenario.read = false
           const beforeModel = modelRequests.length
@@ -2530,6 +2572,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             },
           )
           expect(response.status).toBe(200)
+          if (state === 'revoked-before-exposure')
+            expect(grantScenario.revokeBeforeExposure).toBe(false)
           if (kind === 'automation' && state !== 'always-denied')
             expect(await response.json()).toMatchObject({ ok: false })
           await expect
@@ -3038,7 +3082,7 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       modelMode = 'issue'
     }, 90_000)
 
-    it('rejects an unproven legacy issue transcript before any model request or shared output', async () => {
+    it('starts a fresh agent context for an unproven legacy issue transcript and retains the old history', async () => {
       const input = await seedIssue('G06 legacy transcript')
       const seed = await harness!.fetch('/history', {
         method: 'POST',
@@ -3068,18 +3112,120 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         .select()
         .from(schema.issueRun)
         .where(eq(schema.issueRun.id, input.runId))
-      expect(run?.status).toBe('failed')
-      expect(run?.error).toBe('brain_output_authority_denied')
-      const outward = JSON.stringify({ run, logs: harness!.getLogs() })
-      expect(outward).not.toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
-      expect(outward).not.toContain('unverified Brain audience')
-      expect(modelRequests.slice(start)).toHaveLength(0)
+      expect(run?.status, run?.error ?? 'run did not succeed').toBe('succeeded')
+      const [context] = await database!.db
+        .select({ generation: schema.issueAgentContext.generation })
+        .from(schema.issueAgentContext)
+        .where(
+          and(
+            eq(schema.issueAgentContext.issueId, input.issueId),
+            eq(schema.issueAgentContext.agentId, input.agentId),
+          ),
+        )
+      expect(context?.generation).toBe(1)
+      const resets = await database!.db
+        .select()
+        .from(schema.issueRunEvent)
+        .where(eq(schema.issueRunEvent.runId, input.runId))
       expect(
-        await database!.db
-          .select()
-          .from(schema.issueWorkProduct)
-          .where(eq(schema.issueWorkProduct.runId, input.runId)),
+        resets.filter((event) => event.eventType === 'issue_run:context_reset'),
+      ).toHaveLength(1)
+      const fresh = JSON.stringify(modelRequests.slice(start))
+      expect(modelRequests.slice(start).length).toBeGreaterThan(0)
+      expect(fresh).not.toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+      const retained = await harness!.fetch('/history-read', {
+        method: 'POST',
+        body: JSON.stringify({ ...input, facetName: input.issueId }),
+      })
+      expect(await retained.text()).toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+    }, 90_000)
+    it('validates a delayed issue write-back against the context generation that produced its summary', async () => {
+      const input = await seedIssue('G06 write-back origin generation')
+      const seed = await harness!.fetch('/history', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+      expect(seed.status, await seed.clone().text()).toBe(200)
+      await database!.db.insert(schema.issueAgentContext).values({
+        issueId: input.issueId,
+        agentId: input.agentId,
+        generation: 1,
+      })
+      const response = await harness!.fetch('/writeback-origin', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...input,
+          claimedAgentId: agentId,
+          runKind: 'issue',
+          originObjectId: input.issueId,
+          originGeneration: 0,
+          workspaceId,
+          ownerUserId: ownerId,
+        }),
+      })
+      expect(
+        await response.json(),
+        'generation 0 produced the summary and cannot verify its history',
+      ).toMatchObject({ ok: false })
+      expect(
+        await database!.db.select().from(schema.brainWriteProposal),
       ).toHaveLength(0)
+    }, 90_000)
+    it('fails with the specific reason when the fresh agent context is also unverified', async () => {
+      const input = await seedIssue('G06 legacy transcript twice')
+      for (const facetName of [input.issueId, `${input.issueId}:ctx1`]) {
+        const seed = await harness!.fetch('/history', {
+          method: 'POST',
+          body: JSON.stringify({ ...input, facetName }),
+        })
+        expect(seed.status, await seed.clone().text()).toBe(200)
+      }
+      const start = modelRequests.length
+      const response = await harness!.fetch('/start', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      })
+      expect(response.status, await response.clone().text()).toBe(200)
+      await expect
+        .poll(
+          async () => {
+            const [run] = await database!.db
+              .select()
+              .from(schema.issueRun)
+              .where(eq(schema.issueRun.id, input.runId))
+            return run?.status
+          },
+          { timeout: 60_000 },
+        )
+        .toMatch(/^(succeeded|failed|cancelled|blocked)$/)
+      const [run] = await database!.db
+        .select()
+        .from(schema.issueRun)
+        .where(eq(schema.issueRun.id, input.runId))
+      expect(run?.status).toBe('failed')
+      expect(run?.error).toBe(
+        'Issue transcript has an unverified Brain audience. Retained history cannot be resumed.',
+      )
+      const [context] = await database!.db
+        .select({ generation: schema.issueAgentContext.generation })
+        .from(schema.issueAgentContext)
+        .where(
+          and(
+            eq(schema.issueAgentContext.issueId, input.issueId),
+            eq(schema.issueAgentContext.agentId, input.agentId),
+          ),
+        )
+      expect(context?.generation, 'one fresh context per run, no loop').toBe(1)
+      const events = await database!.db
+        .select()
+        .from(schema.issueRunEvent)
+        .where(eq(schema.issueRunEvent.runId, input.runId))
+      expect(
+        events.filter((event) => event.eventType === 'issue_run:context_reset'),
+      ).toHaveLength(1)
+      const outward = JSON.stringify({ run, events, logs: harness!.getLogs() })
+      expect(outward).not.toContain('G06_LEGACY_PRIVATE_TRANSCRIPT')
+      expect(modelRequests.slice(start)).toHaveLength(0)
     }, 90_000)
     it('preserves org-only retrieval through a real Workflow wait/resume and a later run on the same issue facet', async () => {
       modelMode = 'pause'
@@ -3216,6 +3362,23 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
           observed.includes(marker),
           `resumed run disclosed ${marker}`,
         ).toBe(false)
+      const [context] = await database!.db
+        .select({ generation: schema.issueAgentContext.generation })
+        .from(schema.issueAgentContext)
+        .where(
+          and(
+            eq(schema.issueAgentContext.issueId, input.issueId),
+            eq(schema.issueAgentContext.agentId, input.agentId),
+          ),
+        )
+      expect(context, 'a stamped facet keeps its context').toBeUndefined()
+      const resets = await database!.db
+        .select()
+        .from(schema.issueRunEvent)
+        .where(eq(schema.issueRunEvent.issueId, input.issueId))
+      expect(
+        resets.filter((event) => event.eventType === 'issue_run:context_reset'),
+      ).toHaveLength(0)
     }, 120_000)
     it('denies private mutation targets without metadata or edge changes while allowing org mutations', async () => {
       const inspect = async () => {
@@ -3694,7 +3857,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         expect(response.status, await response.clone().text()).toBe(200)
         expect(await response.json()).toEqual({
           denied: true,
-          code: failRead || failPersist ? 'runtime_failed' : 'invalid_state',
+          code:
+            failRead || failPersist ? 'runtime_failed' : 'history_unverified',
           durableReads: 1,
           cacheReads: 0,
           stamps: [],
