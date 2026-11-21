@@ -55,7 +55,8 @@
     "oxfmt": "^0.45.0",
     "oxlint": "^1.60.0",
     "sharp": "0.33.5",
-    "turbo": "2.9.14"
+    "turbo": "2.9.14",
+    "vite": "8.0.16"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -115,7 +116,8 @@
       "@executor-js/execution@1.5.40": "patches/@executor-js__execution@1.5.40.patch",
       "@executor-js/plugin-graphql@1.5.40": "patches/@executor-js__plugin-graphql@1.5.40.patch",
       "@executor-js/plugin-mcp@1.5.40": "patches/@executor-js__plugin-mcp@1.5.40.patch",
-      "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch"
+      "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch",
+      "@react-native/gradle-plugin@0.83.10": "patches/@react-native__gradle-plugin@0.83.10.patch"
     }
   }
 }

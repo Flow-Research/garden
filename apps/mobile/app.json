@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "Garden",
+    "slug": "garden-mobile",
+    "scheme": "garden-mobile",
+    "version": "0.0.1",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "experiments": { "tsconfigPaths": false },
+    "ios": {
+      "bundleIdentifier": "tech.flowresearch.garden.dev",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "tech.flowresearch.garden.dev",
+      "allowBackup": false
+    },
+    "plugins": ["expo-secure-store"]
+  }
+}

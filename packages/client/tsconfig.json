@@ -1,0 +1,5 @@
+{
+  "extends": "@garden/tsconfig/base.json",
+  "compilerOptions": { "lib": ["ESNext", "DOM"], "types": ["node"] },
+  "include": ["src/**/*.ts"]
+}
