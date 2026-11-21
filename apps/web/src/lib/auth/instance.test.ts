@@ -80,6 +80,10 @@ describe('createBetterAuth origin protection', () => {
   it.each([
     'garden-mobile-evil://',
     'garden-mobile://attacker',
+    'GARDEN-MOBILE://attacker',
+    'GaRdEn-MoBiLe://attacker',
+    'GARDEN-MOBILE://',
+    'Garden-Mobile://',
     'https://garden-mobile.example',
   ])('refuses an untrusted native origin %s', async (origin) => {
     const request = signInRequest(origin)
@@ -164,14 +168,17 @@ describe('createBetterAuth Google sign-in policy', () => {
     const beforeHook = auth.options.hooks?.before
     const findAccounts = vi
       .fn()
-      .mockResolvedValue([{ providerId: 'google' }, { providerId: 'gmail' }])
+      .mockResolvedValue([
+        { id: 'google-account', providerId: 'google' },
+        { providerId: 'gmail' },
+      ])
 
     expect(beforeHook).toBeDefined()
     await expect(
       beforeHook?.({
         path: '/unlink-account',
         method: 'POST',
-        body: { providerId: 'google' },
+        body: { accountId: 'google-account' },
         context: {
           session: {
             session: { id: 'session-id' },
@@ -187,19 +194,17 @@ describe('createBetterAuth Google sign-in policy', () => {
   it('allows Google unlink when a password sign-in remains', async () => {
     const auth = createBetterAuth(null as unknown as Db, authEnv)
     const beforeHook = auth.options.hooks?.before
-    const findAccounts = vi
-      .fn()
-      .mockResolvedValue([
-        { providerId: 'google' },
-        { providerId: 'credential' },
-      ])
+    const findAccounts = vi.fn().mockResolvedValue([
+      { id: 'google-account', providerId: 'google' },
+      { id: 'credential-account', providerId: 'credential' },
+    ])
 
     expect(beforeHook).toBeDefined()
     await expect(
       beforeHook?.({
         path: '/unlink-account',
         method: 'POST',
-        body: { providerId: 'google' },
+        body: { accountId: 'google-account' },
         context: {
           session: {
             session: { id: 'session-id' },
@@ -218,15 +223,15 @@ describe('createBetterAuth Google sign-in policy', () => {
     const findAccounts = vi
       .fn()
       .mockResolvedValue([
-        { providerId: 'google' },
-        { providerId: 'credential' },
+        { id: 'google-account', providerId: 'google' },
+        { id: 'credential-account', providerId: 'credential' },
         { providerId: 'gmail' },
       ])
     const unlinkContext = (providerId: 'credential' | 'google') =>
       ({
         path: '/unlink-account',
         method: 'POST',
-        body: { providerId },
+        body: { accountId: `${providerId}-account` },
         context: {
           session: {
             session: { id: 'session-id' },
@@ -252,6 +257,6 @@ describe('createBetterAuth Google sign-in policy', () => {
         },
       })
     }
-    expect(findAccounts).toHaveBeenCalledTimes(1)
+    expect(findAccounts).toHaveBeenCalledTimes(2)
   })
 })

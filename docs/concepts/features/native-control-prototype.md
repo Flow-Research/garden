@@ -74,28 +74,31 @@ Offline sends and transfer of buffered messages are disabled.
 Leaving the view disconnects locally. It does not cancel the server turn.
 Interrupted delivery stays unconfirmed until the member reloads and inspects history.
 
-The server checks private chat ownership when the connection opens.
-Its current chat runtime does not independently check the initiating session on every later WebSocket frame.
-The native checks do not close this server enforcement gap. Security qualification remains open.
+The server checks private chat ownership when the connection opens and before each incoming browser WebSocket frame.
+The outer gate checks the current session, workspace membership, thread ownership, and runtime identity.
+Queued or recovered inference and tool actions still need checks for the initiating authority.
+Frame admission does not close that later execution requirement. Security qualification remains open.
 Tool details, approvals, attachments, and offline chat history remain separate unfinished native surfaces.
 Private chat drafts can be restored and edited offline. Drafts never send automatically.
 
 ## Authentication boundary
 
 Garden accepts the exact native origin `garden-mobile://` for password authentication.
+The guard recognizes the native scheme without case sensitivity, then requires the literal exact origin.
 The native adapter sends that origin explicitly.
 Server membership checks and operation permissions remain authoritative.
 The adapter sends credentials only to its configured origin.
 HTTPS is required except for a loopback development server.
 Each origin uses a separate credential namespace.
 
-Garden's current Better Auth server remains pinned to `1.6.26`.
+Garden's current Better Auth server uses `1.7.16` with the maintained database-state consumption patch.
 The prototype does not install the Expo server plugin.
 That plugin is vulnerable below `1.7.16`, as described in [GHSA-4wq4-2ppv-q3hg](https://github.com/better-auth/better-auth/security/advisories/GHSA-4wq4-2ppv-q3hg).
 The native client and its Expo client plugin use `1.7.16`.
 
 Better Auth `1.7.16` changes generic OAuth callback contracts used by existing Garden connectors.
-A server upgrade needs separate connector migration and regression evidence.
+The [authentication security boundary](./dependency-security-baseline.md) retains registered connector callbacks and requires atomic state consumption before token exchange.
+Local callback regressions use synthetic provider responses. Actual provider and native-device acceptance remain separate requirements.
 Do not enable an older Expo server proxy to bypass that migration.
 The current password-only prototype does not require that proxy.
 
