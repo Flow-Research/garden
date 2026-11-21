@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "dev": "turbo run dev:local --ui=tui --filter=@garden/web",
@@ -38,7 +38,7 @@
     "screenshot:webp": "node scripts/screenshot-webp.mjs",
     "typecheck": "turbo run typecheck --concurrency=1",
     "test": "turbo run test && pnpm run test:dependency-security",
-    "test:dependency-security": "node --test scripts/dependency-security.test.mjs",
+    "test:dependency-security": "node --test scripts/dependency-security.test.mjs scripts/parser-transport.test.mjs",
     "lint": "turbo run lint && pnpm run lint:root",
     "lint:root": "oxlint -c ./.oxlintrc.json scripts alchemy.run.ts deploy-targets.mjs",
     "verify:connectors": "pnpm --filter @garden/connectors verify:coverage",
@@ -86,15 +86,16 @@
       "@modelcontextprotocol/sdk>@hono/node-server": "2.0.10",
       "zod@4": "4.6.6",
       "@tanstack/start-server-core": "1.169.39",
-      "body-parser": "2.3.0",
+      "body-parser": "2.4.0",
+      "body-parser@2.4.0>qs": "6.16.1",
       "brace-expansion@2": "2.1.4",
       "brace-expansion@>=4 <6": "5.0.9",
       "dompurify": "3.4.13",
       "esbuild": "0.28.1",
-      "fast-uri": "3.1.5",
+      "fast-uri": "3.1.7",
       "hono": "4.12.34",
       "ip-address": "10.3.1",
-      "js-yaml": "4.3.1",
+      "js-yaml": "4.3.2",
       "kysely": "0.28.17",
       "linkify-it": "5.0.2",
       "mermaid": "11.16.1",
@@ -107,10 +108,13 @@
       "seroval": "1.6.8",
       "seroval-plugins": "1.6.8",
       "shell-quote": "1.11.0",
-      "undici@7": "7.29.0",
-      "undici@8": "8.9.0",
+      "undici@7": "7.30.1",
+      "undici@8": "8.12.2",
       "ws": "8.21.0",
-      "proxy-addr": "2.0.8"
+      "proxy-addr": "2.0.8",
+      "@fastify/busboy@3": "3.2.1",
+      "@xmldom/xmldom@0.8": "0.8.15",
+      "smol-toml@1": "1.7.1"
     },
     "patchedDependencies": {
       "agents@0.17.3": "patches/agents@0.17.3.patch",

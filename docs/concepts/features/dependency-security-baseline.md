@@ -2,7 +2,7 @@
 title: Authentication and server-function dependency security
 description: Patched dependency family, callback preservation, and required compatibility evidence.
 status: proposal
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-21
 ---
 
@@ -11,6 +11,40 @@ last_reviewed: 2026-11-21
 The security change updates TanStack Start and its declared Router family, Better Auth, Seroval, proxy-addr, and shell-quote.
 The selected Start release declares the Router and server-core versions. These versions must remain coherent.
 An audit result does not establish application compatibility or deployment acceptance.
+
+## Parser and transport compatibility
+
+The next dependency unit retains the reviewed version branches.
+The declared Node minimum is `22.19.0`, which the installed Undici 8 branch already requires.
+Local checks use Node `22.22.2`.
+
+| Dependency        | Selected version |
+| ----------------- | ---------------- |
+| `@fastify/busboy` | `3.2.1`          |
+| `@xmldom/xmldom`  | `0.8.15`         |
+| `body-parser`     | `2.4.0`          |
+| `fast-uri`        | `3.1.7`          |
+| `js-yaml`         | `4.3.2`          |
+| `smol-toml`       | `1.7.1`          |
+| `undici` major 7  | `7.30.1`         |
+| `undici` major 8  | `8.12.2`         |
+
+The `body-parser@2.4.0` branch uses `qs@6.16.1` to satisfy its declared range.
+Other query-parser branches retain their separate versions and audit findings.
+The package manager generates the dependency lock with lifecycle scripts disabled.
+
+The compatibility tests use the actual Executor OpenAPI importer, Think inspection command, AJV, Express body parser, multipart parser, and both Node transports.
+TOML is a configuration file format.
+Think inspection reports whether its TOML parsed. That result does not establish a deployed application.
+DOCX is a Word document format.
+Existing document tests exercise Mammoth-backed DOCX extraction and projection with the updated XML parser.
+
+The HTTP fixtures bind only to loopback addresses and use synthetic header values.
+TLS encrypts a network connection.
+The fixtures test redirect separation, transport errors, WebSocket subprotocol refusal, and explicit TLS trust.
+The TLS fixture requires OpenSSL and creates a temporary self-signed certificate for the local listener.
+Cleanup removes its temporary files and closes its owned connections.
+These tests cover local Node owners. Deployed Worker behavior retains its separate requirements.
 
 ## Server functions
 

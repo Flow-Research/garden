@@ -48,3 +48,13 @@ It does not execute generated shell text.
 Local handler checks do not prove an actual Google or Slack provider round trip.
 Provider acceptance and deployment-target checks remain separate release gates.
 Authorization attempts that started before the state-binding change must restart.
+
+## Parser and transport compatibility
+
+`parser-owner-compatibility.test.ts` parses valid and incomplete YAML through the installed Executor OpenAPI owner.
+`scripts/parser-transport.test.mjs` uses actual dependency owners and bounded loopback fixtures.
+It covers AJV references, JSON and form bodies, multipart parsing, redirect credential separation, WebSocket subprotocol refusal, local connection errors, and explicit TLS trust.
+The Think CLI reads valid and incomplete TOML from disposable project directories.
+OpenSSL creates only temporary local TLS fixtures. The tests remove those files and close their listeners.
+Existing agent-runtime document tests cover Mammoth DOCX conversion and projection.
+These cases do not establish a live provider, native device, or deployed Worker result.
