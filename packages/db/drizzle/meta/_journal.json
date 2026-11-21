@@ -491,6 +491,20 @@
       "when": 1794698481249,
       "tag": "0069_brain_write_operation_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1795259687537,
+      "tag": "0070_nostalgic_wasp",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1795261618517,
+      "tag": "0071_uneven_stick",
+      "breakpoints": true
     }
   ]
 }
