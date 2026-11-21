@@ -160,6 +160,31 @@ describe('durable Brain history provenance', () => {
     ).toBe(true)
     expect(persist).not.toHaveBeenCalled()
   })
+  it('denies a new exposure without marking verified history unverified', async () => {
+    const persist = vi.fn()
+    const exposed = await ensureBrainRunHistory({
+      identity,
+      permissions: denied,
+      exposeTool: 'brain_search',
+      marker: { identity, tools: [] },
+      persist,
+      readDurableHistory: async () => ['retained'],
+    })
+    expect(exposed.isErr()).toBe(true)
+    expect(exposed.isErr() && exposed.error.code).not.toBe('history_unverified')
+    expect(persist).not.toHaveBeenCalled()
+  })
+  it('keeps a revoked retained grant unverified when a new exposure is requested', async () => {
+    const exposed = await ensureBrainRunHistory({
+      identity,
+      permissions: denied,
+      exposeTool: 'brain_search',
+      marker: { identity, tools: ['brain_read_file'] },
+      persist: vi.fn(),
+      readDurableHistory: async () => ['retained'],
+    })
+    expect(exposed.isErr() && exposed.error.code).toBe('history_unverified')
+  })
   it('fails closed when history or provenance storage fails', async () => {
     const history = await ensureBrainRunHistory({
       identity,

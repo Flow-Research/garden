@@ -55,6 +55,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { loadRuntimeSkillSources } from './skills'
+import { isHistoryUnverifiedMessage } from './brain-run-authority'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -123,6 +124,7 @@ export type RunTurnInput = {
 
 export type RunSubAgentErrorCode =
   | 'database_failed'
+  | 'history_unverified'
   | 'invalid_state'
   | 'not_found'
   | 'runtime_failed'
@@ -140,6 +142,11 @@ export type RunSubAgentErrorFields = {
  */
 export type RunSubAgentError = Error &
   Readonly<RunSubAgentErrorFields> & { readonly _tag: string }
+
+/** `history_unverified` only reaches a caller that asked for it with `'report'`. */
+export type RunFacetTurnStartResult =
+  | RunWorkflowTurnStartResult
+  | { kind: 'history_unverified' }
 
 /**
  * Thrown from `beforeTurn` when a boundary guard (cancellation, timeout or a
@@ -426,6 +433,11 @@ export abstract class RunSubAgentBase<
     return null
   }
 
+  /** Id of the issue or automation run this facet serves; the facet name by default. */
+  protected runObjectId() {
+    return this.name
+  }
+
   protected telemetryMetadata(runId: string): Record<string, string> {
     return { agentClass: this.runConfig().agentClass, runId }
   }
@@ -465,7 +477,7 @@ export abstract class RunSubAgentBase<
         bucket: this.env.FILES,
         databaseUrl: this.env.HYPERDRIVE.connectionString,
       },
-      { kind: this.runConfig().kind, id: this.name },
+      { kind: this.runConfig().kind, id: this.runObjectId() },
     )
   }
 
@@ -745,11 +757,17 @@ export abstract class RunSubAgentBase<
    * This and `completeWorkflowTurn` are Workflow RPC targets, so failures are
    * thrown (the Workflow step must reject to retry) — always as the run's
    * tagged error, keeping its code and cause.
+   *
+   * With `historyUnverified: 'report'`, a start refused because retained
+   * history cannot be verified returns `history_unverified` and leaves the run
+   * open, so the caller can start it on a fresh context. With `'fail'`, that
+   * refusal fails the run with its fixed reason.
    */
   async executeWorkflowTurn(
     mode: RunTurnMode,
     input: TInput,
-  ): Promise<RunWorkflowTurnStartResult> {
+    historyUnverified: 'fail' | 'report' = 'fail',
+  ): Promise<RunFacetTurnStartResult> {
     const entry = await this.verifyRunEntry(input.runId)
     if (entry.isErr()) throw entry.error
 
@@ -776,6 +794,13 @@ export abstract class RunSubAgentBase<
     }
 
     const driveResult = await this.driveTurn(mode, input)
+    if (
+      driveResult.isErr() &&
+      driveResult.error.code === 'history_unverified' &&
+      mode === 'start' &&
+      historyUnverified === 'report'
+    )
+      return { kind: 'history_unverified' }
     if (driveResult.isErr()) {
       await this.closeFailedRun(input.runId, driveResult.error.message)
       throw await this.errorForOutput(input.runId, driveResult.error)
@@ -1105,6 +1130,7 @@ export abstract class RunSubAgentBase<
 
   /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
   private async failureReasonForOutput(runId: string, reason: string) {
+    if (isHistoryUnverifiedMessage(reason)) return reason
     const authority = await this.authorizeFinalObservation(runId)
     if (authority.isOk()) return reason
     this.aiObservation.discardTurn()
@@ -1112,6 +1138,7 @@ export abstract class RunSubAgentBase<
   }
 
   private async errorForOutput(runId: string, error: RunSubAgentError) {
+    if (isHistoryUnverifiedMessage(error.message)) return error
     const authority = await this.authorizeFinalObservation(runId)
     if (authority.isOk()) return error
     this.aiObservation.discardTurn()
