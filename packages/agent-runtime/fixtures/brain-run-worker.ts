@@ -134,6 +134,20 @@ for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
   })
 }
 
+// A loopback barrier inside preparation can revoke a retained grant after the
+// first history check and before the exposure check.
+for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
+  const ensure = Reflect.get(facet.prototype, 'ensureBrainGrantHistory')
+  Reflect.set(facet.prototype, 'ensureBrainGrantHistory', async function (this: object, origin: unknown, exposeTool?: string) {
+    if (exposeTool === 'brain_search') {
+      const env = fixtureEnvironment(this)
+      const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/before-exposure`, { method: 'POST' })
+      if (!response.ok) throw new Error('Exposure authority barrier failed')
+    }
+    return ensure.call(this, origin, exposeTool)
+  })
+}
+
 // An actual outward tool in the native dispatch pipeline. It has no production
 // counterpart and publishes only to this suite's local synthetic endpoint.
 for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {

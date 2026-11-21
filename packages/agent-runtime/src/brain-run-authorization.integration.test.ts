@@ -50,6 +50,7 @@ let grantScenario:
       mutation?: 'create' | 'update' | 'mention' | 'link'
       mutationRevoke?: boolean
       revokeBeforeInjection?: boolean
+      revokeBeforeExposure?: boolean
     }
   | undefined
 let brainRequests: string[] = []
@@ -297,6 +298,24 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       model = createServer(async (request, response) => {
         let raw = ''
         for await (const chunk of request) raw += String(chunk)
+        if (request.url?.endsWith('/before-exposure')) {
+          if (grantScenario?.revokeBeforeExposure) {
+            grantScenario.revokeBeforeExposure = false
+            await database!.db
+              .update(schema.agent)
+              .set({
+                permissions: {
+                  full_access: false,
+                  allowed_tools: ['create_work_product', 'complete_automation'],
+                },
+              })
+              .where(eq(schema.agent.id, agentId))
+            revokedAtBrainRequest = brainRequests.length
+          }
+          response.writeHead(200)
+          response.end('ready')
+          return
+        }
         if (request.url?.endsWith('/before-injection')) {
           if (grantScenario?.revokeBeforeInjection) {
             await database!.db
@@ -914,7 +933,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             'BrainWriteBackSubAgent.runWriteBack',
           ]
         for (const state of kind === 'automation'
-          ? ['revoked', 'always-denied', 'owner-changed']
+          ? [
+              'revoked',
+              'revoked-before-exposure',
+              'always-denied',
+              'owner-changed',
+            ]
           : ['revoked', 'always-denied'])
           rolesByScenario[
             `protects ${state} retained ${kind} history on resume`
@@ -2416,7 +2440,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
 
     for (const kind of ['issue', 'automation'] as const)
       for (const state of kind === 'automation'
-        ? (['revoked', 'always-denied', 'owner-changed'] as const)
+        ? ([
+            'revoked',
+            'revoked-before-exposure',
+            'always-denied',
+            'owner-changed',
+          ] as const)
         : (['revoked', 'always-denied'] as const)) {
         it(`protects ${state} retained ${kind} history on resume`, async () => {
           const read = state !== 'always-denied'
@@ -2507,22 +2536,25 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             expect(JSON.stringify(modelRequests)).not.toContain(allowedMarker)
           if (state === 'owner-changed')
             expect(JSON.stringify(modelRequests)).toContain(deniedMarkers[0])
-          await database!.db
-            .update(schema.agent)
-            .set(
-              state === 'owner-changed'
-                ? {
-                    ownerUserId: initiatorId,
-                    permissions: { full_access: true },
-                  }
-                : {
-                    permissions: {
-                      full_access: false,
-                      allowed_tools: nonBrainTools,
+          if (state === 'revoked-before-exposure')
+            grantScenario.revokeBeforeExposure = true
+          else
+            await database!.db
+              .update(schema.agent)
+              .set(
+                state === 'owner-changed'
+                  ? {
+                      ownerUserId: initiatorId,
+                      permissions: { full_access: true },
+                    }
+                  : {
+                      permissions: {
+                        full_access: false,
+                        allowed_tools: nonBrainTools,
+                      },
                     },
-                  },
-            )
-            .where(eq(schema.agent.id, agentId))
+              )
+              .where(eq(schema.agent.id, agentId))
           grantScenario.pause = false
           grantScenario.read = false
           const beforeModel = modelRequests.length
@@ -2540,6 +2572,8 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
             },
           )
           expect(response.status).toBe(200)
+          if (state === 'revoked-before-exposure')
+            expect(grantScenario.revokeBeforeExposure).toBe(false)
           if (kind === 'automation' && state !== 'always-denied')
             expect(await response.json()).toMatchObject({ ok: false })
           await expect

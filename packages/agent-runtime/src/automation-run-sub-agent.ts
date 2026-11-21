@@ -1108,7 +1108,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ).mapError(
       (error) =>
         new AutomationRunSubAgentError({
-          code: 'runtime_failed',
+          code: error.code ?? 'runtime_failed',
           message: error.message,
           cause: error,
         }),
