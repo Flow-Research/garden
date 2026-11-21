@@ -6,6 +6,7 @@ import {
   type BrainRunOrigin,
 } from './brain-run-authority'
 import { ensureIssueBrainAudience } from './issue-brain-audience'
+import { issueIdFromFacetName } from './issue-agent-context'
 import type {
   ChatResponseResult,
   ToolCallContext,
@@ -182,13 +183,17 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   private brainInjectionAllowed = false
 
+  protected override runObjectId() {
+    return issueIdFromFacetName(this.name)
+  }
+
   protected override async verifyRunEntry(runId: string) {
     return (
       await verifyBrainRunBinding(this.env.HYPERDRIVE.connectionString, {
         runKind: 'issue',
         runId,
         runtimeName: this.parentPath.at(-1)?.name ?? '',
-        objectId: this.name,
+        objectId: this.runObjectId(),
       })
     )
       .map(() => undefined)
@@ -207,7 +212,12 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         const runtimeName = this.parentPath.at(-1)?.name ?? ''
         const binding = await verifyBrainRunBinding(
           this.env.HYPERDRIVE.connectionString,
-          { runKind: 'issue', runId, runtimeName, objectId: this.name },
+          {
+            runKind: 'issue',
+            runId,
+            runtimeName,
+            objectId: this.runObjectId(),
+          },
         )
         if (binding.isErr())
           throw this.runError({
@@ -218,7 +228,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
           runKind: 'issue',
           runId,
           runtimeName,
-          objectId: this.name,
+          objectId: this.runObjectId(),
           workspaceId: binding.value.context.workspaceId,
           agentId: binding.value.context.agentId,
           ownerUserId: binding.value.context.userId ?? null,
@@ -360,7 +370,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       runKind: 'issue',
       runId: loaded.runState.runId,
       runtimeName: this.parentPath.at(-1)?.name ?? '',
-      objectId: this.name,
+      objectId: this.runObjectId(),
       workspaceId: loaded.runState.workspaceId,
       agentId: loaded.runState.agentId,
       ownerUserId: loaded.runState.agentOwnerUserId,
@@ -374,7 +384,12 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     )
     if (read.isErr()) return Result.ok(undefined)
     const exposed = await this.ensureBrainGrantHistory(origin, 'brain_search')
-    if (exposed.isErr()) return exposed
+    // A grant revoked after the check above only withholds injection; the
+    // retained history stays verified and the run keeps its context.
+    if (exposed.isErr())
+      return exposed.error.code === 'history_unverified'
+        ? exposed
+        : Result.ok(undefined)
     this.brainInjectionAllowed = true
     return Result.ok(undefined)
   }
@@ -470,7 +485,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
   }
 
   protected override telemetryMetadata(runId: string) {
-    return { ...super.telemetryMetadata(runId), issueId: this.name }
+    return { ...super.telemetryMetadata(runId), issueId: this.runObjectId() }
   }
 
   protected turnStopConditions() {
@@ -551,7 +566,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             const origin: BrainRunOrigin = {
               runKind: 'issue',
               runtimeName: this.parentPath.at(-1)?.name ?? '',
-              objectId: this.name,
+              objectId: this.runObjectId(),
               runId: run.runId,
               workspaceId: run.workspaceId,
               agentId: run.agentId,
@@ -892,7 +907,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         runKind: 'issue',
         runId,
         runtimeName: this.parentPath.at(-1)?.name ?? '',
-        objectId: this.name,
+        objectId: this.runObjectId(),
       },
     )
     if (binding.isErr())
@@ -1117,7 +1132,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     ).mapError(
       (error) =>
         new IssueRunSubAgentError({
-          code: 'runtime_failed',
+          code: error.code ?? 'runtime_failed',
           message: error.message,
           cause: error,
         }),

@@ -1,9 +1,10 @@
 import { Result, TaggedError } from 'better-result'
+import { HISTORY_UNVERIFIED_MESSAGES } from './brain-run-authority'
 
 export class IssueBrainAudienceError extends TaggedError(
   'IssueBrainAudienceError',
 )<{
-  code: 'invalid_state' | 'runtime_failed'
+  code: 'history_unverified' | 'runtime_failed'
   message: string
   cause?: unknown
 }>() {}
@@ -21,7 +22,8 @@ export class IssueBrainAudienceError extends TaggedError(
  * `org-v1:<workspaceId>`, written when the facet starts empty under the
  * org-only audience. A stamped facet resumes normally. An unstamped facet with
  * any durable history (a legacy facet, or one created before this fix) is
- * refused with `invalid_state`; its history is retained but never replayed.
+ * refused with `history_unverified`; its history is retained but never
+ * replayed, and the run may start on a fresh context facet instead.
  * An unstamped empty facet is stamped only on the Workflow start/resume path
  * (`initializeEmpty`), before its first turn is persisted. A failed history
  * read or stamp write is `runtime_failed`, so the run stops rather than
@@ -61,9 +63,8 @@ export async function ensureIssueBrainAudience(input: {
   ) {
     return Result.err(
       new IssueBrainAudienceError({
-        code: 'invalid_state',
-        message:
-          'Issue transcript has an unverified Brain audience. Use a new issue with reviewed shared context; retained history cannot be resumed.',
+        code: 'history_unverified',
+        message: HISTORY_UNVERIFIED_MESSAGES.audience,
       }),
     )
   }

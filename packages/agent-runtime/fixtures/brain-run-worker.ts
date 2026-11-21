@@ -134,6 +134,20 @@ for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
   })
 }
 
+// A loopback barrier inside preparation can revoke a retained grant after the
+// first history check and before the exposure check.
+for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
+  const ensure = Reflect.get(facet.prototype, 'ensureBrainGrantHistory')
+  Reflect.set(facet.prototype, 'ensureBrainGrantHistory', async function (this: object, origin: unknown, exposeTool?: string) {
+    if (exposeTool === 'brain_search') {
+      const env = fixtureEnvironment(this)
+      const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/before-exposure`, { method: 'POST' })
+      if (!response.ok) throw new Error('Exposure authority barrier failed')
+    }
+    return ensure.call(this, origin, exposeTool)
+  })
+}
+
 // An actual outward tool in the native dispatch pipeline. It has no production
 // counterpart and publishes only to this suite's local synthetic endpoint.
 for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
@@ -229,6 +243,7 @@ export default {
         '/writeback-origin',
         '/automation-resume',
         '/history',
+        '/history-read',
         '/chat',
         '/resume',
         '/writeback',
@@ -271,6 +286,7 @@ export default {
         configure: () => undefined,
         session: { getHistory: async () => [] },
         verifyRunEntry(runId: string) { return Reflect.get(facet.prototype, 'verifyRunEntry').call(this, runId) },
+        runObjectId() { return Reflect.get(facet.prototype, 'runObjectId').call(this) },
         runConfig() { return Reflect.get(facet.prototype, 'runConfig').call(this) },
         runError(fields: unknown) { return Reflect.get(facet.prototype, 'runError').call(this, fields) },
         loadTurnContext(runId: string) { return Reflect.get(facet.prototype, 'loadTurnContext').call(this, runId) },
@@ -730,6 +746,7 @@ export default {
         runKind: 'issue' | 'automation'
         runId: string
         originObjectId: string
+        originGeneration?: number
         workspaceId: string
         ownerUserId: string
       }>()
@@ -743,6 +760,7 @@ export default {
         try: () =>
           facet.runWriteBack({
             ...input,
+            originGeneration: input.originGeneration ?? 0,
             agentId: input.claimedAgentId,
             summary: 'Origin binding probe.',
           }),
@@ -796,6 +814,7 @@ export default {
           ...input,
           runKind: 'automation',
           originObjectId: input.runId,
+          originGeneration: 0,
           summary: 'Inspect G06 knowledge. No new durable claim is present.',
         }),
       )
@@ -805,13 +824,22 @@ export default {
       issueId: string
       runId: string
       threadId?: string
+      facetName?: string
     }>()
     const agent = await getAgentByName(env.AgentDO, input.agentId)
+    if (url.pathname === '/history-read') {
+      const facet = await getSubAgentByName(
+        agent,
+        IssueRunSubAgent,
+        input.facetName ?? input.issueId,
+      )
+      return Response.json({ messages: await facet.getMessages() })
+    }
     if (url.pathname === '/history') {
       const facet = await getSubAgentByName(
         agent,
         IssueRunSubAgent,
-        input.issueId,
+        input.facetName ?? input.issueId,
       )
       await facet.addMessages([
         {
