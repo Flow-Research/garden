@@ -27,4 +27,6 @@ Do not use production task changes for the prototype.
 
 Run `pnpm --filter @garden/client test` and `pnpm --filter @garden/mobile test` for automated HTTP and controller regressions.
 Run the web auth and shared-client regressions after any authentication or package-boundary change.
+The entry-runtime tests reproduce missing event classes in a child process and test the supported polyfill before SDK import.
+Also load the exact JavaScript revision through Metro in Hermes. A bundle export alone does not prove native startup.
 Record `INCONCLUSIVE` for a native user journey until its physical-device evidence exists.

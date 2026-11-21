@@ -12,6 +12,9 @@ Garden includes an Expo development prototype in `apps/mobile`.
 It reads existing Garden workspaces, issues, chat thread titles, managed run status, and skills.
 The shared package `packages/client` supplies these reads and explicit chat creation.
 The native chat uses the existing Cloudflare SDK and the owned Garden chat service.
+The app entry imports PartySocket's public event polyfill before it imports the application.
+The polyfill supplies `Event` and `EventTarget`, which Hermes does not supply.
+Without these classes, the chat SDK fails during startup before the sign-in screen appears.
 The web application retains its existing paths through reexports of the shared skills client and contract.
 
 The prototype supports password sign-in through the existing Garden server.

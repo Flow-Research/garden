@@ -34,7 +34,8 @@
     "@cloudflare/ai-chat": "catalog:",
     "agents": "catalog:",
     "ai": "6.0.208",
-    "@ai-sdk/react": "3.0.210"
+    "@ai-sdk/react": "3.0.210",
+    "partysocket": "1.3.0"
   },
   "devDependencies": {
     "@types/react": "19.2.14",
