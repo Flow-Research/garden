@@ -425,6 +425,7 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
     runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
   const trustedOrigins = Array.from(
     new Set([
+      'garden-mobile://',
       'http://localhost:3000',
       'http://localhost:3001',
       ...(env.BETTER_AUTH_URL ? [env.BETTER_AUTH_URL] : []),
@@ -568,6 +569,18 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
        * and `getSessionFromCtx` source.
        */
       before: createAuthMiddleware(async (context) => {
+        // Better Auth 1.6 treats a trusted custom scheme as a prefix. This
+        // password-only native client needs one exact Origin, not callbacks.
+        const nativeOrigin = context.request?.headers.get('origin')
+        if (
+          nativeOrigin?.startsWith('garden-mobile:') &&
+          nativeOrigin !== 'garden-mobile://'
+        ) {
+          throw APIError.from('FORBIDDEN', {
+            code: 'INVALID_ORIGIN',
+            message: 'Native origin is not trusted',
+          })
+        }
         if (context.path !== '/unlink-account') {
           return
         }

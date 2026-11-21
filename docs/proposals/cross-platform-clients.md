@@ -8,18 +8,23 @@ last_reviewed: 2026-11-11
 
 Garden needs desktop web, mobile web, native iOS and Android clients, and a native desktop release for macOS, Windows and Linux together. This page records the scope agreed on 2026-11-10 and the proposed technical sequence.
 
-**Current status:** Garden has a web application. This change adds no native application, API endpoint, plugin installer or execution-host transport. Frameworks, minimum OS versions, Linux distributions, dates and budgets remain open. The [roadmap](../concepts/product/roadmap.md) keeps the dependable-beta release gates.
+Garden has a web application and a [native development prototype](../concepts/features/native-control-prototype.md).
+The prototype reads existing Garden resources, retains private snapshots and drafts, and includes password authentication and native text chat through the existing SDK.
+Physical-device authentication and native lifecycle evidence remain open.
+No external execution-host transport or native release is qualified.
+Framework selection, minimum OS versions, Linux distributions, and release dates remain open.
+The [roadmap](../concepts/product/roadmap.md) retains the dependable-beta release gates.
 
 ## Scope and independent choices
 
 The first mobile release covers workspace chat, tasks, approvals, launch and run status. Desktop can reuse the web interface inside a native application if it supplies proper native integration. First offline behavior is private cached reading and drafts. Consequential actions require reconnection and current authority.
 
-| Choice | Meaning |
-| --- | --- |
-| Client surface | Where the member views work: web, iOS, Android or desktop application. |
-| Execution host | The enrolled machine or service that owns repository mappings, credentials and agent processes. |
-| Execution runtime | The compatible isolated environment that executes a capability. |
-| User configuration | Language, model, knowledge provider, agent, budget and authorized host. |
+| Choice             | Meaning                                                                                         |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| Client surface     | Where the member views work: web, iOS, Android or desktop application.                          |
+| Execution host     | The enrolled machine or service that owns repository mappings, credentials and agent processes. |
+| Execution runtime  | The compatible isolated environment that executes a capability.                                 |
+| User configuration | Language, model, knowledge provider, agent, budget and authorized host.                         |
 
 A native mobile client is not an on-device coding-agent host. Native desktop does not grant local shell access by default. Garden's existing managed execution services remain valid hosts for their supported operations.
 
@@ -27,18 +32,18 @@ A native mobile client is not an on-device coding-agent host. Native desktop doe
 
 The inspected baseline is Garden dev commit `9d8b96fc`, checked on 2026-11-10. These are source observations, not deployment or device tests.
 
-| Boundary | Current implementation | Reuse or gap |
-| --- | --- | --- |
-| Typed HTTP contract | `apps/web/src/lib/api/garden-api-contract.ts` composes the skills and document-artifact groups. | Extend the existing contract pattern only for operations the client needs. It does not yet describe the whole product. |
-| Other product APIs | `apps/web/src/lib/api/issues.ts` uses the shared transport; issue routes live under `apps/web/src/routes/api/issues/`. | Inventory the selected task/read/status operations before moving modules. Garden issues and WorkStream tasks have different authorities. |
-| HTTP transport | `apps/web/src/lib/api/transport.ts` supplies workspace/request headers and cookie credentials. Upload progress uses XMLHttpRequest. | Allow explicit origin and platform session/transport adapters. A request correlation ID is not a durable idempotency guarantee. |
-| Authentication client | `apps/web/src/lib/auth/client.ts` derives its origin from the browser and imports Better Auth's React client. | Define native sign-in and callback/session handling. Do not infer native support from browser-cookie behavior. |
+| Boundary                     | Current implementation                                                                                                                                                                        | Reuse or gap                                                                                                                                                       |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Typed HTTP contract          | `apps/web/src/lib/api/garden-api-contract.ts` composes the skills and document-artifact groups.                                                                                               | Extend the existing contract pattern only for operations the client needs. It does not yet describe the whole product.                                             |
+| Other product APIs           | `apps/web/src/lib/api/issues.ts` uses the shared transport; issue routes live under `apps/web/src/routes/api/issues/`.                                                                        | Inventory the selected task/read/status operations before moving modules. Garden issues and WorkStream tasks have different authorities.                           |
+| HTTP transport               | `apps/web/src/lib/api/transport.ts` supplies workspace/request headers and cookie credentials. Upload progress uses XMLHttpRequest.                                                           | Allow explicit origin and platform session/transport adapters. A request correlation ID is not a durable idempotency guarantee.                                    |
+| Authentication client        | `apps/web/src/lib/auth/client.ts` derives its origin from the browser and imports Better Auth's React client.                                                                                 | Define native sign-in and callback/session handling. Do not infer native support from browser-cookie behavior.                                                     |
 | Server session and authority | `apps/web/src/lib/server/context.ts`, `apps/web/src/lib/server/control-plane.ts` and `apps/web/src/lib/server/workspace-permissions.ts` own request context, membership and operation checks. | Preserve server checks. Explicit workspace selection must not silently select another workspace when membership changes. Qualify native authentication separately. |
-| Chat | `apps/web/src/features/chat/chat-runtime-provider.tsx` uses React, Agents and Think WebSocket hooks. Agent entry authorization is in `apps/web/src/server.ts`. | Keep conversation identity and the existing server owner. Verify mobile transport/lifecycle support before selecting a client integration. |
-| Workspace events | `apps/web/src/lib/server/realtime.ts` authorizes workspace sockets; `packages/core/src/types/events.ts` defines events. | Reuse identifiers and invalidation semantics. Reconnect must refetch authorized state; events do not grant access. |
-| Approval | `apps/web/src/routes/api/chat/threads/$id/tool-approval.ts` resolves chat tool approvals. | Render native controls against the same server-side authority and current request. Notification receipt is not approval. |
-| Cancellation | `apps/web/src/routes/api/issues/$id/cancel.ts` checks access and issue-management permission before calling the run service. | Keep cancellation separate from client disconnection. This existing issue-run route does not implement remote Harnessy cancellation. |
-| Recovery | `packages/agent-runtime/src/run-workflow.ts` owns durable issue/automation execution. | Reuse the existing Workflow boundary. New external-host transport needs explicit reconciliation without a second agent or duplicate recovery loop. |
+| Chat                         | `apps/web/src/features/chat/chat-runtime-provider.tsx` uses React, Agents and Think WebSocket hooks. Agent entry authorization is in `apps/web/src/server.ts`.                                | Keep conversation identity and the existing server owner. Verify mobile transport/lifecycle support before selecting a client integration.                         |
+| Workspace events             | `apps/web/src/lib/server/realtime.ts` authorizes workspace sockets; `packages/core/src/types/events.ts` defines events.                                                                       | Reuse identifiers and invalidation semantics. Reconnect must refetch authorized state; events do not grant access.                                                 |
+| Approval                     | `apps/web/src/routes/api/chat/threads/$id/tool-approval.ts` resolves chat tool approvals.                                                                                                     | Render native controls against the same server-side authority and current request. Notification receipt is not approval.                                           |
+| Cancellation                 | `apps/web/src/routes/api/issues/$id/cancel.ts` checks access and issue-management permission before calling the run service.                                                                  | Keep cancellation separate from client disconnection. This existing issue-run route does not implement remote Harnessy cancellation.                               |
+| Recovery                     | `packages/agent-runtime/src/run-workflow.ts` owns durable issue/automation execution.                                                                                                         | Reuse the existing Workflow boundary. New external-host transport needs explicit reconciliation without a second agent or duplicate recovery loop.                 |
 
 Read [HTTP API](../concepts/architecture/http-api.md), [realtime](../concepts/architecture/realtime.md), [run engine](../concepts/architecture/run-engine.md) and [known gaps](../reference/known-gaps.md) for their current contracts.
 
@@ -81,25 +86,25 @@ Choose package extraction only when a second consumer exists. Existing shared co
 
 ## Framework candidates
 
-| Candidate | Fit | Decision evidence |
-| --- | --- | --- |
-| Responsive web and optional PWA | Reuse the current UI; deliver mobile web independently. A PWA is not proof of a native release. | Physical-phone usability, accessibility, reconnect and measured platform limitations. |
-| React Native with Expo development builds | Recommended mobile candidate. Reuse TypeScript contracts and React knowledge; mobile controls/navigation need implementation. | Native sign-in, secure storage, deep links, notifications, chat/reconnect and accessibility on physical iOS and Android devices. |
-| Tauri | Recommended desktop candidate. Reuse the web UI with a limited native integration boundary. System webviews differ across operating systems. | Build and test all three OS targets; measure UI compatibility, accessibility, startup/memory, secure storage, sign-in and updates. Check the current server-rendering/client boundary before packaging. |
-| Electron | Alternative desktop candidate with bundled Chromium. Runtime size and security-update maintenance need measurement. | Compare when Tauri exposes a material compatibility/integration failure; keep privileged IPC narrow. |
-| Flutter or separate native apps | Alternatives if required behavior cannot be delivered by the candidates. | Show a product or lifecycle need that justifies another UI stack and maintenance cost. |
+| Candidate                                 | Fit                                                                                                                                          | Decision evidence                                                                                                                                                                                       |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Responsive web and optional PWA           | Reuse the current UI; deliver mobile web independently. A PWA is not proof of a native release.                                              | Physical-phone usability, accessibility, reconnect and measured platform limitations.                                                                                                                   |
+| React Native with Expo development builds | Recommended mobile candidate. Reuse TypeScript contracts and React knowledge; mobile controls/navigation need implementation.                | Native sign-in, secure storage, deep links, notifications, chat/reconnect and accessibility on physical iOS and Android devices.                                                                        |
+| Tauri                                     | Recommended desktop candidate. Reuse the web UI with a limited native integration boundary. System webviews differ across operating systems. | Build and test all three OS targets; measure UI compatibility, accessibility, startup/memory, secure storage, sign-in and updates. Check the current server-rendering/client boundary before packaging. |
+| Electron                                  | Alternative desktop candidate with bundled Chromium. Runtime size and security-update maintenance need measurement.                          | Compare when Tauri exposes a material compatibility/integration failure; keep privileged IPC narrow.                                                                                                    |
+| Flutter or separate native apps           | Alternatives if required behavior cannot be delivered by the candidates.                                                                     | Show a product or lifecycle need that justifies another UI stack and maintenance cost.                                                                                                                  |
 
 These are recommendations, not adopted dependencies. [React Native components](https://reactnative.dev/docs/intro-react-native-components), [Expo development builds](https://docs.expo.dev/develop/development-builds/introduction/), [Tauri architecture](https://v2.tauri.app/concept/architecture/) and [Electron security](https://www.electronjs.org/docs/latest/tutorial/security) describe the relevant framework boundaries. Record the framework decision after prototype review.
 
 ## Delivery slices and target evidence
 
-| Slice | Usable result | Release evidence |
-| --- | --- | --- |
-| Roadmap and boundary map | Agreed scope, existing code paths and proposed prototype are reviewable. | Documentation validation and source-path review. This change supplies that slice only. |
-| Web/mobile web and shared API | Responsive contribution controls, portable read/auth interfaces and explicit recovery. | Browser tests and physical iPhone/Safari plus Android/Chrome checks. Preserve tenant/approval safety gates. |
-| Native decision prototype | Sign-in, task read, approval, host selection and reconnect in development builds. | Physical-device and actual-OS receipts. Fixtures must be labelled; direct-launch proof waits for the real host transport. |
-| First native mobile release | Chat, tasks, approvals, launch and run status on iOS and Android. | Each platform passes secure-session, accessibility, notification, deep-link, expiry/revocation, process-death, offline-cache and upgrade tests. |
-| First native desktop release | Packaged Garden with native integration on macOS, Windows and Linux together. | Each OS passes install/update/rollback, secure storage, accessible controls, links, notifications, sleep/resume, close/quit and recovery tests. |
+| Slice                         | Usable result                                                                          | Release evidence                                                                                                                                |
+| ----------------------------- | -------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Roadmap and boundary map      | Agreed scope, existing code paths and proposed prototype are reviewable.               | Documentation validation and source-path review. This change supplies that slice only.                                                          |
+| Web/mobile web and shared API | Responsive contribution controls, portable read/auth interfaces and explicit recovery. | Browser tests and physical iPhone/Safari plus Android/Chrome checks. Preserve tenant/approval safety gates.                                     |
+| Native decision prototype     | Sign-in, task read, approval, host selection and reconnect in development builds.      | Physical-device and actual-OS receipts. Fixtures must be labelled; direct-launch proof waits for the real host transport.                       |
+| First native mobile release   | Chat, tasks, approvals, launch and run status on iOS and Android.                      | Each platform passes secure-session, accessibility, notification, deep-link, expiry/revocation, process-death, offline-cache and upgrade tests. |
+| First native desktop release  | Packaged Garden with native integration on macOS, Windows and Linux together.          | Each OS passes install/update/rollback, secure storage, accessible controls, links, notifications, sleep/resume, close/quit and recovery tests. |
 
 Select minimum OS versions, architectures and Linux distro/display combinations during the prototype. Do not claim unrestricted Linux support. If one desktop target fails, the three-OS release gate stays open until the scope is explicitly revised.
 
