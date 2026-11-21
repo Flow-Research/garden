@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:http'
@@ -9,6 +10,7 @@ import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import { gzipSync } from 'node:zlib'
 
 // Use the existing web fixture deadline for child and local transport checks.
 const fixtureTimeoutMs = 120_000
@@ -18,6 +20,9 @@ const sdkRequire = createRequire(
 const expressRequire = createRequire(sdkRequire.resolve('express'))
 const codemodeRequire = createRequire(
   import.meta.resolve('@executor-js/codemode-core'),
+)
+const openApiRequire = createRequire(
+  import.meta.resolve('@executor-js/plugin-openapi/core'),
 )
 const undiciOwners = [
   ['miniflare', createRequire(import.meta.resolve('miniflare'))],
@@ -59,6 +64,45 @@ test('AJV retains relative URI references through its installed URI parser', () 
   assert.equal(validate({ value: 42 }), false)
 })
 
+test('the AJV URI resolver normalizes authorities and refuses a non-numeric port', () => {
+  const Ajv = codemodeRequire('ajv')
+  const { uriResolver } = new Ajv().opts
+  assert.equal(
+    uriResolver.normalize('HTTP://Example.TEST:80/a/../b?q#f'),
+    'http://example.test/b?q#f',
+  )
+  assert.equal(
+    uriResolver.serialize({
+      scheme: 'http',
+      host: 'trusted.example',
+      port: 8124,
+      path: '/app',
+    }),
+    'http://trusted.example:8124/app',
+  )
+  assert.throws(
+    () =>
+      uriResolver.serialize({
+        scheme: 'http',
+        host: 'trusted.example',
+        port: '@127.0.0.1:8124',
+        path: '/app',
+      }),
+    /port is malformed/,
+  )
+})
+
+test('the Executor OpenAPI YAML parser refuses an empty-merge sequence under its default schema', () => {
+  const yaml = openApiRequire('js-yaml')
+  const count = 800
+  const source = `arr: &arr [${Array(count).fill('{}').join(',')}]\ntargets:\n${'  - <<: *arr\n'.repeat(count)}`
+  assert.throws(() => yaml.load(source), /abnormal merge sequence size/)
+  assert.deepEqual(yaml.load('base: &base { a: 1 }\nvalue:\n  <<: *base\n'), {
+    base: { a: 1 },
+    value: { a: 1 },
+  })
+})
+
 test('the MCP Express owner retains JSON and form parsing with bounded refusal', async (context) => {
   const express = sdkRequire('express')
   const bodyParser = expressRequire('body-parser')
@@ -96,6 +140,40 @@ test('the MCP Express owner retains JSON and form parsing with bounded refusal',
   })
   assert.equal(oversized.status, 413)
   assert.deepEqual(await oversized.json(), { refused: true })
+  const frame = gzipSync('{"value":"expected"}')
+  const compressed = await fetch(`${origin}/fixture`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' },
+    body: frame,
+  })
+  assert.deepEqual(await compressed.json(), { value: 'expected' })
+  const trailing = await fetch(`${origin}/fixture`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-encoding': 'gzip' },
+    body: Buffer.concat([frame, Buffer.from('bytes-after-the-frame')]),
+  })
+  assert.equal(trailing.status, 400)
+  assert.deepEqual(await trailing.json(), { refused: true })
+  const afterTrailing = await fetch(`${origin}/fixture`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: '{"value":"still-serving"}',
+  })
+  assert.deepEqual(await afterTrailing.json(), { value: 'still-serving' })
+})
+
+test('the Express body parser resolves a query parser inside its declared range', () => {
+  const bodyParserRequire = createRequire(expressRequire.resolve('body-parser'))
+  const declared = expressRequire('body-parser/package.json').dependencies.qs
+  const [major, minor, patch] = bodyParserRequire('qs/package.json')
+    .version.split('.')
+    .map(Number)
+  const [floorMajor, floorMinor, floorPatch] = /^\^(\d+)\.(\d+)\.(\d+)$/
+    .exec(declared)
+    .slice(1)
+    .map(Number)
+  assert.equal(major, floorMajor)
+  assert.ok(minor > floorMinor || (minor === floorMinor && patch >= floorPatch))
 })
 
 test('the WHATWG fetch owner retains multipart parsing and invalid-body refusal', async () => {
@@ -114,6 +192,23 @@ test('the WHATWG fetch owner retains multipart parsing and invalid-body refusal'
   })
   await assert.rejects(invalid.formData())
 })
+
+for (const [label, boundary, partHeader] of [
+  ['a 252-byte boundary', 'b'.repeat(252), ''],
+  ['a __proto__ part header', 'fixture', '\r\n__proto__: local'],
+  ['a constructor part header', 'fixture', '\r\nconstructor: local'],
+]) {
+  test(`the WHATWG fetch owner parses multipart input with ${label}`, async () => {
+    const { Request } = await import('@whatwg-node/node-fetch')
+    const request = new Request('http://localhost/fixture', {
+      method: 'POST',
+      headers: { 'content-type': `multipart/form-data; boundary=${boundary}` },
+      body: `--${boundary}\r\nContent-Disposition: form-data; name="value"${partHeader}\r\n\r\nexpected\r\n--${boundary}--\r\n`,
+      signal: AbortSignal.timeout(fixtureTimeoutMs),
+    })
+    assert.equal((await request.formData()).get('value'), 'expected')
+  })
+}
 
 for (const [owner, ownerRequire] of undiciOwners) {
   const undici = ownerRequire('undici')
@@ -147,6 +242,88 @@ for (const [owner, ownerRequire] of undiciOwners) {
     assert.throws(
       () => new undici.WebSocket('ws://127.0.0.1:1/fixture', ['same', 'same']),
     )
+  })
+
+  test(`${owner} transport fails the connection for an unrequested WebSocket subprotocol`, async (context) => {
+    const server = createServer()
+    server.on('upgrade', (request, socket) => {
+      const accept = createHash('sha1')
+        .update(
+          `${request.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`,
+        )
+        .digest('base64')
+      socket.end(
+        `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${accept}\r\nSec-WebSocket-Protocol: unrequested\r\n\r\n`,
+      )
+    })
+    context.after(() => {
+      server.closeAllConnections()
+      server.close()
+    })
+    server.listen(0, '127.0.0.1')
+    await once(server, 'listening')
+    const address = server.address()
+    assert.ok(address && typeof address !== 'string')
+    const socket = new undici.WebSocket(
+      `ws://127.0.0.1:${address.port}/fixture`,
+    )
+    const outcome = await new Promise((resolve) => {
+      socket.addEventListener('open', () => resolve('open'))
+      socket.addEventListener('error', () => resolve('error'))
+    })
+    assert.equal(outcome, 'error')
+    assert.equal(socket.readyState, undici.WebSocket.CLOSED)
+  })
+
+  test(`${owner} transport rejects an over-encoded response that closes early`, async (context) => {
+    const origin = await listen(context, (_request, response) => {
+      response.socket.end(
+        'HTTP/1.1 200 OK\r\nContent-Encoding: gzip, gzip, gzip, gzip, gzip, gzip\r\nContent-Length: 100\r\n\r\n',
+      )
+    })
+    await assert.rejects(
+      undici.fetch(`${origin}/fixture`, {
+        signal: AbortSignal.timeout(fixtureTimeoutMs),
+      }),
+      (error) => /too many content-encodings/.test(error.cause?.message),
+    )
+    const healthy = await listen(context, (_request, response) =>
+      response.end('expected'),
+    )
+    const response = await undici.fetch(`${healthy}/fixture`)
+    assert.equal(await response.text(), 'expected')
+  })
+
+  test(`${owner} transport does not store a cross-origin redirect result under the first URL`, async (context) => {
+    const hits = { source: 0, target: 0 }
+    const target = await listen(context, (_request, response) => {
+      hits.target += 1
+      response.writeHead(200, { 'cache-control': 'public, max-age=60' })
+      response.end('target body')
+    })
+    const source = await listen(context, (_request, response) => {
+      hits.source += 1
+      response.writeHead(302, {
+        location: `${target.replace('127.0.0.1', 'localhost')}/fixture`,
+      })
+      response.end()
+    })
+    const dispatcher = new undici.Agent().compose(
+      undici.interceptors.redirect({ maxRedirections: 1 }),
+      undici.interceptors.cache({
+        store: new undici.cacheStores.MemoryCacheStore(),
+        type: 'shared',
+      }),
+    )
+    context.after(() => dispatcher.destroy())
+    for (const expectedSourceHits of [1, 2]) {
+      const response = await undici.request(`${source}/fixture`, {
+        dispatcher,
+      })
+      assert.equal(response.statusCode, 200)
+      assert.equal(await response.body.text(), 'target body')
+      assert.equal(hits.source, expectedSourceHits)
+    }
   })
 
   test(`${owner} transport retains an explicit local TLS trust anchor`, async (context) => {

@@ -27,4 +27,21 @@ paths:
   it('returns the importer error for an incomplete YAML document', async () => {
     await expect(Effect.runPromise(parse('openapi: [\n'))).rejects.toThrow()
   })
+
+  it('reads a merge key as plain data, so empty merge sources add no work', async () => {
+    const count = 800
+    const document = await Effect.runPromise(
+      parse(`openapi: 3.0.3
+info:
+  title: Local parser fixture
+  version: 1.0.0
+paths: {}
+x-sources: &sources [${Array(count).fill('{}').join(',')}]
+x-targets:
+${'  - <<: *sources\n'.repeat(count)}`),
+    )
+    const targets: unknown = Reflect.get(document, 'x-targets')
+    expect(targets).toHaveLength(count)
+    expect(targets).toContainEqual({ '<<': Array(count).fill({}) })
+  })
 })
