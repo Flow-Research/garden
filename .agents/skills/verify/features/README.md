@@ -17,3 +17,4 @@ file when a shipped user path needs repeatable proof.
 | [Home dashboard](./dashboard.md) | Overview, distributions, detail panels, responsive layout, and navigation | Component regression coverage; local-app evidence recorded separately |
 | [Settings page](./settings.md) | Direct section links, browser history, responsive shell, and existing modal entry | Shell route regression coverage; local-app evidence recorded separately |
 | [Responsive Skills library](./skills.md) | Browse, filter, read and edit complete skill bundles on mobile and desktop | Component/client regression tests; local offline browser proof |
+| [External execution hosts](./external-execution-hosts.md) | Enroll a host, deliver one approved launch, reconnect, decline or request cancellation | Actual HTTP/auth/PostgreSQL fixtures pass; deployed app and host execution remain unqualified |
