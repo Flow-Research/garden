@@ -3,7 +3,7 @@ title: Chat opens one live connection per visible thread
 description: How a chat thread maps to a Think facet, how the web app connects to it, and why only the visible thread and one prewarmed thread hold sockets.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-21
 ---
 
 A chat thread is a conversation between you and one agent. Its metadata lives in the Postgres `chat_thread` table. Its messages live in a Think facet, `ChatSubAgent`, under the agent's `AgentDO`. The facet is named by `chat_thread.runtime_key`. For a thread linked to an issue, `runtime_key` equals the issue ID.
@@ -42,6 +42,19 @@ Some state belongs to one thread and resets when `sessionId` changes: approval e
 ## The server routes by facet, never by session swap
 
 On the server, each thread is its own `ChatSubAgent` facet. Garden never switches one Think instance between threads by mutating `this.session`. The [agent runtime](../architecture/agent-runtime.md) page explains the facet model.
+
+## Private frames require current browser authority
+
+The server binds a private socket to its verified session, workspace, active agent and owned thread.
+Server connection tags retain only those identifiers.
+The outer socket boundary checks current database authority before each incoming frame reaches SDK processing.
+Connections without this binding must reconnect.
+
+Request provenance records who started a request.
+Queued and recovered work still needs that context at model and tool admission.
+The frame check alone does not prove authority for delayed work.
+Issue and automation Workflows retain authority from their originating tasks.
+The [frame-authority decision](../../decisions/2026-11-browser-chat-frame-authority.md) records the tests and remaining requirement.
 
 ## Chat hosts several feature surfaces
 
