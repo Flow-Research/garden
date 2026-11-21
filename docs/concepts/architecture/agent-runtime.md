@@ -45,6 +45,13 @@ Think also offers `SessionManager` and `Session.forSession(id)`, so one Think in
 
 ## Postgres owns metadata, the facet owns live state
 
+The web-owned `AgentDO` boundary checks fresh browser authority before private chat frames reach SDK dispatch.
+It stores only server-derived identifiers in platform connection tags.
+Client state cannot replace those tags, and a revoked session must reconnect.
+The [frame-authority decision](../../decisions/2026-11-browser-chat-frame-authority.md) describes the boundary and its tests.
+Fresh model-start authority after queue or recovery waits remains an open SDK context requirement.
+A missing connection does not establish an authorized server turn.
+
 Postgres table `chat_thread` (`packages/db/src/schema/chat.ts`) holds what the product needs to query:
 
 - `id`, `workspace_id`, `owner_user_id`, and `agent_id`

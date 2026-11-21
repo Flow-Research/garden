@@ -1,4 +1,16 @@
 export { AgentDO, ChatSubAgent } from './agent-do'
+export {
+  browserChatTags,
+  browserChatPrincipalFromTags,
+  browserConnectionTag,
+  nonChatConnectionTag,
+  checkBrowserChatPrincipal,
+  resolveBrowserChatPrincipal,
+  browserChatRefused,
+  browserChatUnavailable,
+  BrowserChatAuthorityError,
+  type BrowserChatPrincipal,
+} from './browser-chat-authority'
 export { IssueRunSubAgent } from './issue-run-sub-agent'
 export { AutomationRunSubAgent } from './automation-run-sub-agent'
 export { BrainAuditSubAgent } from './brain-audit-sub-agent'
