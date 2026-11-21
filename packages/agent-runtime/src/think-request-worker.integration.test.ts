@@ -28,9 +28,19 @@ let harness: TestHarness | undefined
 let base: URL
 const sockets = new Set<WebSocket>()
 const modelCalls: Array<Record<string, unknown>> = []
+type ObservedSource = {
+  kind: string
+  connectionId?: string
+  connectionTags?: string[]
+  applicationContext?: { kind?: string }
+}
 const actions: Array<{
   action: string
-  request: { requestId: string; source: { kind: string } }
+  request: {
+    requestId: string
+    source: ObservedSource
+    initiatingSources?: ObservedSource[]
+  }
   input?: unknown
 }> = []
 const effectInputs: unknown[] = []
@@ -42,6 +52,8 @@ let holdModel = false
 let heldModel: ServerResponse | undefined
 let toolResponse = false
 let controlledToolName = 'fixture_effect'
+let toolBatch = 1
+let toolArguments = '{}'
 let holdTool = false
 let heldTool: ServerResponse | undefined
 
@@ -53,14 +65,12 @@ function complete(response: ServerResponse) {
     ? [
         {
           role: 'assistant',
-          tool_calls: [
-            {
-              index: 0,
-              id: randomUUID(),
-              type: 'function',
-              function: { name: controlledToolName, arguments: '{}' },
-            },
-          ],
+          tool_calls: Array.from({ length: toolBatch }, (_, index) => ({
+            index,
+            id: randomUUID(),
+            type: 'function',
+            function: { name: controlledToolName, arguments: toolArguments },
+          })),
         },
         {},
       ]
@@ -157,10 +167,14 @@ beforeAll(async () => {
       bindings: [
         { name: 'REQUEST_AGENT', class_name: 'RequestAgent' },
         { name: 'REQUEST_ROOT', class_name: 'RequestRoot' },
+        { name: 'RUN_AGENT', class_name: 'RunTurnAgent' },
       ],
     },
     migrations: [
-      { tag: 'fixture', new_sqlite_classes: ['RequestAgent', 'RequestRoot'] },
+      {
+        tag: 'fixture',
+        new_sqlite_classes: ['RequestAgent', 'RequestRoot', 'RunTurnAgent'],
+      },
     ],
     hyperdrive: [
       {
@@ -190,6 +204,8 @@ beforeEach(() => {
   heldModel = undefined
   toolResponse = false
   controlledToolName = 'fixture_effect'
+  toolBatch = 1
+  toolArguments = '{}'
   holdTool = false
   heldTool = undefined
 })
@@ -279,6 +295,8 @@ async function socketFor(principal: BrowserChatPrincipal, facet = false) {
     done?: boolean
     error?: boolean | string
     body?: string
+    success?: boolean
+    result?: unknown
   }> = []
   socket.addEventListener('message', (message) =>
     received.push(JSON.parse(String(message.data))),
@@ -996,5 +1014,209 @@ describe('maintained Think dispatch, real SQLite and current PostgreSQL policy',
     expect(await inspection.json()).toMatchObject({ messages: [] })
     expect(modelCalls).toHaveLength(0)
     expect(effects).toBe(0)
+  }, 60_000)
+  // The source index holds 4,096 records. Settled tool calls must not fill it.
+  const callsBeyondSourceCap = 4_200
+
+  it('keeps an actual browser chat agent working beyond the source cap of settled tool calls', async () => {
+    const principal = await fixture()
+    await database.db
+      .update(schema.session)
+      .set({ expiresAt: new Date(Date.now() + 3_600_000) })
+      .where(eq(schema.session.id, principal.sessionId))
+    const { socket, received } = await socketFor(principal)
+    const batch = 24
+    const turns = Math.ceil(callsBeyondSourceCap / batch)
+    for (let turn = 0; turn < turns; turn++) {
+      toolResponse = true
+      toolBatch = batch
+      const id = send(socket)
+      await completed(received, id)
+      expect(
+        received.some((entry) => entry.id === id && entry.error),
+        `turn ${turn} failed`,
+      ).toBe(false)
+      received.length = 0
+      actions.length = 0
+    }
+    expect(effects).toBe(turns * batch)
+    expect(effects).toBeGreaterThan(4_096)
+    expect(refusals).toEqual([])
+    const inspection = await drive(principal, { operation: 'inspect' })
+    expect(await inspection.json()).toMatchObject({ sourceRecords: 0 })
+  }, 900_000)
+
+  it('keeps a server-owned run turn working beyond the source cap of settled tool calls', async () => {
+    const principal = await fixture()
+    const batch = 100
+    const turns = Math.ceil(callsBeyondSourceCap / batch)
+    for (let turn = 0; turn < turns; turn++) {
+      toolResponse = true
+      toolBatch = batch
+      const response = await drive(principal, { operation: 'run-turn' })
+      expect(await response.json(), `turn ${turn} failed`).toEqual({
+        status: 'completed',
+        sourceRecords: 0,
+      })
+    }
+    expect(effects).toBe(turns * batch)
+    expect(effects).toBeGreaterThan(4_096)
+  }, 900_000)
+
+  it('continues one turn when its two tool results arrive over different connections of one principal', async () => {
+    const principal = await fixture()
+    const first = await socketFor(principal)
+    const second = await socketFor(principal)
+    toolResponse = true
+    toolBatch = 2
+    controlledToolName = 'browser_effect'
+    const id = send(first.socket, randomUUID(), {
+      clientTools: [
+        {
+          name: 'browser_effect',
+          parameters: { type: 'object', properties: {} },
+        },
+      ],
+    })
+    await completed(first.received, id)
+    const inspection = await drive(principal, { operation: 'inspect' })
+    const data = (await inspection.json()) as {
+      sourceRecords: number
+      messages: Array<{ parts: Array<{ type: string; toolCallId?: string }> }>
+    }
+    const pending = data.messages
+      .flatMap((message) => message.parts)
+      .filter((part) => part.type === 'tool-browser_effect')
+      .map((part) => part.toolCallId)
+    expect(pending).toHaveLength(2)
+    expect(data.sourceRecords).toBe(2)
+    const result = (toolCallId: string | undefined) =>
+      JSON.stringify({
+        type: 'cf_agent_tool_result',
+        toolCallId,
+        toolName: 'browser_effect',
+        output: 'controlled browser result',
+        state: 'output-available',
+        autoContinue: true,
+      })
+    // The SDK holds the continuation until the whole tool batch has a result.
+    first.socket.send(result(pending[0]))
+    await vi.waitFor(
+      () =>
+        expect(
+          actions.filter((entry) => entry.action === 'apply-tool-result'),
+        ).toHaveLength(2),
+      { timeout: 30_000, interval: 20 },
+    )
+    expect(modelCalls).toHaveLength(1)
+    second.socket.send(result(pending[1]))
+    await vi.waitFor(() => expect(modelCalls).toHaveLength(2), {
+      timeout: 30_000,
+      interval: 20,
+    })
+    expect(refusals).toEqual([])
+    const continuation = actions.filter(
+      (entry) => entry.action === 'model-call',
+    )[1]?.request
+    const sources = [
+      continuation?.source,
+      ...(continuation?.initiatingSources ?? []),
+    ]
+    expect(sources.map((source) => source?.kind)).toEqual([
+      'connection',
+      'connection',
+    ])
+    expect(new Set(sources.map((source) => source?.connectionId)).size).toBe(2)
+    const principalTags = (source: ObservedSource | undefined) =>
+      source?.connectionTags?.filter((tag) => tag !== source.connectionId)
+    expect(principalTags(sources[1])).toEqual(principalTags(sources[0]))
+    await vi.waitFor(
+      async () => {
+        const settled = await drive(principal, { operation: 'inspect' })
+        expect(await settled.json()).toMatchObject({ sourceRecords: 0 })
+      },
+      { timeout: 30_000, interval: 50 },
+    )
+  }, 60_000)
+
+  it('continues an agent proposal over the calling socket only with its recorded decision', async () => {
+    const principal = await fixture()
+    const { socket, received } = await socketFor(principal)
+    const permissionRequestId = randomUUID()
+    const pendingAgentId = randomUUID()
+    toolResponse = true
+    toolArguments = JSON.stringify({ marker: permissionRequestId })
+    const id = send(socket)
+    await completed(received, id)
+    expect(effects).toBe(1)
+    expect(modelCalls).toHaveLength(2)
+    await database.db.insert(schema.agent).values({
+      id: pendingAgentId,
+      workspaceId: principal.workspaceId,
+      ownerUserId: principal.userId,
+      name: 'Proposed agent',
+      status: 'active',
+    })
+    await database.db.insert(schema.agentProposalRequest).values({
+      id: permissionRequestId,
+      agentId: principal.agentId,
+      pendingAgentId,
+      threadId: principal.threadId,
+      status: 'approved',
+      resolvedBy: principal.userId,
+      resolvedAt: new Date(),
+    })
+    const call = async (approved: boolean) => {
+      const rpcId = randomUUID()
+      socket.send(
+        JSON.stringify({
+          type: 'rpc',
+          id: rpcId,
+          method: 'continueProposal',
+          args: [{ approved, permissionRequestId, pendingAgentId }],
+        }),
+      )
+      return vi.waitFor(
+        () => {
+          const reply = received.find(
+            (entry) => entry.type === 'rpc' && entry.id === rpcId,
+          )
+          if (!reply) throw new Error('The RPC reply is absent')
+          return reply
+        },
+        { timeout: 30_000, interval: 20 },
+      )
+    }
+    expect(await call(false)).toMatchObject({
+      error: expect.stringContaining('Private chat access'),
+    })
+    expect(modelCalls).toHaveLength(2)
+    expect(await call(true)).toMatchObject({
+      success: true,
+      result: { status: 'completed' },
+    })
+    expect(modelCalls).toHaveLength(3)
+    const source = actions
+      .filter((entry) => entry.action === 'model-call')
+      .at(-1)?.request.source
+    expect(source?.kind).toBe('connection')
+    expect(source?.applicationContext?.kind).toBe('garden-approval')
+    const inspection = await drive(principal, { operation: 'inspect' })
+    expect(await inspection.json()).toMatchObject({ sourceRecords: 0 })
+    // The finished continuation consumed the retained proposal source.
+    expect(await call(true)).toMatchObject({
+      error: expect.stringContaining('Private chat access'),
+    })
+    expect(modelCalls).toHaveLength(3)
+    expect(effects).toBe(1)
+  }, 60_000)
+
+  it('refuses an unattributed native history write before it persists', async () => {
+    const principal = await fixture()
+    await expect(drive(principal, { operation: 'add' })).rejects.toThrow(
+      'Private chat access is unavailable.',
+    )
+    const inspection = await drive(principal, { operation: 'inspect' })
+    expect(await inspection.json()).toMatchObject({ messages: [] })
   }, 60_000)
 })

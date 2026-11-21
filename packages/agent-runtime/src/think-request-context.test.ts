@@ -250,6 +250,33 @@ describe('maintained Think request context', () => {
     ).toThrow('Chat continuation authority conflicts.')
   })
 
+  it('merges one principal across two connections and refuses another principal', () => {
+    const root = contexts.captureRequestContext(connection)
+    const first = contexts.captureRequestContext(
+      { id: 'first-tab', tags: ['first-tab', 'one-principal'] },
+      undefined,
+      root,
+    )
+    const second = contexts.captureRequestContext(
+      { id: 'second-tab', tags: ['second-tab', 'one-principal'] },
+      undefined,
+      root,
+    )
+    const merged = contexts.mergeRequestContexts(first, second)
+    expect(merged.source).toEqual(first.source)
+    expect(merged.initiatingSources).toEqual([root.source, second.source])
+    expect(() =>
+      contexts.mergeRequestContexts(
+        first,
+        contexts.captureRequestContext(
+          { id: 'second-tab', tags: ['second-tab', 'other-principal'] },
+          undefined,
+          root,
+        ),
+      ),
+    ).toThrow('Chat continuation authority conflicts.')
+  })
+
   it('refuses a combined sibling lineage above 16 sources without changing either branch', () => {
     const root = contexts.captureRequestContext(connection)
     const common = { id: 'current', tags: [] }

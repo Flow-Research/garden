@@ -58,7 +58,7 @@ Older planning documents used `ask_always`, `ask_on_risky`, and `never_ask`. Tho
 
 `packages/agent-runtime/src/runtime-mcp-controller.ts` wraps each MCP tool with a `needsApproval` check. For a connector call, it looks up the capability's risk class and the grant's trust level. If no grant row exists, it uses the same risk-based default that Executor and the Connectors page use (`defaultTrustLevelForRisk`), so read tools do not raise stale approval cards. Calls routed through Executor are resolved to their connector first and then checked the same way.
 
-An approval surfaces in the chat timeline through `apps/web/src/features/chat/use-tool-approvals.ts` and in the Inbox as a `permission_request`. Approval decisions write `tool_call_audit` rows (`packages/db/src/schema/audit.ts`) through `apps/web/src/lib/server/permission-request.ts`, and the agent and connector activity routes read them. You manage grants on the Connectors page, `apps/web/src/features/connections/components/connections-page.tsx`.
+An approval surfaces in the chat timeline through `apps/web/src/features/chat/use-tool-approvals.ts` and in the Inbox as a `permission_request`. A request that a chat turn raises records its chat thread, and the chat facet checks the recorded decision for that thread again before the tool runs (`packages/agent-runtime/src/chat-request-authority.ts`). Approval decisions write `tool_call_audit` rows (`packages/db/src/schema/audit.ts`) through `apps/web/src/lib/server/permission-request.ts`, and the agent and connector activity routes read them. You manage grants on the Connectors page, `apps/web/src/features/connections/components/connections-page.tsx`.
 
 ## Codemode and the container sandbox are separate surfaces
 

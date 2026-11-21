@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
+  ChatRequestContext,
   ChatResponseResult,
   ToolCallContext,
   ToolCallResultContext,
@@ -29,6 +30,37 @@ const context = (text: string): Parameters<AiObservation['startTurn']>[1] => ({
   system: '',
   body: {},
 })
+// Typed without a cast, so a required context field cannot go missing here.
+const request: ChatRequestContext = {
+  version: 1,
+  requestId: 'request',
+  rootRequestId: 'request',
+  source: { kind: 'unattributed' },
+}
+const toolCall: ToolCallContext = {
+  type: 'tool-call',
+  dynamic: true,
+  toolCallId: 'call',
+  toolName: 'external',
+  input: { text: 'REVOKED_PRIVATE_TOOL' },
+  request,
+  stepNumber: 0,
+  messages: [],
+  abortSignal: undefined,
+}
+const toolCallResult: ToolCallResultContext = {
+  type: 'tool-call',
+  dynamic: true,
+  toolCallId: 'call',
+  toolName: 'external',
+  input: {},
+  output: 'REVOKED_PRIVATE_OUTPUT',
+  success: true,
+  durationMs: 1,
+  request,
+  stepNumber: 0,
+  messages: [],
+}
 const result = (text: string): ChatResponseResult => ({
   status: 'completed',
   requestId: 'request',
@@ -62,22 +94,9 @@ describe('final observation authority', () => {
     const { value, drain } = observer()
     value.startTurn(identity, context('REVOKED_PRIVATE_INPUT'))
     expect(value.modelTracing()?.privacyMode).toBe(true)
-    value.beforeToolCall({
-      toolCallId: 'call',
-      toolName: 'external',
-      input: { text: 'REVOKED_PRIVATE_TOOL' },
-      stepNumber: 0,
-    } as ToolCallContext)
+    value.beforeToolCall(toolCall)
     value.discardTurn()
-    value.afterToolCall({
-      toolCallId: 'call',
-      toolName: 'external',
-      input: {},
-      output: 'REVOKED_PRIVATE_OUTPUT',
-      success: true,
-      durationMs: 1,
-      stepNumber: 0,
-    } as ToolCallResultContext)
+    value.afterToolCall(toolCallResult)
     value.finishTurn(result('REVOKED_PRIVATE_FINAL'))
     await drain()
     expect(captured).toHaveLength(0)

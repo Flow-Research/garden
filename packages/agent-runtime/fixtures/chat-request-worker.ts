@@ -1,6 +1,12 @@
-import { Think, type ChatActionContext, type Session } from '@cloudflare/think'
+import {
+  Think,
+  type ChatActionContext,
+  type Session,
+  type ToolCallResultContext,
+} from '@cloudflare/think'
 import {
   Agent,
+  callable,
   getAgentByName,
   routeAgentRequest,
   type Connection,
@@ -76,6 +82,70 @@ export class RequestRoot extends Agent<ChatRequestFixtureEnv> {
   }
 }
 
+function fixtureModel(env: ChatRequestFixtureEnv) {
+  return createOpenAICompatible({
+    name: 'local-controlled-model',
+    baseURL: `${env.FIXTURE_BASE_URL}/v1`,
+  })('fixture')
+}
+
+function fixtureTools(env: ChatRequestFixtureEnv) {
+  return {
+    fixture_effect: tool({
+      description: 'Records one controlled local effect.',
+      inputSchema: z.object({ marker: z.string().optional() }),
+      execute: async (input) => {
+        const response = await fetch(`${env.FIXTURE_BASE_URL}/effect`, {
+          method: 'POST',
+          body: JSON.stringify(input),
+        })
+        if (!response.ok) throw new Error('Controlled tool port refused.')
+        return 'one controlled effect'
+      },
+    }),
+  }
+}
+
+function sourceRecordCount(sql: SqlStorage) {
+  return sql
+    .exec<{ total: number }>(
+      "SELECT count(*) AS total FROM think_config WHERE key GLOB '__chat_source:*'",
+    )
+    .one().total
+}
+
+/**
+ * A server-owned run turn on the maintained SDK. Like `RunSubAgentBase`, it has
+ * no chat policy hook and no browser connection.
+ */
+export class RunTurnAgent extends Think<ChatRequestFixtureEnv> {
+  override getModel() {
+    return fixtureModel(this.env)
+  }
+
+  override getSystemPrompt() {
+    return 'Return the controlled fixture response.'
+  }
+
+  override getTools() {
+    return fixtureTools(this.env)
+  }
+
+  async runTurn() {
+    const result = await this.saveMessages([
+      {
+        id: crypto.randomUUID(),
+        role: 'user',
+        parts: [{ type: 'text', text: 'fixture run turn' }],
+      },
+    ])
+    return {
+      status: result.status,
+      sourceRecords: sourceRecordCount(this.ctx.storage.sql),
+    }
+  }
+}
+
 /** Runs the maintained SDK with real SQLite and current PostgreSQL authority. */
 export class RequestAgent extends Think<ChatRequestFixtureEnv> {
   override chatRecovery = true
@@ -85,10 +155,7 @@ export class RequestAgent extends Think<ChatRequestFixtureEnv> {
     this.ctx.abort('Controlled fixture restart.')
   }
   override getModel() {
-    return createOpenAICompatible({
-      name: 'local-controlled-model',
-      baseURL: `${this.env.FIXTURE_BASE_URL}/v1`,
-    })('fixture')
+    return fixtureModel(this.env)
   }
 
   override configureSession(session: Session) {
@@ -126,20 +193,55 @@ export class RequestAgent extends Think<ChatRequestFixtureEnv> {
   }
 
   override getTools() {
-    return {
-      fixture_effect: tool({
-        description: 'Records one controlled local effect.',
-        inputSchema: z.object({ marker: z.string().optional() }),
-        execute: async (input) => {
-          const response = await fetch(`${this.env.FIXTURE_BASE_URL}/effect`, {
-            method: 'POST',
-            body: JSON.stringify(input),
-          })
-          if (!response.ok) throw new Error('Controlled tool port refused.')
-          return 'one controlled effect'
+    return fixtureTools(this.env)
+  }
+
+  /** Retains the tool's issued request for a proposal, as `propose_agent` does. */
+  override afterToolCall(context: ToolCallResultContext) {
+    const proposal = z
+      .object({ marker: z.uuid() })
+      .safeParse(context.success ? context.input : undefined)
+    if (proposal.success)
+      this.retainChatRequestReference(
+        `garden-proposal:${proposal.data.marker}`,
+        context.request,
+      )
+  }
+
+  /** Sends the production proposal continuation options over the calling socket. */
+  @callable()
+  async continueProposal(input: {
+    approved: boolean
+    permissionRequestId: string
+    pendingAgentId: string
+  }) {
+    const reference = `garden-proposal:${input.permissionRequestId}`
+    const result = await this.saveMessages(
+      [
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          parts: [{ type: 'text', text: 'fixture proposal continuation' }],
         },
-      }),
-    }
+      ],
+      {
+        parentReference: reference,
+        applicationContext: { kind: 'garden-approval', ...input },
+      },
+    )
+    if (result.status === 'completed')
+      this.releaseChatRequestReference(reference)
+    return { status: result.status }
+  }
+
+  async nativeAdd() {
+    await this.addMessages([
+      {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        parts: [{ type: 'text', text: 'fixture unattributed history' }],
+      },
+    ])
   }
 
   override async getConnectionTags(
@@ -247,11 +349,7 @@ export class RequestAgent extends Think<ChatRequestFixtureEnv> {
           })
         ).values(),
       ],
-      sourceRecords: this.ctx.storage.sql
-        .exec<{ total: number }>(
-          "SELECT count(*) AS total FROM think_config WHERE key GLOB '__chat_source:*'",
-        )
-        .one().total,
+      sourceRecords: sourceRecordCount(this.ctx.storage.sql),
       lastBody: this.ctx.storage.sql
         .exec<{ value: string }>(
           "SELECT value FROM think_config WHERE key = 'lastBody'",
@@ -287,6 +385,8 @@ const driveSchema = z.discriminatedUnion('operation', [
     applicationContext: z.record(z.string(), z.unknown()),
   }),
   z.object({ operation: z.literal('clear') }),
+  z.object({ operation: z.literal('add') }),
+  z.object({ operation: z.literal('run-turn') }),
   z.object({ operation: z.literal('interrupt') }),
   z.object({ operation: z.literal('approve'), executionId: z.string() }),
 ])
@@ -316,6 +416,13 @@ export default {
           )
         case 'clear':
           return Response.json(await agent.clearFixtureHistory())
+        case 'add':
+          await agent.nativeAdd()
+          return new Response('added')
+        case 'run-turn':
+          return Response.json(
+            await (await getAgentByName(env.RUN_AGENT, name)).runTurn(),
+          )
         case 'chat':
           return Response.json(await agent.nativeChat(input.applicationContext))
         case 'facet-inspect': {

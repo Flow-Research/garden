@@ -805,6 +805,8 @@ export default {
       issueId: string
       runId: string
       threadId?: string
+      sessionId?: string
+      userId?: string
     }>()
     const agent = await getAgentByName(env.AgentDO, input.agentId)
     if (url.pathname === '/history') {
@@ -826,6 +828,7 @@ export default {
       return Response.json(
         await agent.runThreadFixtureTurn(input.threadId!, {
           message: 'Search G06 memory and summarize what you can see.',
+          handoff: { sessionId: input.sessionId!, userId: input.userId! },
         }),
       )
     }

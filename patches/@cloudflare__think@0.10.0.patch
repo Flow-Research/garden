@@ -33,10 +33,10 @@ index 0000000000000000000000000000000000000000..d9ac1d9a352adeb0daf893be82667e42
 +export declare function resultClientToolNames(result: object): readonly string[];
 diff --git a/dist/request-context.js b/dist/request-context.js
 new file mode 100644
-index 0000000000000000000000000000000000000000..a2f1fa150e055e840a23ab85acffa54ed9b07cc4
+index 0000000000000000000000000000000000000000..2652be58e04e407b8cf36d7cf0f826847564e8a5
 --- /dev/null
 +++ b/dist/request-context.js
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,130 @@
 +import { AsyncLocalStorage } from "node:async_hooks";
 +const requestContextStorage = new AsyncLocalStorage();
 +const MAX_CONTEXT_BYTES = 8192;
@@ -130,8 +130,17 @@ index 0000000000000000000000000000000000000000..a2f1fa150e055e840a23ab85acffa54e
 +  return readRequestContext(resultContexts.get(result));
 +}
 +
++// A reconnect or a second tab changes the transport ID only. The server-bound
++// tags and application context identify the principal. PartyServer also lists
++// the connection ID among the platform tags.
++function sourcePrincipal(source) {
++  if (source.kind !== 'connection') return JSON.stringify(source);
++  const { connectionId, connectionTags, ...bound } = source;
++  return JSON.stringify({ ...bound, connectionTags: connectionTags.filter((tag) => tag !== connectionId) });
++}
++
 +export function sameRequestSource(left, right) {
-+  return JSON.stringify(left.source) === JSON.stringify(right.source);
++  return sourcePrincipal(left.source) === sourcePrincipal(right.source);
 +}
 +
 +export function isIssuedRequestContext(value) { return Boolean(value && typeof value === "object" && issuedContexts.has(value)); }
@@ -150,7 +159,7 @@ index 0000000000000000000000000000000000000000..a2f1fa150e055e840a23ab85acffa54e
 +  right = readRequestContext(right);
 +  if (left.rootRequestId !== right.rootRequestId || !sameRequestSource(left, right)) throw new Error('Chat continuation authority conflicts.');
 +  const seen = new Set([JSON.stringify(left.source)]);
-+  const initiatingSources = [...left.initiatingSources ?? [], ...right.initiatingSources ?? []].filter((source) => {
++  const initiatingSources = [...left.initiatingSources ?? [], right.source, ...right.initiatingSources ?? []].filter((source) => {
 +    const key = JSON.stringify(source);
 +    if (seen.has(key)) return false;
 +    seen.add(key);
@@ -159,7 +168,7 @@ index 0000000000000000000000000000000000000000..a2f1fa150e055e840a23ab85acffa54e
 +  return readRequestContext({ ...left, initiatingSources });
 +}
 diff --git a/dist/think-BYZXQ-vm.js b/dist/think-BYZXQ-vm.js
-index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f4638ef59ceb 100644
+index b55c8a39634199612c5169db6b4a925416bccba0..d7d20364a5a3c8b47ab7c572de262231fbfff9b8 100644
 --- a/dist/think-BYZXQ-vm.js
 +++ b/dist/think-BYZXQ-vm.js
 @@ -2,7 +2,8 @@ import { a as _classPrivateFieldSet2, i as _classPrivateFieldGet2, n as sanitize
@@ -172,7 +181,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  import * as skills from "agents/skills";
  import { SkillRegistry } from "agents/skills";
  import { Agent, __DO_NOT_USE_WILL_BREAK__agentContext, callable, getCurrentAgent, isPlatformTransientError } from "agents";
-@@ -1293,7 +1294,77 @@ var Think = class Think extends Agent {
+@@ -1293,7 +1294,108 @@ var Think = class Think extends Agent {
  	* Task-local timezone declarations take precedence.
  	*/
  	getDefaultTimezone() {}
@@ -200,6 +209,24 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
 +	retainChatRequestReference(reference, request) {
 +		if (!isIssuedRequestContext(request)) throw new Error("Chat reference requires an issued request.");
 +		this._bindChatSource("application", reference, request);
++	}
++	/** Releases an application record after its server-owned effect reached a terminal state. */
++	releaseChatRequestReference(reference) {
++		this._releaseChatSource("application", reference);
++	}
++	_releaseChatSource(kind, id) {
++		if (typeof id !== "string" || id.length === 0 || id.length > 256) return;
++		this._configDelete(`__chat_source:${kind}:${id}`);
++	}
++	// A settled tool call cannot receive another result, approval or execution.
++	_releaseChatToolSource(id) {
++		this._releaseChatSource("tool", id);
++		this._releaseChatSource("decision", id);
++	}
++	// Server tools without an output cannot resume after their stream ends; execution binds them again.
++	_releaseOpenChatToolSources(open) {
++		for (const [id, pending] of open) if (!pending) this._releaseChatToolSource(id);
++		open.clear();
 +	}
 +	_readChatDecision(id) {
 +		const raw = this._configGet(`__chat_source:decision:${id}`);
@@ -239,19 +266,32 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
 +		this._configSet(key, JSON.stringify(readRequestContext(request)));
 +		return request;
 +	}
-+	async _bindChatChunkSource(chunk, request, clientToolNames) {
++	async _bindChatChunkSource(chunk, request, clientToolNames, open) {
 +		if (chunk.type === "tool-input-available" && clientToolNames.includes(chunk.toolName)) await this._admitChatAction("dispatch-client-tool", request, { toolCallId: chunk.toolCallId, toolName: chunk.toolName, input: chunk.input });
 +		if (typeof chunk.toolCallId !== "string") return;
++		const paused = chunk.type === "tool-output-available" && chunk.output?.status === "paused" && typeof chunk.output.executionId === "string";
++		if (chunk.type === "tool-output-error" || chunk.type === "tool-output-denied" || chunk.type === "tool-output-available" && chunk.preliminary !== true && !paused) {
++			this._releaseChatToolSource(chunk.toolCallId);
++			open.delete(chunk.toolCallId);
++			return;
++		}
++		if (chunk.type === "tool-approval-request") {
++			open.set(chunk.toolCallId, true);
++			return;
++		}
 +		if (chunk.type.startsWith("tool-input") || chunk.type === "tool-output-available") {
 +			const original = this._bindChatSource("tool", chunk.toolCallId, request);
-+			if (chunk.type === "tool-output-available" && chunk.output?.status === "paused" && typeof chunk.output.executionId === "string") this._bindChatSource("execution", chunk.output.executionId, original);
++			if (paused) this._bindChatSource("execution", chunk.output.executionId, original);
++			// Client results, approvals and paused executions arrive after this stream.
++			if (paused || typeof chunk.toolName === "string" && clientToolNames.includes(chunk.toolName)) open.set(chunk.toolCallId, true);
++			else if (!open.has(chunk.toolCallId)) open.set(chunk.toolCallId, false);
 +		}
 +	}
 +	async _runChatRecoveryFiber(requestId, continuation, fn, requestContext) {
  		const snapshot = createChatFiberSnapshot({
  			kind: "think-chat-turn",
  			requestId,
-@@ -1301,7 +1372,8 @@ var Think = class Think extends Agent {
+@@ -1301,7 +1403,8 @@ var Think = class Think extends Agent {
  			continuation,
  			messages: this.messages,
  			lastBody: this._lastBody,
@@ -261,7 +301,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		});
  		return this._runFiberWithStashWrapper(`${this.constructor.CHAT_FIBER_NAME}:${requestId}`, async () => fn(), {
  			initialSnapshot: wrapChatFiberSnapshot("__cfThinkChatFiberSnapshot", snapshot, null),
-@@ -1686,6 +1758,7 @@ var Think = class Think extends Agent {
+@@ -1686,6 +1789,7 @@ var Think = class Think extends Agent {
  	* NOT emit it again.
  	*/
  	async _compactForContextOverflow(reason, extra) {
@@ -269,7 +309,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		try {
  			const result = await this.session.compact();
  			const shortened = Boolean(result);
-@@ -1829,6 +1902,8 @@ var Think = class Think extends Agent {
+@@ -1829,6 +1933,8 @@ var Think = class Think extends Agent {
  	* for interception, and calls streamText.
  	*/
  	async _runInferenceLoop(input) {
@@ -278,7 +318,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		this._activeStallTimeoutMs = void 0;
  		this._proactiveCompactionsThisRun = 0;
  		if (this.waitForMcpConnections) {
-@@ -1862,7 +1937,8 @@ var Think = class Think extends Agent {
+@@ -1862,7 +1968,8 @@ var Think = class Think extends Agent {
  			tools,
  			model,
  			continuation: input.continuation,
@@ -288,7 +328,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		};
  		const subclassConfig = await this.beforeTurn(ctx) ?? {};
  		const config = await this._pipelineExtensionBeforeTurn(ctx, subclassConfig);
-@@ -1879,7 +1955,7 @@ var Think = class Think extends Agent {
+@@ -1879,7 +1986,7 @@ var Think = class Think extends Agent {
  			...tools,
  			...config.tools
  		} : tools;
@@ -297,7 +337,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		let finalAnswerToolName = THINK_FINAL_ANSWER_TOOL_NAME;
  		if (structuredOutputSchema) {
  			let suffix = 1;
-@@ -1907,8 +1983,32 @@ var Think = class Think extends Agent {
+@@ -1907,8 +2014,32 @@ var Think = class Think extends Agent {
  			...wantsStructuredOutput ? [hasToolCall(finalAnswerToolName)] : [],
  			...Array.isArray(config.stopWhen) ? config.stopWhen : config.stopWhen ? [config.stopWhen] : []
  		];
@@ -331,7 +371,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			system: turnSystem,
  			messages: finalMessages,
  			tools: finalTools,
-@@ -1940,15 +2040,17 @@ var Think = class Think extends Agent {
+@@ -1940,15 +2071,17 @@ var Think = class Think extends Agent {
  					...base,
  					messages: guarded
  				} : base;
@@ -352,7 +392,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			}),
  			onChunk: async (event) => {
  				await this.onChunk(event);
-@@ -1962,6 +2064,7 @@ var Think = class Think extends Agent {
+@@ -1962,6 +2095,7 @@ var Think = class Think extends Agent {
  				if (event.toolCall.toolName === finalAnswerToolName) return;
  				const base = {
  					...event.toolCall,
@@ -360,7 +400,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					stepNumber: event.stepNumber,
  					messages: event.messages,
  					durationMs: event.durationMs
-@@ -1990,7 +2093,7 @@ var Think = class Think extends Agent {
+@@ -1990,7 +2124,7 @@ var Think = class Think extends Agent {
  			toUIMessageStream: () => result.toUIMessageStream({ sendReasoning: finalSendReasoning }),
  			output: outputPromise
  		};
@@ -369,7 +409,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  	}
  	/** @internal Test seam — override in test agents to wrap the stream (e.g. error injection). */
  	_transformInferenceResult(result) {
-@@ -2123,7 +2226,7 @@ var Think = class Think extends Agent {
+@@ -2123,7 +2257,7 @@ var Think = class Think extends Agent {
  	* `getTools()` to provide such tools and avoid using `beforeToolCall`
  	* for them (or accept the collapse).
  	*/
@@ -378,7 +418,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const wrapped = {};
  		for (const [toolName, originalTool] of Object.entries(tools)) {
  			const t = originalTool;
-@@ -2134,6 +2237,8 @@ var Think = class Think extends Agent {
+@@ -2134,6 +2268,8 @@ var Think = class Think extends Agent {
  			}
  			const isDynamic = t.type === "dynamic";
  			const wrappedExecute = async (input, options) => {
@@ -387,7 +427,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  				const toolCallBase = {
  					type: "tool-call",
  					toolCallId: options.toolCallId,
-@@ -2145,7 +2250,8 @@ var Think = class Think extends Agent {
+@@ -2145,7 +2281,8 @@ var Think = class Think extends Agent {
  					...toolCallBase,
  					stepNumber: void 0,
  					messages: options.messages,
@@ -397,7 +437,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  				};
  				const decision = await this.beforeToolCall(ctx);
  				const dispatchInput = decision && decision.action === "allow" && decision.input ? decision.input : input;
-@@ -2157,6 +2263,8 @@ var Think = class Think extends Agent {
+@@ -2157,6 +2294,8 @@ var Think = class Think extends Agent {
  					stepNumber: void 0
  				});
  				if (!decision || decision.action === "allow") {
@@ -406,7 +446,15 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					const result = await originalExecute(decision?.input ?? input, options);
  					if (result != null && typeof result === "object" && Symbol.asyncIterator in result) {
  						let last;
-@@ -2259,6 +2367,8 @@ var Think = class Think extends Agent {
+@@ -2236,6 +2375,7 @@ var Think = class Think extends Agent {
+ 		}));
+ 	}
+ 	async _hostSendMessage(content) {
++		await this.admitCurrentChatAction("persist-messages");
+ 		const msg = {
+ 			id: crypto.randomUUID(),
+ 			role: "user",
+@@ -2259,6 +2399,8 @@ var Think = class Think extends Agent {
  	* @param options Optional chat options (e.g. AbortSignal)
  	*/
  	async chat(userMessage, callback, options) {
@@ -415,7 +463,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const requestId = crypto.randomUUID();
  		const abortSignal = this._aborts.getSignal(requestId);
  		const detachExternal = this._aborts.linkExternal(requestId, options?.signal);
-@@ -2270,6 +2380,7 @@ var Think = class Think extends Agent {
+@@ -2270,6 +2412,7 @@ var Think = class Think extends Agent {
  			await callback.onStart({ requestId });
  			await this.keepAliveWhile(async () => {
  				await this._turnQueue.enqueue(requestId, async () => {
@@ -423,7 +471,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					const userMsg = typeof userMessage === "string" ? {
  						id: crypto.randomUUID(),
  						role: "user",
-@@ -2290,6 +2401,7 @@ var Think = class Think extends Agent {
+@@ -2290,6 +2433,7 @@ var Think = class Think extends Agent {
  									request: void 0,
  									email: void 0
  								}, () => this._runInferenceLoop({
@@ -431,7 +479,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  									signal: abortSignal,
  									clientTools,
  									clientToolExecutor,
-@@ -2323,7 +2435,7 @@ var Think = class Think extends Agent {
+@@ -2323,7 +2467,7 @@ var Think = class Think extends Agent {
  							return;
  						}
  					};
@@ -440,7 +488,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					else await chatBody();
  				});
  			});
-@@ -2331,6 +2443,8 @@ var Think = class Think extends Agent {
+@@ -2331,6 +2475,8 @@ var Think = class Think extends Agent {
  			detachExternal();
  			this._aborts.remove(requestId);
  		}
@@ -449,7 +497,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  	}
  	/** Get the conversation history as UIMessage[]. */
  	async getMessages() {
-@@ -2340,6 +2454,7 @@ var Think = class Think extends Agent {
+@@ -2340,6 +2486,7 @@ var Think = class Think extends Agent {
  	async clearMessages() {
  		this.resetTurnState();
  		await this._clearHistory();
@@ -457,7 +505,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		this._broadcast({ type: MSG_CHAT_CLEAR });
  	}
  	_ensureAgentToolChildRunTable() {
-@@ -3477,10 +3592,11 @@ var Think = class Think extends Agent {
+@@ -3477,10 +3624,11 @@ var Think = class Think extends Agent {
  		this._submissionAbortControllers.set(row.submission_id, controller);
  		let output;
  		try {
@@ -471,7 +519,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  				signal: controller.signal,
  				captureProgrammaticStreamError: true,
  				captureOutput: Boolean(workflowPrompt?.output),
-@@ -3727,7 +3843,8 @@ var Think = class Think extends Agent {
+@@ -3727,7 +3875,8 @@ var Think = class Think extends Agent {
  	*/
  	async saveMessages(messages, options) {
  		const requestId = crypto.randomUUID();
@@ -481,7 +529,15 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  	}
  	/**
  	* Add messages to history WITHOUT starting a model turn.
-@@ -3775,6 +3892,8 @@ var Think = class Think extends Agent {
+@@ -3760,6 +3909,7 @@ var Think = class Think extends Agent {
+ 	*   durable and visible to the running turn's next sync.
+ 	*/
+ 	async addMessages(messages, options) {
++		await this.admitCurrentChatAction("persist-messages");
+ 		const resolved = typeof messages === "function" ? await messages(this.messages) : messages;
+ 		if (resolved.length === 0) return;
+ 		const mode = options?.mode ?? "append";
+@@ -3775,6 +3925,8 @@ var Think = class Think extends Agent {
  		if (options?.broadcast !== false) this._broadcastMessages();
  	}
  	async _runProgrammaticMessagesTurn(requestId, messages, options) {
@@ -490,7 +546,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const clientTools = this._lastClientTools;
  		const body = options?.body ?? this._lastBody;
  		const epoch = this._turnQueue.generation;
-@@ -3801,7 +3920,11 @@ var Think = class Think extends Agent {
+@@ -3801,7 +3953,11 @@ var Think = class Think extends Agent {
  					status = "aborted";
  					return;
  				}
@@ -503,7 +559,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  				options?.onMessagesApplied?.();
  				this._broadcastMessages();
  				if (this._turnQueue.generation !== epoch) {
-@@ -3819,6 +3942,7 @@ var Think = class Think extends Agent {
+@@ -3819,6 +3975,7 @@ var Think = class Think extends Agent {
  								request: void 0,
  								email: void 0
  							}, () => this._runInferenceLoop({
@@ -511,7 +567,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  								signal: abortSignal,
  								clientTools,
  								body,
-@@ -3854,7 +3978,7 @@ var Think = class Think extends Agent {
+@@ -3854,7 +4011,7 @@ var Think = class Think extends Agent {
  							return;
  						}
  					};
@@ -520,7 +576,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					else await programmaticBody();
  				} finally {
  					if (abortSignal?.aborted) wasAborted = true;
-@@ -3871,6 +3995,8 @@ var Think = class Think extends Agent {
+@@ -3871,6 +4028,8 @@ var Think = class Think extends Agent {
  			...error !== void 0 && { error },
  			...output !== void 0 && { output }
  		};
@@ -529,7 +585,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  	}
  	/**
  	* Run a new LLM call following the last assistant message.
-@@ -3890,6 +4016,8 @@ var Think = class Think extends Agent {
+@@ -3890,6 +4049,8 @@ var Think = class Think extends Agent {
  	* matches the {@link saveMessages} contract.
  	*/
  	async continueLastTurn(body, options) {
@@ -538,7 +594,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const lastLeaf = await this.session.getLatestLeaf();
  		if (!lastLeaf || lastLeaf.role !== "assistant") return {
  			requestId: "",
-@@ -3918,6 +4046,7 @@ var Think = class Think extends Agent {
+@@ -3918,6 +4079,7 @@ var Think = class Think extends Agent {
  							request: void 0,
  							email: void 0
  						}, () => this._runInferenceLoop({
@@ -546,7 +602,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  							signal: abortSignal,
  							clientTools,
  							body: resolvedBody,
-@@ -3929,7 +4058,7 @@ var Think = class Think extends Agent {
+@@ -3929,7 +4091,7 @@ var Think = class Think extends Agent {
  							error = streamResult.error;
  						}
  					};
@@ -555,7 +611,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					else await continueTurnBody();
  				} finally {
  					if (abortSignal?.aborted) wasAborted = true;
-@@ -3945,8 +4074,12 @@ var Think = class Think extends Agent {
+@@ -3945,8 +4107,12 @@ var Think = class Think extends Agent {
  			status,
  			...error !== void 0 && { error }
  		};
@@ -568,7 +624,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const lastLeaf = await this.session.getLatestLeaf();
  		if (!lastLeaf || lastLeaf.role !== "user") return {
  			requestId: "",
-@@ -3973,6 +4106,7 @@ var Think = class Think extends Agent {
+@@ -3973,6 +4139,7 @@ var Think = class Think extends Agent {
  							request: void 0,
  							email: void 0
  						}, () => this._runInferenceLoop({
@@ -576,7 +632,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  							signal: abortSignal,
  							clientTools,
  							body,
-@@ -3984,7 +4118,7 @@ var Think = class Think extends Agent {
+@@ -3984,7 +4151,7 @@ var Think = class Think extends Agent {
  							error = streamResult.error;
  						}
  					};
@@ -585,7 +641,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					else await retryTurnBody();
  				} finally {
  					if (abortSignal?.aborted) wasAborted = true;
-@@ -4000,6 +4134,8 @@ var Think = class Think extends Agent {
+@@ -4000,6 +4167,8 @@ var Think = class Think extends Agent {
  			status,
  			...error !== void 0 && { error }
  		};
@@ -594,7 +650,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  	}
  	_setupProtocolHandlers() {
  		const _onConnect = this.onConnect.bind(this);
-@@ -4037,6 +4173,7 @@ var Think = class Think extends Agent {
+@@ -4037,6 +4206,7 @@ var Think = class Think extends Agent {
  		};
  	}
  	async _handleProtocolEvent(connection, event) {
@@ -602,7 +658,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		switch (event.type) {
  			case "stream-resume-request":
  				await this._handleStreamResumeRequest(connection);
-@@ -4047,20 +4184,35 @@ var Think = class Think extends Agent {
+@@ -4047,20 +4217,36 @@ var Think = class Think extends Agent {
  			case "chat-request":
  				if (event.init?.method === "POST") await this._handleChatRequest(connection, event);
  				break;
@@ -619,7 +675,8 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
 -				if (event.autoContinue) this._scheduleAutoContinuation(connection);
 +				this._enqueueInteractionApply(async () => {
 +					await this._admitChatAction("apply-tool-result", requestContext, { toolCallId: event.toolCallId, initiatingRequest });
-+					return this._applyToolResult(event.toolCallId, event.output, event.state, event.errorText);
++					await this._applyToolResult(event.toolCallId, event.output, event.state, event.errorText);
++					this._releaseChatToolSource(event.toolCallId);
 +				});
 +				if (event.autoContinue) this._scheduleAutoContinuation(connection, requestContext);
  				else this._rearmPendingAutoContinuationForBatch();
@@ -644,7 +701,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			case "clear":
  				await this._handleClear(connection);
  				break;
-@@ -4090,6 +4242,8 @@ var Think = class Think extends Agent {
+@@ -4090,6 +4276,8 @@ var Think = class Think extends Agent {
  		}));
  	}
  	async _handleChatRequest(connection, event) {
@@ -653,7 +710,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		if (!event.init?.body) return;
  		let rawParsed;
  		try {
-@@ -4115,15 +4269,8 @@ var Think = class Think extends Agent {
+@@ -4115,15 +4303,8 @@ var Think = class Think extends Agent {
  		const requestId = event.id;
  		let messagesPersisted = false;
  		let failureStage = "persist";
@@ -671,7 +728,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const epoch = this._turnQueue.generation;
  		const releaseIfPending = () => {
  			if (!pendingEnqueue) return;
-@@ -4131,6 +4278,16 @@ var Think = class Think extends Agent {
+@@ -4131,6 +4312,16 @@ var Think = class Think extends Agent {
  			releasePendingEnqueue();
  		};
  		try {
@@ -688,7 +745,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			const requestClientTools = rawClientTools && rawClientTools.length > 0 ? rawClientTools : void 0;
  			if (requestClientTools) {
  				this._lastClientTools = requestClientTools;
-@@ -4144,6 +4301,7 @@ var Think = class Think extends Agent {
+@@ -4144,6 +4335,7 @@ var Think = class Think extends Agent {
  			this._persistBody();
  			const clientToolsForTurn = this._lastClientTools;
  			const bodyForTurn = this._lastBody;
@@ -696,7 +753,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			const serverMessages = await this._readMessagesFromStorage();
  			const reconciled = reconcileMessages(incomingMessages, serverMessages, sanitizeMessage);
  			let branchParentId;
-@@ -4157,6 +4315,7 @@ var Think = class Think extends Agent {
+@@ -4157,6 +4349,7 @@ var Think = class Think extends Agent {
  					this._completeSkippedRequest(connection, requestId);
  					return;
  				}
@@ -704,7 +761,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  				await this._persistIncomingMessage(msg, serverMessages);
  			}
  			if (this._turnQueue.generation !== epoch) {
-@@ -4193,6 +4352,7 @@ var Think = class Think extends Agent {
+@@ -4193,6 +4386,7 @@ var Think = class Think extends Agent {
  								request: void 0,
  								email: void 0
  							}, () => this._runInferenceLoop({
@@ -712,7 +769,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  								signal: abortSignal,
  								clientTools: clientToolsForTurn,
  								body: bodyForTurn,
-@@ -4236,7 +4396,7 @@ var Think = class Think extends Agent {
+@@ -4236,7 +4430,7 @@ var Think = class Think extends Agent {
  							return;
  						}
  					};
@@ -721,7 +778,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					else await chatTurnBody();
  				}, { generation: epoch });
  				releaseIfPending();
-@@ -4272,6 +4432,8 @@ var Think = class Think extends Agent {
+@@ -4272,6 +4466,8 @@ var Think = class Think extends Agent {
  			releaseIfPending();
  			this._aborts.remove(requestId);
  		}
@@ -730,7 +787,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  	}
  	/**
  	* Abort the active turn, invalidate queued turns, and reset
-@@ -4356,6 +4518,7 @@ var Think = class Think extends Agent {
+@@ -4356,6 +4552,7 @@ var Think = class Think extends Agent {
  		this._lastBody = void 0;
  		this._persistBody();
  		await this._clearHistory();
@@ -738,24 +795,33 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		this._broadcast({ type: MSG_CHAT_CLEAR }, connection ? [connection.id] : void 0);
  	}
  	/**
-@@ -4374,6 +4537,7 @@ var Think = class Think extends Agent {
+@@ -4374,6 +4571,8 @@ var Think = class Think extends Agent {
  		if (action?.type === "start" && action.messageId == null && !continuation) chunk.messageId = accumulator.messageId;
  	}
  	async _streamResultToRpcCallback(requestId, result, callback, abortSignal, options) {
 +		const requestContext = resultRequestContext(result);
++		const openChatTools = new Map();
  		const streamId = this._startResumableStream(requestId);
  		const accumulator = new StreamAccumulator({ messageId: crypto.randomUUID() });
  		this._streamingAssistant = accumulator;
-@@ -4406,6 +4570,8 @@ var Think = class Think extends Agent {
+@@ -4406,6 +4605,8 @@ var Think = class Think extends Agent {
  						break;
  					}
  					const streamChunk = chunk;
-+					await this._bindChatChunkSource(streamChunk, requestContext, resultClientToolNames(result));
++					await this._bindChatChunkSource(streamChunk, requestContext, resultClientToolNames(result), openChatTools);
 +					if (abortSignal?.aborted) { aborted = true; break; }
  					const { action } = accumulator.applyChunk(streamChunk);
  					if (action?.type === "error") {
  						streamError = action.error;
-@@ -4497,6 +4663,7 @@ var Think = class Think extends Agent {
+@@ -4442,6 +4643,7 @@ var Think = class Think extends Agent {
+ 				}
+ 			} finally {
+ 				this._insideInferenceLoop = false;
++				this._releaseOpenChatToolSources(openChatTools);
+ 			}
+ 			if (overflowRetry) {
+ 				this._completeResumableStream(streamId);
+@@ -4497,6 +4699,7 @@ var Think = class Think extends Agent {
  					this._broadcastMessages();
  				}
  				const outcome = await this._routeStallToBoundedRecovery({
@@ -763,24 +829,33 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					requestId,
  					streamId,
  					partialParts: (assistantMsg ?? accumulator.toMessage()).parts,
-@@ -4657,6 +4824,7 @@ var Think = class Think extends Agent {
+@@ -4657,6 +4860,8 @@ var Think = class Think extends Agent {
  		}
  	}
  	async _streamResult(requestId, result, abortSignal, options) {
 +		const requestContext = resultRequestContext(result);
++		const openChatTools = new Map();
  		const clearGen = this._turnQueue.generation;
  		const streamId = this._startResumableStream(requestId);
  		const continuation = options?.continuation ?? false;
-@@ -4693,6 +4861,8 @@ var Think = class Think extends Agent {
+@@ -4693,6 +4898,8 @@ var Think = class Think extends Agent {
  						break;
  					}
  					const streamChunk = chunk;
-+					await this._bindChatChunkSource(streamChunk, requestContext, resultClientToolNames(result));
++					await this._bindChatChunkSource(streamChunk, requestContext, resultClientToolNames(result), openChatTools);
 +					if (abortSignal?.aborted) { streamAborted = true; break; }
  					const { action } = accumulator.applyChunk(streamChunk);
  					if (action?.type === "cross-message-tool-update") await this._applyToolUpdateToMessages(crossMessageToolResultUpdate(action.toolCallId, action.updateType, action.output, action.errorText, action.preliminary));
  					if (action?.type === "error") {
-@@ -4762,6 +4932,7 @@ var Think = class Think extends Agent {
+@@ -4732,6 +4939,7 @@ var Think = class Think extends Agent {
+ 				}
+ 			} finally {
+ 				this._insideInferenceLoop = false;
++				this._releaseOpenChatToolSources(openChatTools);
+ 			}
+ 			if (overflowRetry && options?.overflowRecovery) {
+ 				this._completeResumableStream(streamId);
+@@ -4762,6 +4970,7 @@ var Think = class Think extends Agent {
  					targetAssistantId = partialMsg.id;
  				}
  				const outcome = await this._routeStallToBoundedRecovery({
@@ -788,7 +863,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					requestId,
  					streamId,
  					partialParts: partialMsg.parts,
-@@ -4975,6 +5146,7 @@ var Think = class Think extends Agent {
+@@ -4975,6 +5184,7 @@ var Think = class Think extends Agent {
  	* class body).
  	*/
  	async pendingExecutions(executionId) {
@@ -796,7 +871,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const runtime = this._codemodeRuntime();
  		if (!runtime) return [];
  		return runtime.pending(executionId);
-@@ -4993,14 +5165,18 @@ var Think = class Think extends Agent {
+@@ -4993,14 +5203,18 @@ var Think = class Think extends Agent {
  	* Client-callable.
  	*/
  	async approveExecution(executionId) {
@@ -816,7 +891,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		return output;
  	}
  	/**
-@@ -5012,6 +5188,9 @@ var Think = class Think extends Agent {
+@@ -5012,6 +5226,9 @@ var Think = class Think extends Agent {
  	* Client-callable.
  	*/
  	async rejectExecution(executionId, reason) {
@@ -826,7 +901,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const runtime = this._codemodeRuntime();
  		if (!runtime) return {
  			status: "error",
-@@ -5024,6 +5203,7 @@ var Think = class Think extends Agent {
+@@ -5024,6 +5241,7 @@ var Think = class Think extends Agent {
  			executionId,
  			error: `Execution "${executionId}" is no longer pending.`
  		};
@@ -834,7 +909,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		if (!await runtime.reject({
  			executionId,
  			seq: pending[0].seq
-@@ -5037,7 +5217,7 @@ var Think = class Think extends Agent {
+@@ -5037,7 +5255,7 @@ var Think = class Think extends Agent {
  			executionId,
  			reason: reason ?? "Rejected by user"
  		};
@@ -843,7 +918,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		return output;
  	}
  	/**
-@@ -5051,7 +5231,7 @@ var Think = class Think extends Agent {
+@@ -5051,7 +5269,7 @@ var Think = class Think extends Agent {
  	* must not be dropped: it is appended as a system note instead, and the
  	* continuation still fires so the model can act on it.
  	*/
@@ -852,21 +927,26 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const toolCallId = this._findPausedExecutionToolCall(executionId);
  		if (!toolCallId) {
  			if (this._findExecutionToolCall(executionId) != null) return false;
-@@ -5071,12 +5251,7 @@ var Think = class Think extends Agent {
+@@ -5070,13 +5288,12 @@ var Think = class Think extends Agent {
+ 				}]
  			});
  		} else await this._enqueueInteractionApply(() => this._applyToolUpdateToMessages(pausedExecutionUpdate(toolCallId, executionId, output)));
- 		const { connection } = getCurrentAgent();
+-		const { connection } = getCurrentAgent();
 -		let target = connection;
 -		if (!target) for (const open of this.getConnections()) {
 -			target = open;
 -			break;
--		}
++		if (output?.status !== "paused") {
++			this._releaseChatSource("execution", executionId);
++			if (toolCallId) this._releaseChatToolSource(toolCallId);
+ 		}
 -		if (target) this._scheduleAutoContinuation(target);
++		const { connection } = getCurrentAgent();
 +		if (connection) this._scheduleAutoContinuation(connection, requestContext);
  		return true;
  	}
  	/**
-@@ -5471,6 +5646,7 @@ var Think = class Think extends Agent {
+@@ -5471,6 +5688,7 @@ var Think = class Think extends Agent {
  		await this.schedule(0, "_chatRecoveryContinue", {
  			...input.targetAssistantId ? { targetAssistantId: input.targetAssistantId } : {},
  			originalRequestId: recoveryRootRequestId,
@@ -874,7 +954,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			incidentId: incident.incidentId,
  			lastBody: this._lastBody ?? null,
  			lastClientTools: this._lastClientTools ?? null,
-@@ -5567,6 +5743,7 @@ var Think = class Think extends Agent {
+@@ -5567,6 +5785,7 @@ var Think = class Think extends Agent {
  				await this.schedule(0, "_chatRecoveryRetry", {
  					targetUserId: retryTargetUserId,
  					originalRequestId: recoveryRootRequestId,
@@ -882,7 +962,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					incidentId: incident.incidentId,
  					lastBody: recoverySnapshot?.lastBody ?? null,
  					lastClientTools: recoverySnapshot?.lastClientTools ?? null,
-@@ -5584,6 +5761,7 @@ var Think = class Think extends Agent {
+@@ -5584,6 +5803,7 @@ var Think = class Think extends Agent {
  				await this.schedule(0, "_chatRecoveryContinue", {
  					...targetId ? { targetAssistantId: targetId } : {},
  					originalRequestId: recoveryRootRequestId,
@@ -890,7 +970,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					incidentId: incident.incidentId,
  					...recoverySnapshot ? {
  						lastBody: recoverySnapshot.lastBody ?? null,
-@@ -5868,6 +6046,8 @@ var Think = class Think extends Agent {
+@@ -5868,6 +6088,8 @@ var Think = class Think extends Agent {
  		const controller = recoveredSubmission ? new AbortController() : null;
  		if (recoveredSubmission && controller) this._submissionAbortControllers.set(recoveredSubmission.submission_id, controller);
  		try {
@@ -899,7 +979,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			const recoveryConfig = this._resolveChatRecoveryConfig();
  			if (!await this.waitUntilStable({ timeout: recoveryConfig.stableTimeoutMs })) {
  				if (await this._parkRecoveryForPendingInteraction(data)) return;
-@@ -5887,7 +6067,7 @@ var Think = class Think extends Agent {
+@@ -5887,7 +6109,7 @@ var Think = class Think extends Agent {
  				return;
  			}
  			this._applyRecoveredRequestContext(data);
@@ -908,7 +988,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			await this._updateChatRecoveryIncident(data?.incidentId, result.status === "completed" ? "completed" : result.status === "skipped" ? "skipped" : "failed", result.error);
  			if (data?.recoveredRequestId) await this._completeRecoveredSubmission(data.recoveredRequestId, result.status, result.requestId || null, result.status === "completed" ? null : result.error ?? `Recovery retry ${result.status}.`);
  		} catch (error) {
-@@ -5975,6 +6155,8 @@ var Think = class Think extends Agent {
+@@ -5975,6 +6197,8 @@ var Think = class Think extends Agent {
  		const controller = recoveredSubmission ? new AbortController() : null;
  		if (recoveredSubmission && controller) this._submissionAbortControllers.set(recoveredSubmission.submission_id, controller);
  		try {
@@ -917,7 +997,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			const recoveryConfig = this._resolveChatRecoveryConfig();
  			if (!await this.waitUntilStable({ timeout: recoveryConfig.stableTimeoutMs })) {
  				if (await this._parkRecoveryForPendingInteraction(data)) return;
-@@ -5992,7 +6174,7 @@ var Think = class Think extends Agent {
+@@ -5992,7 +6216,7 @@ var Think = class Think extends Agent {
  				return;
  			}
  			this._applyRecoveredRequestContext(data);
@@ -926,7 +1006,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			await this._updateChatRecoveryIncident(data?.incidentId, result.status === "completed" ? "completed" : result.status === "skipped" ? "skipped" : "failed", result.error);
  			if (data?.recoveredRequestId) await this._completeRecoveredSubmission(data.recoveredRequestId, result.status, result.requestId || null, result.status === "completed" ? null : result.error ?? `Recovery ${result.status}.`);
  		} catch (error) {
-@@ -6046,10 +6228,12 @@ var Think = class Think extends Agent {
+@@ -6046,10 +6270,12 @@ var Think = class Think extends Agent {
  			messages: this.messages
  		}));
  	}
@@ -940,7 +1020,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  				connectionId: connection.id,
  				clientTools: this._lastClientTools,
  				body: void 0,
-@@ -6059,6 +6243,8 @@ var Think = class Think extends Agent {
+@@ -6059,6 +6285,8 @@ var Think = class Think extends Agent {
  			return;
  		}
  		if (this._continuation.pending) {
@@ -949,7 +1029,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			this._continuation.pending.connection = connection;
  			this._continuation.pending.connectionId = connection.id;
  			this._continuation.pending.clientTools = this._lastClientTools;
-@@ -6070,6 +6256,7 @@ var Think = class Think extends Agent {
+@@ -6070,6 +6298,7 @@ var Think = class Think extends Agent {
  			connection,
  			connectionId: connection.id,
  			requestId: crypto.randomUUID(),
@@ -957,7 +1037,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  			clientTools: this._lastClientTools,
  			body: void 0,
  			errorPrefix: "[Think] Auto-continuation failed:",
-@@ -6223,6 +6410,8 @@ var Think = class Think extends Agent {
+@@ -6223,6 +6452,8 @@ var Think = class Think extends Agent {
  			this._continuationTimer = null;
  		}
  		const { requestId, clientTools } = pending;
@@ -966,7 +1046,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  		const abortSignal = this._aborts.getSignal(requestId);
  		this.keepAliveWhile(async () => {
  			await this._turnQueue.enqueue(requestId, async () => {
-@@ -6236,6 +6425,7 @@ var Think = class Think extends Agent {
+@@ -6236,6 +6467,7 @@ var Think = class Think extends Agent {
  							request: void 0,
  							email: void 0
  						}, () => this._runInferenceLoop({
@@ -974,7 +1054,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  							signal: abortSignal,
  							clientTools,
  							body: this._lastBody,
-@@ -6246,7 +6436,7 @@ var Think = class Think extends Agent {
+@@ -6246,7 +6478,7 @@ var Think = class Think extends Agent {
  							streamed = true;
  						}
  					};
@@ -983,7 +1063,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  					else await continuationBody();
  				} finally {
  					this._aborts.remove(requestId);
-@@ -6259,6 +6449,8 @@ var Think = class Think extends Agent {
+@@ -6259,6 +6491,8 @@ var Think = class Think extends Agent {
  			console.error("[Think] Auto-continuation failed:", error);
  			this._aborts.remove(requestId);
  		});
@@ -993,7 +1073,7 @@ index b55c8a39634199612c5169db6b4a925416bccba0..b6faaaf07dcdc981537b78bff8a9f463
  	_activateDeferredContinuation() {
  		const pending = this._continuation.activateDeferred(() => crypto.randomUUID());
 diff --git a/dist/think-i1Pkgb1R.d.ts b/dist/think-i1Pkgb1R.d.ts
-index 9245beff0e6474ca1f9c203cb759b92f9c73a53f..01fb8171b088128fa6f70e3b78027e214c6bcef8 100644
+index 9245beff0e6474ca1f9c203cb759b92f9c73a53f..7327497ed7427c3a2db34e263d3cdddab3b5773a 100644
 --- a/dist/think-i1Pkgb1R.d.ts
 +++ b/dist/think-i1Pkgb1R.d.ts
 @@ -1,3 +1,4 @@
@@ -1042,18 +1122,19 @@ index 9245beff0e6474ca1f9c203cb759b92f9c73a53f..01fb8171b088128fa6f70e3b78027e21
      readonly stepNumber: number | undefined;
      readonly messages: ReadonlyArray<ModelMessage> /** Wall-clock execution time in milliseconds. */;
      readonly durationMs: number;
-@@ -1823,6 +1828,10 @@ declare class Think<
+@@ -1823,6 +1828,11 @@ declare class Think<
     * }
     * ```
     */
 +  retainChatRequestReference(reference: string, request: ChatRequestContext): void;
++  releaseChatRequestReference(reference: string): void;
 +  getCurrentChatRequest(): ChatRequestContext | undefined;
 +  admitCurrentChatAction(action: ChatActionContext["action"]): Promise<void>;
 +  beforeChatAction(context: ChatActionContext): void | Promise<void>;
    beforeTurn(_ctx: TurnContext): TurnConfig | void | Promise<TurnConfig | void>;
    /**
     * Called before each AI SDK step in the agentic loop. Backed by
-@@ -2367,7 +2376,7 @@ declare class Think<
+@@ -2367,7 +2377,7 @@ declare class Think<
      messages:
        | UIMessage[]
        | ((currentMessages: UIMessage[]) => UIMessage[] | Promise<UIMessage[]>),
@@ -1062,7 +1143,7 @@ index 9245beff0e6474ca1f9c203cb759b92f9c73a53f..01fb8171b088128fa6f70e3b78027e21
    ): Promise<SaveMessagesResult>;
    /**
     * Add messages to history WITHOUT starting a model turn.
-@@ -2425,7 +2434,7 @@ declare class Think<
+@@ -2425,7 +2435,7 @@ declare class Think<
     */
    protected continueLastTurn(
      body?: Record<string, unknown>,

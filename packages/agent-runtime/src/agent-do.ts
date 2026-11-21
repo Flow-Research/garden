@@ -41,6 +41,7 @@ import {
   browserChatPrincipalFromTags,
   browserChatTags,
   checkBrowserChatPrincipal,
+  resolveBrowserChatPrincipal,
 } from './browser-chat-authority'
 import { Buffer } from 'node:buffer'
 import {
@@ -609,21 +610,45 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     return thread.debugPrompt()
   }
 
+  /**
+   * Runs one chat turn for a native caller that holds the thread owner's live
+   * session. The caller names the session; the scope is read from the database
+   * here and checked again by the facet before each controlled action.
+   */
   async runThreadFixtureTurn(
     threadId: string,
-    input: { clear?: boolean; message: string },
+    input: {
+      clear?: boolean
+      message: string
+      handoff: { sessionId: string; userId: string }
+    },
   ) {
     await this.requireThreadAccess(threadId)
+    const principal = await resolveBrowserChatPrincipal(this.getDb(), {
+      sessionId: input.handoff.sessionId,
+      userId: input.handoff.userId,
+      runtimeName: this.name,
+      threadName: threadId,
+    })
+    if (principal.isErr()) throw principal.error
     const thread = await this.subAgent(ChatSubAgent, threadId)
     if (input.clear) await thread.clearMessages()
 
-    const result = await thread.saveMessages([
+    const result = await thread.saveMessages(
+      [
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          parts: [{ type: 'text', text: input.message }],
+        },
+      ],
       {
-        id: crypto.randomUUID(),
-        role: 'user',
-        parts: [{ type: 'text', text: input.message }],
+        applicationContext: {
+          kind: 'browser-handoff',
+          principal: principal.value,
+        },
       },
-    ])
+    )
 
     return {
       result,
@@ -1546,6 +1571,12 @@ export class ChatToolDeniedError extends TaggedError('ChatToolDeniedError')<{
   message: string
 }>() {}
 
+const gardenApprovalContinuationSchema = z.strictObject({
+  approved: z.boolean(),
+  permissionRequestId: z.uuid(),
+  pendingAgentId: z.uuid(),
+})
+
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   /** Keeps the SDK facet's virtual connection bound to the actual server tags. */
   override async getConnectionTags(
@@ -2103,11 +2134,20 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return { accepted: submission.accepted, status: submission.status }
   }
 
-  async continueAfterGardenApproval(input: {
-    approved: boolean
-    permissionRequestId: string
-    pendingAgentId?: string | null
-  }) {
+  /**
+   * Resumes the thread after its owner decided an agent proposal. The browser
+   * supplies identifiers only. `beforeChatAction` matches them to the recorded
+   * decision and to the calling connection before the turn persists a message.
+   */
+  @callable()
+  async continueAfterGardenApproval(value: unknown) {
+    const parsed = gardenApprovalContinuationSchema.safeParse(value)
+    if (!parsed.success)
+      throw new ChatToolDeniedError({
+        message: 'Agent proposal continuation input is invalid.',
+      })
+    const input = parsed.data
+    const reference = `garden-proposal:${input.permissionRequestId}`
     const result = await this.saveMessages(
       [
         {
@@ -2117,14 +2157,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
             {
               type: 'text',
               text: input.approved
-                ? `The user approved the agent proposal ${input.permissionRequestId}. The pending agent${input.pendingAgentId ? ` (${input.pendingAgentId})` : ''} is now active. Continue from the approval and confirm the hire.`
+                ? `The user approved the agent proposal ${input.permissionRequestId}. The pending agent (${input.pendingAgentId}) is now active. Continue from the approval and confirm the hire.`
                 : `The user denied the agent proposal ${input.permissionRequestId}. Continue from the denial and adapt without hiring that agent.`,
             },
           ],
         },
       ],
       {
-        parentReference: `garden-proposal:${input.permissionRequestId}`,
+        parentReference: reference,
         applicationContext: {
           kind: 'garden-approval',
           permissionRequestId: input.permissionRequestId,
@@ -2133,6 +2173,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         },
       },
     )
+    // A finished continuation has consumed the proposal's retained source.
+    if (result.status === 'completed')
+      this.releaseChatRequestReference(reference)
 
     return { ok: true, status: result.status }
   }

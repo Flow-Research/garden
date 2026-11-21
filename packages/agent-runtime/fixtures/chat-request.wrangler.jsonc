@@ -10,10 +10,14 @@
     "bindings": [
       { "name": "REQUEST_AGENT", "class_name": "RequestAgent" },
       { "name": "REQUEST_ROOT", "class_name": "RequestRoot" },
+      { "name": "RUN_AGENT", "class_name": "RunTurnAgent" },
     ],
   },
   "migrations": [
-    { "tag": "fixture", "new_sqlite_classes": ["RequestAgent", "RequestRoot"] },
+    {
+      "tag": "fixture",
+      "new_sqlite_classes": ["RequestAgent", "RequestRoot", "RunTurnAgent"],
+    },
   ],
   "hyperdrive": [
     { "binding": "HYPERDRIVE", "id": "00000000000000000000000000000000" },

@@ -312,6 +312,47 @@ describe('chat request authority against actual PostgreSQL', () => {
     ).toBe(true)
   })
 
+  it('needs an approval on every row of one tool call and takes one denial as a refusal', async () => {
+    const actor = await fixture()
+    const toolCallId = randomUUID()
+    const ids = [randomUUID(), randomUUID()]
+    await database.db.insert(schema.permissionRequest).values(
+      ids.map((id, index) => ({
+        id,
+        agentId: actor.principal.agentId,
+        threadId: actor.principal.threadId,
+        toolCallId,
+        status: index === 0 ? 'approved' : 'pending',
+        resolvedBy: index === 0 ? actor.principal.userId : null,
+        resolvedAt: index === 0 ? new Date() : null,
+      })),
+    )
+    const approval = { approved: true, request: actor.request }
+    const effect = () =>
+      actor.admit({ action: 'execute-tool', toolCallId, approval })
+    const frame = (approved: boolean) =>
+      actor.admit({ action: 'apply-tool-approval', toolCallId, approved })
+    expect((await frame(true)).isErr()).toBe(true)
+    expect((await effect()).isErr()).toBe(true)
+    await database.db
+      .update(schema.permissionRequest)
+      .set({
+        status: 'approved',
+        resolvedBy: actor.principal.userId,
+        resolvedAt: new Date(),
+      })
+      .where(eq(schema.permissionRequest.id, ids[1] ?? ''))
+    expect((await frame(true)).isOk()).toBe(true)
+    expect((await effect()).isOk()).toBe(true)
+    await database.db
+      .update(schema.permissionRequest)
+      .set({ status: 'denied' })
+      .where(eq(schema.permissionRequest.id, ids[1] ?? ''))
+    expect((await frame(true)).isErr()).toBe(true)
+    expect((await effect()).isErr()).toBe(true)
+    expect((await frame(false)).isOk()).toBe(true)
+  })
+
   it('allows only the exact terminal Decide run and attempt without borrowing a browser session', async () => {
     const actor = await fixture()
     const runId = randomUUID()

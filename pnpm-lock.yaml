@@ -132,7 +132,7 @@ overrides:
 
 patchedDependencies:
   '@cloudflare/think@0.10.0':
-    hash: 278b321c1b8f855d2a806278e452a4b23db1eab92ab45c581ca68ab17b1a4841
+    hash: 74fc7b1e5418a5c5c091c251a6e66867370420b8de55b387511b365cb4cac1b7
     path: patches/@cloudflare__think@0.10.0.patch
   '@executor-js/config@1.5.40':
     hash: 618e4317d9316b35ced28db8a67be3c3969acd07bd5d81c39b8473002f00b89e
@@ -216,7 +216,7 @@ importers:
         version: 0.12.4
       '@cloudflare/think':
         specifier: 'catalog:'
-        version: 0.10.0(patch_hash=278b321c1b8f855d2a806278e452a4b23db1eab92ab45c581ca68ab17b1a4841)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6)
+        version: 0.10.0(patch_hash=74fc7b1e5418a5c5c091c251a6e66867370420b8de55b387511b365cb4cac1b7)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6)
       '@cloudflare/vite-plugin':
         specifier: 'catalog:'
         version: 1.49.0(@types/node@25.6.0)(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(wrangler@4.120.0(@cloudflare/workers-types@5.20260808.1))
@@ -634,7 +634,7 @@ importers:
         version: 0.4.0(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(zod@4.6.6)
       '@cloudflare/think':
         specifier: 'catalog:'
-        version: 0.10.0(patch_hash=278b321c1b8f855d2a806278e452a4b23db1eab92ab45c581ca68ab17b1a4841)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)
+        version: 0.10.0(patch_hash=74fc7b1e5418a5c5c091c251a6e66867370420b8de55b387511b365cb4cac1b7)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)
       '@garden/app-state':
         specifier: workspace:*
         version: link:../app-state
@@ -11453,7 +11453,7 @@ snapshots:
       - ai
       - zod
 
-  '@cloudflare/think@0.10.0(patch_hash=278b321c1b8f855d2a806278e452a4b23db1eab92ab45c581ca68ab17b1a4841)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6)':
+  '@cloudflare/think@0.10.0(patch_hash=74fc7b1e5418a5c5c091c251a6e66867370420b8de55b387511b365cb4cac1b7)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))(zod@4.6.6)':
     dependencies:
       '@cloudflare/codemode': 0.4.3(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(zod@4.6.6)
       '@cloudflare/shell': 0.4.0(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(zod@4.6.6)
@@ -11473,7 +11473,7 @@ snapshots:
       - '@tanstack/ai'
       - supports-color
 
-  '@cloudflare/think@0.10.0(patch_hash=278b321c1b8f855d2a806278e452a4b23db1eab92ab45c581ca68ab17b1a4841)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)':
+  '@cloudflare/think@0.10.0(patch_hash=74fc7b1e5418a5c5c091c251a6e66867370420b8de55b387511b365cb4cac1b7)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.6.1)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)':
     dependencies:
       '@cloudflare/codemode': 0.4.3(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(zod@4.6.6)
       '@cloudflare/shell': 0.4.0(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(zod@4.6.6)

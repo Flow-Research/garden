@@ -201,7 +201,15 @@ async function authorizeSource(
   })
 }
 
-/** Matches the current permission row to the exact SDK decision and pending tool. */
+// One Executor call can name several connectors, and each one records a row.
+const maxToolDecisionRows = 16
+
+/**
+ * Matches every permission row of the pending tool to the exact SDK decision.
+ * The resolve routes own who may decide: the thread owner, a workspace
+ * approver or the Team owner. This check requires their recorded decision and
+ * that the resolver is still a member of the thread's workspace.
+ */
 async function checkToolDecision(
   db: GardenDatabase,
   authority: ChatRequestAuthority,
@@ -211,39 +219,60 @@ async function checkToolDecision(
     action.action === 'apply-tool-approval'
       ? action.approved
       : action.approval?.approved
+  const toolCallId = action.toolCallId
+  if (!toolCallId) return Result.err(browserChatRefused())
   const result = await Result.tryPromise({
     try: () =>
       db
         .select({
           status: schema.permissionRequest.status,
-          resolvedBy: schema.permissionRequest.resolvedBy,
           threadId: schema.permissionRequest.threadId,
           agentId: schema.permissionRequest.agentId,
           live: sql<boolean>`${schema.permissionRequest.expiresAt} is null or ${schema.permissionRequest.expiresAt} > clock_timestamp()`,
+          resolverIsMember: sql<boolean>`exists (
+            select 1 from ${schema.member}
+            where ${schema.member.userId} = ${schema.permissionRequest.resolvedBy}
+              and ${schema.member.organizationId} = ${authority.workspaceId}
+          )`,
         })
         .from(schema.permissionRequest)
-        .where(eq(schema.permissionRequest.toolCallId, action.toolCallId ?? ''))
-        .limit(2),
+        .where(
+          and(
+            eq(schema.permissionRequest.toolCallId, toolCallId),
+            eq(schema.permissionRequest.kind, 'connector_write'),
+          ),
+        )
+        .limit(maxToolDecisionRows + 1),
     catch: () => browserChatUnavailable(),
   })
   return result.andThen((rows) => {
     if (rows.length === 0 && expected === undefined) return Result.ok(undefined)
-    const row = rows[0]
+    const inScope = rows.every(
+      (row) =>
+        row.threadId === authority.threadId &&
+        row.agentId === authority.agentId,
+    )
+    const decided = (status: 'approved' | 'denied') =>
+      rows.filter(
+        (row) => row.status === status && row.live && row.resolverIsMember,
+      ).length
     if (
-      rows.length !== 1 ||
-      !row ||
+      rows.length === 0 ||
+      rows.length > maxToolDecisionRows ||
       expected === undefined ||
-      row.status !== (expected ? 'approved' : 'denied') ||
-      row.resolvedBy !== authority.userId ||
-      row.threadId !== authority.threadId ||
-      row.agentId !== authority.agentId ||
-      !row.live ||
-      ((action.action === 'execute-tool' ||
-        action.action === 'dispatch-client-tool') &&
-        !expected)
+      !inScope
     )
       return Result.err(browserChatRefused())
-    return Result.ok(undefined)
+    // An effect needs every row approved. One recorded denial settles a refusal.
+    if (expected && decided('approved') === rows.length)
+      return Result.ok(undefined)
+    if (
+      !expected &&
+      action.action === 'apply-tool-approval' &&
+      decided('denied') > 0
+    )
+      return Result.ok(undefined)
+    return Result.err(browserChatRefused())
   })
 }
 
