@@ -3104,13 +3104,11 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         body: JSON.stringify(input),
       })
       expect(seed.status, await seed.clone().text()).toBe(200)
-      await database!.db
-        .insert(schema.issueAgentContext)
-        .values({
-          issueId: input.issueId,
-          agentId: input.agentId,
-          generation: 1,
-        })
+      await database!.db.insert(schema.issueAgentContext).values({
+        issueId: input.issueId,
+        agentId: input.agentId,
+        generation: 1,
+      })
       const response = await harness!.fetch('/writeback-origin', {
         method: 'POST',
         body: JSON.stringify({
