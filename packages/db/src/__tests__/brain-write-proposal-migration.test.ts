@@ -101,18 +101,33 @@ describe('0069 populated Brain proposal migration (PostgreSQL CLI)', () => {
     fullFolder = resolve(directory, 'candidate')
     await cp(migrations, preFolder, { recursive: true })
     await cp(migrations, fullFolder, { recursive: true })
-    const journal = JSON.parse(
-      await readFile(resolve(migrations, 'meta/_journal.json'), 'utf8'),
+    const journal: { entries: Array<{ idx: number; tag: string }> } =
+      JSON.parse(
+        await readFile(resolve(migrations, 'meta/_journal.json'), 'utf8'),
+      )
+    const candidateIndex = journal.entries.findIndex(
+      (entry) => entry.tag === migrationTag && entry.idx === 69,
     )
-    if (journal.entries.at(-1).tag !== migrationTag)
-      throw new Error('Candidate migration must be the last journal entry')
+    if (
+      candidateIndex < 0 ||
+      journal.entries.filter((entry) => entry.tag === migrationTag).length !==
+        1 ||
+      journal.entries.filter((entry) => entry.idx === 69).length !== 1
+    )
+      throw new Error('Expected one 0069 candidate journal entry with index 69')
+    // This retained-data fixture qualifies 0069, independently of later migrations.
     await writeFile(
       resolve(preFolder, 'meta/_journal.json'),
       JSON.stringify({
         ...journal,
-        entries: journal.entries.filter(
-          (entry: { tag: string }) => entry.tag !== migrationTag,
-        ),
+        entries: journal.entries.slice(0, candidateIndex),
+      }),
+    )
+    await writeFile(
+      resolve(fullFolder, 'meta/_journal.json'),
+      JSON.stringify({
+        ...journal,
+        entries: journal.entries.slice(0, candidateIndex + 1),
       }),
     )
     postgres = await new GenericContainer('postgres:16-alpine')
