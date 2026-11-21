@@ -51,10 +51,13 @@ The outer socket boundary checks current database authority before each incoming
 Connections without this binding must reconnect.
 
 Request provenance records who started a request.
-Queued and recovered work still needs that context at model and tool admission.
-The frame check alone does not prove authority for delayed work.
+A maintained Think patch retains that context through its existing queue and recovery records.
+`ChatSubAgent.beforeChatAction` checks current database authority before model attempts, tools and pending interactions.
+Automatic summaries use the same request context and model guard.
+The frame check and the later action checks serve separate boundaries.
 Issue and automation Workflows retain authority from their originating tasks.
-The [frame-authority decision](../../decisions/2026-11-browser-chat-frame-authority.md) records the tests and remaining requirement.
+The [frame-authority decision](../../decisions/2026-11-browser-chat-frame-authority.md) records socket admission.
+The [request-authority decision](../../decisions/2026-11-chat-request-authority.md) records delayed work, source limits and remaining qualification.
 
 ## Chat hosts several feature surfaces
 

@@ -10,6 +10,10 @@ import { extractExecutorToolRefsFromInput } from '../../../../../packages/agent-
 import { isIntegrationToolAllowed } from '../../../../../packages/agent-runtime/src/integration-router'
 
 const { Agent, callable } = agentsSdk
+// This suite tests the callable allowlist. Current authority has its own SDK/PG suite.
+class ThinkCallabilityFixture extends Agent {
+  async admitCurrentChatAction() {}
+}
 const source = await readFile(
   new URL(
     '../../../../../packages/agent-runtime/src/agent-do.ts',
@@ -66,7 +70,7 @@ async function compileClass(name: string) {
     `${compiled.code}; return ${name};`,
   )(
     Agent,
-    Agent,
+    ThinkCallabilityFixture,
     callable,
     buildMcpAiToolKey('executor', ''),
     // Team policy permits this fixture; reference parsing and routing stay real.

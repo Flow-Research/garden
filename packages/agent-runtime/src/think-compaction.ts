@@ -4,7 +4,7 @@ import {
   type Session,
 } from '@cloudflare/think'
 import { createCompactFunction } from 'agents/experimental/memory/utils'
-import { generateText, type LanguageModel } from 'ai'
+import { generateText, wrapLanguageModel, type LanguageModel } from 'ai'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { getDefaultAgentModelProfile, type AgentModelProfile } from './model'
 
@@ -26,14 +26,37 @@ export function configureThinkCompaction(
   session: Session,
   model: LanguageModel,
   profile: AgentModelProfile = getDefaultAgentModelProfile(),
+  authority?: { beforeModelCall: () => Promise<void> },
 ) {
+  const guardedModel = authority
+    ? (() => {
+        if (typeof model !== 'object' || model.specificationVersion !== 'v3')
+          throw new Error(
+            'Chat compaction requires a model with an enforced call boundary.',
+          )
+        return wrapLanguageModel({
+          model,
+          middleware: {
+            specificationVersion: 'v3',
+            wrapGenerate: async ({ doGenerate }) => {
+              await authority.beforeModelCall()
+              return doGenerate()
+            },
+            wrapStream: async ({ doStream }) => {
+              await authority.beforeModelCall()
+              return doStream()
+            },
+          },
+        })
+      })()
+    : model
   return session
     .onCompaction(
       createCompactFunction({
         tailTokenBudget: profile.compaction.tailTokenBudgetTokens,
         summarize: async (prompt) => {
           const result = await generateText({
-            model,
+            model: guardedModel,
             prompt,
           })
           return result.text

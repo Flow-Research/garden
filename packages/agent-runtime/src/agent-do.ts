@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import {
   BrainRunAuthorityError,
   resolveBrainRuntimeAgentId,
@@ -27,6 +28,7 @@ import {
   type Session,
   Think,
   type ChatResponseResult,
+  type ChatActionContext,
   type MessageConcurrency,
   type StepContext,
   type ToolCallContext,
@@ -34,8 +36,19 @@ import {
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
+import { authorizeChatRequestAction } from './chat-request-authority'
+import {
+  browserChatPrincipalFromTags,
+  browserChatTags,
+  checkBrowserChatPrincipal,
+} from './browser-chat-authority'
 import { Buffer } from 'node:buffer'
-import { Agent, callable, type Connection } from 'agents'
+import {
+  Agent,
+  callable,
+  type Connection,
+  type ConnectionContext,
+} from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import {
   type LanguageModel,
@@ -685,7 +698,11 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
     const message = decideAnalysisDeliveryMessage(run)
     if (!message) return { delivered: false }
     const thread = await this.subAgent(ChatSubAgent, run.runtimeKey)
-    await thread.deliverDecideAnalysisResult(message)
+    await thread.deliverDecideAnalysisResult(message, {
+      runId: run.runId,
+      attempt: run.attempt,
+      threadId: input.threadId,
+    })
     return { delivered: true }
   }
 
@@ -1530,6 +1547,76 @@ export class ChatToolDeniedError extends TaggedError('ChatToolDeniedError')<{
 }>() {}
 
 export class ChatSubAgent extends Think<AgentRuntimeEnv> {
+  /** Keeps the SDK facet's virtual connection bound to the actual server tags. */
+  override async getConnectionTags(
+    connection: Connection,
+    _context: ConnectionContext,
+  ) {
+    const principal = browserChatPrincipalFromTags(connection.tags)
+    const current = await principal.andThenAsync((value) =>
+      checkBrowserChatPrincipal(this.getDb(), value),
+    )
+    if (current.isErr()) throw current.error
+    if (current.value.runtimeKey !== this.name)
+      throw new ChatToolDeniedError({
+        message: 'Private chat scope does not match this runtime.',
+      })
+    return browserChatTags(current.value)
+  }
+
+  /** Checks live scope and the exact tool policy after SDK queue and recovery waits. */
+  override async beforeChatAction(action: ChatActionContext) {
+    const result = await authorizeChatRequestAction(
+      this.getDb(),
+      this.name,
+      action,
+    )
+    if (result.isErr()) throw result.error
+    if (
+      action.action === 'execute-tool' ||
+      action.action === 'dispatch-client-tool'
+    ) {
+      const [identity] = await this.getDb()
+        .select({ permissions: schema.agent.permissions })
+        .from(schema.agent)
+        .where(eq(schema.agent.id, result.value.agentId))
+        .limit(1)
+      if (!identity || !action.toolName)
+        throw new ChatToolDeniedError({
+          message: 'Current chat tool authority is unavailable.',
+        })
+      this.currentPermissions = derivePermissions({
+        agent: { permissions: identity.permissions },
+      })
+      this.currentTeamPolicy = await loadTeamAgentPolicyForUser(this.getDb(), {
+        workspaceId: result.value.workspaceId,
+        userId: result.value.userId,
+      })
+      const executor = action.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX)
+      const allowed = executor
+        ? isTeamToolAllowed(this.currentTeamPolicy, action.toolName)
+        : isChatToolAllowed(
+            this.currentPermissions,
+            this.currentTeamPolicy,
+            action.toolName,
+          )
+      const executorAllowed =
+        !executor ||
+        evaluateExecutorCallTeamPolicy(this.currentTeamPolicy, action.input)
+          .allowed
+      if (!allowed || !executorAllowed)
+        throw new ChatToolDeniedError({
+          message: 'Current chat tool authority refuses this action.',
+        })
+      const final = await authorizeChatRequestAction(
+        this.getDb(),
+        this.name,
+        action,
+      )
+      if (final.isErr()) throw final.error
+    }
+  }
+
   /**
    * Handles chat websocket disconnects without promoting normal deploy/client
    * socket churn to error logs. Runtime errors without a connection still log at
@@ -1636,6 +1723,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       session,
       this.getModel(),
       resolveAgentModelProfile(this.env),
+      { beforeModelCall: () => this.admitCurrentChatAction('model-call') },
     )
       .withContext('foundation', promptContexts.foundation)
       .withContext('agent', promptContexts.agent)
@@ -2003,10 +2091,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
    * the published `SaveMessagesOptions` type (agents 0.17.3). Reference:
    * `Think.submitMessages` in @cloudflare/think 0.10.0.
    */
-  async deliverDecideAnalysisResult(message: UIMessage) {
+  async deliverDecideAnalysisResult(
+    message: UIMessage,
+    input: { runId: string; attempt: number; threadId: string },
+  ) {
     const submission = await this.submitMessages([message], {
       submissionId: message.id,
       idempotencyKey: message.id,
+      metadata: { gardenChat: { kind: 'decide-result', ...input } },
     })
     return { accepted: submission.accepted, status: submission.status }
   }
@@ -2016,20 +2108,31 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     permissionRequestId: string
     pendingAgentId?: string | null
   }) {
-    const result = await this.saveMessages([
+    const result = await this.saveMessages(
+      [
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          parts: [
+            {
+              type: 'text',
+              text: input.approved
+                ? `The user approved the agent proposal ${input.permissionRequestId}. The pending agent${input.pendingAgentId ? ` (${input.pendingAgentId})` : ''} is now active. Continue from the approval and confirm the hire.`
+                : `The user denied the agent proposal ${input.permissionRequestId}. Continue from the denial and adapt without hiring that agent.`,
+            },
+          ],
+        },
+      ],
       {
-        id: crypto.randomUUID(),
-        role: 'user',
-        parts: [
-          {
-            type: 'text',
-            text: input.approved
-              ? `The user approved the agent proposal ${input.permissionRequestId}. The pending agent${input.pendingAgentId ? ` (${input.pendingAgentId})` : ''} is now active. Continue from the approval and confirm the hire.`
-              : `The user denied the agent proposal ${input.permissionRequestId}. Continue from the denial and adapt without hiring that agent.`,
-          },
-        ],
+        parentReference: `garden-proposal:${input.permissionRequestId}`,
+        applicationContext: {
+          kind: 'garden-approval',
+          permissionRequestId: input.permissionRequestId,
+          pendingAgentId: input.pendingAgentId,
+          approved: input.approved,
+        },
       },
-    ])
+    )
 
     return { ok: true, status: result.status }
   }
@@ -2380,6 +2483,17 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   override async afterToolCall(ctx: ToolCallResultContext) {
+    if (ctx.success && ctx.toolName === 'propose_agent') {
+      const proposal = z
+        .object({ permission_request_id: z.uuid(), pending_agent_id: z.uuid() })
+        .safeParse(ctx.output)
+      if (proposal.success)
+        this.retainChatRequestReference(
+          `garden-proposal:${proposal.data.permission_request_id}`,
+          ctx.request,
+        )
+    }
+
     const selectedRoute = this.currentIntegrationRoute?.routes[0]
     const isRouteTool =
       ctx.toolName.startsWith(EXECUTOR_TOOL_KEY_PREFIX) ||
@@ -2492,6 +2606,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   @callable()
   async warmRuntime(): Promise<RuntimePreparePayload> {
+    await this.admitCurrentChatAction('protocol-event')
     const result =
       await this.mcpConnectionPreparer.ensureLoaded('client-prewarm')
     return result.match<RuntimePreparePayload>({
@@ -2502,8 +2617,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
 
   @callable()
   async loadMessages(): Promise<UIMessage[]> {
+    await this.admitCurrentChatAction('protocol-event')
     const messages = [...this.messages]
     const issueMessages = await this.loadPrimaryIssueMessages()
+    await this.admitCurrentChatAction('protocol-event')
     if (issueMessages.length === 0) return messages
 
     const issueMessageIds = new Set(issueMessages.map((message) => message.id))
