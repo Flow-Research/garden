@@ -89,6 +89,7 @@ export const issueRunEventTypeValues = [
   'issue_run:failed',
   'issue_run:cancelled',
   'issue_run:reconciler_action',
+  'issue_run:context_reset',
 ] as const
 
 export const issueRunEventStreamValues = [

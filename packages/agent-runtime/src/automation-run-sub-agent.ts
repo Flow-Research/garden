@@ -395,7 +395,12 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     )
     if (read.isErr()) return Result.ok(undefined)
     const exposed = await this.ensureBrainGrantHistory(origin, 'brain_search')
-    if (exposed.isErr()) return exposed
+    // A grant revoked after the check above only withholds injection; the
+    // retained history stays verified and the run keeps its context.
+    if (exposed.isErr())
+      return exposed.error.code === 'history_unverified'
+        ? exposed
+        : Result.ok(undefined)
     this.brainInjectionAllowed = true
     return Result.ok(undefined)
   }
@@ -1103,7 +1108,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ).mapError(
       (error) =>
         new AutomationRunSubAgentError({
-          code: 'runtime_failed',
+          code: error.code ?? 'runtime_failed',
           message: error.message,
           cause: error,
         }),
