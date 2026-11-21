@@ -12,6 +12,50 @@ The security change updates TanStack Start and its declared Router family, Bette
 The selected Start release declares the Router and server-core versions. These versions must remain coherent.
 An audit result does not establish application compatibility or deployment acceptance.
 
+## Parser and transport compatibility
+
+The next dependency unit retains the reviewed version branches.
+The declared Node minimum is `22.19.0`, which the installed Undici 8 branch already requires.
+The setup check `pnpm doctor` and the setup pages use the same minimum.
+Local checks use Node `22.22.2`.
+
+| Dependency        | Selected version |
+| ----------------- | ---------------- |
+| `@fastify/busboy` | `3.2.1`          |
+| `@xmldom/xmldom`  | `0.8.15`         |
+| `body-parser`     | `2.4.0`          |
+| `fast-uri`        | `3.1.7`          |
+| `js-yaml`         | `4.3.2`          |
+| `smol-toml`       | `1.7.1`          |
+| `undici` major 7  | `7.30.1`         |
+| `undici` major 8  | `8.12.2`         |
+
+`body-parser@2.4.0` declares `qs@^6.16.1`, so a scoped override gives that branch `qs@6.16.1`.
+A test checks that the installed query parser is in the declared range.
+Other query-parser branches retain their separate versions and audit findings.
+The package manager generates the dependency lock with lifecycle scripts disabled.
+
+The compatibility tests use the actual Executor OpenAPI importer, Think inspection command, AJV, Express body parser, multipart parser, and both Node transports.
+TOML is a configuration file format.
+Think inspection reports whether its TOML parsed. That result does not establish a deployed application.
+The Executor OpenAPI importer reads YAML with the JSON schema of `js-yaml`, so it reads a merge key as plain data.
+The empty-merge input therefore adds no merge work in the importer. The default `js-yaml` loader refuses that input.
+DOCX is a Word document format.
+The agent-runtime and brain document tests give Mammoth valid and malformed Word XML in a small archive.
+The malformed inputs have a repeated attribute, content after an end-tag name, or unterminated attribute values.
+Each malformed input returns the typed import or extraction error.
+
+The HTTP fixtures bind only to loopback addresses and use synthetic header values.
+TLS encrypts a network connection.
+The fixtures test redirect credential separation, transport errors, WebSocket subprotocol refusal, and explicit TLS trust.
+They also test a server that sends an unrequested WebSocket subprotocol, a response with too many content encodings, and a cross-origin redirect with a shared cache.
+The body-parser fixture sends compressed JSON with bytes after the compressed frame. The server returns status 400 and continues to serve requests.
+The multipart fixture uses a 252-byte boundary and part headers named `__proto__` and `constructor`.
+The URI fixture checks normalization and refuses a port that is not a number.
+The TLS fixture requires OpenSSL and creates a temporary self-signed certificate for the local listener.
+Cleanup removes its temporary files and closes its owned connections.
+These tests cover local Node owners. Deployed Worker behavior retains its separate requirements.
+
 ## Server functions
 
 A server function is an HTTP operation supplied by TanStack Start.

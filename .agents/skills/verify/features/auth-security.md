@@ -48,3 +48,14 @@ It does not execute generated shell text.
 Local handler checks do not prove an actual Google or Slack provider round trip.
 Provider acceptance and deployment-target checks remain separate release gates.
 Authorization attempts that started before the state-binding change must restart.
+
+## Parser and transport compatibility
+
+`parser-owner-compatibility.test.ts` parses valid, incomplete, and empty-merge YAML through the installed Executor OpenAPI owner.
+`scripts/parser-transport.test.mjs` uses actual dependency owners and bounded loopback fixtures.
+It covers AJV references, URI normalization and port refusal, JSON and form bodies, compressed bodies with trailing bytes, multipart boundaries and part headers, and the default YAML merge limit.
+For each Undici major branch, it covers redirect credential and shared-cache separation, WebSocket subprotocol refusal, excess content encodings, local connection errors, and explicit TLS trust.
+The Think CLI reads valid and incomplete TOML from disposable project directories.
+OpenSSL creates only temporary local TLS fixtures. The tests remove those files and close their listeners.
+`document-artifact-projection.test.ts` in agent-runtime and `extractor.test.ts` in brain cover Mammoth DOCX conversion with valid and malformed Word XML.
+These cases do not establish a live provider, native device, or deployed Worker result.
