@@ -24,8 +24,34 @@ export class BrainRunAuthorityError extends TaggedError(
   'BrainRunAuthorityError',
 )<{
   message: string
+  /** Set when retained history cannot be verified, so a fresh context could run. */
+  code?: 'history_unverified'
   cause?: unknown
 }>() {}
+
+/**
+ * Fixed refusals for retained history that current Brain permissions cannot
+ * verify. They carry no transcript or Brain content, so run failure records may
+ * show them verbatim instead of the masked `brain_output_authority_denied`.
+ */
+export const HISTORY_UNVERIFIED_MESSAGES = {
+  audience:
+    'Issue transcript has an unverified Brain audience. Retained history cannot be resumed.',
+  foreignProvenance:
+    'Retained Brain provenance is invalid or belongs to another principal. A fresh context session with reviewed content is required.',
+  noProvenance:
+    'Retained Brain history has no verified provenance. A fresh context session with reviewed content is required.',
+  grantUnavailable:
+    'Retained history may contain Brain context whose grant is unavailable. A fresh context session with reviewed content is required.',
+} as const
+
+const historyUnverifiedMessages: ReadonlySet<string> = new Set(
+  Object.values(HISTORY_UNVERIFIED_MESSAGES),
+)
+
+export function isHistoryUnverifiedMessage(reason: string) {
+  return historyUnverifiedMessages.has(reason)
+}
 
 /** Each fresh authorization query owns and closes its invocation-local socket. */
 async function queryBrainAuthority<T>(
@@ -271,8 +297,8 @@ export async function ensureBrainRunHistory(input: {
   if (marker !== undefined && !valid)
     return Result.err(
       new BrainRunAuthorityError({
-        message:
-          'Retained Brain provenance is invalid or belongs to another principal. A fresh context session with reviewed content is required.',
+        code: 'history_unverified',
+        message: HISTORY_UNVERIFIED_MESSAGES.foreignProvenance,
       }),
     )
   let tools: string[]
@@ -291,21 +317,28 @@ export async function ensureBrainRunHistory(input: {
     if (history.value.length > 0)
       return Result.err(
         new BrainRunAuthorityError({
-          message:
-            'Retained Brain history has no verified provenance. A fresh context session with reviewed content is required.',
+          code: 'history_unverified',
+          message: HISTORY_UNVERIFIED_MESSAGES.noProvenance,
         }),
       )
     tools = []
   }
-  if (input.exposeTool !== undefined)
-    tools = [...new Set([...tools, input.exposeTool])]
   if (tools.some((tool) => !isBrainRunToolAllowed(input.permissions, tool)))
     return Result.err(
       new BrainRunAuthorityError({
-        message:
-          'Retained history may contain Brain context whose grant is unavailable. A fresh context session with reviewed content is required.',
+        code: 'history_unverified',
+        message: HISTORY_UNVERIFIED_MESSAGES.grantUnavailable,
       }),
     )
+  if (input.exposeTool !== undefined) {
+    if (!isBrainRunToolAllowed(input.permissions, input.exposeTool))
+      return Result.err(
+        new BrainRunAuthorityError({
+          message: `Brain operation ${input.exposeTool} is not permitted.`,
+        }),
+      )
+    tools = [...new Set([...tools, input.exposeTool])]
+  }
   return Result.try({
     try: () => input.persist({ identity: input.identity, tools }),
     catch: (cause) =>

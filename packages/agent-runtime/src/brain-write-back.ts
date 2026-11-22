@@ -31,6 +31,12 @@ export type BrainWriteBackRunInput = {
   readonly workspaceId: string
   readonly runKind: BrainWriteBackRunKind
   readonly originObjectId: string
+  /**
+   * Issue context generation whose facet produced the summary. A later context
+   * reset must not move origin validation onto a facet with no provenance.
+   * Automation runs have one facet per run and use 0.
+   */
+  readonly originGeneration: number
   readonly ownerUserId: string | null
   readonly summary: string
 }
