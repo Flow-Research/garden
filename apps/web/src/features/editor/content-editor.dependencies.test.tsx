@@ -31,6 +31,7 @@ import { DOMSerializer, Schema } from '@tiptap/pm/model'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { NavigationProvider } from '../navigation'
 import { ContentEditor } from './content-editor'
+import { safeFileHref } from './extensions/file-card'
 
 const navigation = {
   push: vi.fn(),
@@ -156,6 +157,52 @@ describe('ContentEditor on the installed Tiptap and ProseMirror', () => {
     // empty paragraph after a final table, so trailing blank lines differ.
     editor.commands.setContent(saved, { contentType: 'markdown' })
     expect(editor.getMarkdown().trimEnd()).toBe(saved.trimEnd())
+  })
+
+  it('keeps only http and https links on file cards from HTML', async () => {
+    const { editor, container } = await renderEditor()
+    const card = (href: string, filename: string) =>
+      `<div data-type="fileCard" data-href="${href}" data-filename="${filename}"></div>`
+    editor.commands.setContent(
+      [
+        card('https://cdn.example.com/a.pdf', 'a.pdf'),
+        card('javascript:void(0)', 'b.pdf'),
+        card('data:text/html,x', 'c.pdf'),
+        card(' JAVASCRIPT:void(0)', 'd.pdf'),
+      ].join(''),
+    )
+    const hrefs: Array<unknown> = []
+    editor.state.doc.descendants((node) => {
+      if (node.type.name === 'fileCard') hrefs.push(node.attrs.href)
+    })
+    expect(hrefs).toEqual(['https://cdn.example.com/a.pdf', '', '', ''])
+    await waitFor(() =>
+      expect(
+        container.querySelectorAll('button[aria-label^="Download"]'),
+      ).toHaveLength(1),
+    )
+    expect(editor.getMarkdown()).not.toMatch(/javascript|data:/i)
+  })
+
+  it('accepts only absolute http and https file links', () => {
+    expect(safeFileHref('https://cdn.example.com/a.pdf')).toBe(
+      'https://cdn.example.com/a.pdf',
+    )
+    expect(safeFileHref('HTTP://cdn.example.com/a.pdf')).toBe(
+      'HTTP://cdn.example.com/a.pdf',
+    )
+    for (const value of [
+      'javascript:void(0)',
+      ' javascript:void(0)',
+      'vbscript:x',
+      'data:text/html,x',
+      '/relative/path',
+      'https:',
+      '',
+      undefined,
+      42,
+    ])
+      expect(safeFileHref(value)).toBe('')
   })
 
   it('keeps mention links and file cards through load and save', async () => {

@@ -10,9 +10,25 @@ import { Spinner } from '@garden/ui/components/ui/spinner'
 
 const FILE_MARKDOWN = /^!file\[([^\]]*)\]\((https?:\/\/[^)]+)\)/
 
+/**
+ * Returns the link only when it is an absolute http or https URL, the same
+ * rule that the Markdown tokenizer applies. Any other value becomes empty, so
+ * the card shows no download action.
+ */
+export function safeFileHref(value: unknown): string {
+  const href = typeof value === 'string' ? value.trim() : ''
+  if (!/^https?:\/\//i.test(href)) return ''
+  try {
+    const url = new URL(href)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? href : ''
+  } catch {
+    return ''
+  }
+}
+
 /** Visual node for a file attachment embedded in editor content. */
 function FileCardView({ node }: NodeViewProps) {
-  const href = String(node.attrs.href || '')
+  const href = safeFileHref(node.attrs.href)
   const filename = String(node.attrs.filename || '')
   const uploading = Boolean(node.attrs.uploading)
 
@@ -76,7 +92,7 @@ export const FileCardExtension = Node.create({
       {
         tag: 'div[data-type="fileCard"]',
         getAttrs: (element) => ({
-          href: (element as HTMLElement).dataset.href ?? '',
+          href: safeFileHref((element as HTMLElement).dataset.href),
           filename: (element as HTMLElement).dataset.filename ?? '',
         }),
       },
