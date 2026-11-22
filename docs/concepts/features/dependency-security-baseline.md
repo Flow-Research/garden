@@ -104,6 +104,37 @@ Google unlink uses the auth account row ID required by Better Auth 1.7.
 The server looks up that ID among the caller's accounts before it applies Garden's password and Google unlink policy.
 Password removal remains refused.
 
+## Rich-text editor dependencies
+
+Tiptap is the rich-text editor library of `@garden/web`. Tiptap uses ProseMirror for its document model and view.
+`ContentEditor` is the only Tiptap editor. Issue, comment, reply and create-issue forms use it.
+All `@tiptap/*` packages use the exact version `3.33.0`. The Tiptap packages declare exact versions of each other, so the versions must stay equal.
+
+| Dependency          | Before   | Selected version | Advisory fixed                                                     |
+| ------------------- | -------- | ---------------- | ------------------------------------------------------------------ |
+| `@tiptap/*`         | `3.22.4` | `3.33.0`         | Markdown attribute parse time (3.30.5), `mergeAttributes` (3.30.4) |
+| `prosemirror-view`  | `1.41.8` | `1.42.9`         | Attribute validation for pasted slice context (1.42.3)             |
+| `prosemirror-model` | `1.25.4` | `1.25.13`        | None. `@tiptap/pm` `3.33.0` declares `^1.25.12`.                   |
+| `linkifyjs`         | `4.3.2`  | `4.4.0`          | None. The link extension declares it.                              |
+
+Version `1.43.0` of `prosemirror-view` is in the declared range. The lock file keeps `1.42.9`, because `1.43.0` was released on 2026-11-19 and changes mouse selection handling.
+No override holds this version. A later lock update can select `1.43.0`.
+
+A slice context is the list of parent nodes that ProseMirror writes into the `data-pm-slice` attribute of copied HTML.
+The paste extension of Garden sends HTML with this attribute to the ProseMirror paste path.
+The patched view runs attribute validators for the parent nodes in the slice context.
+Garden node attributes declare no validators. Thus the patch does not change the result of a Garden paste.
+The ProseMirror model ignores context attributes that a node does not declare.
+
+The vulnerable Markdown attribute parsers are in `@tiptap/core`. The upstream mention extension uses the inline parser.
+The Garden mention extension replaces that tokenizer. The Garden editor did not show the slow parse with the old version.
+
+The compatibility tests render the actual `ContentEditor` with Garden extensions.
+They load and save headings, marks, lists, quotes, code blocks, tables, mentions and file cards.
+They type Markdown shortcuts, typography and a URL, and set and refuse links.
+They paste plain Markdown, a URL over selected text, and HTML from another Garden editor.
+Separate tests check the patched parse time, the `mergeAttributes` prototype result and slice-context validation.
+
 ## Acceptance
 
 Run focused callback, session, middleware, serialization, proxy, and shell regressions.

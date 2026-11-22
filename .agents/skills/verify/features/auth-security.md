@@ -43,6 +43,12 @@ It does not prove a live signed-host or WorkStream callback.
 `pnpm test:dependency-security` checks the patched serialization, proxy trust and shell quoting behaviors.
 It does not execute generated shell text.
 
+`apps/web/src/features/editor/content-editor.dependencies.test.tsx` renders the actual `ContentEditor` with the installed Tiptap and ProseMirror packages.
+It covers Markdown load and save, typing with input rules, marks, links, paste paths, mentions and file cards.
+Four cases check the patched advisories: Markdown attribute parse time, the `mergeAttributes` prototype and slice-context attribute validation.
+These four cases fail with Tiptap `3.22.4` and ProseMirror View `1.41.8`. The other cases pass with both versions.
+The tests run in JSDOM. They do not prove browser selection, IME input or a real clipboard.
+
 ## Environment evidence
 
 Local handler checks do not prove an actual Google or Slack provider round trip.
