@@ -170,6 +170,62 @@ export const executionHostEvent = pgTable(
   ],
 )
 
+/**
+ * A host intervention asks the pilot operator to resume or stop one acknowledged run.
+ * The stored answer bytes are fixed at answer time, so every redelivery carries one identity.
+ */
+export const executionHostIntervention = pgTable(
+  'execution_host_intervention',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`gen_random_uuid()`),
+    interventionId: uuid('intervention_id').notNull(),
+    launchRecordId: uuid('launch_record_id')
+      .notNull()
+      .references(() => executionHostLaunch.id, { onDelete: 'cascade' }),
+    hostId: uuid('host_id').notNull(),
+    workspaceId: uuid('workspace_id').notNull(),
+    digest: text('digest').notNull(),
+    intervention: jsonb('intervention')
+      .notNull()
+      .$type<Record<string, unknown>>(),
+    expiresAt: timestamp('expires_at', {
+      withTimezone: true,
+      mode: 'date',
+    }).notNull(),
+    receivedAt: timestamp('received_at', { withTimezone: true, mode: 'date' })
+      .notNull()
+      .default(sql`now()`),
+    answerId: uuid('answer_id'),
+    answer: jsonb('answer').$type<Record<string, unknown>>(),
+    answeredBy: uuid('answered_by').references(() => user.id),
+    answeredAt: timestamp('answered_at', { withTimezone: true, mode: 'date' }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.hostId, table.workspaceId],
+      foreignColumns: [executionHost.id, executionHost.workspaceId],
+    }).onDelete('cascade'),
+    uniqueIndex('execution_host_intervention_identity').on(
+      table.hostId,
+      table.interventionId,
+    ),
+    uniqueIndex('execution_host_intervention_answer_identity').on(
+      table.answerId,
+    ),
+    index('execution_host_intervention_launch_idx').on(table.launchRecordId),
+    check(
+      'execution_host_intervention_digest_check',
+      sql`${table.digest} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'execution_host_intervention_answer_complete',
+      sql`(${table.answerId} is null) = (${table.answer} is null) and (${table.answerId} is null) = (${table.answeredBy} is null) and (${table.answerId} is null) = (${table.answeredAt} is null)`,
+    ),
+  ],
+)
+
 /** One pilot operator retains one execution slot across all enrolled machines until confirmed termination. */
 export const executionHostCapacity = pgTable(
   'execution_host_capacity',

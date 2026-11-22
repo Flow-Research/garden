@@ -512,6 +512,13 @@
       "when": 1795308242816,
       "tag": "0072_uneven_stick",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795381223763,
+      "tag": "0073_glamorous_venus",
+      "breakpoints": true
     }
   ]
 }
