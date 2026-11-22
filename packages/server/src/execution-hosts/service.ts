@@ -1,10 +1,23 @@
-import { and, asc, eq, gt, lt, isNotNull, isNull, ne, sql } from 'drizzle-orm'
+import {
+  and,
+  asc,
+  eq,
+  gt,
+  lt,
+  lte,
+  isNotNull,
+  isNull,
+  ne,
+  sql,
+} from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
+import { z } from 'zod'
 import type { GardenDatabase } from '@garden/db'
 import {
   executionHost,
   executionHostCapacity,
   executionHostEvent,
+  executionHostIntervention,
   executionHostLaunch,
   executionHostNonce,
   member,
@@ -15,6 +28,8 @@ import {
   hostContractVersion,
   hostEnrollmentSchema,
   hostEventSchema,
+  hostInterventionAnswerSchema,
+  hostInterventionSchema,
   hostLaunchSchema,
   hostRequestSchema,
   hostDirectorySchema,
@@ -26,6 +41,8 @@ import {
   type LaunchReceipt,
   type HostEnrollment,
   type HostRequest,
+  type HostIntervention,
+  type HostInterventionAnswer,
 } from '@garden/core/execution-host/contracts'
 import {
   HOST_REQUEST_WINDOW_MS,
@@ -57,6 +74,48 @@ export async function executionControlDigest(value: unknown) {
   return Array.from(new Uint8Array(bytes), (byte) =>
     byte.toString(16).padStart(2, '0'),
   ).join('')
+}
+
+const terminalStates = ['succeeded', 'failed', 'cancelled']
+/** The Harnessy controller raises each reason with one fixed kind. */
+const interventionKinds: Readonly<
+  Record<HostIntervention['reason'], HostIntervention['kind']>
+> = {
+  allowance_unavailable: 'input',
+  reconciliation_required: 'review',
+}
+
+/** An operator answer names one retained intervention and one fixed decision. It carries no authority fields. */
+export const interventionAnswerInputSchema = z.strictObject({
+  interventionId: z.string().uuid(),
+  answerId: z.string().uuid(),
+  decision: hostInterventionAnswerSchema.shape.decision,
+})
+
+/** The operator view of the interventions of one run. Garden derives status; the host owns the run state. */
+export const interventionListSchema = z.strictObject({
+  kind: z.literal('interventions'),
+  workspaceId: z.string().uuid(),
+  launchId: z.string().uuid(),
+  observedAt: z.number().int().nonnegative().safe(),
+  interventions: z
+    .array(
+      z.strictObject({
+        intervention: hostInterventionSchema,
+        digest: z.string().regex(/^[a-f0-9]{64}$/),
+        status: z.enum(['open', 'answered', 'expired', 'closed']),
+        receivedAt: z.number().int().nonnegative().safe(),
+        answer: hostInterventionAnswerSchema.nullable(),
+      }),
+    )
+    .max(100),
+})
+
+export type InterventionList = z.infer<typeof interventionListSchema>
+export type InterventionAnswerReceipt = {
+  kind: 'intervention_answered'
+  answer: HostInterventionAnswer
+  replayed: boolean
 }
 
 /**
@@ -595,10 +654,13 @@ export class ExecutionHostReceiver {
           (outcome.kind === 'authority_current' &&
             outcome.expiresAt <= current) ||
           (outcome.kind === 'commands' &&
-            outcome.commands.some((command) =>
-              command.kind === 'launch'
-                ? command.launch.grant.expiresAt <= current
-                : command.command.expiresAt <= current,
+            outcome.commands.some(
+              (command) =>
+                (command.kind === 'launch'
+                  ? command.launch.grant.expiresAt
+                  : command.kind === 'cancel'
+                    ? command.command.expiresAt
+                    : command.answer.expiresAt) <= current,
             ))
         )
           return refused('Host command authority expired before commit')
@@ -804,6 +866,318 @@ export class ExecutionHostReceiver {
     })
   }
 
+  /** A run is closed when Garden retained a terminal event, a revocation or a confirmed end. */
+  async #runClosed(
+    tx: Transaction,
+    row: typeof executionHostLaunch.$inferSelect,
+  ) {
+    if (row.status === 'revoked' || row.terminalAt !== null) return true
+    if (row.lastEventSequence === 0) return false
+    const latest = await tx
+      .select()
+      .from(executionHostEvent)
+      .where(
+        and(
+          eq(executionHostEvent.launchRecordId, row.id),
+          eq(executionHostEvent.sequence, row.lastEventSequence),
+        ),
+      )
+    const event = hostEventSchema.safeParse(latest[0]?.event)
+    return !event.success || terminalStates.includes(event.data.state)
+  }
+
+  /**
+   * The digest is the SHA-256 of the schema-ordered JSON that the host signed. The host
+   * refuses any answer whose digest or bindings differ from its own retained record.
+   */
+  async #recordIntervention(
+    tx: Transaction,
+    row: typeof executionHostLaunch.$inferSelect,
+    launch: ReturnType<typeof hostLaunchSchema.parse>,
+    input: HostIntervention,
+    now: number,
+  ): Promise<Result<HostOutcome, ExecutionHostError>> {
+    const intervention = hostInterventionSchema.parse(input)
+    const receipt = {
+      kind: 'intervention_recorded' as const,
+      launchId: intervention.launchId,
+      interventionId: intervention.id,
+    }
+    if (
+      row.hostRunId === null ||
+      intervention.runId !== row.hostRunId ||
+      intervention.grantId !== launch.grant.id ||
+      intervention.sourceRevision !== launch.job.sourceRevision ||
+      intervention.taskRevision !== launch.job.taskRevision ||
+      interventionKinds[intervention.reason] !== intervention.kind ||
+      intervention.raisedAt < launch.grant.issuedAt ||
+      intervention.raisedAt > now ||
+      intervention.expiresAt > launch.grant.expiresAt
+    )
+      return conflict('Intervention does not match the current run scope')
+    const digest = await executionControlDigest(intervention)
+    const retained = () =>
+      tx
+        .select({ digest: executionHostIntervention.digest })
+        .from(executionHostIntervention)
+        .where(
+          and(
+            eq(executionHostIntervention.hostId, intervention.hostId),
+            eq(executionHostIntervention.interventionId, intervention.id),
+          ),
+        )
+    const existing = await retained()
+    if (existing[0])
+      return existing[0].digest === digest
+        ? Result.ok(receipt)
+        : conflict('Intervention identity was reused')
+    if (intervention.expiresAt <= now) return refused('Intervention expired')
+    if (await this.#runClosed(tx, row))
+      return conflict('A closed run cannot raise an intervention')
+    const inserted = await tx
+      .insert(executionHostIntervention)
+      .values({
+        interventionId: intervention.id,
+        launchRecordId: row.id,
+        hostId: intervention.hostId,
+        workspaceId: intervention.workspaceId,
+        digest,
+        intervention,
+        expiresAt: new Date(intervention.expiresAt),
+        receivedAt: new Date(now),
+      })
+      .onConflictDoNothing({
+        target: [
+          executionHostIntervention.hostId,
+          executionHostIntervention.interventionId,
+        ],
+      })
+      .returning({ id: executionHostIntervention.id })
+    if (inserted.length === 1) return Result.ok(receipt)
+    const concurrent = await retained()
+    return concurrent[0]?.digest === digest
+      ? Result.ok(receipt)
+      : conflict('Intervention identity was reused')
+  }
+
+  /** Lists the retained interventions of one run for the current pilot operator. */
+  async interventions(
+    actorId: string,
+    workspaceId: string,
+    launchId: string,
+    now: number,
+  ): Promise<Result<InterventionList, ExecutionHostError>> {
+    if (!Number.isSafeInteger(now) || now < 0)
+      return refused('Invalid receiver clock', 400)
+    return this.#memberTransaction(actorId, workspaceId, async (tx) => {
+      const authorization = await this.#memberAuthorized(
+        tx,
+        actorId,
+        workspaceId,
+      )
+      if (authorization.isErr()) return authorization
+      const rows = await tx
+        .select()
+        .from(executionHostLaunch)
+        .where(
+          and(
+            eq(executionHostLaunch.workspaceId, workspaceId),
+            eq(executionHostLaunch.launchId, launchId),
+          ),
+        )
+        .for('share')
+      const row = rows[0]
+      if (!row)
+        return Result.err(
+          new ExecutionHostError({
+            code: 'host_not_found',
+            message: 'Launch not found',
+            status: 404,
+          }),
+        )
+      const closed = await this.#runClosed(tx, row)
+      const retained = await tx
+        .select()
+        .from(executionHostIntervention)
+        .where(eq(executionHostIntervention.launchRecordId, row.id))
+        .orderBy(asc(executionHostIntervention.receivedAt))
+        .limit(100)
+      const list = interventionListSchema.safeParse({
+        kind: 'interventions',
+        workspaceId,
+        launchId,
+        observedAt: now,
+        interventions: retained.map((entry) => ({
+          intervention: entry.intervention,
+          digest: entry.digest,
+          status:
+            entry.answer !== null
+              ? 'answered'
+              : closed
+                ? 'closed'
+                : entry.expiresAt.getTime() <= now
+                  ? 'expired'
+                  : 'open',
+          receivedAt: entry.receivedAt.getTime(),
+          answer: entry.answer,
+        })),
+      })
+      return list.success
+        ? Result.ok(list.data)
+        : conflict('Stored interventions are invalid')
+    })
+  }
+
+  /**
+   * Records one resume or stop answer. Every binding is copied from the retained intervention,
+   * so an answer cannot name another run, approve a job, or extend a grant.
+   */
+  async answer(
+    actorId: string,
+    workspaceId: string,
+    launchId: string,
+    input: unknown,
+    now: number,
+  ): Promise<Result<InterventionAnswerReceipt, ExecutionHostError>> {
+    const parsed = interventionAnswerInputSchema.safeParse(input)
+    if (!parsed.success || !Number.isSafeInteger(now) || now < 0)
+      return refused('Invalid intervention answer', 400)
+    const { interventionId, answerId, decision } = parsed.data
+    let expiresAt = 0
+    return this.#memberTransaction<InterventionAnswerReceipt>(
+      actorId,
+      workspaceId,
+      async (tx) => {
+        const authorization = await this.#memberAuthorized(
+          tx,
+          actorId,
+          workspaceId,
+        )
+        if (authorization.isErr()) return authorization
+        const rows = await tx
+          .select()
+          .from(executionHostLaunch)
+          .where(
+            and(
+              eq(executionHostLaunch.workspaceId, workspaceId),
+              eq(executionHostLaunch.launchId, launchId),
+            ),
+          )
+          .for('update')
+        const row = rows[0]
+        const retained = row
+          ? await tx
+              .select()
+              .from(executionHostIntervention)
+              .where(
+                and(
+                  eq(executionHostIntervention.launchRecordId, row.id),
+                  eq(executionHostIntervention.interventionId, interventionId),
+                ),
+              )
+              .for('update')
+          : []
+        const entry = retained[0]
+        if (!row || !entry)
+          return Result.err(
+            new ExecutionHostError({
+              code: 'host_not_found',
+              message: 'Intervention not found',
+              status: 404,
+            }),
+          )
+        if (entry.answer !== null) {
+          const previous = hostInterventionAnswerSchema.safeParse(entry.answer)
+          return previous.success &&
+            previous.data.answerId === answerId &&
+            previous.data.decision === decision
+            ? Result.ok({
+                kind: 'intervention_answered' as const,
+                answer: previous.data,
+                replayed: true,
+              })
+            : conflict('Intervention is already answered')
+        }
+        const intervention = hostInterventionSchema.safeParse(
+          entry.intervention,
+        )
+        if (
+          !intervention.success ||
+          (await executionControlDigest(intervention.data)) !== entry.digest
+        )
+          return conflict('Stored intervention is invalid')
+        const record = intervention.data
+        expiresAt = record.expiresAt
+        if (record.expiresAt <= now) return conflict('Intervention expired')
+        if (await this.#runClosed(tx, row)) return conflict('The run is closed')
+        if (now < record.raisedAt)
+          return conflict('Receiver clock precedes the intervention')
+        const hosts = await tx
+          .select({ operatorId: executionHost.operatorId })
+          .from(executionHost)
+          .where(
+            and(
+              eq(executionHost.id, record.hostId),
+              eq(executionHost.workspaceId, workspaceId),
+            ),
+          )
+        if (hosts[0]?.operatorId !== actorId)
+          return refused('Only the host operator can answer')
+        const reused = await tx
+          .select({ id: executionHostIntervention.id })
+          .from(executionHostIntervention)
+          .where(eq(executionHostIntervention.answerId, answerId))
+        if (reused.length > 0) return conflict('Answer identity was reused')
+        const answer = hostInterventionAnswerSchema.parse({
+          contractVersion: hostContractVersion,
+          answerId,
+          interventionId: record.id,
+          interventionDigest: entry.digest,
+          workspaceId: record.workspaceId,
+          hostId: record.hostId,
+          operatorId: actorId,
+          launchId: record.launchId,
+          runId: record.runId,
+          grantId: record.grantId,
+          sourceRevision: record.sourceRevision,
+          taskRevision: record.taskRevision,
+          decision,
+          answeredAt: now,
+          expiresAt: record.expiresAt,
+        })
+        const updated = await tx
+          .update(executionHostIntervention)
+          .set({
+            answerId,
+            answer,
+            answeredBy: actorId,
+            answeredAt: new Date(now),
+          })
+          .where(
+            and(
+              eq(executionHostIntervention.id, entry.id),
+              isNull(executionHostIntervention.answerId),
+            ),
+          )
+          .returning({ id: executionHostIntervention.id })
+        return updated.length === 1
+          ? Result.ok({
+              kind: 'intervention_answered' as const,
+              answer,
+              replayed: false,
+            })
+          : conflict('Intervention is already answered')
+      },
+      (outcome) => {
+        const current = this.#clock()
+        return outcome.replayed ||
+          (Number.isSafeInteger(current) && current < expiresAt)
+          ? Result.ok({ kind: 'authority_current' as const })
+          : refused('Intervention expired before commit')
+      },
+    )
+  }
+
   /** Commands remain pending until acknowledgment. Polling never creates a replacement launch identity. */
   async #operation(
     tx: Transaction,
@@ -877,6 +1251,60 @@ export class ExecutionHostReceiver {
           }),
         })
       }
+      // Answers repeat with identical bytes until they expire or the run ends, because
+      // a pull reply can be lost and the host applies one answer identity once.
+      // A host clock behind the answer time would refuse it, so such a pull waits.
+      const answerRows =
+        commands.length >= 20
+          ? []
+          : await tx
+              .select({
+                answer: executionHostIntervention.answer,
+                answeredBy: executionHostIntervention.answeredBy,
+              })
+              .from(executionHostIntervention)
+              .innerJoin(
+                executionHostLaunch,
+                eq(
+                  executionHostLaunch.id,
+                  executionHostIntervention.launchRecordId,
+                ),
+              )
+              .where(
+                and(
+                  eq(executionHostIntervention.hostId, request.hostId),
+                  eq(
+                    executionHostIntervention.workspaceId,
+                    request.workspaceId,
+                  ),
+                  isNotNull(executionHostIntervention.answerId),
+                  gt(executionHostIntervention.expiresAt, new Date(now)),
+                  lte(
+                    executionHostIntervention.answeredAt,
+                    new Date(request.signedAt),
+                  ),
+                  isNull(executionHostLaunch.terminalAt),
+                  ne(executionHostLaunch.status, 'revoked'),
+                ),
+              )
+              .orderBy(asc(executionHostIntervention.answeredAt))
+              .limit(20 - commands.length)
+      for (const row of answerRows) {
+        const answer = hostInterventionAnswerSchema.safeParse(row.answer)
+        if (
+          !answer.success ||
+          row.answeredBy !== answer.data.operatorId ||
+          answer.data.operatorId !== enrollment.operatorId
+        )
+          return conflict('Stored intervention answer is invalid')
+        const authorization = await this.#authorized(
+          tx,
+          answer.data.operatorId,
+          request.workspaceId,
+        )
+        if (authorization.isErr()) return authorization
+        commands.push({ kind: 'answer', answer: answer.data })
+      }
       const launches = await tx
         .select()
         .from(executionHostLaunch)
@@ -920,7 +1348,11 @@ export class ExecutionHostReceiver {
     }
     const body = request.body
     const launchId =
-      body.operation === 'event' ? body.event.launchId : body.launchId
+      body.operation === 'event'
+        ? body.event.launchId
+        : body.operation === 'intervention'
+          ? body.intervention.launchId
+          : body.launchId
     const rows = await tx
       .select()
       .from(executionHostLaunch)
@@ -950,6 +1382,8 @@ export class ExecutionHostReceiver {
       request.workspaceId,
     )
     if (authorization.isErr()) return authorization
+    if (body.operation === 'intervention')
+      return this.#recordIntervention(tx, row, launch, body.intervention, now)
     if (body.operation === 'decline') {
       if (body.requestDigest !== row.requestDigest)
         return conflict('Decline differs from immutable launch inputs')

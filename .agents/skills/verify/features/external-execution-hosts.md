@@ -9,7 +9,7 @@ The pilot remains disabled unless its existing Garden operator ID is explicitly 
 Run these commands from the repository root with Docker available:
 
 ```sh
-pnpm --filter @garden/server exec vitest run src/execution-hosts/service.integration.test.ts
+pnpm --filter @garden/server exec vitest run src/execution-hosts/service.integration.test.ts src/execution-hosts/interventions.integration.test.ts
 pnpm --filter @garden/web exec vitest run src/lib/server/execution-hosts.http.test.ts src/lib/server/service-error-response.test.ts src/routes/api/-authorization.test.ts
 pnpm --filter @garden/db exec vitest run src/__tests__/brain-write-proposal-migration.test.ts
 pnpm verify:host-contract
@@ -31,6 +31,10 @@ Required observations include these results:
 - Cancellation receipt remains separate from confirmed termination.
 - A signed pre-start decline cannot settle an acknowledged run or release another reservation.
 - A reconnect follows the returned page cursor and retains the current event head.
+- A signed intervention is stored once. A forged, replayed, out-of-scope or expired intervention is refused.
+- Only the pilot operator with a current owner or admin role can answer an intervention.
+- A pull reply carries the answer with the exact intervention digest and run bindings.
+- An answer for an expired or closed intervention is refused, and a closed run receives no answer.
 
 The migration fixture isolates migration 0069 and retains its original populated-data and rollback checks.
 The current database fixtures also apply the later checked-in migrations.

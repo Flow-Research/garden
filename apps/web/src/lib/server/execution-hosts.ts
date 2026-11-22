@@ -211,7 +211,7 @@ export async function handleExecutionHostAction(
 export async function handleExecutionHostRun(
   context: AppRequestContext,
   launchId: string,
-  action: 'snapshot' | 'cancel',
+  action: 'snapshot' | 'cancel' | 'interventions' | 'answer',
 ) {
   if (!z.string().uuid().safeParse(launchId).success)
     return response('Invalid launch identity', 400)
@@ -220,9 +220,36 @@ export async function handleExecutionHostRun(
   const pilot = await requireFreshPilot(
     context,
     workspace.value,
-    action === 'cancel',
+    action === 'cancel' || action === 'answer',
   )
   if (pilot.isErr()) return pilot.error
+  if (action === 'answer') {
+    const body = await readControlBody(context.request)
+    if (body.isErr()) return body.error
+    const result = await pilot.value.receiver.answer(
+      pilot.value.actorId,
+      workspace.value,
+      launchId,
+      body.value,
+      Date.now(),
+    )
+    if (result.isErr()) return controlFailure(result.error)
+    return Response.json(result.value, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
+  if (action === 'interventions') {
+    const result = await pilot.value.receiver.interventions(
+      pilot.value.actorId,
+      workspace.value,
+      launchId,
+      Date.now(),
+    )
+    if (result.isErr()) return controlFailure(result.error)
+    return Response.json(result.value, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
   if (action === 'cancel') {
     const body = await readControlBody(context.request)
     if (body.isErr()) return body.error

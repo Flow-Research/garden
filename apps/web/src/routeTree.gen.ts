@@ -172,6 +172,7 @@ import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/c
 import { Route as ApiChatThreadsThreadIdDecideAnalysesRouteImport } from './routes/api/chat/threads/$threadId/decide-analyses'
 import { Route as ApiExecutionHostsRunsLaunchIdIndexRouteImport } from './routes/api/execution-hosts/runs/$launchId/index'
 import { Route as ApiExecutionHostsRunsLaunchIdCancelRouteImport } from './routes/api/execution-hosts/runs/$launchId/cancel'
+import { Route as ApiExecutionHostsRunsLaunchIdInterventionsRouteImport } from './routes/api/execution-hosts/runs/$launchId/interventions'
 import { Route as ApiIssuesIdSourceBindingsBindingIdRouteImport } from './routes/api/issues/$id/source-bindings/$bindingId'
 import { Route as ApiTeamsTeamIdMembersMembershipIdRouteImport } from './routes/api/teams/$teamId/members/$membershipId'
 import { Route as ApiTeamsTeamIdRepositoriesRepositoryIdRouteImport } from './routes/api/teams/$teamId/repositories/$repositoryId'
@@ -1045,6 +1046,12 @@ const ApiExecutionHostsRunsLaunchIdCancelRoute =
     path: '/api/execution-hosts/runs/$launchId/cancel',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiExecutionHostsRunsLaunchIdInterventionsRoute =
+  ApiExecutionHostsRunsLaunchIdInterventionsRouteImport.update({
+    id: '/api/execution-hosts/runs/$launchId/interventions',
+    path: '/api/execution-hosts/runs/$launchId/interventions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiIssuesIdSourceBindingsBindingIdRoute =
   ApiIssuesIdSourceBindingsBindingIdRouteImport.update({
     id: '/$bindingId',
@@ -1255,6 +1262,7 @@ export interface FileRoutesByFullPath {
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
   '/api/execution-hosts/runs/$launchId/cancel': typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  '/api/execution-hosts/runs/$launchId/interventions': typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
@@ -1420,6 +1428,7 @@ export interface FileRoutesByTo {
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
   '/api/execution-hosts/runs/$launchId/cancel': typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  '/api/execution-hosts/runs/$launchId/interventions': typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
@@ -1594,6 +1603,7 @@ export interface FileRoutesById {
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
   '/api/execution-hosts/runs/$launchId/cancel': typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  '/api/execution-hosts/runs/$launchId/interventions': typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
@@ -1767,6 +1777,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/tool-approval'
     | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/execution-hosts/runs/$launchId/cancel'
+    | '/api/execution-hosts/runs/$launchId/interventions'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/teams/$teamId/repositories/$repositoryId'
@@ -1932,6 +1943,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/tool-approval'
     | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/execution-hosts/runs/$launchId/cancel'
+    | '/api/execution-hosts/runs/$launchId/interventions'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/teams/$teamId/repositories/$repositoryId'
@@ -2105,6 +2117,7 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/tool-approval'
     | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/execution-hosts/runs/$launchId/cancel'
+    | '/api/execution-hosts/runs/$launchId/interventions'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/teams/$teamId/repositories/$repositoryId'
@@ -2184,6 +2197,7 @@ export interface RootRouteChildren {
   ApiWorkProductsIdReviewRoute: typeof ApiWorkProductsIdReviewRoute
   ApiBrainProposalsIdResolveRoute: typeof ApiBrainProposalsIdResolveRoute
   ApiExecutionHostsRunsLaunchIdCancelRoute: typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  ApiExecutionHostsRunsLaunchIdInterventionsRoute: typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
   ApiExecutionHostsRunsLaunchIdIndexRoute: typeof ApiExecutionHostsRunsLaunchIdIndexRoute
 }
 
@@ -3330,6 +3344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiExecutionHostsRunsLaunchIdCancelRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/execution-hosts/runs/$launchId/interventions': {
+      id: '/api/execution-hosts/runs/$launchId/interventions'
+      path: '/api/execution-hosts/runs/$launchId/interventions'
+      fullPath: '/api/execution-hosts/runs/$launchId/interventions'
+      preLoaderRoute: typeof ApiExecutionHostsRunsLaunchIdInterventionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/issues/$id/source-bindings/$bindingId': {
       id: '/api/issues/$id/source-bindings/$bindingId'
       path: '/$bindingId'
@@ -4069,6 +4090,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiBrainProposalsIdResolveRoute: ApiBrainProposalsIdResolveRoute,
   ApiExecutionHostsRunsLaunchIdCancelRoute:
     ApiExecutionHostsRunsLaunchIdCancelRoute,
+  ApiExecutionHostsRunsLaunchIdInterventionsRoute:
+    ApiExecutionHostsRunsLaunchIdInterventionsRoute,
   ApiExecutionHostsRunsLaunchIdIndexRoute:
     ApiExecutionHostsRunsLaunchIdIndexRoute,
 }

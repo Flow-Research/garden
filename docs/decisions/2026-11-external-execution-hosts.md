@@ -68,5 +68,6 @@ Source checks and controlled fixtures do not establish installed or deployed sup
 
 Revoked-host cleanup and acknowledged-but-never-started recovery still need an explicit reconciliation path.
 The receiver cannot infer termination from silence or elapsed time.
-Host interventions, real provider admission and complete client controls remain separate work.
+Real provider admission and complete client controls remain separate work.
+The receiver stores host interventions and returns operator answers. A cross-product exchange with a running host is not established.
 Retained-target migration, deployment and app publication require their existing human gates.

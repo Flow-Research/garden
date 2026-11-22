@@ -36,6 +36,29 @@ Garden stores those events and exposes an authorized snapshot.
 Client reconnection reads that snapshot and the events after its last cursor.
 Client disconnection does not cancel host work.
 
+## Interventions
+
+An intervention is a signed host request for a decision about one acknowledged run.
+The Harnessy controller raises it when an included allowance is unavailable or a run needs reconciliation.
+Garden applies the same signature, nonce, enrollment and membership checks as other host requests.
+Garden stores the intervention once by host and intervention ID.
+An exact retry returns the same receipt.
+Garden refuses an intervention that differs from the launch, run, grant, source revision or task revision.
+Garden also refuses an expired intervention or an intervention for a closed run.
+
+The pilot operator reads the interventions of a run and answers `resume` or `stop`.
+The operator must have a fresh session and a current owner or admin role.
+Garden copies every binding of the answer from the stored intervention.
+The answer names the intervention digest, which is the SHA-256 of the signed intervention record.
+The answer expires with the intervention.
+An answer cannot approve a job, issue a grant or extend an expiry.
+
+Garden returns each answer as an `answer` entry in later pull replies.
+The entry repeats with identical bytes until it expires or the run ends.
+The host applies one answer identity once, so a lost reply needs no other recovery.
+Garden does not send an answer to a pull that the host signed before the answer time.
+A Garden answer is not proof that the host resumed or stopped the run.
+
 ## Controls and privacy
 
 Enrollment requires workspace permission management.
@@ -63,5 +86,7 @@ Tests must cover revoked membership, expired grants, lost acknowledgments, host 
 
 This work is under implementation.
 No deployed host enrollment, direct launch, native approval journey or device qualification is established.
+No exchange of an intervention and an answer between a running Harnessy host and Garden is established.
+The status page does not show interventions yet.
 Existing Garden managed runs keep their current Workflow owner.
 See the [execution-host proposal](../../proposals/execution-host-contract.md) for the complete delivery gates.

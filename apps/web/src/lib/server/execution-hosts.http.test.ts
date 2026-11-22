@@ -818,6 +818,68 @@ describe('execution-host HTTP authority with actual Better Auth and PostgreSQL',
     }
   })
 
+  it('applies the pilot guard to intervention reads and answers', async () => {
+    const state = await fixture()
+    const launchId = randomUUID()
+    const answer = {
+      interventionId: randomUUID(),
+      answerId: randomUUID(),
+      decision: 'stop',
+    }
+    for (const action of ['interventions', 'answer'] as const) {
+      expect(
+        (
+          await handleExecutionHostRun(
+            context(state.request(answer)),
+            launchId,
+            action,
+          )
+        ).status,
+      ).toBe(503)
+      expect(
+        (
+          await handleExecutionHostRun(
+            context(state.request(answer), randomUUID()),
+            launchId,
+            action,
+          )
+        ).status,
+      ).toBe(403)
+      const missing = await handleExecutionHostRun(
+        context(state.request(answer), state.operatorId),
+        launchId,
+        action,
+      )
+      expect(missing.status).toBe(404)
+      expect(missing.headers.get('cache-control')).toBe('no-store')
+    }
+    expect(
+      (
+        await handleExecutionHostRun(
+          context(
+            state.request(answer, { origin: 'https://other.test' }),
+            state.operatorId,
+          ),
+          launchId,
+          'answer',
+        )
+      ).status,
+    ).toBe(403)
+    await database.db
+      .delete(schema.session)
+      .where(eq(schema.session.id, state.sessionId))
+    for (const action of ['interventions', 'answer'] as const)
+      expect(
+        (
+          await handleExecutionHostRun(
+            context(state.request(answer), state.operatorId),
+            launchId,
+            action,
+          )
+        ).status,
+      ).toBe(401)
+  })
+
   it('accepts a signed pre-start decline and preserves another run reservation across retries', async () => {
     const state = await fixture()
     expect(
