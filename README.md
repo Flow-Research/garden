@@ -173,7 +173,7 @@ Workflow state, Hyperdrive pointed at `DATABASE_URL`, and the remote Workers
 AI binding. Two things to know about that binding:
 
 - it may incur usage on your Cloudflare account; and
-- the default model (`@cf/moonshotai/kimi-k2.7-code`) requires the Workers
+- the default model (`@cf/zai-org/glm-5.3`) requires the Workers
   **paid** plan — on the free plan, chat turns fail with a model-availability
   error. Use offline mode if you don't have a paid plan.
 
