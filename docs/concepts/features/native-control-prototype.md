@@ -89,15 +89,10 @@ The adapter sends credentials only to its configured origin.
 HTTPS is required except for a loopback development server.
 Each origin uses a separate credential namespace.
 
-Garden's current Better Auth server remains pinned to `1.6.26`.
+The Garden Better Auth server, the native client and its Expo client plugin use `1.7.16`.
 The prototype does not install the Expo server plugin.
 That plugin is vulnerable below `1.7.16`, as described in [GHSA-4wq4-2ppv-q3hg](https://github.com/better-auth/better-auth/security/advisories/GHSA-4wq4-2ppv-q3hg).
-The native client and its Expo client plugin use `1.7.16`.
-
-Better Auth `1.7.16` changes generic OAuth callback contracts used by existing Garden connectors.
-A server upgrade needs separate connector migration and regression evidence.
-Do not enable an older Expo server proxy to bypass that migration.
-The current password-only prototype does not require that proxy.
+The current password-only prototype does not require the Expo authorization proxy.
 
 ## Run the prototype
 
