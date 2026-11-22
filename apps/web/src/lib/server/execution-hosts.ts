@@ -252,10 +252,11 @@ export async function handleExecutionHostRun(
     launchId,
     after,
   )
-  return result.match({
-    ok: (value) =>
-      Response.json(value, { headers: { 'Cache-Control': 'no-store' } }),
-    err: controlFailure,
+  // The receiver returns a union of result types. A direct branch keeps the
+  // call typed in every compiler run; `match` on that union did not.
+  if (result.isErr()) return controlFailure(result.error)
+  return Response.json(result.value, {
+    headers: { 'Cache-Control': 'no-store' },
   })
 }
 
@@ -273,9 +274,10 @@ export async function handleExecutionHostDirectory(context: AppRequestContext) {
     Date.now(),
     after,
   )
-  return result.match({
-    ok: (value) =>
-      Response.json(value, { headers: { 'Cache-Control': 'no-store' } }),
-    err: controlFailure,
+  // The receiver returns a union of result types. A direct branch keeps the
+  // call typed in every compiler run; `match` on that union did not.
+  if (result.isErr()) return controlFailure(result.error)
+  return Response.json(result.value, {
+    headers: { 'Cache-Control': 'no-store' },
   })
 }
