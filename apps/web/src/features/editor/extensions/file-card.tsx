@@ -1,3 +1,4 @@
+import { Result } from 'better-result'
 import { mergeAttributes, Node } from '@tiptap/core'
 import {
   NodeViewWrapper,
@@ -18,12 +19,11 @@ const FILE_MARKDOWN = /^!file\[([^\]]*)\]\((https?:\/\/[^)]+)\)/
 export function safeFileHref(value: unknown): string {
   const href = typeof value === 'string' ? value.trim() : ''
   if (!/^https?:\/\//i.test(href)) return ''
-  try {
-    const url = new URL(href)
-    return url.protocol === 'http:' || url.protocol === 'https:' ? href : ''
-  } catch {
-    return ''
-  }
+  const url = Result.try(() => new URL(href))
+  if (url.isErr()) return ''
+  return url.value.protocol === 'http:' || url.value.protocol === 'https:'
+    ? href
+    : ''
 }
 
 /** Visual node for a file attachment embedded in editor content. */
