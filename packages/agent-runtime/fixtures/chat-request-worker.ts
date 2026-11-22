@@ -270,11 +270,25 @@ export class RequestAgent extends Think<ChatRequestFixtureEnv> {
     }
     if (this.fillSourceIndex && action.action === 'prepare-turn') {
       this.fillSourceIndex = false
-      for (let index = 0; index <= 4096; index++)
-        this.retainChatRequestReference(
-          `fixture-record:${index}`,
-          action.request,
-        )
+      // The SDK writes the first record and meets the cap on the last one. One
+      // statement copies that record up to the cap between them: thousands of
+      // separate synchronous SDK writes block the local runtime for many
+      // seconds on a slow machine, and the next request then fails in the
+      // local proxy with "Network connection lost".
+      const sql = this.ctx.storage.sql
+      this.retainChatRequestReference('fixture-record:0', action.request)
+      sql.exec(
+        `WITH RECURSIVE copy(number) AS (
+           SELECT 1 UNION ALL SELECT number + 1 FROM copy WHERE number < ?
+         )
+         INSERT INTO think_config (key, value)
+         SELECT '__chat_source:application:fixture-record:' || number,
+           (SELECT value FROM think_config
+             WHERE key = '__chat_source:application:fixture-record:0')
+         FROM copy`,
+        4096 - sourceRecordCount(sql),
+      )
+      this.retainChatRequestReference('fixture-record:4096', action.request)
     }
     // This controlled observation port can hold an admitted hook for race tests.
     const observed = await fetch(`${this.env.FIXTURE_BASE_URL}/observe`, {
