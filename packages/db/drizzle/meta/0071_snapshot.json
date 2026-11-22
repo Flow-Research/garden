@@ -1,6 +1,6 @@
 {
-  "id": "7ce0d239-a322-4d35-9f4a-23925d6f79da",
-  "prevId": "3a26c27f-ea25-43d0-b743-16129b9c935b",
+  "id": "98c107da-82df-4087-b608-19d8a82e4bfd",
+  "prevId": "ed65c7f0-c829-4852-b159-9f4ca4417ec2",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -4107,6 +4107,73 @@
           "value": "\"issue\".\"assignee_type\" is null or \"issue\".\"assignee_type\" in ('user', 'agent')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.issue_agent_context": {
+      "name": "issue_agent_context",
+      "schema": "",
+      "columns": {
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "issue_agent_context_issue_id_issue_id_fk": {
+          "name": "issue_agent_context_issue_id_issue_id_fk",
+          "tableFrom": "issue_agent_context",
+          "tableTo": "issue",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_agent_context_agent_id_agent_id_fk": {
+          "name": "issue_agent_context_agent_id_agent_id_fk",
+          "tableFrom": "issue_agent_context",
+          "tableTo": "agent",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "issue_agent_context_issue_id_agent_id_pk": {
+          "name": "issue_agent_context_issue_id_agent_id_pk",
+          "columns": [
+            "issue_id",
+            "agent_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.issue_attachment": {
@@ -8782,18 +8849,6 @@
         "last_event_at": {
           "name": "last_event_at",
           "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "decline_id": {
-          "name": "decline_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "decline_reason": {
-          "name": "decline_reason",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
