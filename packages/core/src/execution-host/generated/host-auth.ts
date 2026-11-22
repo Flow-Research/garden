@@ -59,6 +59,12 @@ export const verifyHostRequest = async (
 		(request.body.event.hostId !== request.hostId || request.body.event.workspaceId !== request.workspaceId)
 	)
 		return { status: "refused", reason: "scope" };
+	if (
+		request.body.operation === "intervention" &&
+		(request.body.intervention.hostId !== request.hostId ||
+			request.body.intervention.workspaceId !== request.workspaceId)
+	)
+		return { status: "refused", reason: "scope" };
 	const publicBytes = decode(enrollment.publicKey);
 	const signatureBytes = decode(request.signature);
 	if (

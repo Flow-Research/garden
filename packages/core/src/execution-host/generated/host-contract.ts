@@ -113,6 +113,27 @@ export const hostInterventionSchema = z.strictObject({
 	sourceRevision: z.string().regex(/^[a-f0-9]{40}$/),
 	taskRevision: sha256,
 	kind: z.enum(["review", "input"]),
+	reason: z.enum(["allowance_unavailable", "reconciliation_required"]),
+	raisedAt: z.number().int().nonnegative().safe(),
+	expiresAt: z.number().int().positive().safe(),
+});
+
+/** A person's answer can only resume or stop the exact run. It carries no job, grant or expiry extension. */
+export const hostInterventionAnswerSchema = z.strictObject({
+	contractVersion: z.literal(hostContractVersion),
+	answerId: uuid,
+	interventionId: uuid,
+	interventionDigest: sha256,
+	workspaceId: uuid,
+	hostId: uuid,
+	operatorId: uuid,
+	launchId: uuid,
+	runId: uuid,
+	grantId: uuid,
+	sourceRevision: z.string().regex(/^[a-f0-9]{40}$/),
+	taskRevision: sha256,
+	decision: z.enum(["resume", "stop"]),
+	answeredAt: z.number().int().nonnegative().safe(),
 	expiresAt: z.number().int().positive().safe(),
 });
 
@@ -143,6 +164,7 @@ export const hostRequestUnsignedSchema = z.strictObject({
 			reason: hostDeclineReasonSchema,
 		}),
 		z.strictObject({ operation: z.literal("acknowledge"), launchId: uuid, requestDigest: sha256, runId: uuid }),
+		z.strictObject({ operation: z.literal("intervention"), intervention: hostInterventionSchema }),
 	]),
 });
 
@@ -164,6 +186,8 @@ export const hostCancelSchema = z.strictObject({
 export type HostEnrollment = z.infer<typeof hostEnrollmentSchema>;
 export type HostLaunch = z.infer<typeof hostLaunchSchema>;
 export type HostEvent = z.infer<typeof hostEventSchema>;
+export type HostIntervention = z.infer<typeof hostInterventionSchema>;
+export type HostInterventionAnswer = z.infer<typeof hostInterventionAnswerSchema>;
 export type HostRequest = z.infer<typeof hostRequestSchema>;
 export type HostRequestUnsigned = z.infer<typeof hostRequestUnsignedSchema>;
 
@@ -184,12 +208,14 @@ export const hostOutcomeSchema = z.discriminatedUnion("kind", [
 				z.discriminatedUnion("kind", [
 					z.strictObject({ kind: z.literal("launch"), launch: hostLaunchSchema }),
 					z.strictObject({ kind: z.literal("cancel"), command: hostCancelSchema }),
+					z.strictObject({ kind: z.literal("answer"), answer: hostInterventionAnswerSchema }),
 				]),
 			)
 			.max(21),
 	}),
 	z.strictObject({ kind: z.literal("acknowledged"), launchId: uuid, runId: uuid }),
 	z.strictObject({ kind: z.literal("event_recorded"), launchId: uuid, sequence: z.number().int().positive().safe() }),
+	z.strictObject({ kind: z.literal("intervention_recorded"), launchId: uuid, interventionId: uuid }),
 	z.strictObject({
 		kind: z.literal("authority_current"),
 		launchId: uuid,
