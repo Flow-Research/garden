@@ -20,6 +20,7 @@ The page follows the supplied All settings design: heading and description, hori
 | User Management | `/settings/user-management` | Workspace members and invitations |
 | Preferences | `/settings/preferences` | Appearance and theme selection |
 | General | `/settings/general` | Workspace settings |
+| Execution hosts | `/settings/execution-hosts` | Read-only [execution-host status](./external-execution-hosts.md) |
 
 These sections reuse the same components, queries and mutations as the modal. Their content redesigns are separate changes. Notifications has no tab or route until its behavior is implemented. This shell adds no new account operations, APIs or permissions.
 

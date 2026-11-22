@@ -1037,6 +1037,50 @@ describe('execution-host HTTP discovery', () => {
     ).toBe(401)
   })
 
+  it('refuses status reads while the pilot is unset, for another operator, and for an ordinary member', async () => {
+    const state = await fixture()
+    const disabled = await handleExecutionHostDirectory(
+      context(state.directoryRequest()),
+    )
+    expect(disabled.status).toBe(503)
+    // The status page shows its disabled state for exactly this answer.
+    expect(await disabled.json()).toEqual({
+      error: 'The engineering pilot is not configured',
+    })
+    expect(
+      (
+        await handleExecutionHostDirectory(
+          context(state.directoryRequest(), randomUUID()),
+        )
+      ).status,
+    ).toBe(403)
+    await database.db
+      .update(schema.member)
+      .set({ role: 'member' })
+      .where(
+        and(
+          eq(schema.member.organizationId, state.workspaceId),
+          eq(schema.member.userId, state.operatorId),
+        ),
+      )
+    expect(
+      (
+        await handleExecutionHostDirectory(
+          context(state.directoryRequest(), state.operatorId),
+        )
+      ).status,
+    ).toBe(403)
+    expect(
+      (
+        await handleExecutionHostRun(
+          context(state.directoryRequest(), state.operatorId),
+          randomUUID(),
+          'snapshot',
+        )
+      ).status,
+    ).toBe(403)
+  })
+
   it('returns a bounded directory cursor without skipping or repeating authorized rows', async () => {
     const state = await fixture()
     const ids = Array.from({ length: 101 }, () => randomUUID()).sort()
