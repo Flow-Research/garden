@@ -30,7 +30,7 @@ export async function admitBrowserChatRequest(
       decodeURIComponent(url.pathname.split('/').filter(Boolean)[2] ?? ''),
     catch: () => browserChatRefused(),
   })
-  if (runtimeName.isErr()) return runtimeName
+  if (runtimeName.isErr()) return Result.err(runtimeName.error)
   if (request.headers.get('upgrade')?.toLowerCase() === 'websocket') {
     const origin = request.headers.get('origin')
     const expected = new URL(env.BETTER_AUTH_URL ?? request.url).origin
