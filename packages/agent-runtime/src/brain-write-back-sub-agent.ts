@@ -38,6 +38,7 @@ type AgentRuntimeEnv = Cloudflare.Env & {
 
 type BrainWriteBackConfig = ReturnType<typeof brainWriteBackToolContext> & {
   origin: BrainRunOrigin
+  originGeneration: number
 }
 
 const THINK_TURN_MAX_RETRIES = 1
@@ -113,6 +114,7 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
               runKind: config.origin.runKind,
               runId: config.origin.runId,
               originObjectId: config.origin.objectId,
+              originGeneration: config.originGeneration,
             })
             return { ...context, runId: config.runId }
           }),
@@ -160,6 +162,7 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
         runKind: config.origin.runKind,
         runId: config.origin.runId,
         originObjectId: config.origin.objectId,
+        originGeneration: config.originGeneration,
       }),
     )
     if (origin.isErr())
@@ -216,6 +219,7 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
             workspaceId: input.workspaceId,
             ownerUserId: input.ownerUserId,
           },
+          originGeneration: input.originGeneration,
           ...(input.runKind === 'issue'
             ? { readAudience: 'org' as const }
             : {}),

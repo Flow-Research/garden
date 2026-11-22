@@ -89,7 +89,7 @@ Postgres is the authority for queryable state. Think facets keep runtime state i
 
 | Run | Start function | Workflow call | Facet |
 | --- | --- | --- | --- |
-| Issue run | `startIssueRun` in `packages/server/src/issues/run-service.ts` | `AgentDO.startIssueRunWorkflow` | `IssueRunSubAgent(issueId)` |
+| Issue run | `startIssueRun` in `packages/server/src/issues/run-service.ts` | `AgentDO.startIssueRunWorkflow` | `IssueRunSubAgent(issueRunFacetName(issueId, generation))`, generation per (issue, agent) in `issue_agent_context` |
 | Automation run | `startAutomationRun` in `packages/server/src/automations/run-service.ts` | `AgentDO.startAutomationRunWorkflow` | `AutomationRunSubAgent(runId)` |
 
 The Workflow instance id is the run id. See [run engine](../concepts/architecture/run-engine.md).
