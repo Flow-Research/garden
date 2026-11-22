@@ -38,6 +38,7 @@ import {
   createAgentModel,
   resolveAgentModelProfile,
 } from './model'
+import { createRetiredModelTracker } from './model-retirement'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 import {
   classifyGardenContextOverflow,
@@ -442,6 +443,8 @@ export abstract class RunSubAgentBase<
     return { agentClass: this.runConfig().agentClass, runId }
   }
 
+  private readonly retiredModel = createRetiredModelTracker()
+
   getModel(): LanguageModel {
     return createAgentModel({
       ai: this.env.AI,
@@ -597,6 +600,7 @@ export abstract class RunSubAgentBase<
         ai: this.env.AI,
         env: this.env,
         gatewayId: this.env.AI_GATEWAY_ID,
+        onModelRetired: this.retiredModel.observeTurn(runId),
         tracing: this.aiObservation.modelTracing(),
       }),
       experimental_telemetry: {
@@ -1132,7 +1136,7 @@ export abstract class RunSubAgentBase<
   private async failureReasonForOutput(runId: string, reason: string) {
     if (isHistoryUnverifiedMessage(reason)) return reason
     const authority = await this.authorizeFinalObservation(runId)
-    if (authority.isOk()) return reason
+    if (authority.isOk()) return this.retiredModel.failureReason(runId, reason)
     this.aiObservation.discardTurn()
     return 'brain_output_authority_denied'
   }
