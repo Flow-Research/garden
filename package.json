@@ -117,7 +117,7 @@
       "smol-toml@1": "1.7.1"
     },
     "patchedDependencies": {
-      "agents@0.17.3": "patches/agents@0.17.3.patch",
+      "agents@0.25.0": "patches/agents@0.25.0.patch",
       "@helix-db/helix-db@3.0.2": "patches/@helix-db__helix-db@3.0.2.patch",
       "@executor-js/sdk@1.5.40": "patches/@executor-js__sdk@1.5.40.patch",
       "@executor-js/config@1.5.40": "patches/@executor-js__config@1.5.40.patch",
