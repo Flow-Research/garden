@@ -38,6 +38,7 @@ import {
   createAgentModel,
   resolveAgentModelProfile,
 } from './model'
+import { createRetiredModelTracker } from './model-retirement'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 import {
   classifyGardenContextOverflow,
@@ -47,7 +48,6 @@ import {
 import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
-  type McpHost,
   type RuntimeMcpError,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -55,6 +55,7 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { loadRuntimeSkillSources } from './skills'
+import { isHistoryUnverifiedMessage } from './brain-run-authority'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -123,6 +124,7 @@ export type RunTurnInput = {
 
 export type RunSubAgentErrorCode =
   | 'database_failed'
+  | 'history_unverified'
   | 'invalid_state'
   | 'not_found'
   | 'runtime_failed'
@@ -140,6 +142,11 @@ export type RunSubAgentErrorFields = {
  */
 export type RunSubAgentError = Error &
   Readonly<RunSubAgentErrorFields> & { readonly _tag: string }
+
+/** `history_unverified` only reaches a caller that asked for it with `'report'`. */
+export type RunFacetTurnStartResult =
+  | RunWorkflowTurnStartResult
+  | { kind: 'history_unverified' }
 
 /**
  * Thrown from `beforeTurn` when a boundary guard (cancellation, timeout or a
@@ -237,17 +244,10 @@ export abstract class RunSubAgentBase<
   protected currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   protected aggUsage: RunUsageSnapshot | null = null
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
-  private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
-    getController: () => this.getMcpController(),
-    fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
-    waitForConnections: async (timeoutMs) =>
-      await this.mcp.waitForConnections({ timeout: timeoutMs }),
-    getServerStates: () =>
-      this.getMcpServers().servers as RuntimeMcpServerStates,
-    connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    logger: this.runConfig().logger,
-    readinessPolicy: 'required',
-  })
+  private mcpRuntime: {
+    runId: string | null
+    preparer: RuntimeMcpConnectionPreparer
+  } | null = null
 
   maxSteps = 30
 
@@ -426,9 +426,16 @@ export abstract class RunSubAgentBase<
     return null
   }
 
+  /** Id of the issue or automation run this facet serves; the facet name by default. */
+  protected runObjectId() {
+    return this.name
+  }
+
   protected telemetryMetadata(runId: string): Record<string, string> {
     return { agentClass: this.runConfig().agentClass, runId }
   }
+
+  private readonly retiredModel = createRetiredModelTracker()
 
   getModel(): LanguageModel {
     return createAgentModel({
@@ -465,7 +472,7 @@ export abstract class RunSubAgentBase<
         bucket: this.env.FILES,
         databaseUrl: this.env.HYPERDRIVE.connectionString,
       },
-      { kind: this.runConfig().kind, id: this.name },
+      { kind: this.runConfig().kind, id: this.runObjectId() },
     )
   }
 
@@ -517,9 +524,7 @@ export abstract class RunSubAgentBase<
     )
     await this.onTurnStarted(runId)
 
-    const mcpController = await this.mcpConnectionPreparer.ensureForTurn(
-      `${config.kind}-turn`,
-    )
+    const mcpController = await this.prepareMcpForTurn(`${config.kind}-turn`)
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
     if (observedChangesResult.isErr()) {
       this.logRunWarning('mcp_tool_changes_capture_failed', {
@@ -585,6 +590,7 @@ export abstract class RunSubAgentBase<
         ai: this.env.AI,
         env: this.env,
         gatewayId: this.env.AI_GATEWAY_ID,
+        onModelRetired: this.retiredModel.observeTurn(runId),
         tracing: this.aiObservation.modelTracing(),
       }),
       experimental_telemetry: {
@@ -745,11 +751,17 @@ export abstract class RunSubAgentBase<
    * This and `completeWorkflowTurn` are Workflow RPC targets, so failures are
    * thrown (the Workflow step must reject to retry) — always as the run's
    * tagged error, keeping its code and cause.
+   *
+   * With `historyUnverified: 'report'`, a start refused because retained
+   * history cannot be verified returns `history_unverified` and leaves the run
+   * open, so the caller can start it on a fresh context. With `'fail'`, that
+   * refusal fails the run with its fixed reason.
    */
   async executeWorkflowTurn(
     mode: RunTurnMode,
     input: TInput,
-  ): Promise<RunWorkflowTurnStartResult> {
+    historyUnverified: 'fail' | 'report' = 'fail',
+  ): Promise<RunFacetTurnStartResult> {
     const entry = await this.verifyRunEntry(input.runId)
     if (entry.isErr()) throw entry.error
 
@@ -776,6 +788,13 @@ export abstract class RunSubAgentBase<
     }
 
     const driveResult = await this.driveTurn(mode, input)
+    if (
+      driveResult.isErr() &&
+      driveResult.error.code === 'history_unverified' &&
+      mode === 'start' &&
+      historyUnverified === 'report'
+    )
+      return { kind: 'history_unverified' }
     if (driveResult.isErr()) {
       await this.closeFailedRun(input.runId, driveResult.error.message)
       throw await this.errorForOutput(input.runId, driveResult.error)
@@ -1105,13 +1124,15 @@ export abstract class RunSubAgentBase<
 
   /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
   private async failureReasonForOutput(runId: string, reason: string) {
+    if (isHistoryUnverifiedMessage(reason)) return reason
     const authority = await this.authorizeFinalObservation(runId)
-    if (authority.isOk()) return reason
+    if (authority.isOk()) return this.retiredModel.failureReason(runId, reason)
     this.aiObservation.discardTurn()
     return 'brain_output_authority_denied'
   }
 
   private async errorForOutput(runId: string, error: RunSubAgentError) {
+    if (isHistoryUnverifiedMessage(error.message)) return error
     const authority = await this.authorizeFinalObservation(runId)
     if (authority.isOk()) return error
     this.aiObservation.discardTurn()
@@ -1392,8 +1413,37 @@ export abstract class RunSubAgentBase<
     this.aggUsage = null
   }
 
-  private getMcpController() {
-    const host: McpHost = {
+  /**
+   * One controller and preparer per run. A facet hosts successive runs, and
+   * the preparer skips its refresh while warm, so sharing them across runs
+   * would hand a new run the previous run's connector accounts.
+   */
+  private mcpConnectionPreparer() {
+    const runId = this.currentRunId
+    if (this.mcpRuntime?.runId === runId) return this.mcpRuntime.preparer
+
+    const controller = this.createMcpController()
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
+      waitForConnections: async (timeoutMs) =>
+        await this.mcp.waitForConnections({ timeout: timeoutMs }),
+      getServerStates: () =>
+        this.getMcpServers().servers as RuntimeMcpServerStates,
+      connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
+      logger: this.runConfig().logger,
+      readinessPolicy: 'required',
+    })
+    this.mcpRuntime = { runId, preparer }
+    return preparer
+  }
+
+  private async prepareMcpForTurn(reason: string) {
+    return await this.mcpConnectionPreparer().ensureForTurn(reason)
+  }
+
+  private createMcpController() {
+    return new RuntimeMcpController({
       name: this.name,
       env: this.env,
       ctx: this.ctx,
@@ -1407,17 +1457,12 @@ export abstract class RunSubAgentBase<
         }),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveMcpIdentity(),
-    }
-    const decideOwner = this.decideAnalysisOwner()
-    return new RuntimeMcpController(
-      decideOwner === null
-        ? host
-        : { ...host, decideAnalysisOwner: () => decideOwner },
-    )
+      decideAnalysisOwner: () => this.decideAnalysisOwner(),
+    })
   }
 
   /** Loads MCP connections on demand for a tool that needs them mid-turn. */
   protected async ensureMcpConnectionsLoaded(reason: string) {
-    return await this.mcpConnectionPreparer.ensureLoaded(reason)
+    return await this.mcpConnectionPreparer().ensureLoaded(reason)
   }
 }

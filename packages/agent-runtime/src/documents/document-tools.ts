@@ -38,6 +38,22 @@ export class DocumentToolError extends TaggedError('DocumentToolError')<{
   message: string
 }>() {}
 
+/**
+ * Why a stored document produced no readable text. `readDocument` turns this
+ * into recovery guidance for the model instead of a raw parser message.
+ */
+export type DocumentExtractionFailureReason =
+  | 'unreadable'
+  | 'no_text'
+  | 'unsupported'
+
+export class DocumentExtractionError extends TaggedError(
+  'DocumentExtractionError',
+)<{
+  message: string
+  reason: DocumentExtractionFailureReason
+}>() {}
+
 type DocumentArtifactAuthorityFailure = {
   ok: false
   error: DocumentArtifactRpcError
@@ -789,7 +805,23 @@ export async function readDocument(args: {
     bytesResult.value,
     rowResult.value.fileType,
   )
-  if (textResult.isErr()) return { ok: false, error: textResult.error.message }
+  if (textResult.isErr()) {
+    console.warn('[documents] text extraction failed', {
+      documentId: rowResult.value.id,
+      fileType: rowResult.value.fileType,
+      reason: textResult.error.reason,
+      detail: textResult.error.message,
+    })
+    return {
+      ok: false,
+      reason: textResult.error.reason,
+      error: extractionFailureMessage(
+        rowResult.value.filename,
+        rowResult.value.fileType,
+        textResult.error.reason,
+      ),
+    }
+  }
   return {
     ok: true,
     document_id: rowResult.value.id,
@@ -1289,8 +1321,37 @@ async function extractXlsxText(bytes: Buffer) {
   })
 }
 
-async function extractDocumentText(bytes: Buffer, fileType: string) {
-  if (fileType === 'xlsx') return extractXlsxText(bytes)
+/**
+ * Tells the model what went wrong and how to recover, so it asks the user for
+ * the content rather than guessing or echoing parser internals.
+ */
+function extractionFailureMessage(
+  filename: string,
+  fileType: string,
+  reason: DocumentExtractionFailureReason,
+) {
+  const cause = {
+    no_text: `${filename} has no extractable text. It is likely a scanned or image-only file.`,
+    unreadable: `${filename} could not be parsed. It may be encrypted, password-protected, or damaged.`,
+    unsupported: `${filename} is a ${fileType} file, which Garden cannot read as text.`,
+  }[reason]
+  return `${cause} Tell the user you could not read it, then ask them to paste the relevant text into chat or upload a text-based copy (a PDF with selectable text, .docx, .txt, or .md). Do not guess at the contents.`
+}
+
+function extractionFailure(error: unknown) {
+  return new DocumentExtractionError({
+    message: error instanceof Error ? error.message : String(error),
+    reason: 'unreadable',
+  })
+}
+
+async function extractDocumentText(
+  bytes: Buffer,
+  fileType: string,
+): Promise<Result<string, DocumentExtractionError>> {
+  if (fileType === 'xlsx') {
+    return (await extractXlsxText(bytes)).mapError(extractionFailure)
+  }
   if (fileType === 'docx') {
     return Result.tryPromise({
       try: async () => {
@@ -1298,10 +1359,7 @@ async function extractDocumentText(bytes: Buffer, fileType: string) {
         const result = await mammoth.extractRawText({ buffer: bytes })
         return result.value
       },
-      catch: (error) =>
-        new DocumentToolError({
-          message: error instanceof Error ? error.message : String(error),
-        }),
+      catch: extractionFailure,
     })
   }
   if (fileType === 'pdf') return extractPdfText(bytes)
@@ -1314,8 +1372,9 @@ async function extractDocumentText(bytes: Buffer, fileType: string) {
     return Result.ok(Buffer.from(bytes).toString('utf8'))
   }
   return Result.err(
-    new DocumentToolError({
+    new DocumentExtractionError({
       message: `Unsupported document type: ${fileType}`,
+      reason: 'unsupported',
     }),
   )
 }
@@ -1359,30 +1418,47 @@ function fileTypeFromFilename(filename: string, mediaType?: string | null) {
   return 'unknown'
 }
 
-async function extractPdfText(bytes: Buffer) {
-  return Result.tryPromise({
+/**
+ * Opens a PDF with unpdf's serverless pdfjs build. Plain `pdfjs-dist` touches
+ * browser canvas globals such as `DOMMatrix`, which workerd does not provide,
+ * so every PDF read in the agent Worker failed.
+ */
+async function loadPdf(bytes: Uint8Array) {
+  const { getDocumentProxy } = await import('unpdf')
+  return getDocumentProxy(new Uint8Array(bytes))
+}
+
+/**
+ * Extracts PDF text with `[Page N]` markers, which `findInDocument` uses to
+ * attach page numbers to citations. A PDF with no text layer is a failure,
+ * not an empty success, so the agent asks the user instead of summarizing
+ * nothing.
+ */
+async function extractPdfText(
+  bytes: Buffer,
+): Promise<Result<string, DocumentExtractionError>> {
+  const pagesResult = await Result.tryPromise({
     try: async () => {
-      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
-      const pdf = await pdfjsLib.getDocument({
-        data: new Uint8Array(bytes),
-      }).promise
-      const parts: string[] = []
-      for (let i = 1; i <= pdf.numPages; i += 1) {
-        const page = await pdf.getPage(i)
-        const textContent = await page.getTextContent()
-        parts.push(
-          `[Page ${i}]\n${textContent.items
-            .map((item) => ('str' in item ? item.str : ''))
-            .join(' ')}`,
-        )
-      }
-      return parts.join('\n\n')
+      const { extractText } = await import('unpdf')
+      const { text } = await extractText(await loadPdf(bytes), {
+        mergePages: false,
+      })
+      return text
     },
-    catch: (error) =>
-      new DocumentToolError({
-        message: error instanceof Error ? error.message : String(error),
-      }),
+    catch: extractionFailure,
   })
+  return pagesResult.andThen((pages) =>
+    pages.some((page) => page.trim())
+      ? Result.ok(
+          pages.map((page, i) => `[Page ${i + 1}]\n${page}`).join('\n\n'),
+        )
+      : Result.err(
+          new DocumentExtractionError({
+            message: 'PDF has no text layer',
+            reason: 'no_text',
+          }),
+        ),
+  )
 }
 
 export type StructureTreeNode = {
@@ -1394,11 +1470,9 @@ export type StructureTreeNode = {
 }
 
 async function countPdfPages(bytes: Uint8Array): Promise<number | null> {
-  const result = await Result.tryPromise(async () => {
-    const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise
-    return pdf.numPages
-  })
+  const result = await Result.tryPromise(
+    async () => (await loadPdf(bytes)).numPages,
+  )
   return result.isOk() ? result.value : null
 }
 
@@ -1408,9 +1482,7 @@ async function extractStructureTree(
 ): Promise<StructureTreeNode[] | null> {
   const result = await Result.tryPromise(async () => {
     if (fileType === 'pdf') {
-      const pdfjsLib = await import('pdfjs-dist/legacy/build/pdf.mjs')
-      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) })
-        .promise
+      const pdf = await loadPdf(bytes)
       if (pdf.numPages <= 5) return null
       const outline = (await pdf.getOutline()) as
         | { title?: string }[]

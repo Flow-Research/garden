@@ -89,7 +89,7 @@ function AuthenticatedRouteError({ error, reset }: ErrorComponentProps) {
         </p>
         {import.meta.env.DEV ? (
           <p className="mt-3 rounded-lg bg-muted px-3 py-2 text-left text-xs text-muted-foreground">
-            {error.message}
+            {error instanceof Error ? error.message : 'Unknown error'}
           </p>
         ) : null}
         <Button type="button" className="mt-5" onClick={reset}>

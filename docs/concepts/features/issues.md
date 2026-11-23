@@ -29,7 +29,7 @@ When you assign an issue to an agent and start it, the work passes through four 
 1. `startIssueRun` in `packages/server/src/issues/run-service.ts` writes the `issue_run` row and asks the agent's runtime to begin.
 2. `AgentDO.startIssueRunWorkflow` starts a `RunWorkflow` instance for that run.
 3. `RunWorkflow` in `packages/agent-runtime/src/run-workflow.ts` drives the turns. It owns retry, wait, resume, and cancel.
-4. Each turn runs in `IssueRunSubAgent` (`packages/agent-runtime/src/issue-run-sub-agent.ts`), a Think facet keyed by the issue ID.
+4. Each turn runs in `IssueRunSubAgent` (`packages/agent-runtime/src/issue-run-sub-agent.ts`), a Think facet inside the assigned agent's `AgentDO`, keyed by the issue ID and that agent's context generation on the issue. The generation lives in `issue_agent_context`, one row per issue and agent, and a missing row means generation 0. Generation 0 uses the bare issue ID. A later generation `n` uses `<issueId>:ctx<n>`. `issueRunFacetName` in `packages/agent-runtime/src/issue-agent-context.ts` owns this mapping.
 
 Each agent gets at most one live run per issue. `startIssueRun` takes a Postgres advisory lock on the issue ID, then checks for a live run by the same agent before it inserts. A second start for that agent, from a double click, a retry, or another actor, returns `{ kind: 'already_running', runId }` with the existing run, and no second row or Workflow is created. A waiting run is resumed instead (`resumed`). The Workflow instance ID is the run ID, so retrying the runtime start for the same run cannot create a second instance. Different agents can each run on the same issue, for example after a comment mentions them.
 
@@ -38,6 +38,8 @@ If the runtime start fails after the row is written, `markStartFailed` marks the
 `cancelIssueRun` sets `issue_run.cancel_requested_at` and sends a cancel event to the run's Workflow instance, which finalizes the row. Both `POST /api/issues/:id/cancel` and an issue status or assignee change that stops live runs go through it.
 
 A run can outlive its Workflow instance: Workflows may report the instance as not found, or it may already be `complete`, `errored`, or `terminated`. No workflow step will finalize such a run, so `cancelIssueRun` does it directly. It marks the run `cancelled` with `result_json.reason` set to `workflow_instance_missing` or `workflow_instance_terminal`, clears `issue.active_run_id`, appends `issue_run:cancelled`, and returns success. Inbox items derive from live run status, so they clear too. Any other Workflow error fails the cancel and leaves the run unchanged.
+
+A run starts on a fresh agent context when the current facet holds history that Brain permissions cannot verify. The issue's generation increases by one, the old facet keeps its history for review, and the run timeline shows `issue_run:context_reset`. [Permissions](permissions.md#brain-grants-for-issue-and-automation-runs) describes when this happens.
 
 The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accumulates in `issue_run.usage_json`. The [run engine](../architecture/run-engine.md) page explains the Workflow loop in full.
 
