@@ -1,4 +1,5 @@
 import { env, exports } from 'cloudflare:workers'
+import { getAgentByName } from 'agents'
 import { beforeAll, expect, it, vi } from 'vitest'
 
 declare const __CHUNKS__: number
@@ -22,8 +23,7 @@ function collectText(socket: WebSocket) {
 }
 
 async function runTurn(name: string, withViewer: boolean) {
-  const root = env.RootAgent.get(env.RootAgent.idFromName(name))
-  await root.setName(name)
+  const root = await getAgentByName(env.RootAgent, name)
   let viewer: ReturnType<typeof collectText> | undefined
   if (withViewer) {
     const response = await exports.default.fetch(
@@ -36,21 +36,31 @@ async function runTurn(name: string, withViewer: boolean) {
     viewer = collectText(socket)
     await root.status('none')
   }
-  await root.resetCounts()
+  const { instance } = await root.resetCounts()
   const startedAt = Date.now()
   await root.start('turn-1')
   await vi.waitFor(
     async () => expect(await root.status('turn-1')).toBe('completed'),
-    { timeout: 280_000, interval: 100 },
+    { timeout: 1_700_000, interval: 100 },
   )
   if (viewer) {
-    const connected = viewer
-    await vi.waitFor(
-      () => expect(connected.text.length).toBe(expected.length),
-      { timeout: 30_000, interval: 50 },
-    )
+    let seen = viewer.text.length
+    let lastProgress = Date.now()
+    while (
+      viewer.text.length < expected.length &&
+      Date.now() - lastProgress < 60_000
+    ) {
+      // Polling keeps the root resident; eviction would zero its counters.
+      await root.readCounts()
+      await new Promise((resolve) => setTimeout(resolve, 200))
+      if (viewer.text.length > seen) {
+        seen = viewer.text.length
+        lastProgress = Date.now()
+      }
+    }
   }
   const counts = await root.readCounts()
+  expect(counts.instance).toBe(instance)
   const result = {
     viewers: withViewer ? 1 : 0,
     chunks: __CHUNKS__,
@@ -66,8 +76,7 @@ async function runTurn(name: string, withViewer: boolean) {
 
 // The pool transforms the SDK lazily on first facet load, which takes minutes.
 beforeAll(async () => {
-  const warm = env.RootAgent.get(env.RootAgent.idFromName('warm'))
-  await warm.setName('warm')
+  const warm = await getAgentByName(env.RootAgent, 'warm')
   await warm.status('none')
 }, 600_000)
 

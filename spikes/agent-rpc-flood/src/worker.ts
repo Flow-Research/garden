@@ -64,6 +64,7 @@ export class RunFacet extends Think<Env> {
 
 export class RootAgent extends Agent<Env> {
   counts = { setName: 0, broadcast: 0 }
+  instance = crypto.randomUUID()
 
   override async setName(...args: Parameters<Agent<Env>['setName']>) {
     this.counts.setName += 1
@@ -89,10 +90,11 @@ export class RootAgent extends Agent<Env> {
 
   resetCounts() {
     this.counts = { setName: 0, broadcast: 0 }
+    return this.readCounts()
   }
 
   readCounts() {
-    return this.counts
+    return { ...this.counts, instance: this.instance }
   }
 }
 
