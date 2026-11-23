@@ -56,8 +56,10 @@ documented compatibility changes:
 11. SDK connection projection prioritizes its durable reauthorization marker over
     later catalogue health observations. Removing a Workstream connection revokes
     its refresh credential at the pinned issuer before deleting connection state;
-    provider failure leaves the connection available for a retry. An in-flight
-    refresh in the same Executor is awaited before reading the current credential.
+    provider failure or a missing issuer binding retains the connection. Each
+    Workstream authorization has distinct credential IDs. Refresh writes match the
+    grant they used, and Garden's D1 batch deletes only that grant and its catalogue.
+    If a reconnect replaces it during revocation, the replacement stays connected.
 
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's

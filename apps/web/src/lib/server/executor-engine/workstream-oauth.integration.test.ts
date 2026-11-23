@@ -57,7 +57,10 @@ describe('Workstream public OAuth lifecycle', () => {
   })
 
   it('installs OAuth through discovery and binds callbacks and refresh to each member', async () => {
-    const codes = new Map<string, { member: string; challenge: string }>()
+    const codes = new Map<
+      string,
+      { member: string; challenge: string; generation?: number }
+    >()
     const refreshes: string[] = []
     const tokenRequests: URLSearchParams[] = []
     const challenges = new Map<string, string>()
@@ -70,6 +73,8 @@ describe('Workstream public OAuth lifecycle', () => {
     const callTokens: string[] = []
     const rejectedAccessTokens: string[] = []
     let revocationAvailable = true
+    let pauseRevocation: (() => Promise<void>) | undefined
+    let pauseRefresh: ((token: string) => Promise<void>) | undefined
     const http = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init)
       if (request.url.includes('/.well-known/oauth-protected-resource')) {
@@ -99,6 +104,7 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(body.get('token_type_hint')).toBe('refresh_token')
         const token = body.get('token') ?? ''
         expect(refreshTokens.has(token)).toBe(true)
+        await pauseRevocation?.()
         refreshTokens.delete(token)
         return new Response(null, { status: 200 })
       }
@@ -113,6 +119,7 @@ describe('Workstream public OAuth lifecycle', () => {
           if (code === undefined)
             return Response.json({ error: 'invalid_grant' }, { status: 400 })
           member = code.member
+          generation = code.generation ?? 0
           codes.delete(body.get('code') ?? '')
         } else {
           if (body.get('grant_type') !== 'refresh_token')
@@ -121,6 +128,7 @@ describe('Workstream public OAuth lifecycle', () => {
               { status: 400 },
             )
           const refreshToken = body.get('refresh_token') ?? ''
+          await pauseRefresh?.(refreshToken)
           const grant = refreshTokens.get(refreshToken)
           if (grant === undefined)
             return Response.json({ error: 'invalid_grant' }, { status: 400 })
@@ -503,6 +511,107 @@ describe('Workstream public OAuth lifecycle', () => {
         })
         expect(expiredConnections).toHaveLength(1)
         expect(expiredConnections[0]?.lastHealth?.status).toBe('expired')
+
+        const reconnectAlice = (generation: number) =>
+          Effect.gen(function* () {
+            const flow = yield* restoredAlice.oauth.start({
+              client: managed.value.slug,
+              clientOwner: 'org',
+              owner: 'user',
+              name: ConnectionName.make('Workstream'),
+              integration: slug,
+              template: AuthTemplateSlug.make('oauth2'),
+              redirectUri: callback,
+            })
+            if (flow.status !== 'redirect')
+              throw new Error('Expected Workstream OAuth redirect')
+            const code = `alice-reconnect-${generation}`
+            codes.set(code, {
+              member: 'member-a',
+              challenge:
+                new URL(flow.authorizationUrl).searchParams.get(
+                  'code_challenge',
+                ) ?? '',
+              generation,
+            })
+            return yield* restoredAlice.oauth.complete({
+              state: flow.state,
+              code,
+            })
+          })
+        const currentGrant = yield* reconnectAlice(100)
+        const revocationStarted = Promise.withResolvers<void>()
+        const finishRevocation = Promise.withResolvers<void>()
+        pauseRevocation = () => {
+          revocationStarted.resolve()
+          return finishRevocation.promise
+        }
+        const removing = Effect.runPromise(
+          restoredAlice.connections.remove(currentGrant).pipe(Effect.result),
+        )
+        yield* Effect.promise(() => revocationStarted.promise)
+        const renewedGrant = yield* reconnectAlice(200).pipe(
+          Effect.ensuring(Effect.sync(() => finishRevocation.resolve())),
+        )
+        expect(Result.isFailure(yield* Effect.promise(() => removing))).toBe(
+          true,
+        )
+        pauseRevocation = undefined
+        expect(refreshTokens.has('member-a-refresh-100')).toBe(false)
+        expect(refreshTokens.has('member-a-refresh-200')).toBe(true)
+        expect(
+          yield* restoredAlice.connections.list({ integration: slug }),
+        ).toHaveLength(1)
+        expect(
+          JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
+        ).toContain('member-a-access-200')
+
+        const refreshStarted = Promise.withResolvers<void>()
+        const finishRefresh = Promise.withResolvers<void>()
+        pauseRefresh = (token) => {
+          if (token !== 'member-a-refresh-200') return Promise.resolve()
+          refreshStarted.resolve()
+          return finishRefresh.promise
+        }
+        refreshTokens.delete('member-a-refresh-200')
+        clock.mockReturnValue(now + 14405_000)
+        const staleRefresh = Effect.runPromise(
+          restoredAlice.connections.checkHealth(renewedGrant),
+        )
+        yield* Effect.promise(() => refreshStarted.promise)
+        const replacementGrant = yield* reconnectAlice(300).pipe(
+          Effect.ensuring(Effect.sync(() => finishRefresh.resolve())),
+        )
+        expect((yield* Effect.promise(() => staleRefresh)).status).toBe(
+          'expired',
+        )
+        const afterStaleRefresh = yield* restoredAlice.connections.list({
+          integration: slug,
+        })
+        expect(afterStaleRefresh[0]?.lastHealth?.status).not.toBe('expired')
+        expect(
+          JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
+        ).toContain('member-a-access-300')
+
+        const storedClients = Object.values(stored).find((rows) =>
+          rows.some((row) => row.client_id === 'garden-dev'),
+        )
+        if (storedClients === undefined)
+          throw new Error('Expected the stored Garden OAuth client')
+        storedClients.splice(
+          storedClients.findIndex((row) => row.client_id === 'garden-dev'),
+          1,
+        )
+        const callsBeforeMissingBinding = http.mock.calls.length
+        const failedRemoval = yield* restoredAlice.connections
+          .remove(replacementGrant)
+          .pipe(Effect.result)
+        expect(Result.isFailure(failedRemoval)).toBe(true)
+        expect(http.mock.calls).toHaveLength(callsBeforeMissingBinding)
+        expect(refreshTokens.has('member-a-refresh-300')).toBe(true)
+        expect(
+          yield* restoredAlice.connections.list({ integration: slug }),
+        ).toHaveLength(1)
       }),
     ).finally(async () => {
       await Effect.runPromise(

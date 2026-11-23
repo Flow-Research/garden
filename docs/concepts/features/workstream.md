@@ -33,6 +33,10 @@ grant: 30 days idle and 90 days absolute maximum, enforced by Flow Identity.
 Revocation remains authoritative. This does not change Garden sign-in or grant
 any additional Workstream permissions.
 
+Disconnect revokes the saved authorization at Flow Identity. If the issuer is
+unavailable, Garden retains the connection and permits another attempt. If a
+reconnect replaces the grant during disconnect, the new authorization stays connected.
+
 ## What the member sees
 
 1. Open the connector catalogue and select **Workstream**.
