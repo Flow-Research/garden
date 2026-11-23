@@ -69,8 +69,11 @@ export function LoginSessions() {
   const queryClient = useQueryClient()
   const { replace } = useNavigationActions()
   const authLogout = useAuthStore((s) => s.logout)
-  const { data: authSession, refetch: refetchAuthSession } =
-    authClient.useSession()
+  const {
+    data: authSession,
+    isPending: authSessionPending,
+    refetch: refetchAuthSession,
+  } = authClient.useSession()
   const sessionsQuery = useQuery(accountSessionsQueryOptions())
   const [confirmOpen, setConfirmOpen] = useState(false)
   // Kept after close so the dialog copy does not blank out while it animates.
@@ -189,7 +192,7 @@ export function LoginSessions() {
             variant="outline"
             size="sm"
             onClick={() => askToSignOut({ kind: 'others' })}
-            disabled={!hasOtherSessions}
+            disabled={authSessionPending || !hasOtherSessions}
           >
             Log out of other sessions
           </Button>
@@ -217,7 +220,8 @@ export function LoginSessions() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {sessionsQuery.isPending ? (
+            {/* Until the current session is known, every row would offer sign-out. */}
+            {sessionsQuery.isPending || authSessionPending ? (
               <SessionSkeletonRows />
             ) : sessionsQuery.isError ? (
               <tr>
