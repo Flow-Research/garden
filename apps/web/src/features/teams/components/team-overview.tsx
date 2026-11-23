@@ -6,12 +6,11 @@ import { memberListOptions } from '@/lib/workspace/queries'
 import { teamListOptions } from '../queries'
 import { TeamMembersLoadError } from './team-route-error'
 import { TeamMemberView } from './team-member-view'
-import { TeamInviteSettings } from './team-invite-settings'
 import { TeamManagementPanel } from './team-management-panel'
 
 /**
  * Teams overview, matched to designs 25 and 29: the shared Team management
- * panel on one secondary-surface card, then workspace invite settings.
+ * panel on one secondary-surface card.
  * Members see the combined member view instead.
  */
 export function TeamOverview() {
@@ -55,7 +54,6 @@ export function TeamOverview() {
           <div className="rounded-2xl bg-background-main-secondary p-10">
             <TeamManagementPanel teams={teams} teamLink="/teams/$teamId" />
           </div>
-          <TeamInviteSettings teams={teams} />
         </div>
       </div>
     </div>

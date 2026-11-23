@@ -1,0 +1,18 @@
+diff --git a/dist/state.mjs b/dist/state.mjs
+index f6158312e8b9ed51ebd95bf7bf0612efccb1b8ac..d551c036bd29d2b6151af35d140c48309262e6bb 100644
+--- a/dist/state.mjs
++++ b/dist/state.mjs
+@@ -142,7 +142,12 @@ async function parseGenericState(c, state, settings) {
+ 			errorURL: parsedData.errorURL
+ 		});
+ 		expireCookie(c, stateCookie);
+-		await c.context.internalAdapter.deleteVerificationByIdentifier(getAuthStateVerificationIdentifier(state));
++		const consumed = await c.context.internalAdapter.consumeVerificationValue(getAuthStateVerificationIdentifier(state));
++		if (!consumed || consumed.id !== data.id || consumed.value !== data.value) throw new StateError("State mismatch: verification already consumed or changed", {
++			code: "state_mismatch",
++			details: { state },
++			errorURL: parsedData.errorURL
++		});
+ 	}
+ 	if (parsedData.expiresAt < Date.now()) throw new StateError("Invalid state: request expired", {
+ 		code: "state_mismatch",

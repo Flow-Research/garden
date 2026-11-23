@@ -5,10 +5,10 @@ import { SettingsPanel } from '@/features/settings/components/settings-page-shel
 export const Route = createFileRoute(
   '/_authenticated/_app/settings/preferences',
 )({
-  component: PreferencesSettingsRoute,
+  component: AppearanceTabSection,
 })
 
-function PreferencesSettingsRoute() {
+function AppearanceTabSection() {
   return (
     <SettingsPanel>
       <AppearanceTab />

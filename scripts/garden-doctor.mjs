@@ -2,7 +2,7 @@
 
 import { spawnSync } from 'node:child_process'
 
-const REQUIRED_NODE = [22, 12]
+const REQUIRED_NODE = [22, 19]
 const REQUIRED_SERVICES = ['postgres', 'helix']
 const appUrl = process.env.GARDEN_URL ?? 'http://localhost:3000/'
 const jsonOutput = process.argv.includes('--json')
@@ -71,7 +71,7 @@ function checkNode() {
     passed ? 'passed' : 'failed',
     passed
       ? `Node.js ${process.versions.node}`
-      : `Node.js ${process.versions.node}; use Node.js 22.12 or newer`,
+      : `Node.js ${process.versions.node}; use Node.js 22.19 or newer`,
   )
 }
 

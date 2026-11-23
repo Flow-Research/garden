@@ -3,10 +3,10 @@ import { WorkspaceTab } from '@/features/settings/components/workspace-tab'
 import { SettingsPanel } from '@/features/settings/components/settings-page-shell'
 
 export const Route = createFileRoute('/_authenticated/_app/settings/general')({
-  component: GeneralSettingsRoute,
+  component: WorkspaceTabSection,
 })
 
-function GeneralSettingsRoute() {
+function WorkspaceTabSection() {
   return (
     <SettingsPanel>
       <WorkspaceTab />
