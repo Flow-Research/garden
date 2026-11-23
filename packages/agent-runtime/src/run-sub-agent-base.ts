@@ -48,7 +48,6 @@ import {
 import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
-  type McpHost,
   type RuntimeMcpError,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -245,17 +244,10 @@ export abstract class RunSubAgentBase<
   protected currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   protected aggUsage: RunUsageSnapshot | null = null
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
-  private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
-    getController: () => this.getMcpController(),
-    fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
-    waitForConnections: async (timeoutMs) =>
-      await this.mcp.waitForConnections({ timeout: timeoutMs }),
-    getServerStates: () =>
-      this.getMcpServers().servers as RuntimeMcpServerStates,
-    connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    logger: this.runConfig().logger,
-    readinessPolicy: 'required',
-  })
+  private mcpRuntime: {
+    runId: string | null
+    preparer: RuntimeMcpConnectionPreparer
+  } | null = null
 
   maxSteps = 30
 
@@ -532,9 +524,7 @@ export abstract class RunSubAgentBase<
     )
     await this.onTurnStarted(runId)
 
-    const mcpController = await this.mcpConnectionPreparer.ensureForTurn(
-      `${config.kind}-turn`,
-    )
+    const mcpController = await this.prepareMcpForTurn(`${config.kind}-turn`)
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
     if (observedChangesResult.isErr()) {
       this.logRunWarning('mcp_tool_changes_capture_failed', {
@@ -1423,8 +1413,37 @@ export abstract class RunSubAgentBase<
     this.aggUsage = null
   }
 
-  private getMcpController() {
-    const host: McpHost = {
+  /**
+   * One controller and preparer per run. A facet hosts successive runs, and
+   * the preparer skips its refresh while warm, so sharing them across runs
+   * would hand a new run the previous run's connector accounts.
+   */
+  private mcpConnectionPreparer() {
+    const runId = this.currentRunId
+    if (this.mcpRuntime?.runId === runId) return this.mcpRuntime.preparer
+
+    const controller = this.createMcpController()
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
+      waitForConnections: async (timeoutMs) =>
+        await this.mcp.waitForConnections({ timeout: timeoutMs }),
+      getServerStates: () =>
+        this.getMcpServers().servers as RuntimeMcpServerStates,
+      connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
+      logger: this.runConfig().logger,
+      readinessPolicy: 'required',
+    })
+    this.mcpRuntime = { runId, preparer }
+    return preparer
+  }
+
+  private async prepareMcpForTurn(reason: string) {
+    return await this.mcpConnectionPreparer().ensureForTurn(reason)
+  }
+
+  private createMcpController() {
+    return new RuntimeMcpController({
       name: this.name,
       env: this.env,
       ctx: this.ctx,
@@ -1438,17 +1457,12 @@ export abstract class RunSubAgentBase<
         }),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveMcpIdentity(),
-    }
-    const decideOwner = this.decideAnalysisOwner()
-    return new RuntimeMcpController(
-      decideOwner === null
-        ? host
-        : { ...host, decideAnalysisOwner: () => decideOwner },
-    )
+      decideAnalysisOwner: () => this.decideAnalysisOwner(),
+    })
   }
 
   /** Loads MCP connections on demand for a tool that needs them mid-turn. */
   protected async ensureMcpConnectionsLoaded(reason: string) {
-    return await this.mcpConnectionPreparer.ensureLoaded(reason)
+    return await this.mcpConnectionPreparer().ensureLoaded(reason)
   }
 }
