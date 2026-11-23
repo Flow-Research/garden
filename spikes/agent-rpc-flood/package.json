@@ -1,0 +1,10 @@
+{
+  "name": "agent-rpc-flood-harness",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "vitest run" },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "vitest": "4.1.4"
+  }
+}
