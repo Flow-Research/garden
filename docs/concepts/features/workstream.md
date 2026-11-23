@@ -36,6 +36,10 @@ any additional Workstream permissions.
 Disconnect revokes the saved authorization at Flow Identity. If the issuer is
 unavailable, Garden retains the connection and permits another attempt. If a
 reconnect replaces the grant during disconnect, the new authorization stays connected.
+Garden saves connection and encrypted credential changes in one database batch.
+A database rollback keeps the previous local records available for retry. Flow Identity
+may already have exchanged a code, rotated a token, or revoked authorization by
+that point.
 
 ## What the member sees
 

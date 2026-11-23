@@ -56,12 +56,14 @@ documented compatibility changes:
 11. SDK connection projection prioritizes its durable reauthorization marker over
     later catalogue health observations. Removing a Workstream connection revokes
     its refresh credential at the pinned issuer before deleting connection state;
-    provider failure or a missing issuer binding retains the connection. Each
-    Workstream authorization has distinct credential IDs. Refresh writes match the
-    grant they used. Replacement and disconnect remove the obsolete credential
-    items after checking the saved grant. Garden's D1 batch deletes only the
-    revoked grant and its catalogue. If a reconnect replaces it during
-    revocation, the replacement stays connected.
+    provider failure or a missing issuer binding retains the connection. Mint,
+    reconnect, and refresh prepare ciphertext through the existing encrypted
+    provider and publish new credential IDs with the connection in one D1 batch.
+    The batch matches the exact previous credential IDs and removes the obsolete
+    ciphertext. The request-scoped Executor and hibernatable MCP session both
+    receive this D1 capability. Disconnect batches credential and catalogue
+    deletion after issuer revocation. A database rollback retains local custody for
+    retry. A competing grant change leaves the current connection intact.
 
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's

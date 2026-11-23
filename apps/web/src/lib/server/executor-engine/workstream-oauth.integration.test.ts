@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
+import { DatabaseSync } from 'node:sqlite'
 import { Deferred, Effect, Layer, Option, Result } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import {
@@ -10,24 +11,21 @@ import {
   ProviderKey,
   Subject,
   Tenant,
+  collectTables,
   createExecutor,
   type FumaTables,
 } from '@executor-js/sdk/core'
-import { fumadb } from '@executor-js/fumadb'
-import {
-  memoryAdapter,
-  type MemoryDatabase,
-} from '@executor-js/fumadb/adapters/memory'
-import { schema } from '@executor-js/fumadb/schema'
 import { mcpPlugin } from '@executor-js/plugin-mcp/core'
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { settleOAuthCallback } from '@/routes/api/oauth/callback'
+import { sqliteD1 } from '@/test/executor-sqlite-d1'
 import { ensureServerManagedOAuthClient } from './auth-contract'
 import { listServerOwnedExecutorProviders } from './catalog'
 import { installProvider } from './install'
 import { IntegrationsShDomainSurface } from './integrations-sh'
 import { makeExecutorPlugins } from './plugins'
+import { createD1ExecutorDb } from './d1'
 
 const callbackExecutors = vi.hoisted(() => new Map<string, unknown>())
 
@@ -48,8 +46,7 @@ const resourceScopes = ['workstream:access', 'workstream-mcp-audience']
 const scopes = [...resourceScopes, 'offline_access']
 const slug = IntegrationSlug.make('workstream')
 
-/** Exercises the installed OAuth/MCP engine and encrypted provider over a shared
- * in-memory FumaDB store. Only provider HTTP is replaced; no live credentials or services. */
+/** Exercises the SDK and encrypted provider through the production D1 adapter over SQLite. */
 describe('Workstream public OAuth lifecycle', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -71,11 +68,13 @@ describe('Workstream public OAuth lifecycle', () => {
       string,
       { member: string; generation: number; grantId: string }
     >()
+    const refreshGrantIds = new Map<string, string>()
     const callTokens: string[] = []
     const rejectedAccessTokens: string[] = []
     let revocationAvailable = true
     let pauseRevocation: (() => Promise<void>) | undefined
     let pauseRefresh: ((token: string) => Promise<void>) | undefined
+    let pauseRefreshResponse: ((token: string) => Promise<void>) | undefined
     const http = vi.fn<typeof fetch>(async (input, init) => {
       const request = new Request(input, init)
       if (request.url.includes('/.well-known/oauth-protected-resource')) {
@@ -104,9 +103,11 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(body.get('client_id')).toBe('garden-dev')
         expect(body.get('token_type_hint')).toBe('refresh_token')
         const token = body.get('token') ?? ''
-        expect(refreshTokens.has(token)).toBe(true)
         await pauseRevocation?.()
-        refreshTokens.delete(token)
+        const grantId = refreshGrantIds.get(token)
+        for (const [refreshToken, grant] of refreshTokens) {
+          if (grant.grantId === grantId) refreshTokens.delete(refreshToken)
+        }
         return new Response(null, { status: 200 })
       }
       if (request.url === tokenUrl) {
@@ -115,6 +116,7 @@ describe('Workstream public OAuth lifecycle', () => {
         tokenAuthorizations.push(request.headers.get('authorization'))
         let member: string
         let grantId: string
+        let rotatedFrom: string | undefined
         let generation = 0
         if (body.get('grant_type') === 'authorization_code') {
           grantId = body.get('code') ?? ''
@@ -131,6 +133,7 @@ describe('Workstream public OAuth lifecycle', () => {
               { status: 400 },
             )
           const refreshToken = body.get('refresh_token') ?? ''
+          rotatedFrom = refreshToken
           await pauseRefresh?.(refreshToken)
           const grant = refreshTokens.get(refreshToken)
           if (grant === undefined)
@@ -145,6 +148,8 @@ describe('Workstream public OAuth lifecycle', () => {
         const refreshToken = `${member}-refresh-${generation}`
         accessTokens.set(grantId, accessToken)
         refreshTokens.set(refreshToken, { member, generation, grantId })
+        refreshGrantIds.set(refreshToken, grantId)
+        if (rotatedFrom) await pauseRefreshResponse?.(rotatedFrom)
         return Response.json({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -221,16 +226,23 @@ describe('Workstream public OAuth lifecycle', () => {
     })
     vi.stubGlobal('fetch', http)
 
-    const stored: MemoryDatabase = {}
-    const db = ({ tables }: { tables: FumaTables }) => {
-      const version = '1.0.0'
-      return fumadb({
-        namespace: 'workstream-oauth-test',
-        schemas: [schema({ version, tables })],
-      })
-        .client(memoryAdapter({ db: stored }))
-        .orm<string>(version)
-    }
+    const sqlite = new DatabaseSync(':memory:')
+    onTestFinished(() => sqlite.close())
+    const { connection, oauth_client, plugin_storage } = collectTables()
+    if (!connection || !oauth_client || !plugin_storage)
+      throw new Error('Missing Executor tables')
+    const inspectSecrets = () =>
+      sqlite
+        .prepare(`select data from "${plugin_storage.names.sql}"`)
+        .all()
+        .map((row) => {
+          if (!(row.data instanceof Uint8Array))
+            throw new Error('Expected credential data in a SQLite BLOB')
+          return Buffer.from(row.data).toString('utf8')
+        })
+        .join(' ')
+    const db = ({ tables }: { tables: FumaTables }) =>
+      createD1ExecutorDb(sqliteD1(sqlite), tables)
     const plugins = makeExecutorPlugins(
       'workstream-oauth-test-encryption-key',
       { fetch: http },
@@ -363,8 +375,8 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(yield* alice.oauth.listClients()).toHaveLength(1)
         expect(yield* bob.oauth.listClients()).toHaveLength(1)
         for (const member of ['member-a', 'member-b']) {
-          expect(JSON.stringify(stored)).not.toContain(`${member}-access`)
-          expect(JSON.stringify(stored)).not.toContain(`${member}-refresh`)
+          expect(inspectSecrets()).not.toContain(`${member}-access`)
+          expect(inspectSecrets()).not.toContain(`${member}-refresh`)
         }
         const restoredBob = yield* open('member-b')
         members.push(restoredBob)
@@ -453,8 +465,8 @@ describe('Workstream public OAuth lifecycle', () => {
           'member-a-refresh-1',
         ])
         for (const member of ['member-a', 'member-b']) {
-          expect(JSON.stringify(stored)).not.toContain(`${member}-access`)
-          expect(JSON.stringify(stored)).not.toContain(`${member}-refresh`)
+          expect(inspectSecrets()).not.toContain(`${member}-access`)
+          expect(inspectSecrets()).not.toContain(`${member}-refresh`)
         }
         const ref = (yield* restoredAlice.connections.list({
           integration: slug,
@@ -474,6 +486,19 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(refreshTokens.has('member-a-refresh-2')).toBe(true)
         expect(yield* aliceCredentialIds).toEqual(storedBeforeRemoval)
         revocationAvailable = true
+        sqlite.exec(
+          `create trigger reject_disconnect before delete on "${connection.names.sql}" when old.subject = 'member-a' begin select raise(abort, 'fixture disconnect write failure'); end`,
+        )
+        const failedLocalRemoval = yield* restoredAlice.connections
+          .remove(ref)
+          .pipe(Effect.result)
+        expect(Result.isFailure(failedLocalRemoval)).toBe(true)
+        expect(refreshTokens.has('member-a-refresh-2')).toBe(false)
+        expect(yield* aliceCredentialIds).toEqual(storedBeforeRemoval)
+        expect(
+          yield* restoredAlice.connections.list({ integration: slug }),
+        ).toHaveLength(1)
+        sqlite.exec('drop trigger reject_disconnect')
         yield* restoredAlice.connections.remove(ref)
         expect(refreshTokens.has('member-a-refresh-2')).toBe(false)
         expect(refreshTokens.has('member-b-refresh-1')).toBe(true)
@@ -502,21 +527,20 @@ describe('Workstream public OAuth lifecycle', () => {
           .execute(bobTool.address, {})
           .pipe(Effect.result)
         expect(Result.isFailure(rejectedCall)).toBe(true)
-        const retained = Object.values(stored)
-          .flat()
-          .find(
-            (row) =>
-              row.subject === 'member-b' &&
-              row.integration === 'workstream' &&
-              'refresh_item_id' in row,
+        const retained = sqlite
+          .prepare(
+            `update "${connection.names.sql}" set last_health = ? where subject = 'member-b' and integration = 'workstream'`,
           )
-        expect(retained).toBeDefined()
-        if (retained === undefined) return
-        retained.last_health = {
-          status: 'degraded',
-          checkedAt: now + 10804_000,
-          detail: 'Catalogue unavailable',
-        }
+          .run(
+            Buffer.from(
+              JSON.stringify({
+                status: 'degraded',
+                checkedAt: now + 10804_000,
+                detail: 'Catalogue unavailable',
+              }),
+            ),
+          )
+        expect(retained.changes).toBe(1)
         const expiredConnections = yield* restoredBob.connections.list({
           integration: slug,
         })
@@ -650,23 +674,85 @@ describe('Workstream public OAuth lifecycle', () => {
           JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
         ).toContain('member-a-access-400')
 
-        const storedClients = Object.values(stored).find((rows) =>
-          rows.some((row) => row.client_id === 'garden-dev'),
+        const anotherAlice = yield* open('member-a')
+        members.push(anotherAlice)
+        const loserStarted = yield* Deferred.make<void>()
+        const finishLoser = yield* Deferred.make<void>()
+        let attempts = 0
+        pauseRefresh = (token) => {
+          if (token !== 'member-a-refresh-400' || ++attempts !== 1)
+            return Promise.resolve()
+          return Effect.runPromise(
+            Deferred.succeed(loserStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(finishLoser)),
+            ),
+          )
+        }
+        clock.mockReturnValue(now + 21609_000)
+        const loser = Effect.runPromise(
+          restoredAlice.connections.checkHealth(replacementGrant),
         )
-        if (storedClients === undefined)
-          throw new Error('Expected the stored Garden OAuth client')
-        storedClients.splice(
-          storedClients.findIndex((row) => row.client_id === 'garden-dev'),
-          1,
+        yield* Deferred.await(loserStarted)
+        const winner = yield* anotherAlice
+          .execute(aliceTool.address, {})
+          .pipe(Effect.ensuring(Deferred.succeed(finishLoser, undefined)))
+        expect(JSON.stringify(winner)).toContain('member-a-access-401')
+        expect((yield* Effect.promise(() => loser)).status).toBe('expired')
+        const afterWinner = yield* restoredAlice.connections.list({
+          integration: slug,
+        })
+        expect(afterWinner[0]?.lastHealth?.status).not.toBe('expired')
+        const winningIds = yield* aliceCredentialIds
+        expect(winningIds).toHaveLength(2)
+        expect(winningIds.filter((id) => replacementIds.includes(id))).toEqual(
+          [],
         )
+
+        const responseStarted = yield* Deferred.make<void>()
+        const finishResponse = yield* Deferred.make<void>()
+        pauseRefreshResponse = (token) =>
+          token !== 'member-a-refresh-401'
+            ? Promise.resolve()
+            : Effect.runPromise(
+                Deferred.succeed(responseStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(finishResponse)),
+                ),
+              )
+        clock.mockReturnValue(now + 25211_000)
+        const delayedRotation = Effect.runPromise(
+          restoredAlice.execute(aliceTool.address, {}).pipe(Effect.result),
+        )
+        yield* Deferred.await(responseStarted)
+        expect(refreshTokens.has('member-a-refresh-402')).toBe(true)
+        yield* anotherAlice.connections
+          .remove(replacementGrant)
+          .pipe(Effect.ensuring(Deferred.succeed(finishResponse, undefined)))
+        expect(
+          Result.isFailure(yield* Effect.promise(() => delayedRotation)),
+        ).toBe(true)
+        expect(refreshTokens.has('member-a-refresh-402')).toBe(false)
+        expect(yield* aliceCredentialIds).toEqual([])
+        expect(
+          yield* restoredAlice.connections.list({ integration: slug }),
+        ).toEqual([])
+
+        const missingBindingGrant = yield* reconnectAlice(500)
+        const retainedIds = yield* aliceCredentialIds
+
+        const removedClient = sqlite
+          .prepare(
+            `delete from "${oauth_client.names.sql}" where client_id = 'garden-dev'`,
+          )
+          .run()
+        expect(removedClient.changes).toBe(1)
         const callsBeforeMissingBinding = http.mock.calls.length
         const failedRemoval = yield* restoredAlice.connections
-          .remove(replacementGrant)
+          .remove(missingBindingGrant)
           .pipe(Effect.result)
         expect(Result.isFailure(failedRemoval)).toBe(true)
         expect(http.mock.calls).toHaveLength(callsBeforeMissingBinding)
-        expect(refreshTokens.has('member-a-refresh-400')).toBe(true)
-        expect(yield* aliceCredentialIds).toEqual(replacementIds)
+        expect(refreshTokens.has('member-a-refresh-500')).toBe(true)
+        expect(yield* aliceCredentialIds).toEqual(retainedIds)
         expect(
           yield* restoredAlice.connections.list({ integration: slug }),
         ).toHaveLength(1)
