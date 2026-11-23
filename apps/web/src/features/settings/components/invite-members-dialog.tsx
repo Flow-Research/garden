@@ -290,3 +290,27 @@ export function InviteMembersDialog({
     </Dialog>
   )
 }
+
+/**
+ * The Add a Team Member button with its dialog. It owns the open state so
+ * opening the dialog re-renders only this button, not the member table.
+ */
+export function InviteMembersButton({ workspaceId }: { workspaceId: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button
+        className="ml-auto h-10 rounded-md px-3"
+        onClick={() => setOpen(true)}
+      >
+        Add a Team Member
+      </Button>
+      {open ? (
+        <InviteMembersDialog
+          workspaceId={workspaceId}
+          onClose={() => setOpen(false)}
+        />
+      ) : null}
+    </>
+  )
+}

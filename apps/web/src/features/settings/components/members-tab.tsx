@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react'
+import { memo, useCallback, useState, type ReactNode } from 'react'
 import {
   Crown,
   Shield,
@@ -42,7 +42,7 @@ import {
   GithubIdentityLinkDialog,
   githubIdentityStatusLabel,
 } from './github-workspace-identity'
-import { InviteMembersDialog } from './invite-members-dialog'
+import { InviteMembersButton } from './invite-members-dialog'
 
 const roleConfig: Record<
   MemberRole,
@@ -181,7 +181,12 @@ function MemberActions({
   )
 }
 
-function MemberRow({
+/**
+ * Memoized: callbacks take the member instead of closing over it, so the
+ * parent passes the same functions to every row and a row re-renders only
+ * when its own member, permissions or busy flag change.
+ */
+const MemberRow = memo(function MemberRow({
   member,
   canManage,
   canManageOwners,
@@ -197,10 +202,10 @@ function MemberRow({
   canManageOwners: boolean
   isSelf: boolean
   busy: boolean
-  onRoleChange: (role: MemberRole) => void
-  onRemove: () => void
-  onLinkGithub: () => void
-  onUnlinkGithub: () => void
+  onRoleChange: (member: MemberWithUser, role: MemberRole) => void
+  onRemove: (member: MemberWithUser) => void
+  onLinkGithub: (member: MemberWithUser) => void
+  onUnlinkGithub: (member: MemberWithUser) => void
 }) {
   const canEditRole =
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
@@ -241,24 +246,24 @@ function MemberRow({
               canRemove={canRemove}
               canManageOwners={canManageOwners}
               busy={busy}
-              onRoleChange={onRoleChange}
-              onRemove={onRemove}
-              onLinkGithub={onLinkGithub}
-              onUnlinkGithub={onUnlinkGithub}
+              onRoleChange={(role) => onRoleChange(member, role)}
+              onRemove={() => onRemove(member)}
+              onLinkGithub={() => onLinkGithub(member)}
+              onUnlinkGithub={() => onUnlinkGithub(member)}
             />
           ) : null}
         </td>
       ) : null}
     </tr>
   )
-}
+})
 
 /**
  * Expired invites (pending status, past expiresAt) are told apart from live
  * ones so admins see why a link stopped working. Resend refreshes the same
  * invite instead of creating a duplicate row.
  */
-function InvitationRow({
+const InvitationRow = memo(function InvitationRow({
   invitation,
   canManage,
   onRevoke,
@@ -267,8 +272,8 @@ function InvitationRow({
 }: {
   invitation: Invitation
   canManage: boolean
-  onRevoke: () => void
-  onResend: () => void
+  onRevoke: (invitation: Invitation) => void
+  onResend: (invitation: Invitation) => void
   busy: boolean
 }) {
   const expired = new Date(invitation.expiresAt).getTime() <= Date.now()
@@ -294,7 +299,7 @@ function InvitationRow({
               variant="ghost"
               size="icon-sm"
               disabled={busy}
-              onClick={onResend}
+              onClick={() => onResend(invitation)}
               title={expired ? 'Resend (extends expiry)' : 'Resend invitation'}
             >
               <SendHorizontal className="size-4 text-muted-foreground" />
@@ -304,7 +309,7 @@ function InvitationRow({
               variant="ghost"
               size="icon-sm"
               disabled={busy}
-              onClick={onRevoke}
+              onClick={() => onRevoke(invitation)}
               title="Revoke invitation"
             >
               <X className="size-4 text-muted-foreground" />
@@ -314,9 +319,35 @@ function InvitationRow({
       ) : null}
     </tr>
   )
-}
+})
 
 const NO_MEMBERS: MemberWithUser[] = []
+
+/**
+ * Runs one member or invitation write, tracking its row as busy. A failure
+ * toasts and rejects so an open confirm dialog stays open.
+ */
+async function runRowAction(
+  setBusy: (id: string | null) => void,
+  id: string,
+  action: () => Promise<unknown>,
+  fallback: string,
+  onDone: () => void,
+) {
+  setBusy(id)
+  const result = await Result.tryPromise({
+    try: action,
+    catch: (cause) => errorMessage(cause, fallback),
+  })
+  setBusy(null)
+  return result.match({
+    ok: () => onDone(),
+    err: (message) => {
+      toast.error(message)
+      return Promise.reject(new Error(message))
+    },
+  })
+}
 
 type ConfirmAction = {
   title: string
@@ -341,7 +372,6 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
   const members = membersQuery.data ?? NO_MEMBERS
   const { data: invitations = [] } = useQuery(invitationListOptions(wsId))
 
-  const [inviteOpen, setInviteOpen] = useState(false)
   const [memberActionId, setMemberActionId] = useState<string | null>(null)
   const [invitationActionId, setInvitationActionId] = useState<string | null>(
     null,
@@ -357,126 +387,122 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
     currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const isOwner = currentMember?.role === 'owner'
 
-  const invalidateMembers = () =>
-    qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
-  const invalidateInvitations = () =>
-    qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
+  const workspaceName = workspace?.name ?? 'this workspace'
 
-  /**
-   * Runs one member or invitation write, tracking its row as busy. A failure
-   * toasts and rejects so an open confirm dialog stays open.
-   */
-  const runAction = async (
-    setBusy: (id: string | null) => void,
-    id: string,
-    action: () => Promise<unknown>,
-    fallback: string,
-    onDone: () => void,
-  ) => {
-    setBusy(id)
-    const result = await Result.tryPromise({
-      try: action,
-      catch: (cause) => errorMessage(cause, fallback),
-    })
-    setBusy(null)
-    return result.match({
-      ok: () => onDone(),
-      err: (message) => {
-        toast.error(message)
-        return Promise.reject(new Error(message))
-      },
-    })
-  }
+  // Stable across renders so the memoized rows skip unrelated updates such as
+  // a confirm dialog opening or another row going busy.
+  const handleRevokeInvitation = useCallback(
+    (invitation: Invitation) =>
+      setConfirmAction({
+        title: 'Revoke invitation',
+        description: `Revoke the invitation to ${invitation.email}? They will no longer be able to join this workspace.`,
+        confirmLabel: 'Revoke',
+        pendingLabel: 'Revoking…',
+        onConfirm: () =>
+          runRowAction(
+            setInvitationActionId,
+            invitation.id,
+            () => api.revokeInvitation(wsId, invitation.id),
+            'Failed to revoke invitation',
+            () => {
+              void qc.invalidateQueries({
+                queryKey: workspaceKeys.invitations(wsId),
+              })
+              toast.success('Invitation revoked')
+            },
+          ),
+      }),
+    [qc, wsId],
+  )
 
-  const handleRevokeInvitation = (invitation: Invitation) =>
-    setConfirmAction({
-      title: 'Revoke invitation',
-      description: `Revoke the invitation to ${invitation.email}? They will no longer be able to join this workspace.`,
-      confirmLabel: 'Revoke',
-      pendingLabel: 'Revoking…',
-      onConfirm: () =>
-        runAction(
-          setInvitationActionId,
-          invitation.id,
-          () => api.revokeInvitation(wsId, invitation.id),
-          'Failed to revoke invitation',
-          () => {
-            void invalidateInvitations()
-            toast.success('Invitation revoked')
-          },
-        ),
-    })
+  const handleResendInvitation = useCallback(
+    (invitation: Invitation) =>
+      void runRowAction(
+        setInvitationActionId,
+        invitation.id,
+        () =>
+          api.createMember(wsId, {
+            email: invitation.email,
+            role: invitation.role,
+            resend: true,
+          }),
+        'Failed to resend invitation',
+        () => {
+          void qc.invalidateQueries({
+            queryKey: workspaceKeys.invitations(wsId),
+          })
+          toast.success(`Invitation resent to ${invitation.email}`)
+        },
+      ).catch(() => undefined),
+    [qc, wsId],
+  )
 
-  const handleResendInvitation = (invitation: Invitation) =>
-    void runAction(
-      setInvitationActionId,
-      invitation.id,
-      () =>
-        api.createMember(wsId, {
-          email: invitation.email,
-          role: invitation.role,
-          resend: true,
-        }),
-      'Failed to resend invitation',
-      () => {
-        void invalidateInvitations()
-        toast.success(`Invitation resent to ${invitation.email}`)
-      },
-    ).catch(() => undefined)
+  const handleRoleChange = useCallback(
+    (member: MemberWithUser, role: MemberRole) =>
+      void runRowAction(
+        setMemberActionId,
+        member.id,
+        () => api.updateMember(wsId, member.id, { role }),
+        'Failed to update member',
+        () => {
+          void qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+          toast.success('Role updated')
+        },
+      ).catch(() => undefined),
+    [qc, wsId],
+  )
 
-  const handleRoleChange = (memberId: string, role: MemberRole) =>
-    void runAction(
-      setMemberActionId,
-      memberId,
-      () => api.updateMember(wsId, memberId, { role }),
-      'Failed to update member',
-      () => {
-        void invalidateMembers()
-        toast.success('Role updated')
-      },
-    ).catch(() => undefined)
+  const handleRemoveMember = useCallback(
+    (member: MemberWithUser) =>
+      setConfirmAction({
+        title: `Remove ${member.name}`,
+        description: `Remove ${member.name} from ${workspaceName}? They will lose access to this workspace.`,
+        confirmLabel: 'Remove',
+        pendingLabel: 'Removing…',
+        onConfirm: () =>
+          runRowAction(
+            setMemberActionId,
+            member.id,
+            () => api.deleteMember(wsId, member.id),
+            'Failed to remove member',
+            () => {
+              void qc.invalidateQueries({
+                queryKey: workspaceKeys.members(wsId),
+              })
+              toast.success('Member removed')
+            },
+          ),
+      }),
+    [qc, wsId, workspaceName],
+  )
 
-  const handleRemoveMember = (member: MemberWithUser) =>
-    setConfirmAction({
-      title: `Remove ${member.name}`,
-      description: `Remove ${member.name} from ${workspace?.name ?? 'this workspace'}? They will lose access to this workspace.`,
-      confirmLabel: 'Remove',
-      pendingLabel: 'Removing…',
-      onConfirm: () =>
-        runAction(
-          setMemberActionId,
-          member.id,
-          () => api.deleteMember(wsId, member.id),
-          'Failed to remove member',
-          () => {
-            void invalidateMembers()
-            toast.success('Member removed')
-          },
-        ),
-    })
-
-  const handleUnlinkGithub = (member: MemberWithUser) =>
-    setConfirmAction({
-      title: `Unlink GitHub for ${member.name}`,
-      description: `Remove the GitHub identity for ${member.name}? Mirrored GitHub issue assignment will show not linked until an owner or admin links it again.`,
-      confirmLabel: 'Unlink',
-      pendingLabel: 'Unlinking...',
-      onConfirm: () =>
-        runAction(
-          setMemberActionId,
-          member.id,
-          () =>
-            api.updateMember(wsId, member.id, {
-              github_user_id: null,
-              github_login: null,
-            }),
-          'Failed to unlink GitHub identity',
-          () => {
-            void invalidateMembers()
-            toast.success('GitHub identity unlinked')
-          },
-        ),
-    })
+  const handleUnlinkGithub = useCallback(
+    (member: MemberWithUser) =>
+      setConfirmAction({
+        title: `Unlink GitHub for ${member.name}`,
+        description: `Remove the GitHub identity for ${member.name}? Mirrored GitHub issue assignment will show not linked until an owner or admin links it again.`,
+        confirmLabel: 'Unlink',
+        pendingLabel: 'Unlinking...',
+        onConfirm: () =>
+          runRowAction(
+            setMemberActionId,
+            member.id,
+            () =>
+              api.updateMember(wsId, member.id, {
+                github_user_id: null,
+                github_login: null,
+              }),
+            'Failed to unlink GitHub identity',
+            () => {
+              void qc.invalidateQueries({
+                queryKey: workspaceKeys.members(wsId),
+              })
+              toast.success('GitHub identity unlinked')
+            },
+          ),
+      }),
+    [qc, wsId],
+  )
 
   if (!workspace) return null
 
@@ -486,12 +512,7 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
         <div className="flex flex-wrap items-center justify-between gap-4">
           {toolbar}
           {canManageWorkspace ? (
-            <Button
-              className="ml-auto h-10 rounded-md px-3"
-              onClick={() => setInviteOpen(true)}
-            >
-              Add a Team Member
-            </Button>
+            <InviteMembersButton workspaceId={wsId} />
           ) : null}
         </div>
       ) : null}
@@ -536,10 +557,10 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
                   canManageOwners={isOwner}
                   isSelf={m.user_id === user?.id}
                   busy={memberActionId === m.id}
-                  onRoleChange={(role) => handleRoleChange(m.id, role)}
-                  onRemove={() => handleRemoveMember(m)}
-                  onLinkGithub={() => setGithubTarget(m)}
-                  onUnlinkGithub={() => handleUnlinkGithub(m)}
+                  onRoleChange={handleRoleChange}
+                  onRemove={handleRemoveMember}
+                  onLinkGithub={setGithubTarget}
+                  onUnlinkGithub={handleUnlinkGithub}
                 />
               ))}
               {members.length === 0 ? (
@@ -584,8 +605,8 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
                     key={inv.id}
                     invitation={inv}
                     canManage={canManageWorkspace}
-                    onRevoke={() => handleRevokeInvitation(inv)}
-                    onResend={() => handleResendInvitation(inv)}
+                    onRevoke={handleRevokeInvitation}
+                    onResend={handleResendInvitation}
                     busy={invitationActionId === inv.id}
                   />
                 ))}
@@ -594,13 +615,6 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
           </div>
         </section>
       )}
-
-      {inviteOpen ? (
-        <InviteMembersDialog
-          workspaceId={wsId}
-          onClose={() => setInviteOpen(false)}
-        />
-      ) : null}
 
       {githubTarget ? (
         <GithubIdentityLinkDialog
@@ -611,7 +625,9 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
           }}
           workspaceId={wsId}
           member={githubTarget}
-          onSaved={() => void invalidateMembers()}
+          onSaved={() =>
+            void qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+          }
         />
       ) : null}
 
