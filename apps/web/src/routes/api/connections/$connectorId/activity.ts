@@ -1,4 +1,3 @@
-import { and, desc, eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { getConnectorById } from '@garden/connectors'
@@ -8,8 +7,12 @@ import {
   resolveWorkspaceId,
   unauthorized,
 } from '@/lib/server/control-plane'
-import { schema } from '@/lib/server/db'
+import { getConnectorActivityFeed } from '@/lib/server/connections/activity-service'
 
+/**
+ * Connector activity feed. Session + workspace resolve stay here; feed
+ * assembly lives in activity-service / queries/connections.
+ */
 export const Route = createFileRoute('/api/connections/$connectorId/activity')({
   server: {
     handlers: {
@@ -29,53 +32,12 @@ export const Route = createFileRoute('/api/connections/$connectorId/activity')({
         const connector = getConnectorById(params.connectorId)
         if (!connector) return notFound('Connector not found')
 
-        const db = await appContext.db()
-        const activity = await db
-          .select({
-            id: schema.toolCallAudit.id,
-            toolCallId: schema.toolCallAudit.toolCallId,
-            toolName: schema.capability.name,
-            resultStatus: schema.toolCallAudit.resultStatus,
-            durationMs: schema.toolCallAudit.durationMs,
-            timestamp: schema.toolCallAudit.ts,
-            error: schema.toolCallAudit.error,
-            agentId: schema.agent.id,
-            agentName: schema.agent.name,
-          })
-          .from(schema.toolCallAudit)
-          .innerJoin(
-            schema.capability,
-            eq(schema.toolCallAudit.capabilityId, schema.capability.id),
-          )
-          .innerJoin(
-            schema.agent,
-            eq(schema.toolCallAudit.agentId, schema.agent.id),
-          )
-          .where(
-            and(
-              eq(schema.toolCallAudit.workspaceId, workspaceId),
-              eq(schema.capability.connectorType, connector.id),
-            ),
-          )
-          .orderBy(desc(schema.toolCallAudit.ts))
-          .limit(50)
-
-        return Response.json({
+        const feed = await getConnectorActivityFeed({
+          db: await appContext.db(),
+          workspaceId,
           connectorId: connector.id,
-          activity: activity.map((entry) => ({
-            id: entry.id,
-            toolCallId: entry.toolCallId,
-            toolName: entry.toolName,
-            resultStatus: entry.resultStatus,
-            durationMs: entry.durationMs,
-            timestamp: entry.timestamp,
-            error: entry.error,
-            agent: {
-              id: entry.agentId,
-              name: entry.agentName,
-            },
-          })),
         })
+        return Response.json(feed)
       },
     },
   },
