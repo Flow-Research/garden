@@ -75,7 +75,7 @@ export function TeamPicker({
 /**
  * Selects any number of Teams, for the workspace invite form. The picker
  * stays open while toggling so several Teams can be chosen in one pass, and
- * an empty selection means the workspace default Team applies on the server.
+ * an empty selection means the invite joins no Team.
  */
 export function TeamMultiPicker({
   teamIds,
