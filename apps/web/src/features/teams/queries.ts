@@ -22,8 +22,6 @@ export const teamKeys = {
     [...teamKeys.all(wsId), 'repositories', teamId, 'available'] as const,
   issues: (wsId: string, teamId: string) =>
     ['issues', wsId, 'team', teamId] as const,
-  inviteSettings: (wsId: string) =>
-    [...teamKeys.all(wsId), 'invite-settings'] as const,
 }
 
 /** Prefix used by issue mutations to invalidate every Team issue query. */
@@ -139,14 +137,5 @@ export function allTeamIssuesOptions(wsId: string) {
     },
     staleTime: 15_000,
     placeholderData: (previous: Issue[] | undefined) => previous,
-  })
-}
-
-/** Workspace invite settings: Team owner invites and the default Team. */
-export function workspaceTeamSettingsOptions(wsId: string) {
-  return queryOptions({
-    queryKey: teamKeys.inviteSettings(wsId),
-    queryFn: () => api.getWorkspaceTeamSettings(wsId),
-    staleTime: 60_000,
   })
 }

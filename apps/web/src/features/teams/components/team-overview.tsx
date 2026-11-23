@@ -19,7 +19,6 @@ import { teamListOptions, teamMemberListOptions } from '../queries'
 import { CreateTeamDialog } from './create-team-dialog'
 import { TeamMembersLoadError } from './team-route-error'
 import { TeamMemberView } from './team-member-view'
-import { TeamInviteSettings } from './team-invite-settings'
 import { AddTeamMemberDialog, DeleteTeamDialog } from './team-dialogs'
 
 /**
@@ -181,7 +180,6 @@ export function TeamOverview() {
               </div>
             )}
           </div>
-          <TeamInviteSettings teams={teams} />
         </div>
       </div>
 
