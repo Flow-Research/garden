@@ -6,15 +6,16 @@ export const sqliteD1 = (sqlite: DatabaseSync): D1Database => {
   const unsupported = () => {
     throw new Error('Unexpected operation in D1 SQL proof')
   }
-  const meta = (changes = 0, lastRowId = 0) => ({
-    duration: 0,
-    size_after: 0,
-    rows_read: 0,
-    rows_written: changes,
-    last_row_id: lastRowId,
-    changed_db: changes > 0,
-    changes,
-  }) satisfies D1Meta
+  const meta = (changes = 0, lastRowId = 0) =>
+    ({
+      duration: 0,
+      size_after: 0,
+      rows_read: 0,
+      rows_written: changes,
+      last_row_id: lastRowId,
+      changed_db: changes > 0,
+      changes,
+    }) satisfies D1Meta
   const prepare = (
     query: string,
     parameters: unknown[] = [],
