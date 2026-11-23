@@ -67,9 +67,12 @@ describe('createWorkspaceAgent', () => {
   })
 
   it('maps insert failures to fixed AgentCreateError without leaking cause text', async () => {
-    const cause = Object.assign(new Error('Failed query: params: secret-instructions'), {
-      cause: { code: '23505', constraint: 'agent_pkey' },
-    })
+    const cause = Object.assign(
+      new Error('Failed query: params: secret-instructions'),
+      {
+        cause: { code: '23505', constraint: 'agent_pkey' },
+      },
+    )
     mocks.insertAgent.mockRejectedValue(cause)
 
     const result = await createWorkspaceAgent({
