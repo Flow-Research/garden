@@ -4,10 +4,15 @@ import {
   APIError,
   createAuthMiddleware,
   getOAuthState,
+  addOAuthServerContext,
+  getAuthoritativeSessionFromCtx,
   getSessionFromCtx,
 } from 'better-auth/api'
 import { Result, matchError } from 'better-result'
-import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import {
+  connectorAccountAdapter,
+  connectorCallbackBinding,
+} from './connector-account-adapter'
 import { and, eq } from 'drizzle-orm'
 import { createAccessControl } from 'better-auth/plugins/access'
 import { defaultStatements } from 'better-auth/plugins/organization/access'
@@ -15,7 +20,7 @@ import { organization } from 'better-auth/plugins'
 import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { connectorRegistry } from '@garden/connectors'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
-import { buildConnectorOAuthConfigs } from '@garden/connectors/oauth'
+import { connectorOAuthConfigs } from './connector-callback-request'
 import {
   createGardenLogger,
   type GardenLogLevel,
@@ -195,15 +200,11 @@ function getConnectorByProviderId(providerId: string | null | undefined) {
   )
 }
 
-function readHookSession(context: HookContext) {
-  return context?.context.session ?? context?.context.newSession ?? null
-}
-
 function readProviderId(
   accountRecord: Partial<AccountRecord>,
   context: HookContext,
 ) {
-  const routeProviderId = context?.params?.providerId
+  const routeProviderId = context?.params?.id
   if (typeof accountRecord.providerId === 'string') {
     return accountRecord.providerId
   }
@@ -220,15 +221,17 @@ function normalizeScopes(scope: string | null | undefined) {
   return scopes && scopes.length > 0 ? scopes : undefined
 }
 
-function decorateAccountRecord(
+async function decorateAccountRecord(
   accountRecord: Partial<AccountRecord>,
   context: HookContext,
 ) {
   const providerId = readProviderId(accountRecord, context)
   const connector = getConnectorByProviderId(providerId)
-  if (!connector) return undefined
+  if (!connector || !providerId) return undefined
 
-  const workspaceId = readHookSession(context)?.session.activeOrganizationId
+  const callback = await connectorCallbackBinding([providerId])
+  const workspaceId = callback?.binding.workspaceId
+  if (!callback) return undefined
   const scopes = normalizeScopes(accountRecord.scope)
 
   return {
@@ -431,14 +434,101 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       ...(runtimeOrigin ? [runtimeOrigin] : []),
     ]),
   )
-  const oauthEnv = {
-    GITHUB_CLIENT_ID: env.GITHUB_CLIENT_ID,
-    GITHUB_CLIENT_SECRET: env.GITHUB_CLIENT_SECRET,
-    GOOGLE_CLIENT_ID: env.GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET: env.GOOGLE_CLIENT_SECRET,
-    SLACK_CLIENT_ID: env.SLACK_CLIENT_ID,
-    SLACK_CLIENT_SECRET: env.SLACK_CLIENT_SECRET,
-  } satisfies Record<string, string | undefined>
+  const connectorConfigs = useOptionalProviders
+    ? connectorOAuthConfigs(env, baseURL)
+    : []
+
+  const completeConnectorAccountWrite = async () => {
+    const callback = await connectorCallbackBinding(
+      connectorConfigs.map((config) => config.providerId),
+    )
+    if (!callback) return
+    const context = callback.context
+    const providerId = callback.binding.providerId
+    const connector = getConnectorByProviderId(providerId)
+    const workspaceId = callback?.binding.workspaceId
+    const userId = callback?.binding.userId
+
+    if (!providerId || !connector || !workspaceId || !userId) {
+      return
+    }
+
+    const oauthState = await getOAuthState()
+    const { flowId } = readOAuthCallbackFlow(oauthState?.callbackURL, baseURL)
+    const result = await finishOAuthConnectorCallback({
+      db,
+      userId,
+      workspaceId,
+      providerId,
+      connectorId: connector.id,
+      connectorLabel: connector.label,
+      flowId,
+    })
+
+    result.match({
+      ok: ({ event, outcome }) => {
+        if (env.waitUntil) {
+          capturePostHogEventWithScheduler(env, env.waitUntil, {
+            distinctId: userId,
+            event: GARDEN_ANALYTICS_EVENTS.connectorConnectionCompleted,
+            workspaceId,
+            uuid: event.id,
+            properties: {
+              connector_id: connector.id,
+              provider_id: providerId,
+              callback_event_id: event.id,
+              flow_id: flowId,
+              source: 'oauth',
+              outcome: outcome.status,
+              stage: outcome.stage,
+              error_code: outcome.errorCode,
+            },
+          })
+        }
+
+        if (outcome.status === 'degraded') {
+          context.context.logger.error(outcome.message, {
+            connectorId: connector.id,
+            providerId,
+            userId,
+            workspaceId,
+            errorCode: outcome.errorCode,
+          })
+        }
+      },
+      err: (error) =>
+        matchError(error, {
+          ConnectorCallbackDatabaseError: (databaseError) => {
+            if (env.waitUntil) {
+              capturePostHogHandledErrorWithScheduler(env, env.waitUntil, {
+                distinctId: userId,
+                workspaceId,
+                error: databaseError,
+                properties: {
+                  operation: 'connector_callback',
+                  connector_id: connector.id,
+                  provider_id: providerId,
+                  stage: 'callback_persistence',
+                },
+              })
+            }
+            context.context.logger.error(databaseError.message, databaseError, {
+              connectorId: connector.id,
+              providerId,
+              userId,
+              workspaceId,
+            })
+          },
+        }),
+    })
+    if (result.isErr()) {
+      throw APIError.from('INTERNAL_SERVER_ERROR', {
+        code: 'CONNECTOR_RECEIPT_FAILED',
+        message:
+          'The connection was saved, but its result could not be recorded. Refresh the connections page.',
+      })
+    }
+  }
 
   return betterAuth({
     secret: env.BETTER_AUTH_SECRET,
@@ -448,10 +538,11 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       level: 'error',
       log: logBetterAuthError,
     },
-    database: drizzleAdapter(db, {
-      provider: 'pg',
-      schema: authSchema,
-    }),
+    database: connectorAccountAdapter(
+      db,
+      authSchema,
+      connectorConfigs.map((config) => config.providerId),
+    ),
     session: {
       cookieCache: {
         enabled: true,
@@ -462,23 +553,25 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       account: {
         create: {
           before: async (accountRecord, context) => {
-            const decoratedAccount = decorateAccountRecord(
+            const decoratedAccount = await decorateAccountRecord(
               accountRecord,
               context as HookContext,
             )
 
             return decoratedAccount ? { data: decoratedAccount } : undefined
           },
+          after: completeConnectorAccountWrite,
         },
         update: {
           before: async (accountRecord, context) => {
-            const decoratedAccount = decorateAccountRecord(
+            const decoratedAccount = await decorateAccountRecord(
               accountRecord,
               context as HookContext,
             )
 
             return decoratedAccount ? { data: decoratedAccount } : undefined
           },
+          after: completeConnectorAccountWrite,
         },
       },
     },
@@ -551,7 +644,7 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       ...(useOptionalProviders
         ? [
             genericOAuth({
-              config: buildConnectorOAuthConfigs(oauthEnv),
+              config: connectorConfigs,
             }),
           ]
         : []),
@@ -564,130 +657,80 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
        * concurrent Google and credential unlink requests could otherwise each
        * observe the other method and delete both. Garden does not support
        * removing password sign-in, while Google unlink requires a password
-       * account to remain. Reference: Better Auth 1.6.26 `unlinkAccount` route
-       * and `getSessionFromCtx` source.
+       * account to remain. Reference: Better Auth 1.7.16 `unlinkAccount` route
+       * and its owned `accountId` input.
        */
       before: createAuthMiddleware(async (context) => {
-        if (context.path !== '/unlink-account') {
-          return
+        const providerId = context.body?.provider
+        const connectorProvider = connectorConfigs.some(
+          (config) => config.providerId === providerId,
+        )
+        if (connectorProvider && context.path === '/sign-in/social') {
+          throw APIError.from('FORBIDDEN', {
+            code: 'CONNECTOR_LINK_REQUIRED',
+            message: 'Start this connection from the active workspace.',
+          })
         }
-
-        const providerId = context.body?.providerId
-        if (providerId !== 'credential' && providerId !== 'google') return
+        if (connectorProvider && context.path === '/link-social') {
+          const current = await getAuthoritativeSessionFromCtx<{
+            activeOrganizationId?: string | null
+          }>(context)
+          const workspaceId = current?.session.activeOrganizationId
+          if (!current || !workspaceId)
+            throw APIError.from('UNAUTHORIZED', {
+              code: 'WORKSPACE_REQUIRED',
+              message: 'Sign in and select a workspace first.',
+            })
+          const [membership] = await db
+            .select({ id: memberTable.id })
+            .from(memberTable)
+            .where(
+              and(
+                eq(memberTable.userId, current.user.id),
+                eq(memberTable.organizationId, workspaceId),
+              ),
+            )
+          if (!membership)
+            throw APIError.from('FORBIDDEN', {
+              code: 'WORKSPACE_MEMBERSHIP_REQUIRED',
+              message: 'Workspace membership is required.',
+            })
+          await addOAuthServerContext({
+            gardenConnector: {
+              userId: current.user.id,
+              workspaceId,
+              providerId,
+              sessionId: current.session.id,
+            },
+          })
+        }
+        if (context.path !== '/unlink-account') return
 
         const session = await getSessionFromCtx(context)
         if (!session) return
 
-        if (providerId === 'credential') {
+        const accounts = await context.context.internalAdapter.findAccounts(
+          session.user.id,
+        )
+        const unlinkProviderId = accounts.find(
+          (ownedAccount) => ownedAccount.id === context.body?.accountId,
+        )?.providerId
+        if (unlinkProviderId !== 'credential' && unlinkProviderId !== 'google')
+          return
+
+        if (unlinkProviderId === 'credential') {
           throw APIError.from('BAD_REQUEST', {
             code: 'CREDENTIAL_UNLINK_NOT_SUPPORTED',
             message: 'Password sign-in cannot be removed',
           })
         }
 
-        const accounts = await context.context.internalAdapter.findAccounts(
-          session.user.id,
-        )
         if (!hasPasswordSignInMethod(accounts)) {
           throw APIError.from('BAD_REQUEST', {
             code: 'FAILED_TO_UNLINK_LAST_ACCOUNT',
             message: 'Google is your only sign-in method',
           })
         }
-      }),
-      after: createAuthMiddleware(async (context) => {
-        if (context.path !== '/oauth2/callback/:providerId') {
-          return
-        }
-
-        const providerId =
-          typeof context.params?.providerId === 'string'
-            ? context.params.providerId
-            : undefined
-        const connector = getConnectorByProviderId(providerId)
-        const session = readHookSession(context as HookContext)
-        const workspaceId = session?.session.activeOrganizationId
-        const userId = session?.user.id
-
-        if (!providerId || !connector || !workspaceId || !userId) {
-          return
-        }
-
-        const oauthState = await getOAuthState()
-        const { flowId } = readOAuthCallbackFlow(
-          oauthState?.callbackURL,
-          baseURL,
-        )
-        const result = await finishOAuthConnectorCallback({
-          db,
-          userId,
-          workspaceId,
-          providerId,
-          connectorId: connector.id,
-          connectorLabel: connector.label,
-          flowId,
-        })
-
-        result.match({
-          ok: ({ event, outcome }) => {
-            if (env.waitUntil) {
-              capturePostHogEventWithScheduler(env, env.waitUntil, {
-                distinctId: userId,
-                event: GARDEN_ANALYTICS_EVENTS.connectorConnectionCompleted,
-                workspaceId,
-                uuid: event.id,
-                properties: {
-                  connector_id: connector.id,
-                  provider_id: providerId,
-                  callback_event_id: event.id,
-                  flow_id: flowId,
-                  source: 'oauth',
-                  outcome: outcome.status,
-                  stage: outcome.stage,
-                  error_code: outcome.errorCode,
-                },
-              })
-            }
-
-            if (outcome.status === 'degraded') {
-              context.context.logger.error(outcome.message, {
-                connectorId: connector.id,
-                providerId,
-                userId,
-                workspaceId,
-                errorCode: outcome.errorCode,
-              })
-            }
-          },
-          err: (error) =>
-            matchError(error, {
-              ConnectorCallbackDatabaseError: (databaseError) => {
-                if (env.waitUntil) {
-                  capturePostHogHandledErrorWithScheduler(env, env.waitUntil, {
-                    distinctId: userId,
-                    workspaceId,
-                    error: databaseError,
-                    properties: {
-                      operation: 'connector_callback',
-                      connector_id: connector.id,
-                      provider_id: providerId,
-                      stage: 'callback_persistence',
-                    },
-                  })
-                }
-                context.context.logger.error(
-                  databaseError.message,
-                  databaseError,
-                  {
-                    connectorId: connector.id,
-                    providerId,
-                    userId,
-                    workspaceId,
-                  },
-                )
-              },
-            }),
-        })
       }),
     },
     user: {

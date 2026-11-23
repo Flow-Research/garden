@@ -15,7 +15,7 @@ import { linkedAccountsQueryOptions } from '../account-queries'
 const authProviderQueryKey = ['auth', 'provider-availability']
 
 type LinkedAccountState = {
-  accounts: Array<{ providerId: string }>
+  accounts: Array<{ id: string; providerId: string }>
   error: string | null
 }
 
@@ -74,17 +74,18 @@ export function GoogleAccountConnection() {
   const accountState = linkedAccountsResult?.match<LinkedAccountState>({
     ok: (response) => ({
       accounts: (response.data ?? []).map((account) => ({
+        id: account.id,
         providerId: account.providerId,
       })),
       error: null,
     }),
     err: (error) => ({ accounts: [], error: error.message }),
   }) ?? { accounts: [], error: null }
-  const googleLinked = accountState.accounts.some(
+  const googleAccount = accountState.accounts.find(
     (account) => account.providerId === 'google',
   )
   const canUnlinkGoogle =
-    googleLinked && hasPasswordSignInMethod(accountState.accounts)
+    Boolean(googleAccount) && hasPasswordSignInMethod(accountState.accounts)
 
   /** Starts explicit linking and leaves the button busy during navigation. */
   const handleLink = async () => {
@@ -110,11 +111,12 @@ export function GoogleAccountConnection() {
 
   /** Removes Google only when another sign-in method remains. */
   const handleUnlink = async () => {
+    if (!googleAccount) return
     setUnlinking(true)
     const result = await authClientOperation({
       fallbackMessage: 'Could not unlink Google',
       operation: 'unlink-google',
-      request: () => authClient.unlinkAccount({ providerId: 'google' }),
+      request: () => authClient.unlinkAccount({ accountId: googleAccount.id }),
     })
 
     await result.match({
@@ -159,19 +161,19 @@ export function GoogleAccountConnection() {
             <div className="min-w-0 space-y-1">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-sm leading-5 font-medium">Google</p>
-                <Badge variant={googleLinked ? 'secondary' : 'outline'}>
-                  {googleLinked ? 'Connected' : 'Not connected'}
+                <Badge variant={googleAccount ? 'secondary' : 'outline'}>
+                  {googleAccount ? 'Connected' : 'Not connected'}
                 </Badge>
               </div>
               <p className="text-xs leading-5 text-muted-foreground">
-                {googleLinked && !canUnlinkGoogle
+                {googleAccount && !canUnlinkGoogle
                   ? 'Google is your only sign-in method.'
                   : 'Use the same email as your Garden account.'}
               </p>
             </div>
           </div>
 
-          {googleLinked ? (
+          {googleAccount ? (
             canUnlinkGoogle ? (
               <Button
                 type="button"
