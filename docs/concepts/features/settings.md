@@ -10,7 +10,7 @@ Settings has an authenticated page at `/settings` for direct-link review during 
 
 ## Page shell
 
-The page follows the supplied All settings design: heading and description, horizontal section navigation with icons and an active underline, then a rounded secondary-background content container. Navigation scrolls horizontally on narrow screens. Colors use Garden semantic tokens so the shell supports both themes. Each section places white `SettingsPanel` cards on that container.
+The page follows the supplied All settings design: heading and description, horizontal section navigation with icons and an active underline, then a rounded secondary-background content container. Navigation scrolls horizontally on narrow screens. Colors use Garden semantic tokens so the shell supports both themes. Each section places white `SettingsPanel` cards on that container. Switching sections slides the active underline to the new tab and fades the section content in from the left (`Animate` in `apps/web/src/components/animate.tsx`). Moving between a section's sub-routes does not replay it, and users who prefer reduced motion get the fade without movement.
 
 `/settings` redirects to `/settings/profile`. Section links preserve browser history and support direct entry and reload. The authenticated app layout owns session and workspace access.
 
