@@ -1,5 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
-import { Link, useLocation } from '@tanstack/react-router'
+import { Link, useChildMatches } from '@tanstack/react-router'
 import { MotionConfig, motion } from 'motion/react'
 import { cn } from '@garden/ui/lib/utils'
 import {
@@ -8,7 +8,7 @@ import {
   SlidersHorizontal,
   UsersRound,
 } from 'lucide-react'
-import { Animate } from '@/components/animate'
+import { ANIMATE_EASE, Animate } from '@/components/animate'
 
 const sections = [
   { to: '/settings/profile', label: 'Profile', icon: CircleUserRound },
@@ -25,14 +25,20 @@ const sections = [
   { to: '/settings/general', label: 'General', icon: Settings },
 ] as const
 
+const SECTION_MOTION = { duration: 0.32, ease: ANIMATE_EASE }
+
 /**
  * Shared frame for routed settings. Section content fades in on each section
  * change and the active underline slides between tabs; sub-routes inside a
  * section keep their content still.
  */
 export function SettingsPageShell({ children }: { children: ReactNode }) {
-  const section = useLocation({
-    select: (location) => location.pathname.split('/')[2] ?? '',
+  // Keyed by the child match the Outlet renders, not the location: the
+  // location changes on click while the Outlet still shows the previous
+  // section until the next route loads, which would replay the fade on stale
+  // content and then swap it abruptly.
+  const section = useChildMatches({
+    select: (matches) => matches[0]?.pathname.split('/')[2] ?? '',
   })
   return (
     <MotionConfig reducedMotion="user">
@@ -68,7 +74,7 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
                           aria-hidden
                           layoutId="settings-section-underline"
                           className="absolute inset-x-0 bottom-0 h-0.5 bg-brand"
-                          transition={{ duration: 0.2, ease: 'easeOut' }}
+                          transition={SECTION_MOTION}
                         />
                       ) : null}
                     </>
@@ -78,7 +84,12 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
             </div>
           </nav>
           <div className="mt-6 min-w-0 sm:mt-10 lg:rounded-xl lg:bg-background-main-secondary lg:p-10">
-            <Animate key={section} transition="fade-left" className="min-w-0">
+            <Animate
+              key={section}
+              transition="fade-left"
+              duration={SECTION_MOTION.duration * 1000}
+              className="min-w-0"
+            >
               {children}
             </Animate>
           </div>

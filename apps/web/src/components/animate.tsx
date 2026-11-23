@@ -1,28 +1,26 @@
 import type { ReactNode } from 'react'
-import {
-  AnimatePresence,
-  MotionConfig,
-  motion,
-  type TargetAndTransition,
-} from 'motion/react'
+import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
 
-const TRANSITIONS = {
-  fade: { hidden: { opacity: 0 }, shown: { opacity: 1 } },
-  'fade-up': { hidden: { opacity: 0, y: 12 }, shown: { opacity: 1, y: 0 } },
-  'fade-down': { hidden: { opacity: 0, y: -12 }, shown: { opacity: 1, y: 0 } },
-  'fade-left': { hidden: { opacity: 0, x: -16 }, shown: { opacity: 1, x: 0 } },
-  'fade-right': { hidden: { opacity: 0, x: 16 }, shown: { opacity: 1, x: 0 } },
-  scale: {
-    hidden: { opacity: 0, scale: 0.96 },
-    shown: { opacity: 1, scale: 1 },
-  },
-} as const satisfies Record<
-  string,
-  { hidden: TargetAndTransition; shown: TargetAndTransition }
->
+/**
+ * Off-screen transform per preset. Presets animate the `transform` string,
+ * not motion's `x`/`y`/`scale`: only `opacity` and `transform` run on the
+ * compositor (motion-dom `acceleratedValues`), so the animation stays smooth
+ * while the incoming content is still rendering on the main thread.
+ */
+const OFFSETS = {
+  fade: null,
+  'fade-up': 'translateY(12px)',
+  'fade-down': 'translateY(-12px)',
+  'fade-left': 'translateX(-12px)',
+  'fade-right': 'translateX(12px)',
+  scale: 'scale(0.97)',
+} as const
 
 /** Named enter/exit presets. `fade-left` slides in from the left. */
-export type AnimateTransition = keyof typeof TRANSITIONS
+export type AnimateTransition = keyof typeof OFFSETS
+
+/** Expo-style ease-out: a quick start that settles gently. */
+export const ANIMATE_EASE = [0.22, 1, 0.36, 1] as const
 
 /**
  * Enter/exit animation wrapper with a Mantine `Transition`-style API.
@@ -35,7 +33,7 @@ export function Animate({
   children,
   mounted = true,
   transition = 'fade',
-  duration = 200,
+  duration = 300,
   delay = 0,
   onExited,
   className,
@@ -51,25 +49,28 @@ export function Animate({
   onExited?: () => void
   className?: string
 }) {
-  const { hidden, shown } = TRANSITIONS[transition]
-  const timing = { duration: duration / 1000, ease: 'easeOut' } as const
+  const reduceMotion = useReducedMotion()
+  const offset = reduceMotion ? null : OFFSETS[transition]
+  const hidden = offset ? { opacity: 0, transform: offset } : { opacity: 0 }
+  // `transitionEnd` drops the settled identity transform motion leaves inline,
+  // which would otherwise make this wrapper the containing block for any
+  // `position: fixed` descendant.
+  const shown = offset
+    ? { opacity: 1, transform: 'none', transitionEnd: { transform: 'none' } }
+    : { opacity: 1 }
+  const timing = { duration: duration / 1000, ease: ANIMATE_EASE }
   return (
-    <MotionConfig reducedMotion="user">
-      <AnimatePresence onExitComplete={onExited}>
-        {mounted ? (
-          <motion.div
-            className={className}
-            initial={hidden}
-            animate={{
-              ...shown,
-              transition: { ...timing, delay: delay / 1000 },
-            }}
-            exit={{ ...hidden, transition: timing }}
-          >
-            {children}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </MotionConfig>
+    <AnimatePresence onExitComplete={onExited}>
+      {mounted ? (
+        <motion.div
+          className={className}
+          initial={hidden}
+          animate={{ ...shown, transition: { ...timing, delay: delay / 1000 } }}
+          exit={{ ...hidden, transition: timing }}
+        >
+          {children}
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
   )
 }
