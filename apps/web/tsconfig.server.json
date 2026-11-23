@@ -5,6 +5,8 @@
     "src/lib/server/**/*.tsx",
     "src/lib/auth/index.ts",
     "src/lib/auth/instance.ts",
+    "src/lib/auth/connector-callback-request.ts",
+    "src/lib/auth/connector-account-adapter.ts",
     "src/lib/auth/server.ts",
     "src/lib/posthog-server.ts",
     "src/lib/inbox/threads.ts",
@@ -17,8 +19,12 @@
   ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "node_modules", "dist"],
   "references": [
-    { "path": "./tsconfig.shared.json" },
-    { "path": "./tsconfig.executor.json" }
+    {
+      "path": "./tsconfig.shared.json"
+    },
+    {
+      "path": "./tsconfig.executor.json"
+    }
   ],
   "compilerOptions": {
     "composite": true,

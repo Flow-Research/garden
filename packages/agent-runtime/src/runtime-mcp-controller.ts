@@ -393,11 +393,11 @@ export type McpHost = {
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >
   /**
-   * The Decide owner this host's `decide_analyze` calls belong to. Omitted
-   * means a chat facet, whose name is the thread key. Run facets supply it
-   * so an automation's analysis is owned by its run, never by a chat.
+   * The Decide owner this host's `decide_analyze` calls belong to, read per
+   * call. Omitted or null means the facet name is the chat thread key. Run
+   * facets supply it so an automation's analysis is owned by its run.
    */
-  decideAnalysisOwner?: () => DecideAnalysisOwner
+  decideAnalysisOwner?: () => DecideAnalysisOwner | null
 }
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {

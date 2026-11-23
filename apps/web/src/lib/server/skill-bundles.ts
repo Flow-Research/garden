@@ -1,4 +1,5 @@
 import { Context, Effect, Layer } from 'effect'
+import { parseSupportingFilePath } from '@garden/core/skills/file-path'
 import {
   SkillOperationError,
   SkillValidationError,
@@ -64,14 +65,6 @@ const storageError = (operation: string, cause: unknown) =>
     cause,
   })
 
-function normalizePath(path: string) {
-  const normalized = path.trim().replace(/\\/g, '/')
-  if (!normalized || normalized.startsWith('/')) return null
-  if (normalized.split('/').some((segment) => segment === '..')) return null
-  if (normalized.toLowerCase() === 'skill.md') return null
-  return normalized
-}
-
 function contentType(path: string) {
   const lower = path.toLowerCase()
   if (lower.endsWith('.md')) return 'text/markdown; charset=utf-8'
@@ -122,36 +115,42 @@ function digest(value: string) {
   })
 }
 
+/**
+ * Validates canonical paths before hashing or persistence. Aliases previously
+ * survived as distinct files; this request-independent boundary also lets tests
+ * exercise the same validation used by the storage service without R2 bindings.
+ */
+export const normalizeSkillFiles = Effect.fn('SkillBundles.normalizeFiles')(
+  function* (files: ReadonlyArray<SkillFileInput> | undefined) {
+    const normalized: SkillFileInput[] = []
+    const paths = new Set<string>()
+    for (const file of files ?? []) {
+      const parsed = parseSupportingFilePath(file.path)
+      if (parsed.kind === 'invalid') {
+        return yield* new SkillValidationError({
+          operation: 'validate skill files',
+          message: `Invalid skill file path: ${file.path}`,
+        })
+      }
+      const path = parsed.path
+      if (paths.has(path)) {
+        return yield* new SkillValidationError({
+          operation: 'validate skill files',
+          message: `Duplicate skill file path: ${path}`,
+        })
+      }
+      paths.add(path)
+      normalized.push({ path, content: file.content })
+    }
+    return normalized
+  },
+)
+
 export const skillBundlesLayer = Layer.effect(
   SkillBundles,
   Effect.gen(function* () {
     const request = yield* AppRequest
     const bucket = request.env.FILES
-
-    const normalizeFiles = Effect.fn('SkillBundles.normalizeFiles')(function* (
-      files: ReadonlyArray<SkillFileInput> | undefined,
-    ) {
-      const normalized: SkillFileInput[] = []
-      const paths = new Set<string>()
-      for (const file of files ?? []) {
-        const path = normalizePath(file.path)
-        if (!path) {
-          return yield* new SkillValidationError({
-            operation: 'validate skill files',
-            message: `Invalid skill file path: ${file.path}`,
-          })
-        }
-        if (paths.has(path)) {
-          return yield* new SkillValidationError({
-            operation: 'validate skill files',
-            message: `Duplicate skill file path: ${path}`,
-          })
-        }
-        paths.add(path)
-        normalized.push({ path, content: file.content })
-      }
-      return normalized
-    })
 
     const hash = Effect.fn('SkillBundles.hash')(function* (input: {
       readonly content: string
@@ -320,7 +319,7 @@ export const skillBundlesLayer = Layer.effect(
     )
 
     return SkillBundles.of({
-      normalizeFiles,
+      normalizeFiles: normalizeSkillFiles,
       hash,
       storeFiles,
       loadFiles,
