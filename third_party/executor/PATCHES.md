@@ -58,8 +58,10 @@ documented compatibility changes:
     its refresh credential at the pinned issuer before deleting connection state;
     provider failure or a missing issuer binding retains the connection. Each
     Workstream authorization has distinct credential IDs. Refresh writes match the
-    grant they used, and Garden's D1 batch deletes only that grant and its catalogue.
-    If a reconnect replaces it during revocation, the replacement stays connected.
+    grant they used. Replacement and disconnect remove the obsolete credential
+    items after checking the saved grant. Garden's D1 batch deletes only the
+    revoked grant and its catalogue. If a reconnect replaces it during
+    revocation, the replacement stays connected.
 
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's

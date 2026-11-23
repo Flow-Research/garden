@@ -184,7 +184,7 @@ index 34cf72783eabf91bab4ff90a9028c8b51689546e..cfc8a8bb664353cd9669c8d42ae643b2
    { state: OAuthState }
  ) {
 diff --git a/dist/chunk-VWFZ6OPE.js b/dist/chunk-VWFZ6OPE.js
-index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c583977a0c 100644
+index 6cf936862fbea4d8f6a106fe9282aa7571336c76..19c06b7519cfc0364d300193eba4e6d074c5361e 100644
 --- a/dist/chunk-VWFZ6OPE.js
 +++ b/dist/chunk-VWFZ6OPE.js
 @@ -4177,6 +4177,8 @@ var discoverProtectedResourceMetadata = (resourceUrl, options = {}) => Effect6.g
@@ -196,7 +196,19 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
    return issuerPath && issuerPath !== "/" ? `${issuerOrigin2}/.well-known/${suffix}${issuerPath}` : `${issuerOrigin2}/.well-known/${suffix}`;
  };
  var discoverAuthorizationServerMetadata = (issuer, options = {}) => Effect6.gen(function* () {
-@@ -4873,6 +4875,12 @@ var makeOAuthService = (deps) => {
+@@ -4508,6 +4510,11 @@ var validateClientEndpoints = (input, endpointUrlPolicy) => Effect7.gen(function
+     });
+   }
+ });
++var deleteOAuthCredentialItems = (provider, ids) => provider?.writable && provider.delete ?
++  Effect7.forEach(ids.filter((id) => id != null), (id) => provider.delete(ProviderItemId.make(id)), { discard: true }).pipe(
++    Effect7.tapError(() => Effect7.logWarning("Could not remove obsolete OAuth credential items")),
++    Effect7.ignore
++  ) : Effect7.void;
+ var makeOAuthService = (deps) => {
+   const httpClientLayer = deps.httpClientLayer ?? FetchHttpClient2.layer;
+   const fetch = deps.fetch;
+@@ -4873,6 +4880,12 @@ var makeOAuthService = (deps) => {
          })
        )
      ) : dedupeScopes(scopePolicy.scopes);
@@ -209,7 +221,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
      if (client.grant === "client_credentials") {
        const token = yield* exchangeClientCredentials({
          tokenUrl: client.tokenUrl,
-@@ -5028,7 +5036,8 @@ var makeOAuthService = (deps) => {
+@@ -5028,7 +5041,8 @@ var makeOAuthService = (deps) => {
      }
      const tokenUrl = rebindTokenEndpointHostToCallbackDomain(
        client.tokenUrl,
@@ -219,18 +231,42 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
      );
      const token = yield* exchangeAuthorizationCode({
        tokenUrl,
-@@ -5099,7 +5108,9 @@ var makeOAuthService = (deps) => {
+@@ -5099,13 +5113,19 @@ var makeOAuthService = (deps) => {
          cause: void 0
        });
      }
 -    const itemId = accessItemId(target.owner, target.integration, target.name);
+-    yield* provider.set(ProviderItemId.make(itemId), token.access_token);
+-    let refreshItemId = null;
+-    if (token.refresh_token) {
+-      refreshItemId = refreshItemIdFor(itemId);
+-      yield* provider.set(ProviderItemId.make(refreshItemId), token.refresh_token);
+-    }
++    const workstream = client.resource === "https://workstream.flowresearch.tech/mcp";
++    if (workstream && !token.refresh_token) {
++      return yield* new StorageError({ message: "Flow Identity did not issue a Workstream refresh credential." });
++    }
 +    const baseItemId = accessItemId(target.owner, target.integration, target.name);
 +    // Provider writes precede the row update, so a replacement grant needs its own credential IDs.
-+    const itemId = client.resource === "https://workstream.flowresearch.tech/mcp" ? `${baseItemId}:${crypto.randomUUID()}` : baseItemId;
-     yield* provider.set(ProviderItemId.make(itemId), token.access_token);
-     let refreshItemId = null;
-     if (token.refresh_token) {
-@@ -5307,6 +5318,7 @@ var decodeOAuthReauthRequiredProviderState = Schema6.decodeUnknownOption(
++    const itemId = workstream ? `${baseItemId}:${crypto.randomUUID()}` : baseItemId;
++    const refreshItemId = token.refresh_token ? refreshItemIdFor(itemId) : null;
++    const store = Effect7.gen(function* () {
++      yield* provider.set(ProviderItemId.make(itemId), token.access_token);
++      if (refreshItemId) yield* provider.set(ProviderItemId.make(refreshItemId), token.refresh_token);
++    });
++    yield* workstream ? store.pipe(Effect7.onError(() => deleteOAuthCredentialItems(provider, [itemId, refreshItemId]))) : store;
+     const oauthScope = recordedOAuthScope(token, requestedScopes);
+     const missingScopes = client.grant === "authorization_code" ? missingGrantedOAuthScopes(requestedScopes, oauthScope) : [];
+     yield* Effect7.annotateCurrentSpan({
+@@ -5124,6 +5144,7 @@ var makeOAuthService = (deps) => {
+       // empty label, never replace a user-curated one on reconnect.
+       derivedIdentityLabel: token.idTokenIdentityLabel ?? null,
+       provider: String(provider.key),
++      workstream,
+       itemId,
+       oauthClient: OAuthClientSlug.make(client.slug),
+       oauthClientOwner: clientOwner,
+@@ -5307,6 +5328,7 @@ var decodeOAuthReauthRequiredProviderState = Schema6.decodeUnknownOption(
  );
  var oauthReauthRequiredFromProviderState = (value) => Option4.getOrNull(decodeOAuthReauthRequiredProviderState(decodeJsonColumn(value)));
  var rowToConnection = (row) => {
@@ -238,7 +274,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
    const owner = row.owner;
    const integration = IntegrationSlug.make(row.integration);
    const name = ConnectionName.make(row.name);
-@@ -5324,7 +5336,11 @@ var rowToConnection = (row) => {
+@@ -5324,7 +5346,11 @@ var rowToConnection = (row) => {
      oauthClientOwner: row.oauth_client_owner == null ? null : String(row.oauth_client_owner),
      oauthScope: row.oauth_scope == null ? null : String(row.oauth_scope),
      missingOAuthScopes: missingOAuthScopesFromProviderState(row.provider_state),
@@ -251,7 +287,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
    };
  };
  var grantedScopesFromRow = (row) => {
-@@ -5793,6 +5809,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+@@ -5793,6 +5819,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
    });
    const rootDbUntyped = "db" in dbInput ? dbInput.db : dbInput;
    const closeDb = "db" in dbInput ? dbInput.close : void 0;
@@ -259,7 +295,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
    yield* Effect8.try({
      try: () => {
        validateExecutorDbTables(tables, rootDbUntyped.internal.tables);
-@@ -5883,7 +5900,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+@@ -5883,10 +5910,19 @@ var createExecutor = (config) => Effect8.gen(function* () {
      )
    });
    const refreshInFlight = /* @__PURE__ */ new Map();
@@ -268,7 +304,19 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
    const loadOAuthClientRow = (owner, slug) => core.findFirst("oauth_client", {
      where: (b) => b.and(byOwner(owner)(b), b("slug", "=", slug))
    });
-@@ -5899,7 +5916,8 @@ var createExecutor = (config) => Effect8.gen(function* () {
++  const sameOAuthCredentials = (current, row) => current != null && current.provider === row.provider &&
++    current.refresh_item_id === row.refresh_item_id &&
++    connectionItemIds(current)[PRIMARY_INPUT_VARIABLE] === connectionItemIds(row)[PRIMARY_INPUT_VARIABLE];
++  const cleanupReplacedCredentials = (ref, row) => Effect8.gen(function* () {
++    const current = yield* findConnectionRow(ref);
++    if (!sameOAuthCredentials(current, row)) {
++      yield* deleteOAuthCredentialItems(credentialProviders.get(row.provider), [connectionItemIds(row)[PRIMARY_INPUT_VARIABLE], row.refresh_item_id]);
++    }
++  }).pipe(Effect8.ignore);
+   const markRefreshGrantDead = (row, detail) => {
+     const existingState = decodeJsonColumn(row.provider_state);
+     const mergedState = existingState != null && typeof existingState === "object" && !Array.isArray(existingState) ? existingState : {};
+@@ -5899,7 +5935,8 @@ var createExecutor = (config) => Effect8.gen(function* () {
        where: (b) => b.and(
          byOwner(row.owner)(b),
          b("integration", "=", String(row.integration)),
@@ -278,17 +326,116 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
        ),
        set: {
          provider_state: {
-@@ -6023,7 +6041,8 @@ var createExecutor = (config) => Effect8.gen(function* () {
-       where: (b) => b.and(
-         byOwner(owner)(b),
-         b("integration", "=", String(row.integration)),
--        b("name", "=", String(row.name))
-+        b("name", "=", String(row.name)),
-+        b("refresh_item_id", "is", row.refresh_item_id)
-       ),
-       set
+@@ -6006,27 +6043,41 @@ var createExecutor = (config) => Effect8.gen(function* () {
+         )
+       );
      });
-@@ -6807,7 +6826,37 @@ var createExecutor = (config) => Effect8.gen(function* () {
+-    if (provider.set) {
+-      const tokenItemId = connectionItemIds(row)[PRIMARY_INPUT_VARIABLE] ?? `connection:${row.owner}:${row.integration}:${row.name}:${PRIMARY_INPUT_VARIABLE}`;
+-      yield* provider.set(ProviderItemId.make(tokenItemId), token.access_token);
+-      if (token.refresh_token && row.refresh_item_id) {
+-        yield* provider.set(ProviderItemId.make(row.refresh_item_id), token.refresh_token);
++    const store = Effect8.gen(function* () {
++      if (provider.set) {
++        const tokenItemId = connectionItemIds(row)[PRIMARY_INPUT_VARIABLE] ?? `connection:${row.owner}:${row.integration}:${row.name}:${PRIMARY_INPUT_VARIABLE}`;
++        yield* provider.set(ProviderItemId.make(tokenItemId), token.access_token);
++        if (token.refresh_token && row.refresh_item_id) {
++          yield* provider.set(ProviderItemId.make(row.refresh_item_id), token.refresh_token);
++        }
+       }
+-    }
+-    const nextExpiresAt = typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1e3 : null;
+-    const set = {
+-      expires_at: nextExpiresAt,
+-      updated_at: /* @__PURE__ */ new Date()
+-    };
+-    if (token.scope !== void 0) set.oauth_scope = token.scope;
+-    yield* core.updateMany("connection", {
+-      where: (b) => b.and(
+-        byOwner(owner)(b),
+-        b("integration", "=", String(row.integration)),
+-        b("name", "=", String(row.name))
+-      ),
+-      set
++      const nextExpiresAt = typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1e3 : null;
++      const set = {
++        expires_at: nextExpiresAt,
++        updated_at: /* @__PURE__ */ new Date()
++      };
++      if (token.scope !== void 0) set.oauth_scope = token.scope;
++      yield* core.updateMany("connection", {
++        where: (b) => b.and(
++          byOwner(owner)(b),
++          b("integration", "=", String(row.integration)),
++          b("name", "=", String(row.name)),
++          b("refresh_item_id", "is", row.refresh_item_id)
++        ),
++        set
++      });
+     });
++    if (clientRow.resource === "https://workstream.flowresearch.tech/mcp") {
++      const ref = { owner, integration: row.integration, name: row.name };
++      const changed = () => new StorageError({ message: "Workstream authorization changed during refresh. Retry with the current connection." });
++      yield* Effect8.gen(function* () {
++        if (!sameOAuthCredentials(yield* findConnectionRow(ref), row)) return yield* changed();
++        yield* store;
++        if (!sameOAuthCredentials(yield* findConnectionRow(ref), row)) return yield* changed();
++      }).pipe(Effect8.ensuring(cleanupReplacedCredentials(ref, row)));
++    } else {
++      yield* store;
++    }
+     return token.access_token;
+   }).pipe(
+     // The refresh path was previously invisible to telemetry: no span, no
+@@ -6678,7 +6729,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+       name
+     };
+     let identityLabel = null;
+-    yield* transaction(
++    const previous = yield* transaction(
+       Effect8.gen(function* () {
+         const existing = yield* findConnectionRow(ref);
+         const existingLabel = existing?.identity_label?.trim() ? existing.identity_label : null;
+@@ -6707,7 +6758,8 @@ var createExecutor = (config) => Effect8.gen(function* () {
+             where: (b) => b.and(
+               byOwner(input.owner)(b),
+               b("integration", "=", String(input.integration)),
+-              b("name", "=", String(name))
++              b("name", "=", String(name)),
++              input.workstream ? b("refresh_item_id", "is", existing.refresh_item_id) : true
+             ),
+             set
+           });
+@@ -6736,8 +6788,16 @@ var createExecutor = (config) => Effect8.gen(function* () {
+             updated_at: now
+           });
+         }
++        return existing;
+       })
+     );
++    if (input.workstream) {
++      if (previous) yield* cleanupReplacedCredentials(ref, previous);
++      const current = yield* findConnectionRow(ref);
++      if (current?.refresh_item_id !== input.refreshItemId) {
++        return yield* new StorageError({ message: "Workstream authorization changed during reconnect. Retry authorization." });
++      }
++    }
+     yield* produceConnectionTools(integrationRow, ref).pipe(
+       Effect8.catchTag("IntegrationNotFoundError", () => Effect8.succeed([]))
+     );
+@@ -6763,7 +6823,10 @@ var createExecutor = (config) => Effect8.gen(function* () {
+       created_at: now,
+       updated_at: now
+     });
+-  });
++  }).pipe(Effect8.onError(() => input.workstream ? cleanupReplacedCredentials(
++    { owner: input.owner, integration: input.integration, name: connectionIdentifier(String(input.name)) },
++    { provider: input.provider, item_ids: { [PRIMARY_INPUT_VARIABLE]: input.itemId }, refresh_item_id: input.refreshItemId }
++  ) : Effect8.void));
+   const connectionsList = (filter) => Effect8.gen(function* () {
+     const rows = yield* core.findMany("connection", {
+       where: (b) => b.and(
+@@ -6807,7 +6870,37 @@ var createExecutor = (config) => Effect8.gen(function* () {
      const updated = yield* findConnectionRow(ref);
      return rowToConnection(updated ?? row);
    });
@@ -327,7 +474,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
      Effect8.gen(function* () {
        const row = yield* findConnectionRow(ref);
        if (!row) {
-@@ -6817,6 +6866,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+@@ -6817,6 +6910,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
            name: ref.name
          });
        }
@@ -335,7 +482,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
        const integrationRow = yield* findIntegrationRow(ref.integration);
        const runtime = integrationRow ? runtimes.get(integrationRow.plugin_id) : void 0;
        if (integrationRow && runtime?.plugin.removeConnection) {
-@@ -6841,11 +6891,23 @@ var createExecutor = (config) => Effect8.gen(function* () {
+@@ -6841,11 +6935,24 @@ var createExecutor = (config) => Effect8.gen(function* () {
          where: (b) => b.and(
            byOwner(ref.owner)(b),
            b("integration", "=", String(ref.integration)),
@@ -348,19 +495,20 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
    );
 +  const connectionsRemove = (ref) => Effect8.gen(function* () {
 +    const grant = yield* revokeWorkstreamConnection(ref);
++    const cleanup = grant ? cleanupReplacedCredentials(ref, grant) : Effect8.void;
 +    if (grant && removeOAuthConnectionGeneration) {
 +      const removed = yield* removeOAuthConnectionGeneration({
 +        ...ownedKeys(ref.owner), integration: String(ref.integration), name: String(ref.name), refreshItemId: grant.refresh_item_id
-+      });
++      }).pipe(Effect8.ensuring(cleanup));
 +      if (!removed) return yield* changedGrant();
 +      return;
 +    }
-+    yield* removeConnectionRows(ref, grant);
++    yield* removeConnectionRows(ref, grant).pipe(Effect8.ensuring(cleanup));
 +  });
    const connectionsRefresh = (ref) => Effect8.gen(function* () {
      const row = yield* findConnectionRow(ref);
      if (!row) {
-@@ -6862,11 +6924,12 @@ var createExecutor = (config) => Effect8.gen(function* () {
+@@ -6862,11 +6969,12 @@ var createExecutor = (config) => Effect8.gen(function* () {
      return yield* produceConnectionTools(integrationRow, ref);
    });
    const unknownHealth = () => ({ status: "unknown", checkedAt: Date.now() });
@@ -375,7 +523,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
      ),
      set: { last_health: result, updated_at: /* @__PURE__ */ new Date() }
    }).pipe(Effect8.ignore);
-@@ -6958,7 +7021,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+@@ -6958,7 +7066,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
      if (spec === void 0 && connectionRow.oauth_client != null) {
        const result2 = yield* oauthCredentialHealthWithoutProbe(connectionRow);
        yield* annotateHealthVerdict("credential_only", result2);
@@ -384,7 +532,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
        return result2;
      }
      const result = yield* Effect8.gen(function* () {
-@@ -6984,7 +7047,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+@@ -6984,7 +7092,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
        );
      }).pipe(Effect8.catchTag("CredentialResolutionError", healthFromCredentialResolutionError));
      yield* annotateHealthVerdict("probe", result);
@@ -393,7 +541,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..bb5f7b11413fa44c1562b73e69da34c5
      return result;
    }).pipe(
      Effect8.withSpan("executor.connection.health.check", {
-@@ -8105,4 +8168,4 @@ export {
+@@ -8105,4 +8213,4 @@ export {
    collectTables,
    createExecutor
  };

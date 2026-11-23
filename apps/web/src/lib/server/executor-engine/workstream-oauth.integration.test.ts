@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { createHash } from 'node:crypto'
-import { Effect, Layer, Option, Result } from 'effect'
+import { Deferred, Effect, Layer, Option, Result } from 'effect'
 import { FetchHttpClient } from 'effect/unstable/http'
 import {
   AuthTemplateSlug,
   ConnectionName,
   IntegrationSlug,
   OAuthClientSlug,
+  ProviderKey,
   Subject,
   Tenant,
   createExecutor,
@@ -68,7 +69,7 @@ describe('Workstream public OAuth lifecycle', () => {
     const accessTokens = new Map<string, string>()
     const refreshTokens = new Map<
       string,
-      { member: string; generation: number }
+      { member: string; generation: number; grantId: string }
     >()
     const callTokens: string[] = []
     const rejectedAccessTokens: string[] = []
@@ -113,14 +114,16 @@ describe('Workstream public OAuth lifecycle', () => {
         tokenRequests.push(body)
         tokenAuthorizations.push(request.headers.get('authorization'))
         let member: string
+        let grantId: string
         let generation = 0
         if (body.get('grant_type') === 'authorization_code') {
-          const code = codes.get(body.get('code') ?? '')
+          grantId = body.get('code') ?? ''
+          const code = codes.get(grantId)
           if (code === undefined)
             return Response.json({ error: 'invalid_grant' }, { status: 400 })
           member = code.member
           generation = code.generation ?? 0
-          codes.delete(body.get('code') ?? '')
+          codes.delete(grantId)
         } else {
           if (body.get('grant_type') !== 'refresh_token')
             return Response.json(
@@ -134,13 +137,14 @@ describe('Workstream public OAuth lifecycle', () => {
             return Response.json({ error: 'invalid_grant' }, { status: 400 })
           refreshTokens.delete(refreshToken)
           member = grant.member
+          grantId = grant.grantId
           generation = grant.generation + 1
           refreshes.push(member)
         }
         const accessToken = `${member}-access-${generation}`
         const refreshToken = `${member}-refresh-${generation}`
-        accessTokens.set(member, accessToken)
-        refreshTokens.set(refreshToken, { member, generation })
+        accessTokens.set(grantId, accessToken)
+        refreshTokens.set(refreshToken, { member, generation, grantId })
         return Response.json({
           access_token: accessToken,
           refresh_token: refreshToken,
@@ -388,6 +392,9 @@ describe('Workstream public OAuth lifecycle', () => {
         members.splice(members.indexOf(alice), 1)
         const restoredAlice = yield* open('member-a')
         members.push(restoredAlice)
+        const aliceCredentialIds = restoredAlice.providers
+          .items(ProviderKey.make('encrypted'))
+          .pipe(Effect.map((items) => items.map((item) => item.id).sort()))
         expect(
           JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
         ).toContain('member-a-access-1')
@@ -455,6 +462,8 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(ref).toBeDefined()
         if (ref === undefined) return
         revocationAvailable = false
+        const storedBeforeRemoval = yield* aliceCredentialIds
+        expect(storedBeforeRemoval).toHaveLength(2)
         const unavailableRemoval = yield* restoredAlice.connections
           .remove(ref)
           .pipe(Effect.result)
@@ -463,10 +472,12 @@ describe('Workstream public OAuth lifecycle', () => {
           yield* restoredAlice.connections.list({ integration: slug }),
         ).toHaveLength(1)
         expect(refreshTokens.has('member-a-refresh-2')).toBe(true)
+        expect(yield* aliceCredentialIds).toEqual(storedBeforeRemoval)
         revocationAvailable = true
         yield* restoredAlice.connections.remove(ref)
         expect(refreshTokens.has('member-a-refresh-2')).toBe(false)
         expect(refreshTokens.has('member-b-refresh-1')).toBe(true)
+        expect(yield* aliceCredentialIds).toEqual([])
         expect(
           yield* restoredAlice.connections.list({ integration: slug }),
         ).toEqual([])
@@ -540,18 +551,23 @@ describe('Workstream public OAuth lifecycle', () => {
             })
           })
         const currentGrant = yield* reconnectAlice(100)
-        const revocationStarted = Promise.withResolvers<void>()
-        const finishRevocation = Promise.withResolvers<void>()
+        const supersededIds = yield* aliceCredentialIds
+        expect(supersededIds).toHaveLength(2)
+        const revocationStarted = yield* Deferred.make<void>()
+        const finishRevocation = yield* Deferred.make<void>()
         pauseRevocation = () => {
-          revocationStarted.resolve()
-          return finishRevocation.promise
+          return Effect.runPromise(
+            Deferred.succeed(revocationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(finishRevocation)),
+            ),
+          )
         }
         const removing = Effect.runPromise(
           restoredAlice.connections.remove(currentGrant).pipe(Effect.result),
         )
-        yield* Effect.promise(() => revocationStarted.promise)
+        yield* Deferred.await(revocationStarted)
         const renewedGrant = yield* reconnectAlice(200).pipe(
-          Effect.ensuring(Effect.sync(() => finishRevocation.resolve())),
+          Effect.ensuring(Deferred.succeed(finishRevocation, undefined)),
         )
         expect(Result.isFailure(yield* Effect.promise(() => removing))).toBe(
           true,
@@ -559,6 +575,11 @@ describe('Workstream public OAuth lifecycle', () => {
         pauseRevocation = undefined
         expect(refreshTokens.has('member-a-refresh-100')).toBe(false)
         expect(refreshTokens.has('member-a-refresh-200')).toBe(true)
+        const renewedIds = yield* aliceCredentialIds
+        expect(renewedIds).toHaveLength(2)
+        expect(renewedIds.filter((id) => supersededIds.includes(id))).toEqual(
+          [],
+        )
         expect(
           yield* restoredAlice.connections.list({ integration: slug }),
         ).toHaveLength(1)
@@ -566,21 +587,24 @@ describe('Workstream public OAuth lifecycle', () => {
           JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
         ).toContain('member-a-access-200')
 
-        const refreshStarted = Promise.withResolvers<void>()
-        const finishRefresh = Promise.withResolvers<void>()
+        const refreshStarted = yield* Deferred.make<void>()
+        const finishRefresh = yield* Deferred.make<void>()
         pauseRefresh = (token) => {
           if (token !== 'member-a-refresh-200') return Promise.resolve()
-          refreshStarted.resolve()
-          return finishRefresh.promise
+          return Effect.runPromise(
+            Deferred.succeed(refreshStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(finishRefresh)),
+            ),
+          )
         }
         refreshTokens.delete('member-a-refresh-200')
         clock.mockReturnValue(now + 14405_000)
         const staleRefresh = Effect.runPromise(
           restoredAlice.connections.checkHealth(renewedGrant),
         )
-        yield* Effect.promise(() => refreshStarted.promise)
-        const replacementGrant = yield* reconnectAlice(300).pipe(
-          Effect.ensuring(Effect.sync(() => finishRefresh.resolve())),
+        yield* Deferred.await(refreshStarted)
+        yield* reconnectAlice(300).pipe(
+          Effect.ensuring(Deferred.succeed(finishRefresh, undefined)),
         )
         expect((yield* Effect.promise(() => staleRefresh)).status).toBe(
           'expired',
@@ -592,6 +616,39 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(
           JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
         ).toContain('member-a-access-300')
+
+        const rotationStarted = yield* Deferred.make<void>()
+        const finishRotation = yield* Deferred.make<void>()
+        pauseRefresh = (token) =>
+          token !== 'member-a-refresh-300'
+            ? Promise.resolve()
+            : Effect.runPromise(
+                Deferred.succeed(rotationStarted, undefined).pipe(
+                  Effect.andThen(Deferred.await(finishRotation)),
+                ),
+              )
+        const rotatingIds = yield* aliceCredentialIds
+        clock.mockReturnValue(now + 18007_000)
+        const staleRotation = Effect.runPromise(
+          restoredAlice.execute(aliceTool.address, {}).pipe(Effect.result),
+        )
+        yield* Deferred.await(rotationStarted)
+        const replacementGrant = yield* reconnectAlice(400).pipe(
+          Effect.ensuring(Deferred.succeed(finishRotation, undefined)),
+        )
+        expect(
+          Result.isFailure(yield* Effect.promise(() => staleRotation)),
+        ).toBe(true)
+        expect(refreshTokens.has('member-a-refresh-301')).toBe(true)
+        expect(refreshTokens.has('member-a-refresh-400')).toBe(true)
+        const replacementIds = yield* aliceCredentialIds
+        expect(replacementIds).toHaveLength(2)
+        expect(replacementIds.filter((id) => rotatingIds.includes(id))).toEqual(
+          [],
+        )
+        expect(
+          JSON.stringify(yield* restoredAlice.execute(aliceTool.address, {})),
+        ).toContain('member-a-access-400')
 
         const storedClients = Object.values(stored).find((rows) =>
           rows.some((row) => row.client_id === 'garden-dev'),
@@ -608,7 +665,8 @@ describe('Workstream public OAuth lifecycle', () => {
           .pipe(Effect.result)
         expect(Result.isFailure(failedRemoval)).toBe(true)
         expect(http.mock.calls).toHaveLength(callsBeforeMissingBinding)
-        expect(refreshTokens.has('member-a-refresh-300')).toBe(true)
+        expect(refreshTokens.has('member-a-refresh-400')).toBe(true)
+        expect(yield* aliceCredentialIds).toEqual(replacementIds)
         expect(
           yield* restoredAlice.connections.list({ integration: slug }),
         ).toHaveLength(1)
