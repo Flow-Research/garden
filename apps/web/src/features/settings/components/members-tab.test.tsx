@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { MemberWithUser, User, Workspace } from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { teamKeys } from '@/features/teams/queries'
 import { workspaceKeys } from '@/lib/workspace/queries'
 import { MembersTab } from './members-tab'
 
@@ -36,6 +37,11 @@ function renderTab() {
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   })
   queryClient.setQueryData(workspaceKeys.members('ws-1'), [OWNER])
+  queryClient.setQueryData(teamKeys.list('ws-1'), {
+    teams: [],
+    total: 0,
+    unique_member_count: 0,
+  })
   render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceIdProvider wsId="ws-1">
@@ -43,7 +49,8 @@ function renderTab() {
       </WorkspaceIdProvider>
     </QueryClientProvider>,
   )
-  return screen.getByRole('textbox', { name: 'Email address to invite' })
+  fireEvent.click(screen.getByRole('button', { name: 'Add a Team Member' }))
+  return screen.getByRole('textbox', { name: 'Invitee 1 email' })
 }
 
 describe('MembersTab invite', () => {
@@ -72,16 +79,52 @@ describe('MembersTab invite', () => {
       role: 'member',
     })
     finish()
-    expect(await screen.findByDisplayValue('')).toBe(email)
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+    expect(toast.success).toHaveBeenCalledWith('Invitation sent')
   })
 
-  it('does not send an invalid address', () => {
+  it('sends nothing while any row has an invalid address', () => {
     const email = renderTab()
-    fireEvent.change(email, { target: { value: 'not-an-email' } })
+    fireEvent.change(email, { target: { value: 'grace@example.com' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invitee 2 email' }), {
+      target: { value: 'not-an-email' },
+    })
     fireEvent.submit(email)
 
     expect(api.createMember).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith('Enter a valid email address')
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Enter a valid email address',
+    )
+  })
+
+  it('keeps only the rows that failed, with their error', async () => {
+    api.createMember.mockImplementation(
+      async (_ws: string, body: { email: string }) => {
+        if (body.email === 'taken@example.com') {
+          throw new Error('Already a member')
+        }
+      },
+    )
+    const email = renderTab()
+    fireEvent.change(email, { target: { value: 'grace@example.com' } })
+    fireEvent.change(screen.getByRole('textbox', { name: 'Invitee 2 email' }), {
+      target: { value: 'taken@example.com' },
+    })
+    fireEvent.submit(email)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Already a member',
+    )
+    expect(api.createMember).toHaveBeenCalledTimes(2)
+    expect(toast.success).toHaveBeenCalledWith('Invitation sent')
+    expect(
+      screen.getByRole('textbox', { name: 'Invitee 1 email' }),
+    ).toHaveValue('taken@example.com')
+    expect(
+      screen.queryByRole('textbox', { name: 'Invitee 2 email' }),
+    ).not.toBeInTheDocument()
   })
 })
 
@@ -130,14 +173,14 @@ describe('MembersTab GitHub identity controls', () => {
   it('gives a plain member no GitHub edit control, even on their own row', () => {
     renderAs('user-2')
     expect(
-      screen.queryByRole('button', { name: 'Member actions' }),
+      screen.queryByRole('button', { name: /^Actions for / }),
     ).not.toBeInTheDocument()
     expect(screen.queryByText('Link GitHub')).not.toBeInTheDocument()
   })
 
   it('lets an owner open Link GitHub on every row, their own included', async () => {
     renderAs('user-1')
-    const triggers = screen.getAllByRole('button', { name: 'Member actions' })
+    const triggers = screen.getAllByRole('button', { name: /^Actions for / })
     expect(triggers).toHaveLength(2)
     fireEvent.click(triggers[0]!)
     expect(
@@ -149,7 +192,7 @@ describe('MembersTab GitHub identity controls', () => {
     renderAs('user-3', [OWNER, ADMIN, MEMBER])
     // Admin rows: own row and the member row; the owner row has no menu.
     expect(
-      screen.getAllByRole('button', { name: 'Member actions' }),
+      screen.getAllByRole('button', { name: /^Actions for / }),
     ).toHaveLength(2)
   })
 })

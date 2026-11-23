@@ -3,7 +3,7 @@ title: Settings page rollout
 description: The routed Settings shell, its sections, User Management's Members and Team sub-tabs, and the separate modal entry during design rollout.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-23
 ---
 
 Settings has an authenticated page at `/settings` for direct-link review during the staging rollout. Existing account and workspace menu entries still open the Settings modal. The page is not linked from application navigation yet.
@@ -46,10 +46,16 @@ User Management has Members and Team sub-tabs, shown as pills, each with its own
 | Team list   | `/settings/user-management/teams`         |
 | Team detail | `/settings/user-management/teams/$teamId` |
 
-- **Members** keeps every existing workspace member control: invite with role and Teams, role changes, removal, GitHub identity linking, and pending invitation resend and revoke.
-- **Team** is visible only to workspace owners and admins, because creating, deleting and staffing Teams needs the `teamManage` permission. Others see Members only; Team paths redirect them to Members. It shows the same Team management panel as `/teams`: Create a Team, the Team card grid with member counts, and the card menu's Add team member and Delete. A Team card opens the Settings Team detail page, which shows only the Team's name and description until its design is implemented. Team cards on `/teams` still open `/teams/$teamId`.
+- **Members** follows the Members design: the pills on the left, **Add a Team Member** on the right for owners and admins, and a table with User and Role columns. Each row also shows the member's GitHub identity. Its ⋯ menu keeps the existing controls: role change, GitHub link and unlink, and removal. Pending invitations follow in a second table with resend and revoke. **Add a Team Member** opens a dialog with one row per invitee: email, role (Member or Admin) and the Teams they join on accept. Each row is its own invitation request. Invalid or duplicate addresses stop the whole batch before anything is sent, and rows the server rejects stay in the dialog with their error. The Settings modal's Members tab renders the same component without the pills.
+- **Team** is visible only to workspace owners and admins, because creating, deleting and staffing Teams needs the `teamManage` permission. Others see Members only; Team paths redirect them to Members. It shows the same Team management panel as `/teams`: Create a Team, the Team card grid with member counts, and the card menu's Add team member and Delete. A Team card opens the Settings Team detail page: a Teams breadcrumb over the same Team detail card as `/teams/$teamId`, with Add a team member, Setup Owner, the ⋯ menu (View details, Team settings, Copy link, Delete team), the Members, Issues and Repositories tabs, and the member table with Agent settings. The tab is kept in `?tab=`. Deleting the Team returns to the Settings Team list. Team cards on `/teams` still open `/teams/$teamId`.
 
-The design also shows Roles and Guests sub-tabs. Workspace roles are the fixed owner, admin and member set and Garden has no guest access, so neither sub-tab exists until the backend supports it.
+The designs also show elements Garden has no backend for, so they are not built:
+
+- **Roles and Guests sub-tabs.** Workspace roles are the fixed owner, admin and member set, and Garden has no guest access.
+- **Import Team Member.** There is no bulk import endpoint.
+- **Full name on invitations.** Invitations carry only email, role and Teams; the name comes from the invitee's account.
+- **Departments column on Members.** The members API does not return each member's Teams.
+- **Department Head badge.** The Team detail table labels the Team owner "Team Owner".
 
 Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
 
