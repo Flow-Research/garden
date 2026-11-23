@@ -12,7 +12,7 @@
 - Unbacked design controls (Chats, Home, Delete projects, Manage billing, Read locked files, Deploy changes, Create documents, Team role, Admin Policy) render disabled with **Coming soon**.
 - A Team policy removes blocked tools from the agent and makes approval-required connector calls wait for the Team owner.
 - `/teams` has no **Invites** section or **Default team for new members** control.
-- An invite sent with Teams from **Settings › Members** adds the invitee to those Teams on accept. With no Team picked, the default Team applies.
+- An invite sent with Teams from **Settings › Members** adds the invitee to those Teams on accept. With no Team picked, the invitee joins no Team.
 
 ## How to get to it (user POV)
 

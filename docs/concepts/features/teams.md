@@ -65,19 +65,19 @@ The create rules live in the issue service, not in a route. `createIssue` in `pa
 
 An invitation can name the Teams its invitee joins. Before this, accepting an invite created only the workspace membership, so a new member opened `/teams` and saw an empty board until someone added them by hand.
 
-`POST /api/workspaces/:id/members` takes an optional `team_ids` array. Only workspace owners and admins create invites, through Better Auth's `createInvitation`, and they may attach any Team in the workspace. `planInvitationTeams` in `apps/web/src/lib/server/invitation-teams.ts` checks the Teams before the invite exists. A Team id that is not in the workspace returns `404 TEAM_NOT_FOUND`, and any other caller gets `403 INVITATION_TEAM_FORBIDDEN`. When the invite names no Team and the workspace has a default Team, the invite joins the default Team. A resend that names Teams adds them to the existing invite. A resend that names none keeps its Teams.
+`POST /api/workspaces/:id/members` takes an optional `team_ids` array. Only workspace owners and admins create invites, through Better Auth's `createInvitation`, and they may attach any Team in the workspace. `planInvitationTeams` in `apps/web/src/lib/server/invitation-teams.ts` checks the Teams before the invite exists. A Team id that is not in the workspace returns `404 TEAM_NOT_FOUND`, and any other caller gets `403 INVITATION_TEAM_FORBIDDEN`. When the invite names no Team, it joins none. A resend that names Teams adds them to the existing invite. A resend that names none keeps its Teams.
 
 Garden records each Team in `invitation_team`. If the invite email fails, the route cancels the invite with Better Auth's `cancelInvitation` and deletes its `invitation_team` rows, because a canceled invite keeps its row and the cascade does not fire.
 
 Acceptance adds Team memberships after the workspace membership exists. It runs on the normal accept path and on the recovery path for a person who is already a member, and it skips Teams the person already belongs to, so a repeated accept leaves one row per Team. A canceled or rejected invite adds no Teams. If the Team write fails, the person still joins the workspace, and the server logs `invitation.join_teams_failed`.
 
-The invite form in **Settings › Members** has a Team picker. Leaving it empty means the default Team applies.
+The invite form in **Settings › Members** has a Team picker. Leaving it empty means the invitee joins no Team.
 
 Team owners cannot invite people yet. Plain members do not hold Better Auth's `invitation:create` permission. A follow-up will grant Team owners that permission through Better Auth access control, rather than bypassing Better Auth.
 
-## Default Team settings stay in the API
+## The default Team setting is inactive
 
-The Teams overview has no **Invites** section or **Default team for new members** control. The API retains the setting in the typed `organization.default_team_id` column, unset by default. Existing defaults still apply to invitations without explicit Teams.
+The Teams overview has no **Invites** section or **Default team for new members** control. The API retains the setting in the typed `organization.default_team_id` column, unset by default. Invites do not read it: a new invite with no Teams joins none, and a resend with no Teams keeps the invite's current Teams.
 
 `GET /api/workspaces/:id/team-settings` returns `{ default_team_id }` to any workspace member. `PATCH` changes it and is limited to owners and admins. A `default_team_id` from another workspace returns `404 TEAM_NOT_FOUND`. The column has a plain foreign key to `team.id` with `ON DELETE SET NULL`, so deleting the default Team clears the setting. The service checks the workspace, because a composite `(default_team_id, id)` key would try to null `organization.id` on delete.
 
@@ -87,7 +87,7 @@ Teams has one home in the app:
 
 | Route            | What it shows                                                                                                                                                                                                                                                                                      |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/teams`         | Owners and admins see one card holding **Create a Team** and the Team grid (or the **No Teams** empty state). Each Team card menu has **Add team member** and **Delete**. Members see a Team selector and their Team's issues.                                      |
+| `/teams`         | Owners and admins see one card holding **Create a Team** and the Team grid (or the **No Teams** empty state). Each Team card menu has **Add team member** and **Delete**. Members see a Team selector and their Team's issues.                                                                     |
 | `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md). |
 | `/teams/issues`  | Issues across every Team, for owners and admins                                                                                                                                                                                                                                                    |
 

@@ -355,7 +355,7 @@ describe('invitation Teams (integration)', () => {
     expect(pending).toHaveLength(0)
   })
 
-  it('attaches the default Team when the invite names none', async () => {
+  it('ignores a stored default Team when the invite names none', async () => {
     const ws = await seedWorkspace()
     expect(
       (
@@ -368,14 +368,15 @@ describe('invitation Teams (integration)', () => {
 
     const response = await invite(ws.owner, ws.workspaceId, { email })
     const invitation = (await response.json()) as { id: string }
+    expect(await invitationTeamIds(invitation.id)).toEqual([])
     const invitee = await signUp(auth, email)
     await accept(invitee, invitation.id)
 
-    expect(await teamMemberships(ws.financeId, invitee.id)).toHaveLength(1)
+    expect(await teamMemberships(ws.financeId, invitee.id)).toHaveLength(0)
     expect(await teamMemberships(ws.engineeringId, invitee.id)).toHaveLength(0)
   })
 
-  it('joins no Team when no default is set and none is named', async () => {
+  it('joins no Team when none is named', async () => {
     const ws = await seedWorkspace()
     const email = `new-${ws.suffix}@example.com`
 
