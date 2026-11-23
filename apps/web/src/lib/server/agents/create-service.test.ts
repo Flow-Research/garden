@@ -66,8 +66,11 @@ describe('createWorkspaceAgent', () => {
     })
   })
 
-  it('maps insert failures to AgentCreateError 500', async () => {
-    mocks.insertAgent.mockRejectedValue(new Error('db down'))
+  it('maps insert failures to fixed AgentCreateError without leaking cause text', async () => {
+    const cause = Object.assign(new Error('Failed query: params: secret-instructions'), {
+      cause: { code: '23505', constraint: 'agent_pkey' },
+    })
+    mocks.insertAgent.mockRejectedValue(cause)
 
     const result = await createWorkspaceAgent({
       db: {} as never,
@@ -81,7 +84,8 @@ describe('createWorkspaceAgent', () => {
     expect(result.error._tag).toBe('AgentCreateError')
     expect(result.error.status).toBe(500)
     expect(result.error.message).toBe('Failed to create agent')
-    expect(result.error.cause).toBeInstanceOf(Error)
+    expect(result.error.message).not.toContain('secret-instructions')
+    expect(result.error.cause).toBe(cause)
     expect(mocks.bindExistingCapabilitiesToAgent).not.toHaveBeenCalled()
   })
 })
