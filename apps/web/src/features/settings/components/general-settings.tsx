@@ -137,7 +137,7 @@ function WorkspaceDetailsCard({
     <SettingsPanel>
       <form className="space-y-6" onSubmit={handleSave}>
         <header className="space-y-1">
-          <h2 className="text-base font-semibold">Workspace</h2>
+          <h2 className="text-base font-semibold">General</h2>
           <p className="text-sm text-muted-foreground">
             How this workspace shows up and how agents see its context.
           </p>

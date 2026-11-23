@@ -42,7 +42,7 @@ Teams remains at `/teams`. Moving Teams, adding User Management sub-tabs, implem
 
 The General section restyles the workspace settings and keeps every control the modal offers. It has two cards:
 
-- **Workspace.** Name, Description and Context fields, with a hint that agents read Context as background. The slug is a read-only row. Save and Reset appear only after a field changes, ignoring leading and trailing spaces. Save is disabled while the name is empty, and it sends trimmed values. A successful save updates the workspace store and the cached workspace list. Unsaved edits are tied to the workspace they were typed in, so switching workspaces discards them. Members who are not admins or owners see the fields disabled, with a note at the top of the card.
+- **General.** Name, Description and Context fields, with a hint that agents read Context as background. The slug is a read-only row. Save and Reset appear only after a field changes, ignoring leading and trailing spaces. Save is disabled while the name is empty, and it sends trimmed values. A successful save updates the workspace store and the cached workspace list. Unsaved edits are tied to the workspace they were typed in, so switching workspaces discards them. Members who are not admins or owners see the fields disabled, with a note at the top of the card.
 - **Danger zone.** Leave workspace, with the existing confirmation. The dialog stays open if leaving fails, so the action can be retried.
 
 The modal still renders the earlier `WorkspaceTab`. Both use `api.updateWorkspace` and `useLeaveWorkspace`.

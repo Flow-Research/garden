@@ -20,7 +20,7 @@
 
 ## General section
 
-1. Open `/settings/general` as a workspace admin or owner. Expect a Workspace card with Name, Description, Context, the Context hint and the slug, then a tinted Danger zone card.
+1. Open `/settings/general` as a workspace admin or owner. Expect a General card with Name, Description, Context, the Context hint and the slug, then a tinted Danger zone card.
 2. Edit a field. Expect Save changes and Reset. Reset restores the saved values and hides both. Clearing the name disables Save. Save shows a success toast, updates the workspace name in the sidebar and persists after reload.
 3. Sign in as a member. Expect disabled fields and "Only admins and owners can edit workspace settings." at the top of the card.
 4. Select Leave workspace. Expect the confirmation dialog. Cancel keeps the workspace. Confirm removes access.

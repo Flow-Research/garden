@@ -93,6 +93,7 @@ describe('GeneralSettings', () => {
 
   it('shows labelled fields, the context hint and the slug', () => {
     renderGeneral()
+    expect(screen.getByRole('heading', { name: 'General' })).toBeInTheDocument()
     expect(screen.getByLabelText('Name')).toHaveValue('Garden')
     expect(screen.getByLabelText('Description')).toHaveValue('Plants')
     expect(screen.getByLabelText('Context')).toHaveAccessibleDescription(
