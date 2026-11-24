@@ -354,5 +354,7 @@ describe('makeMammothDocumentMarkdownLayer', () => {
       expect(failure._tag).toBe('DocumentArtifactImportError')
       expect(failure.filename).toBe('malformed.docx')
     },
+    // Match the bounded real-DOCX integration allowance in document-tools tests.
+    30_000,
   )
 })

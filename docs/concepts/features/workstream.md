@@ -1,9 +1,9 @@
 ---
 title: Connect a personal Workstream account
-description: Connect Workstream MCP through an invite-only Flow Identity account while keeping Garden sign-in and Workstream authorization separate.
+description: Connect Workstream MCP through a Flow Identity account while keeping Garden sign-in and Workstream authorization separate.
 status: current
 owner: '@Flow-Research/security'
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-18
 ---
 
 ## Outcome and boundary
@@ -21,6 +21,25 @@ The hosted MCP resource is `https://workstream.flowresearch.tech/mcp`. Its Flow 
 For the exact Workstream resource, the installed SDK patch keeps code exchange and the saved refresh token endpoint on the configured issuer. Untrusted callback `domain` or `site` parameters cannot rebind them to a sibling host. Other providers retain their existing regional callback behavior. See the [Executor seams](../../../third_party/executor/PATCHES.md).
 
 Executor discovers the requested scopes from Workstream's protected-resource metadata: `workstream:access workstream-mcp-audience`. These are access-token scopes; no OpenID identity token is requested. The audience scope binds this credential to MCP. Workstream exchanges it for its internal API credential and enforces existing product authorization. Garden never receives the MCP server's exchange secret and never forwards its primary sign-in credential to Workstream.
+
+## Renewal and reconnection
+
+A saved connection is not proof that its authorization can still renew. Garden
+must show a rejected refresh grant as needing reconnection and offer the existing
+Personal OAuth action, even while retaining the connection record. A mere access
+token expiry is not a reconnect condition: Executor first renews it silently.
+For Workstream, the dedicated Garden authorization requests a bounded offline
+grant: 30 days idle and 90 days absolute maximum, enforced by Flow Identity.
+Revocation remains authoritative. This does not change Garden sign-in or grant
+any additional Workstream permissions.
+
+Disconnect revokes the saved authorization at Flow Identity. If the issuer is
+unavailable, Garden retains the connection and permits another attempt. If a
+reconnect replaces the grant during disconnect, the new authorization stays connected.
+Garden saves connection and encrypted credential changes in one database batch.
+A database rollback keeps the previous local records available for retry. Flow Identity
+may already have exchanged a code, rotated a token, or revoked authorization by
+that point.
 
 ## What the member sees
 

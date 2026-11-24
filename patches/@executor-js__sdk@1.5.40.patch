@@ -184,7 +184,7 @@ index 34cf72783eabf91bab4ff90a9028c8b51689546e..cfc8a8bb664353cd9669c8d42ae643b2
    { state: OAuthState }
  ) {
 diff --git a/dist/chunk-VWFZ6OPE.js b/dist/chunk-VWFZ6OPE.js
-index 6cf936862fbea4d8f6a106fe9282aa7571336c76..a18e463b920aef3cdc4f8fc57bf02c0631d98160 100644
+index 6cf936862fbea4d8f6a106fe9282aa7571336c76..c11570b791aa6146b079ac302ff3ccdba650b72d 100644
 --- a/dist/chunk-VWFZ6OPE.js
 +++ b/dist/chunk-VWFZ6OPE.js
 @@ -4177,6 +4177,8 @@ var discoverProtectedResourceMetadata = (resourceUrl, options = {}) => Effect6.g
@@ -196,7 +196,20 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..a18e463b920aef3cdc4f8fc57bf02c06
    return issuerPath && issuerPath !== "/" ? `${issuerOrigin2}/.well-known/${suffix}${issuerPath}` : `${issuerOrigin2}/.well-known/${suffix}`;
  };
  var discoverAuthorizationServerMetadata = (issuer, options = {}) => Effect6.gen(function* () {
-@@ -5028,7 +5030,8 @@ var makeOAuthService = (deps) => {
+@@ -4873,6 +4875,12 @@ var makeOAuthService = (deps) => {
+         })
+       )
+     ) : dedupeScopes(scopePolicy.scopes);
++    if (client.resource === "https://workstream.flowresearch.tech/mcp" &&
++        client.authorizationUrl === "https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/auth" &&
++        client.tokenUrl === "https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/token" &&
++        client.grant === "authorization_code" && client.clientId.startsWith("garden-")) {
++      if (!requestedScopes.includes("offline_access")) requestedScopes.push("offline_access");
++    }
+     if (client.grant === "client_credentials") {
+       const token = yield* exchangeClientCredentials({
+         tokenUrl: client.tokenUrl,
+@@ -5028,7 +5036,8 @@ var makeOAuthService = (deps) => {
      }
      const tokenUrl = rebindTokenEndpointHostToCallbackDomain(
        client.tokenUrl,
@@ -206,6 +219,390 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..a18e463b920aef3cdc4f8fc57bf02c06
      );
      const token = yield* exchangeAuthorizationCode({
        tokenUrl,
+@@ -5065,7 +5074,8 @@ var makeOAuthService = (deps) => {
+       session.clientOwner,
+       // Persist the regional token endpoint ONLY when it differs from the
+       // client's configured one, so refresh redeems against the same region.
+-      tokenUrl === client.tokenUrl ? null : tokenUrl
++      tokenUrl === client.tokenUrl ? null : tokenUrl,
++      String(input.state)
+     ).pipe(
+       Effect7.mapError(
+         (cause) => new OAuthCompleteError({
+@@ -5078,7 +5088,7 @@ var makeOAuthService = (deps) => {
+     yield* Effect7.annotateCurrentSpan({
+       "executor.oauth.token_host_rebound": tokenUrl !== client.tokenUrl
+     });
+-    yield* deleteSession(input.state);
++    if (client.resource !== "https://workstream.flowresearch.tech/mcp") yield* deleteSession(input.state);
+     return connection;
+   }).pipe(
+     Effect7.withSpan("executor.oauth.complete", {
+@@ -5091,7 +5101,7 @@ var makeOAuthService = (deps) => {
+       }
+     })
+   );
+-  const mintFromToken = (target, client, token, requestedScopes, clientOwner, oauthTokenUrl) => Effect7.gen(function* () {
++  const mintFromToken = (target, client, token, requestedScopes, clientOwner, oauthTokenUrl, sessionState) => Effect7.gen(function* () {
+     const provider = deps.defaultWritableProvider();
+     if (!provider || !provider.set) {
+       return yield* new StorageError({
+@@ -5099,12 +5109,24 @@ var makeOAuthService = (deps) => {
+         cause: void 0
+       });
+     }
+-    const itemId = accessItemId(target.owner, target.integration, target.name);
+-    yield* provider.set(ProviderItemId.make(itemId), token.access_token);
+-    let refreshItemId = null;
+-    if (token.refresh_token) {
+-      refreshItemId = refreshItemIdFor(itemId);
+-      yield* provider.set(ProviderItemId.make(refreshItemId), token.refresh_token);
++    const workstream = client.resource === "https://workstream.flowresearch.tech/mcp";
++    const baseItemId = accessItemId(target.owner, target.integration, target.name);
++    const itemId = workstream ? `${baseItemId}:${crypto.randomUUID()}` : baseItemId;
++    const refreshItemId = token.refresh_token ? refreshItemIdFor(itemId) : null;
++    let workstreamGrant;
++    if (workstream) {
++      if (target.owner !== "user" || provider.key !== "encrypted" || !provider.prepareWorkstreamCiphertext ||
++          !sessionState || !token.refresh_token) {
++        return yield* new StorageError({ message: "Workstream requires an encrypted Personal refresh grant." });
++      }
++      workstreamGrant = {
++        sessionState,
++        accessCiphertext: yield* provider.prepareWorkstreamCiphertext(token.access_token),
++        refreshCiphertext: yield* provider.prepareWorkstreamCiphertext(token.refresh_token)
++      };
++    } else {
++      yield* provider.set(ProviderItemId.make(itemId), token.access_token);
++      if (refreshItemId) yield* provider.set(ProviderItemId.make(refreshItemId), token.refresh_token);
+     }
+     const oauthScope = recordedOAuthScope(token, requestedScopes);
+     const missingScopes = client.grant === "authorization_code" ? missingGrantedOAuthScopes(requestedScopes, oauthScope) : [];
+@@ -5124,6 +5146,7 @@ var makeOAuthService = (deps) => {
+       // empty label, never replace a user-curated one on reconnect.
+       derivedIdentityLabel: token.idTokenIdentityLabel ?? null,
+       provider: String(provider.key),
++      workstreamGrant,
+       itemId,
+       oauthClient: OAuthClientSlug.make(client.slug),
+       oauthClientOwner: clientOwner,
+@@ -5307,6 +5330,7 @@ var decodeOAuthReauthRequiredProviderState = Schema6.decodeUnknownOption(
+ );
+ var oauthReauthRequiredFromProviderState = (value) => Option4.getOrNull(decodeOAuthReauthRequiredProviderState(decodeJsonColumn(value)));
+ var rowToConnection = (row) => {
++  const reauth = oauthReauthRequiredFromProviderState(row.provider_state);
+   const owner = row.owner;
+   const integration = IntegrationSlug.make(row.integration);
+   const name = ConnectionName.make(row.name);
+@@ -5324,7 +5348,11 @@ var rowToConnection = (row) => {
+     oauthClientOwner: row.oauth_client_owner == null ? null : String(row.oauth_client_owner),
+     oauthScope: row.oauth_scope == null ? null : String(row.oauth_scope),
+     missingOAuthScopes: missingOAuthScopesFromProviderState(row.provider_state),
+-    lastHealth: Option4.getOrNull(decodeLastHealth(row.last_health))
++    lastHealth: reauth ? {
++      status: "expired",
++      checkedAt: reauth.oauthReauthRequiredAt,
++      detail: "Authorization expired or was revoked. Reconnect to continue."
++    } : Option4.getOrNull(decodeLastHealth(row.last_health))
+   };
+ };
+ var grantedScopesFromRow = (row) => {
+@@ -5793,6 +5821,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+   });
+   const rootDbUntyped = "db" in dbInput ? dbInput.db : dbInput;
+   const closeDb = "db" in dbInput ? dbInput.close : void 0;
++  const workstreamOAuthStorage = "db" in dbInput ? dbInput.workstreamOAuthStorage : void 0;
+   yield* Effect8.try({
+     try: () => {
+       validateExecutorDbTables(tables, rootDbUntyped.internal.tables);
+@@ -5883,10 +5912,21 @@ var createExecutor = (config) => Effect8.gen(function* () {
+     )
+   });
+   const refreshInFlight = /* @__PURE__ */ new Map();
+-  const connectionKey = (row) => `${row.owner}:${row.subject}:${row.integration}:${row.name}`;
++  const connectionKey = (row) => JSON.stringify([row.owner, row.subject, row.integration, row.name, row.refresh_item_id]);
+   const loadOAuthClientRow = (owner, slug) => core.findFirst("oauth_client", {
+     where: (b) => b.and(byOwner(owner)(b), b("slug", "=", slug))
+   });
++  const workstreamGrantKey = (ref) => ({ ...ownedKeys(ref.owner), integration: String(ref.integration), name: String(ref.name) });
++  const workstreamGrantItems = (row) => {
++    const accessItemId = connectionItemIds(row)[PRIMARY_INPUT_VARIABLE];
++    return row.provider === "encrypted" && accessItemId ?
++      { provider: "encrypted", accessItemId, refreshItemId: row.refresh_item_id } : null;
++  };
++  const matchOAuthCredentials = (b, row) => b.and(
++    b("provider", "=", row.provider),
++    b("item_ids", "=", connectionItemIds(row)),
++    b("refresh_item_id", "is", row.refresh_item_id)
++  );
+   const markRefreshGrantDead = (row, detail) => {
+     const existingState = decodeJsonColumn(row.provider_state);
+     const mergedState = existingState != null && typeof existingState === "object" && !Array.isArray(existingState) ? existingState : {};
+@@ -5899,7 +5939,8 @@ var createExecutor = (config) => Effect8.gen(function* () {
+       where: (b) => b.and(
+         byOwner(row.owner)(b),
+         b("integration", "=", String(row.integration)),
+-        b("name", "=", String(row.name))
++        b("name", "=", String(row.name)),
++        row.integration === "workstream" ? matchOAuthCredentials(b, row) : true
+       ),
+       set: {
+         provider_state: {
+@@ -6006,6 +6047,25 @@ var createExecutor = (config) => Effect8.gen(function* () {
+         )
+       );
+     });
++    const nextExpiresAt = typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1e3 : null;
++    if (clientRow.resource === "https://workstream.flowresearch.tech/mcp") {
++      const expected = workstreamGrantItems(row);
++      if (config.platformView || owner !== "user" || !expected || !workstreamOAuthStorage || !provider.prepareWorkstreamCiphertext || !token.refresh_token) {
++        return yield* new StorageError({ message: "Workstream refresh requires atomic encrypted credential storage." });
++      }
++      const nextAccessItemId = `${accessItemId(owner, row.integration, row.name)}:${crypto.randomUUID()}`;
++      const saved = yield* workstreamOAuthStorage.write({
++        key: workstreamGrantKey({ owner, integration: row.integration, name: row.name }),
++        next: { provider: "encrypted", accessItemId: nextAccessItemId, refreshItemId: refreshItemIdFor(nextAccessItemId) },
++        accessCiphertext: yield* provider.prepareWorkstreamCiphertext(token.access_token),
++        refreshCiphertext: yield* provider.prepareWorkstreamCiphertext(token.refresh_token),
++        expiresAt: nextExpiresAt,
++        oauthScope: token.scope ?? null,
++        change: { kind: "rotate", expected }
++      });
++      if (!saved) return yield* new StorageError({ message: "Workstream authorization changed during refresh. Retry with the current connection." });
++      return token.access_token;
++    }
+     if (provider.set) {
+       const tokenItemId = connectionItemIds(row)[PRIMARY_INPUT_VARIABLE] ?? `connection:${row.owner}:${row.integration}:${row.name}:${PRIMARY_INPUT_VARIABLE}`;
+       yield* provider.set(ProviderItemId.make(tokenItemId), token.access_token);
+@@ -6013,7 +6073,6 @@ var createExecutor = (config) => Effect8.gen(function* () {
+         yield* provider.set(ProviderItemId.make(row.refresh_item_id), token.refresh_token);
+       }
+     }
+-    const nextExpiresAt = typeof token.expires_in === "number" ? Date.now() + token.expires_in * 1e3 : null;
+     const set = {
+       expires_at: nextExpiresAt,
+       updated_at: /* @__PURE__ */ new Date()
+@@ -6023,7 +6082,8 @@ var createExecutor = (config) => Effect8.gen(function* () {
+       where: (b) => b.and(
+         byOwner(owner)(b),
+         b("integration", "=", String(row.integration)),
+-        b("name", "=", String(row.name))
++        b("name", "=", String(row.name)),
++        b("refresh_item_id", "is", row.refresh_item_id)
+       ),
+       set
+     });
+@@ -6677,6 +6737,40 @@ var createExecutor = (config) => Effect8.gen(function* () {
+       integration: input.integration,
+       name
+     };
++    if (input.workstreamGrant) {
++      if (config.platformView || !workstreamOAuthStorage || input.owner !== "user" || input.provider !== "encrypted" || !input.refreshItemId) {
++        return yield* new StorageError({ message: "Workstream authorization requires atomic encrypted credential storage." });
++      }
++      const existing = yield* findConnectionRow(ref);
++      const expected = existing ? workstreamGrantItems(existing) : null;
++      if (existing && !expected) return yield* new StorageError({ message: "Workstream credential binding must be repaired before reconnect." });
++      const saved = yield* workstreamOAuthStorage.write({
++        key: workstreamGrantKey(ref),
++        next: { provider: "encrypted", accessItemId: input.itemId, refreshItemId: input.refreshItemId },
++        accessCiphertext: input.workstreamGrant.accessCiphertext,
++        refreshCiphertext: input.workstreamGrant.refreshCiphertext,
++        expiresAt: input.expiresAt,
++        oauthScope: input.oauthScope,
++        change: {
++          kind: "mint",
++          expected,
++          sessionState: input.workstreamGrant.sessionState,
++          template: String(input.template),
++          oauthClient: String(input.oauthClient),
++          oauthClientOwner: input.oauthClientOwner,
++          identityLabel: input.identityLabel ?? null,
++          derivedIdentityLabel: input.derivedIdentityLabel ?? null,
++          missingOAuthScopes: input.missingOAuthScopes ?? []
++        }
++      });
++      if (!saved) return yield* new StorageError({ message: "Workstream authorization changed during reconnect. Retry authorization." });
++      yield* produceConnectionTools(integrationRow, ref).pipe(
++        Effect8.catchTag("IntegrationNotFoundError", () => Effect8.succeed([]))
++      );
++      const current = yield* findConnectionRow(ref);
++      if (!current) return yield* new StorageError({ message: "Workstream authorization changed during reconnect. Retry authorization." });
++      return rowToConnection(current);
++    }
+     let identityLabel = null;
+     yield* transaction(
+       Effect8.gen(function* () {
+@@ -6807,7 +6901,39 @@ var createExecutor = (config) => Effect8.gen(function* () {
+     const updated = yield* findConnectionRow(ref);
+     return rowToConnection(updated ?? row);
+   });
+-  const connectionsRemove = (ref) => transaction(
++  const revokeWorkstreamConnection = (ref) => Effect8.gen(function* () {
++    const row = yield* findConnectionRow(ref);
++    if (!row) return yield* new ConnectionNotFoundError({ owner: ref.owner, integration: ref.integration, name: ref.name });
++    const client = row.oauth_client ? yield* loadOAuthClientRow(row.oauth_client_owner ?? row.owner, String(row.oauth_client)) : null;
++    if (row.integration !== "workstream" && client?.resource !== "https://workstream.flowresearch.tech/mcp") return null;
++    if (config.platformView || ref.owner !== "user" || !workstreamOAuthStorage || !workstreamGrantItems(row)) {
++      return yield* new StorageError({ message: "Workstream disconnect requires atomic encrypted credential storage." });
++    }
++    if (!row.refresh_item_id) return row;
++    if (!client || client.resource !== "https://workstream.flowresearch.tech/mcp" ||
++        client.token_url !== "https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/token" ||
++        !String(client.client_id).startsWith("garden-")) {
++      return yield* new StorageError({ message: "Workstream client binding must be repaired before disconnect." });
++    }
++    const pending = refreshInFlight.get(connectionKey(row));
++    if (pending) yield* pending.pipe(Effect8.ignore);
++    const provider = credentialProviders.get(row.provider);
++    if (!provider?.prepareWorkstreamCiphertext) return yield* new StorageError({ message: "Encrypted credential provider unavailable; disconnection was not completed." });
++    const token = yield* provider.get(ProviderItemId.make(row.refresh_item_id));
++    if (!token) return yield* new StorageError({ message: "Refresh credential unavailable; disconnection was not completed." });
++    const response = yield* Effect8.tryPromise({
++      try: () => (config.fetch ?? globalThis.fetch)("https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/revoke", {
++        method: "POST", redirect: "error", signal: AbortSignal.timeout(OAUTH2_DEFAULT_TIMEOUT_MS),
++        headers: { "Content-Type": "application/x-www-form-urlencoded" },
++        body: new URLSearchParams({ client_id: String(client.client_id), token_type_hint: "refresh_token", token })
++      }),
++      catch: () => new StorageError({ message: "Identity provider unavailable; retry disconnection." })
++    });
++    if (!response.ok) return yield* new StorageError({ message: "Identity provider refused revocation; retry disconnection." });
++    return row;
++  });
++  const changedGrant = () => new StorageError({ message: "The Workstream connection changed while disconnecting. Retry if you want to disconnect the current authorization." });
++  const removeConnectionRows = (ref) => transaction(
+     Effect8.gen(function* () {
+       const row = yield* findConnectionRow(ref);
+       if (!row) {
+@@ -6846,6 +6972,15 @@ var createExecutor = (config) => Effect8.gen(function* () {
+       });
+     })
+   );
++  const connectionsRemove = (ref) => Effect8.gen(function* () {
++    const grant = yield* revokeWorkstreamConnection(ref);
++    if (grant) {
++      const removed = yield* workstreamOAuthStorage.remove(workstreamGrantKey(ref), workstreamGrantItems(grant));
++      if (!removed) return yield* changedGrant();
++      return;
++    }
++    yield* removeConnectionRows(ref);
++  });
+   const connectionsRefresh = (ref) => Effect8.gen(function* () {
+     const row = yield* findConnectionRow(ref);
+     if (!row) {
+@@ -6862,11 +6997,12 @@ var createExecutor = (config) => Effect8.gen(function* () {
+     return yield* produceConnectionTools(integrationRow, ref);
+   });
+   const unknownHealth = () => ({ status: "unknown", checkedAt: Date.now() });
+-  const persistHealthResult = (ref, result) => core.updateMany("connection", {
++  const persistHealthResult = (ref, connectionRow, result) => core.updateMany("connection", {
+     where: (b) => b.and(
+       b("owner", "=", String(ref.owner)),
+       b("integration", "=", String(ref.integration)),
+-      b("name", "=", String(ref.name))
++      b("name", "=", String(ref.name)),
++      connectionRow.integration === "workstream" ? matchOAuthCredentials(b, connectionRow) : true
+     ),
+     set: { last_health: result, updated_at: /* @__PURE__ */ new Date() }
+   }).pipe(Effect8.ignore);
+@@ -6958,7 +7094,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+     if (spec === void 0 && connectionRow.oauth_client != null) {
+       const result2 = yield* oauthCredentialHealthWithoutProbe(connectionRow);
+       yield* annotateHealthVerdict("credential_only", result2);
+-      yield* persistHealthResult(ref, result2);
++      yield* persistHealthResult(ref, connectionRow, result2);
+       return result2;
+     }
+     const result = yield* Effect8.gen(function* () {
+@@ -6984,7 +7120,7 @@ var createExecutor = (config) => Effect8.gen(function* () {
+       );
+     }).pipe(Effect8.catchTag("CredentialResolutionError", healthFromCredentialResolutionError));
+     yield* annotateHealthVerdict("probe", result);
+-    yield* persistHealthResult(ref, result);
++    yield* persistHealthResult(ref, connectionRow, result);
+     return result;
+   }).pipe(
+     Effect8.withSpan("executor.connection.health.check", {
+@@ -8105,4 +8241,4 @@ export {
+   collectTables,
+   createExecutor
+ };
+-//# sourceMappingURL=chunk-VWFZ6OPE.js.map
+\ No newline at end of file
++//# sourceMappingURL=chunk-VWFZ6OPE.js.map
+diff --git a/dist/executor.d.ts b/dist/executor.d.ts
+index bbdf3a72c3d1fd991e434f2b5ab64555bfd2f6af..079e650566fbf27476e8d4559e7fccb3de9e6736 100644
+--- a/dist/executor.d.ts
++++ b/dist/executor.d.ts
+@@ -226,9 +226,48 @@ export interface ExecutorAdmin {
+      *  and no connection read is issued when the subject row is absent. */
+     readonly getSubjectWithConnections: (externalId: string) => Effect.Effect<AdminSubjectWithConnections | null, StorageFailure>;
+ }
++interface WorkstreamGrantKey {
++    readonly tenant: string;
++    readonly owner: "user";
++    readonly subject: string;
++    readonly integration: string;
++    readonly name: string;
++}
++interface WorkstreamGrantItems {
++    readonly provider: "encrypted";
++    readonly accessItemId: string;
++    readonly refreshItemId: string | null;
++}
++interface WorkstreamGrantWrite {
++    readonly key: WorkstreamGrantKey;
++    readonly next: WorkstreamGrantItems & { readonly refreshItemId: string };
++    readonly accessCiphertext: string;
++    readonly refreshCiphertext: string;
++    readonly expiresAt: number | null;
++    readonly oauthScope: string | null;
++    readonly change: {
++        readonly kind: "mint";
++        readonly expected: WorkstreamGrantItems | null;
++        readonly sessionState: string;
++        readonly template: string;
++        readonly oauthClient: string;
++        readonly oauthClientOwner: string;
++        readonly identityLabel: string | null;
++        readonly derivedIdentityLabel: string | null;
++        readonly missingOAuthScopes: readonly string[];
++    } | {
++        readonly kind: "rotate";
++        readonly expected: WorkstreamGrantItems;
++    };
++}
+ export interface ExecutorDb {
+     readonly db: FumaDb<any>;
+     readonly close?: () => Effect.Effect<void, StorageFailure> | Promise<void> | void;
++    /** Stores the exact Workstream grant and its already-encrypted credential items in one batch. */
++    readonly workstreamOAuthStorage?: {
++        readonly write: (input: WorkstreamGrantWrite) => Effect.Effect<boolean, StorageFailure>;
++        readonly remove: (key: WorkstreamGrantKey, expected: WorkstreamGrantItems) => Effect.Effect<boolean, StorageFailure>;
++    };
+ }
+ export type ExecutorDbInput = FumaDb<any> | ExecutorDb;
+ export type ExecutorDbFactory = (config: {
+@@ -326,4 +365,4 @@ export interface ExecutorConfig<TPlugins extends readonly AnyPlugin[] = readonly
+ export declare const DEFAULT_TOOLS_SYNC_TTL_MS: number;
+ export declare const collectTables: () => FumaTables;
+ export declare const createExecutor: <const TPlugins extends readonly AnyPlugin[] = readonly []>(config: ExecutorConfig<TPlugins>) => Effect.Effect<Executor<TPlugins>, StorageFailure>;
+-//# sourceMappingURL=executor.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=executor.d.ts.map
+diff --git a/dist/provider.d.ts b/dist/provider.d.ts
+index d9355ee66bd61e22668e259ffb7866f1eb9c7642..3ce4dafc55faf469fdd540447bab4cf8c53321d9 100644
+--- a/dist/provider.d.ts
++++ b/dist/provider.d.ts
+@@ -12,6 +12,8 @@ export interface CredentialProvider {
+     /** If false, we never write here — `set`/`delete` are skipped and a referenced
+      *  connection's `remove` only drops our routing, leaving the item intact. */
+     readonly writable: boolean;
++    /** Prepare the encrypted payload for a Workstream D1 grant batch without writing it. */
++    readonly prepareWorkstreamCiphertext?: (value: string) => Effect.Effect<string, StorageFailure>;
+     /** Resolve a value by opaque id. The single hop a credential goes through
+      *  before its template is applied. The provider interprets the id. */
+     readonly get: (id: ProviderItemId) => Effect.Effect<string | null, StorageFailure>;
 diff --git a/dist/host-internal.js b/dist/host-internal.js
 index c7bab565f4f3c3f833ddf1237dc0ccbd44f1eab5..ef2a81cee2376670cff978e70649ba5da5937789 100644
 --- a/dist/host-internal.js
