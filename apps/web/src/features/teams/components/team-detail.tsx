@@ -151,7 +151,7 @@ function MembersToolbar({
   search: string
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @2xl:w-auto">
       <SearchField
         label="Search members"
         onChange={onSearchChange}
@@ -198,7 +198,7 @@ function StatusCards({
   counts: { todo: number; in_progress: number; done: number }
 }) {
   return (
-    <div className="flex gap-3">
+    <div className="grid grid-cols-1 gap-3 @lg:grid-cols-3">
       <TeamSummaryCard
         icon={<StatusIcon status="todo" className="size-4.5" />}
         label="Todo"
@@ -345,7 +345,9 @@ export function TeamDetailCard({
     <>
       <div
         className={cn(
-          'flex flex-col rounded-xl bg-background-main-default p-6',
+          // @container: summary cards and the toolbar size by this card's width,
+          // not the viewport, since the app sidebar narrows it on tablets.
+          '@container flex flex-col rounded-xl bg-background-main-default p-6',
           className,
         )}
       >
@@ -357,7 +359,7 @@ export function TeamDetailCard({
             </p>
           </div>
           {team.can_manage ? (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button
                 className="h-10 rounded-md px-3"
                 onClick={() => setAddMemberOpen(true)}
