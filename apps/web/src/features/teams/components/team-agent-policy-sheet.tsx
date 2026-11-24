@@ -244,7 +244,7 @@ function toggle<T>(list: readonly T[], value: T, present: boolean): T[] {
 }
 
 const TAB_TRIGGER_CLASS =
-  'h-auto min-h-11 min-w-0 flex-auto gap-1.5 rounded-none px-2 py-1 text-center text-sm font-normal whitespace-normal text-text-secondary after:bg-text-brand-secondary group-data-[orientation=horizontal]/tabs:after:-bottom-px data-active:text-foreground lg:min-h-10 lg:gap-1 lg:px-1.5'
+  'h-auto min-h-11 flex-auto shrink-0 gap-1.5 rounded-none px-2 py-1 text-sm font-normal text-text-secondary after:bg-text-brand-secondary focus-visible:ring-inset focus-visible:-outline-offset-2 group-data-[orientation=horizontal]/tabs:after:bottom-0 data-active:text-foreground lg:min-h-10 lg:gap-1 lg:px-1.5'
 
 const TAB_PANEL_CLASS =
   'min-h-0 overflow-y-auto overscroll-contain pt-4 pb-4 lg:pt-8'
@@ -356,21 +356,14 @@ export function TeamAgentPolicySheet({
             defaultValue="agents"
           >
             <TabsList
-              className="grid h-auto! w-full shrink-0 grid-cols-2 items-stretch gap-0 border-b border-border-default bg-muted p-0 lg:flex"
+              className="h-auto! w-full shrink-0 items-stretch justify-start gap-0 overflow-x-auto overscroll-x-contain border-b border-border-default bg-muted p-0"
               variant="line"
             >
               <TabsTrigger className={TAB_TRIGGER_CLASS} value="agents">
                 <Database aria-hidden />
                 Agent Permissions
               </TabsTrigger>
-              <TabsTrigger
-                className={cn(
-                  TAB_TRIGGER_CLASS,
-                  'flex-wrap gap-y-0 lg:flex-nowrap',
-                )}
-                disabled
-                value="admin"
-              >
+              <TabsTrigger className={TAB_TRIGGER_CLASS} disabled value="admin">
                 <UserRoundCog aria-hidden />
                 Admin Policy
                 <ComingSoon className="h-4 px-1.5 text-[11px]" />
