@@ -58,7 +58,9 @@ documented compatibility changes:
     its refresh credential at the pinned issuer before deleting connection state;
     provider failure or a missing issuer binding retains the connection. Revocation
     uses Worker-supported manual redirect handling; the hosted fetch guard honors
-    that mode, so a redirect is refused without forwarding the refresh credential. Mint,
+    that mode from request initialization or a `Request` (explicit initialization
+    takes precedence), so a redirect is refused without forwarding the refresh
+    credential. Mint,
     reconnect, and refresh prepare ciphertext through the existing encrypted
     provider and publish new credential IDs with the connection in one D1 batch.
     The batch matches the exact previous credential IDs and removes the obsolete

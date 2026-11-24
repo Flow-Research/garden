@@ -55,33 +55,47 @@ describe('Workstream public OAuth lifecycle', () => {
     callbackExecutors.clear()
   })
 
-  it('does not follow a manual revocation redirect or forward its credential', async () => {
-    const http = vi.fn<typeof fetch>(
-      async () =>
-        new Response(null, {
-          status: 307,
-          headers: { location: 'https://other.example/revoke' },
-        }),
-    )
-    const guardedFetch = makeHostedFetch({
-      fetch: http,
-      resolveHostname: async () => [{ address: '93.184.216.34', family: 4 }],
-    })
-    const response = await guardedFetch(
-      `${issuer}/protocol/openid-connect/revoke`,
-      {
-        method: 'POST',
-        redirect: 'manual',
-        body: new URLSearchParams({ token: 'fixture-refresh-token' }),
-      },
-    )
-    expect(response.status).toBe(307)
-    expect(response.ok).toBe(false)
-    expect(http).toHaveBeenCalledTimes(1)
-    expect(http.mock.calls[0]?.[0]).toBe(
-      `${issuer}/protocol/openid-connect/revoke`,
-    )
-  })
+  it.each(['init', 'request', 'override'] as const)(
+    'does not follow a manual revocation redirect from %s or forward its credential',
+    async (mode) => {
+      const http = vi.fn<typeof fetch>(
+        async () =>
+          new Response(null, {
+            status: 307,
+            headers: { location: 'https://other.example/revoke' },
+          }),
+      )
+      const guardedFetch = makeHostedFetch({
+        fetch: http,
+        resolveHostname: async () => [{ address: '93.184.216.34', family: 4 }],
+      })
+      const url = `${issuer}/protocol/openid-connect/revoke`
+      const input =
+        mode === 'init'
+          ? url
+          : new Request(url, {
+              method: 'POST',
+              redirect: mode === 'request' ? 'manual' : 'follow',
+              body: new URLSearchParams({ token: 'fixture-refresh-token' }),
+            })
+      const response = await guardedFetch(
+        input,
+        mode === 'request'
+          ? undefined
+          : {
+              method: 'POST',
+              redirect: 'manual',
+              body: new URLSearchParams({ token: 'fixture-refresh-token' }),
+            },
+      )
+      expect(response.status).toBe(307)
+      expect(response.ok).toBe(false)
+      expect(http).toHaveBeenCalledTimes(1)
+      const firstCall = http.mock.calls[0]
+      if (!firstCall) throw new Error('Expected revocation request')
+      expect(new Request(firstCall[0], firstCall[1]).url).toBe(url)
+    },
+  )
 
   it('installs OAuth through discovery and binds callbacks and refresh to each member', async () => {
     const codes = new Map<
@@ -106,6 +120,9 @@ describe('Workstream public OAuth lifecycle', () => {
     let pauseRefresh: ((token: string) => Promise<void>) | undefined
     let pauseRefreshResponse: ((token: string) => Promise<void>) | undefined
     const http = vi.fn<typeof fetch>(async (input, init) => {
+      // Workers rejects this mode before dispatch; Node's fetch accepts it.
+      if (init?.redirect === 'error')
+        throw new TypeError('Unsupported Worker redirect mode')
       const request = new Request(input, init)
       if (request.url.includes('/.well-known/oauth-protected-resource')) {
         return Response.json({
@@ -277,6 +294,38 @@ describe('Workstream public OAuth lifecycle', () => {
           return Buffer.from(row.data).toString('utf8')
         })
         .join(' ')
+    const { executorProgramForEnv } = await vi.importActual<
+      typeof import('@/lib/server/executor-runtime')
+    >('@/lib/server/executor-runtime')
+    const unusedBlobOperation = () => {
+      throw new Error('Disconnect must not access R2')
+    }
+    const disconnectEnv = {
+      EXECUTOR_DB: sqliteD1(sqlite),
+      EXECUTOR_SECRET_KEY: 'workstream-oauth-test-encryption-key',
+      EXECUTOR_BLOBS: {
+        head: unusedBlobOperation,
+        get: unusedBlobOperation,
+        put: unusedBlobOperation,
+        delete: unusedBlobOperation,
+        list: unusedBlobOperation,
+        createMultipartUpload: unusedBlobOperation,
+        resumeMultipartUpload: unusedBlobOperation,
+      } satisfies R2Bucket,
+    }
+    const disconnect = () =>
+      executorProgramForEnv(
+        disconnectEnv,
+        { tenant: 'workspace-a', subject: 'member-a' },
+        (executor) =>
+          Effect.gen(function* () {
+            const retained = (yield* executor.connections.list({
+              integration: slug,
+            }))[0]
+            if (!retained) throw new Error('Expected retained connection')
+            yield* executor.connections.remove(retained)
+          }),
+      )
     const db = ({ tables }: { tables: FumaTables }) =>
       createD1ExecutorDb(sqliteD1(sqlite), tables)
     const plugins = makeExecutorPlugins(
@@ -513,10 +562,10 @@ describe('Workstream public OAuth lifecycle', () => {
         expect(storedBeforeRemoval).toHaveLength(2)
         for (const status of [503, 307]) {
           revocationStatus = status
-          const unavailableRemoval = yield* restoredAlice.connections
-            .remove(ref)
-            .pipe(Effect.result)
+          const requestsBefore = revocationRedirects.length
+          const unavailableRemoval = yield* disconnect().pipe(Effect.result)
           expect(Result.isFailure(unavailableRemoval)).toBe(true)
+          expect(revocationRedirects).toHaveLength(requestsBefore + 1)
           expect(
             yield* restoredAlice.connections.list({ integration: slug }),
           ).toHaveLength(1)
@@ -527,9 +576,7 @@ describe('Workstream public OAuth lifecycle', () => {
         sqlite.exec(
           `create trigger reject_disconnect before delete on "${connection.names.sql}" when old.subject = 'member-a' begin select raise(abort, 'fixture disconnect write failure'); end`,
         )
-        const failedLocalRemoval = yield* restoredAlice.connections
-          .remove(ref)
-          .pipe(Effect.result)
+        const failedLocalRemoval = yield* disconnect().pipe(Effect.result)
         expect(Result.isFailure(failedLocalRemoval)).toBe(true)
         expect(refreshTokens.has('member-a-refresh-2')).toBe(false)
         expect(yield* aliceCredentialIds).toEqual(storedBeforeRemoval)
@@ -537,7 +584,7 @@ describe('Workstream public OAuth lifecycle', () => {
           yield* restoredAlice.connections.list({ integration: slug }),
         ).toHaveLength(1)
         sqlite.exec('drop trigger reject_disconnect')
-        yield* restoredAlice.connections.remove(ref)
+        yield* disconnect()
         expect(refreshTokens.has('member-a-refresh-2')).toBe(false)
         expect(refreshTokens.has('member-b-refresh-1')).toBe(true)
         expect(yield* aliceCredentialIds).toEqual([])

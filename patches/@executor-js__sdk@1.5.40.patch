@@ -620,7 +620,7 @@ index c7bab565f4f3c3f833ddf1237dc0ccbd44f1eab5..ef2a81cee2376670cff978e70649ba5d
        ...currentInit,
        redirect: "manual"
      });
-+    if (currentInit?.redirect === "manual") return response;
++    if ((currentInit?.redirect ?? (current instanceof Request ? current.redirect : undefined)) === "manual") return response;
      if (response.status >= 300 && response.status < 400 && response.headers.has("location") && redirects < maxRedirects) {
        const next = new URL(response.headers.get("location"), url);
        if (next.origin !== new URL(url).origin) {
