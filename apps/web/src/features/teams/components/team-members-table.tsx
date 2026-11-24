@@ -51,13 +51,13 @@ export function TeamMembersTable({
             <th className="px-6 py-4 text-center font-semibold text-text-default">
               User
             </th>
-            <th className="px-6 py-4 text-center font-semibold text-text-default">
+            <th className="border-l border-border-default px-6 py-4 text-center font-semibold text-text-default">
               Role
             </th>
-            <th className="px-6 py-4 text-center font-semibold text-text-default">
+            <th className="border-l border-border-default px-6 py-4 text-center font-semibold text-text-default">
               Assigned Tasks
             </th>
-            <th className="w-[18rem] px-4 py-4 text-center font-semibold text-text-default">
+            <th className="w-[18rem] border-l border-border-default px-4 py-4 text-center font-semibold text-text-default">
               Activity
             </th>
           </tr>
