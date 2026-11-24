@@ -1,0 +1,14 @@
+{
+  "name": "garden-agent-sdk-call-budget",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-04-18",
+  "compatibility_flags": ["nodejs_compat", "experimental"],
+  "durable_objects": {
+    "bindings": [
+      { "name": "RootAgent", "class_name": "RootAgent" },
+      // vitest-pool-workers needs this binding for ctx.exports to yield a facet-compatible class.
+      { "name": "RunFacet", "class_name": "RunFacet" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RootAgent", "RunFacet"] }]
+}
