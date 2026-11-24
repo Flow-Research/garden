@@ -180,6 +180,8 @@ A policy is a ceiling. It can switch tools off and add approvals. It never grant
 
 The Team detail page's ⋯ menu has **Team settings** for workspace managers, and each member row has **Agent settings**. It opens a **Team settings** side sheet with the three tabs, **Cancel**, and **Save Changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
 
+On narrow screens, Team settings fills the viewport, restriction tiles stack, and approval selects sit below their labels. The tab strip fits into two rows at phone and tablet widths. The active panel scrolls between the tabs and the footer so **Cancel** and **Save Changes** stay visible.
+
 Design controls with no backing in Garden still render, disabled, with a **Coming soon** badge: the Chats and Home areas; the Delete projects, Manage billing, and Read locked files restrictions; the Deploy changes and Create documents approval rows; the per-member Team Role select; and the Admin Policy tab. They store nothing, and the schema rejects them if a client sends them.
 
 ### How the runtime applies it

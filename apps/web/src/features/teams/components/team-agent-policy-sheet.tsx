@@ -122,13 +122,13 @@ function PolicyRow({
 }) {
   return (
     <div
-      className="flex items-center justify-between gap-6 border-b border-border-default py-4 first:pt-0 last:border-b-0"
+      className="flex flex-col gap-3 border-b border-border-default py-4 first:pt-0 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
       data-disabled={disabled || undefined}
     >
       <div className="flex min-w-0 flex-col gap-1.5">
         <span
           className={cn(
-            'flex items-center gap-2 text-base',
+            'flex flex-wrap items-center gap-2 text-base',
             disabled ? 'text-text-secondary' : 'text-foreground',
           )}
         >
@@ -175,7 +175,7 @@ function CheckTile({
   return (
     <label
       className={cn(
-        'flex h-10 items-center gap-2.5 rounded-md border border-border-default px-3 text-sm whitespace-nowrap text-foreground',
+        'flex min-h-10 max-w-full items-center gap-2.5 rounded-md border border-border-default px-3 py-1.5 text-sm text-foreground',
         soon || locked ? 'cursor-not-allowed' : 'cursor-pointer',
         soon && 'text-text-secondary',
         className,
@@ -186,7 +186,7 @@ function CheckTile({
         disabled={soon || locked}
         onCheckedChange={onChange}
       />
-      <span className="truncate">{label}</span>
+      <span>{label}</span>
       {soon ? (
         <span aria-hidden className="contents">
           <ComingSoon />
@@ -218,7 +218,7 @@ function RowSelect({
     >
       <SelectTrigger
         aria-label={label}
-        className="h-10! shrink-0 gap-6 rounded-md bg-background px-3 text-sm"
+        className="h-10! w-full shrink-0 gap-6 rounded-md bg-background px-3 text-sm sm:w-fit"
       >
         <SelectValue>
           {(current: string) =>
@@ -244,7 +244,10 @@ function toggle<T>(list: readonly T[], value: T, present: boolean): T[] {
 }
 
 const TAB_TRIGGER_CLASS =
-  'h-10 min-w-0 flex-1 gap-1.5 rounded-none px-2 text-sm font-normal text-text-secondary after:bg-text-brand-secondary data-active:text-foreground'
+  'h-auto min-h-11 min-w-0 flex-auto gap-1.5 rounded-none px-2 py-1 text-center text-sm font-normal whitespace-normal text-text-secondary after:bg-text-brand-secondary group-data-[orientation=horizontal]/tabs:after:-bottom-px data-active:text-foreground lg:min-h-10 lg:gap-1 lg:px-1.5'
+
+const TAB_PANEL_CLASS =
+  'min-h-0 overflow-y-auto overscroll-contain pt-4 pb-4 lg:pt-8'
 
 /**
  * Team agent policy side sheet ("Team settings"), opened from the Team detail
@@ -317,22 +320,23 @@ export function TeamAgentPolicySheet({
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
-      <SheetContent className="w-full gap-0 bg-background data-[side=right]:sm:max-w-3xl [&>[data-slot=sheet-close]]:top-6 [&>[data-slot=sheet-close]]:right-6">
-        <SheetHeader className="gap-3 px-8 pt-11 pb-8">
-          <div className="flex items-center gap-3">
+      <SheetContent className="gap-0 bg-background data-[side=right]:h-dvh data-[side=right]:w-full data-[side=right]:sm:max-w-3xl lg:[&>[data-slot=sheet-close]]:top-6 lg:[&>[data-slot=sheet-close]]:right-6">
+        <SheetHeader className="shrink-0 gap-2 px-4 pt-4 pb-4 sm:px-6 lg:gap-3 lg:px-8 lg:pt-11 lg:pb-8">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pr-9">
             <Settings
               aria-hidden
-              className="size-7 text-text-secondary"
+              className="size-6 shrink-0 text-text-secondary lg:size-7"
               strokeWidth={1.5}
             />
-            <SheetTitle className="text-xl font-medium">
+            <SheetTitle className="text-lg font-medium lg:text-xl">
               Team settings
             </SheetTitle>
             <Badge
-              className="h-6 rounded-md px-2 text-sm font-normal tracking-wide text-text-secondary uppercase"
+              className="h-6 min-w-0 max-w-full rounded-md px-2 text-sm font-normal tracking-wide text-text-secondary uppercase"
+              title={teamName}
               variant="secondary"
             >
-              {teamName}
+              <span className="truncate">{teamName}</span>
             </Badge>
           </div>
           <SheetDescription className="text-sm text-text-secondary">
@@ -347,16 +351,26 @@ export function TeamAgentPolicySheet({
         </SheetHeader>
 
         {policy ? (
-          <Tabs className="min-h-0 flex-1 gap-0 px-8" defaultValue="agents">
+          <Tabs
+            className="min-h-0 flex-1 gap-0 px-4 sm:px-6 lg:px-8"
+            defaultValue="agents"
+          >
             <TabsList
-              className="h-10! w-full justify-start gap-0 border-b border-border-default bg-muted p-0"
+              className="grid h-auto! w-full shrink-0 grid-cols-2 items-stretch gap-0 border-b border-border-default bg-muted p-0 lg:flex"
               variant="line"
             >
               <TabsTrigger className={TAB_TRIGGER_CLASS} value="agents">
                 <Database aria-hidden />
                 Agent Permissions
               </TabsTrigger>
-              <TabsTrigger className={TAB_TRIGGER_CLASS} disabled value="admin">
+              <TabsTrigger
+                className={cn(
+                  TAB_TRIGGER_CLASS,
+                  'flex-wrap gap-y-0 lg:flex-nowrap',
+                )}
+                disabled
+                value="admin"
+              >
                 <UserRoundCog aria-hidden />
                 Admin Policy
                 <ComingSoon className="h-4 px-1.5 text-[11px]" />
@@ -371,7 +385,7 @@ export function TeamAgentPolicySheet({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent className="overflow-y-auto pt-8 pb-4" value="agents">
+            <TabsContent className={TAB_PANEL_CLASS} value="agents">
               <PolicyRow
                 control={
                   <RowSelect
@@ -421,7 +435,7 @@ export function TeamAgentPolicySheet({
                   hint="Define what agents are restricted from doing"
                   title="Restricted"
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {RESTRICTED_CARDS.map(({ riskClass, label }) => (
                     <CheckTile
                       checked={
@@ -450,14 +464,14 @@ export function TeamAgentPolicySheet({
             </TabsContent>
 
             <TabsContent
-              className="flex flex-col gap-2 overflow-y-auto pt-8 pb-4"
+              className={cn(TAB_PANEL_CLASS, 'flex flex-col gap-2')}
               value="connectors"
             >
               {connectorRegistry.map((connector) => {
                 const integration = integrationFor(connector.id)
                 return (
                   <div
-                    className="flex items-center gap-4 rounded-lg bg-muted px-6 py-4"
+                    className="flex items-center gap-3 rounded-lg bg-muted px-3 py-3 sm:gap-4 sm:px-6 sm:py-4"
                     key={connector.id}
                   >
                     <ProviderIcon
@@ -497,10 +511,7 @@ export function TeamAgentPolicySheet({
               })}
             </TabsContent>
 
-            <TabsContent
-              className="overflow-y-auto pt-8 pb-4"
-              value="approvals"
-            >
+            <TabsContent className={TAB_PANEL_CLASS} value="approvals">
               {APPROVAL_ROWS.map((row) => (
                 <PolicyRow
                   control={
@@ -566,14 +577,14 @@ export function TeamAgentPolicySheet({
             </TabsContent>
           </Tabs>
         ) : (
-          <div className="flex-1 px-8 text-sm text-text-secondary">
+          <div className="flex-1 px-4 text-sm text-text-secondary sm:px-6 lg:px-8">
             {query.isError
               ? 'Agent policy could not be loaded.'
               : 'Loading agent policy…'}
           </div>
         )}
 
-        <SheetFooter className="grid grid-cols-2 gap-2 px-8 pt-6 pb-14">
+        <SheetFooter className="grid shrink-0 grid-cols-2 gap-2 border-t border-border-default px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 lg:border-t-0 lg:px-8 lg:pt-6 lg:pb-14">
           <Button className="h-10" onClick={close} variant="outline">
             Cancel
           </Button>
