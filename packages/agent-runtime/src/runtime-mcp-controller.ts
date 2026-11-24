@@ -252,7 +252,7 @@ export type ThreadRuntimeIdentity = {
  *
  * Before this scope was explicit, every runtime used `rpc:executor`. Agents
  * maps that name to one Durable Object, so the first initialized Executor
- * runtime could serve later workspaces or users. The installed agents@0.17.3
+ * runtime could serve later workspaces or users. The installed agents@0.34.0
  * `addMcpServer()` and PartyServer `getServerByName()` implementations use the
  * remote name for Durable Object addressing. This name therefore includes the
  * opaque Garden workspace, member, agent, thread, and run identifiers.
