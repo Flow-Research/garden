@@ -253,25 +253,18 @@ describe('MembersTab GitHub menu visibility', () => {
     const trigger = screen.queryByRole('button', {
       name: `Actions for The ${target}`,
     })
-    if (!allowed(viewer, target)) {
-      // Members never get a menu on any GitHub-only row, and a role change
-      // can still be allowed, so check the GitHub items specifically.
-      if (trigger) {
-        fireEvent.click(trigger)
-        await screen.findAllByRole('menuitem')
-      }
-      expect(
-        screen.queryByRole('menuitem', { name: /github/i }),
-      ).not.toBeInTheDocument()
-      return
+    // A role change can be allowed where GitHub is not, so open any menu that
+    // exists and look only at its GitHub items.
+    if (trigger) {
+      fireEvent.click(trigger)
+      await screen.findAllByRole('menuitem')
     }
-    fireEvent.click(trigger!)
-    expect(
-      await screen.findByRole('menuitem', { name: /edit github identity/i }),
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('menuitem', { name: /unlink github/i }),
-    ).toBeInTheDocument()
+    const names = screen
+      .queryAllByRole('menuitem', { name: /github/i })
+      .map((item) => item.textContent?.trim())
+    expect(names).toEqual(
+      allowed(viewer, target) ? ['Edit GitHub identity', 'Unlink GitHub'] : [],
+    )
   })
 
   it('offers Link GitHub but not Unlink when the member has no GitHub linked', async () => {
