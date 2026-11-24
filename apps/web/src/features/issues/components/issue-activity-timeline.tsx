@@ -7,7 +7,7 @@ import type {
 } from '@garden/core/types'
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '@garden/core/issues/config'
 import {
-  describeRunFailure,
+  formatRunFailure,
   parseRunFailure,
   runFailure,
 } from '@garden/core/runs/failure'
@@ -84,8 +84,7 @@ function formatActivity(
         ok: (value) => value,
         err: () => runFailure('unknown'),
       })
-      const description = describeRunFailure(failure)
-      return `agent run stopped: ${description.title} ${description.nextStep}`
+      return `agent run stopped: ${formatRunFailure(failure)}`
     }
     default:
       return entry.event?.message ?? entry.action ?? ''

@@ -27,6 +27,18 @@ describe('run failure registry', () => {
     expect(parseRunFailure({ reason: 'stale_approval' })).toEqual(
       Result.ok({ cause: 'approval_stale' }),
     )
+    expect(parseRunFailure({ reason: 'automation_completed_without_output' })).toEqual(
+      Result.ok({ cause: 'no_output' }),
+    )
+  })
+
+  it('uses the approved copy for automation runs without output', () => {
+    expect(describeRunFailure({ cause: 'no_output' })).toEqual({
+      category: 'run_lifecycle',
+      retryable: false,
+      title: 'The automation finished without producing any output.',
+      nextStep: "Add more detail to the automation's instructions and run it again.",
+    })
   })
 
   it('maps unknown legacy text to safe unknown copy', () => {

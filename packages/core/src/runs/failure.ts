@@ -12,6 +12,7 @@ export const RUN_FAILURE_CAUSES = [
   'turn_timed_out',
   'turn_ended_without_resolution',
   'no_resolution',
+  'no_output',
   'brain_output_authority_denied',
   'approval_stale',
   'turn_aborted',
@@ -155,6 +156,12 @@ export const RUN_FAILURE_DEFINITIONS = {
       'The agent finished without completing the task or asking a question.',
     nextStep: 'Add more detail to the task and run it again.',
   },
+  no_output: {
+    category: 'run_lifecycle',
+    retryable: false,
+    title: 'The automation finished without producing any output.',
+    nextStep: "Add more detail to the automation's instructions and run it again.",
+  },
   brain_output_authority_denied: {
     category: 'permissions',
     retryable: false,
@@ -203,6 +210,7 @@ const LEGACY_RUN_FAILURE_CAUSES = {
   timeout: 'turn_timed_out',
   tool_timeout: 'tool_failed',
   stale_approval: 'approval_stale',
+  automation_completed_without_output: 'no_output',
 } satisfies Record<string, RunFailureCause>
 
 const CONNECTOR_FAILURE_KINDS = {
@@ -341,4 +349,10 @@ export function classifyRunFailure(
     ...runFailure(cause, context),
     ...(diagnostic ? { diagnostic } : {}),
   }
+}
+
+/** Formats a run failure as one user-facing sentence pair: title, then next step. */
+export function formatRunFailure(failure: PublicRunFailure): string {
+  const { title, nextStep } = describeRunFailure(failure)
+  return `${title} ${nextStep}`
 }

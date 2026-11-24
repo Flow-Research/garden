@@ -1141,6 +1141,9 @@ export abstract class RunSubAgentBase<
 
   /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
   private async failureReasonForOutput(runId: string, reason: string) {
+    if (isHistoryUnverifiedMessage(reason)) {
+      return { ...runFailure('unknown'), diagnostic: reason }
+    }
     const authority = await this.authorizeFinalObservation(runId)
     if (authority.isOk()) {
       return classifyRuntimeFailure({
@@ -1155,7 +1158,9 @@ export abstract class RunSubAgentBase<
   }
 
   private async errorForOutput(runId: string, error: RunSubAgentError) {
-    if (isHistoryUnverifiedMessage(error.message)) return error
+    if (isHistoryUnverifiedMessage(error.message)) {
+      return { ...runFailure('unknown'), diagnostic: error.message }
+    }
     const authority = await this.authorizeFinalObservation(runId)
     if (authority.isOk()) return error
     this.aiObservation.discardTurn()

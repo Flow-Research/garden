@@ -62,7 +62,7 @@ import {
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
 import type { RunFailure } from '@garden/core/runs/failure'
-import { describeRunFailure, parseRunFailure } from '@garden/core/runs/failure'
+import { formatRunFailure, parseRunFailure } from '@garden/core/runs/failure'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
@@ -2625,16 +2625,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return events.flatMap((event) => {
       const text =
         event.eventType === 'issue_run:failed'
-          ? parseRunFailure(event.payload).match({
-              ok: (failure) => {
-                const description = describeRunFailure(failure)
-                return `${description.title} ${description.nextStep}`
-              },
-              err: () => {
-                const description = describeRunFailure({ cause: 'unknown' })
-                return `${description.title} ${description.nextStep}`
-              },
-            })
+          ? formatRunFailure(
+              parseRunFailure(event.payload).unwrapOr({ cause: 'unknown' }),
+            )
           : event.message?.trim()
       if (!text) return []
       if (

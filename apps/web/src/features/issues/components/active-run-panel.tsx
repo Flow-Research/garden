@@ -12,7 +12,7 @@ import {
 import type { StructuredQuestion } from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
 import { formatCompactNumber } from '@garden/core/format'
-import { describeRunFailure, runFailure } from '@garden/core/runs/failure'
+import { formatRunFailure, runFailure } from '@garden/core/runs/failure'
 import type { PublicRunFailure } from '@garden/core/runs/failure'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
@@ -294,10 +294,6 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
     estimatedCostCents,
   } = props
   const structuredQuestion = asStructuredQuestion(pendingQuestion, run.id)
-  const failureDescription = run.failure
-    ? describeRunFailure(run.failure)
-    : null
-  const unknownFailureDescription = describeRunFailure(runFailure('unknown'))
 
   const hasBody = Boolean(
     (run.status === 'waiting_for_input' && structuredQuestion) ||
@@ -479,9 +475,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               <XCircle />
               <AlertDescription className="space-y-2">
                 <div className="break-words font-mono text-xs leading-relaxed">
-                  {failureDescription
-                    ? `${failureDescription.title} ${failureDescription.nextStep}`
-                    : `${unknownFailureDescription.title} ${unknownFailureDescription.nextStep}`}
+                  {formatRunFailure(run.failure ?? runFailure('unknown'))}
                 </div>
                 {debugMode && (
                   <div className="rounded-md border border-destructive/20 bg-background/60 p-2">

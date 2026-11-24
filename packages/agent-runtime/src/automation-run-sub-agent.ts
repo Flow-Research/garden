@@ -822,7 +822,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     if (!output) {
       const failedResult = await this.forceCloseFailed(
         runId,
-        { ...runFailure('unknown'), diagnostic: 'automation_completed_without_output' },
+        { ...runFailure('no_output'), diagnostic: 'automation_completed_without_output' },
       )
       if (failedResult.isErr()) {
         this.logRunWarning('close_failed', {

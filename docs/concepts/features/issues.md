@@ -50,6 +50,7 @@ Readers parse older rows and event payloads at the boundary. A known legacy reas
 | `tool_failed` | `{Connector name} failed during the run.` If no name is available: `A connected tool failed during the run.` | Auth: `Reconnect {Connector name} in Connectors.` Permission: `Check what {Connector name} is allowed to access.` Rate limit: `Wait a few minutes and try again.` Other: `Try again.` |
 | `turn_timed_out` | The run took too long and was stopped. | Try again, or split the task. |
 | `turn_ended_without_resolution`, `no_resolution` | The agent finished without completing the task or asking a question. | Add more detail to the task and run it again. |
+| `no_output` | The automation finished without producing any output. | Add more detail to the automation's instructions and run it again. |
 | `brain_output_authority_denied` | The agent wasn't allowed to save its results. | Ask a workspace admin to check the agent's permissions. |
 | `approval_stale` | The run waited too long for approval and was closed. | Start the run again when you're ready to approve. |
 | `turn_aborted`, `turn_skipped`, `workflow_ended_with_live_run`, `workflow_start_failed`, `unknown` | The run stopped for an unexpected reason. | Try again. If it keeps happening, tell your workspace admin. |
