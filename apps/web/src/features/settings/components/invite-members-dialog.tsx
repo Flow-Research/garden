@@ -162,7 +162,7 @@ export function InviteMembersDialog({
       <DialogContent
         size="xl"
         showCloseButton={false}
-        className="gap-0 rounded-2xl p-5 sm:p-8"
+        className="flex max-h-[calc(100dvh-1rem)] max-w-[calc(100%-1rem)] flex-col gap-0 overflow-hidden rounded-2xl p-4 sm:max-h-[calc(100dvh-2rem)] sm:p-8"
       >
         <div className="flex justify-end">
           <Button
@@ -182,89 +182,98 @@ export function InviteMembersDialog({
         </DialogDescription>
 
         <form
-          className="mt-8 flex flex-col sm:mt-10"
+          className="mt-5 flex min-h-0 flex-col sm:mt-10"
           noValidate
           onSubmit={(event) => {
             event.preventDefault()
             void send()
           }}
         >
-          <span className="text-sm">Team Member</span>
-          <ul className="mt-2 flex flex-col gap-3">
-            {rows.map((row, index) => (
-              <li key={row.key} className="flex flex-col gap-1">
-                <div className="grid grid-cols-[1fr_auto] gap-2 sm:grid-cols-[1.6fr_1fr_1fr_auto]">
-                  <Input
-                    aria-invalid={row.error ? true : undefined}
-                    aria-label={`Invitee ${index + 1} email`}
-                    className={`col-span-2 sm:col-span-1 ${FIELD_CLASS}`}
-                    onChange={(event) =>
-                      updateRow(row.key, { email: event.target.value })
-                    }
-                    placeholder="Enter email"
-                    type="email"
-                    value={row.email}
-                  />
-                  <Select
-                    value={row.role}
-                    onValueChange={(value) =>
-                      updateRow(row.key, { role: value as InviteRole })
-                    }
-                  >
-                    <SelectTrigger
-                      aria-label={`Invitee ${index + 1} role`}
-                      className={`w-full ${FIELD_CLASS}`}
+          <div className="min-h-0 overflow-y-auto overscroll-contain px-1">
+            <span className="text-sm">Team Member</span>
+            <ul className="mt-2 flex flex-col gap-3">
+              {rows.map((row, index) => (
+                <li
+                  key={row.key}
+                  className="flex flex-col gap-1 rounded-lg border border-border-default p-2 sm:rounded-none sm:border-0 sm:p-0"
+                >
+                  <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+                    <Input
+                      aria-invalid={row.error ? true : undefined}
+                      aria-label={`Invitee ${index + 1} email`}
+                      className={FIELD_CLASS}
+                      onChange={(event) =>
+                        updateRow(row.key, { email: event.target.value })
+                      }
+                      placeholder="Enter email"
+                      type="email"
+                      value={row.email}
+                      wrapperClassName="col-span-2 min-w-0 sm:col-span-1"
+                    />
+                    <Select
+                      value={row.role}
+                      onValueChange={(value) =>
+                        updateRow(row.key, { role: value as InviteRole })
+                      }
                     >
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="member">Member</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <TeamMultiPicker
-                    teamIds={row.teamIds}
-                    onUpdate={(teamIds) => updateRow(row.key, { teamIds })}
-                    triggerRender={
-                      <Button
-                        type="button"
-                        variant="outline"
-                        aria-label={`Teams invitee ${index + 1} joins`}
-                        className={`justify-start gap-1.5 overflow-hidden ${FIELD_CLASS}`}
-                      />
-                    }
-                  />
-                  <Button
-                    aria-label={`Remove invitee ${index + 1}`}
-                    className="size-10 self-center"
-                    disabled={rows.length === 1}
-                    onClick={() => removeRow(row.key)}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <X className="size-4" />
-                  </Button>
-                </div>
-                {row.error ? (
-                  <p role="alert" className="text-xs text-text-danger-default">
-                    {row.error}
-                  </p>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-          <Button
-            className="mt-3 self-start px-2 text-text-brand-default"
-            onClick={addRow}
-            type="button"
-            variant="ghost"
-          >
-            <Plus className="size-4" />
-            Add a team member
-          </Button>
+                      <SelectTrigger
+                        aria-label={`Invitee ${index + 1} role`}
+                        className={`h-10! w-full min-w-0 ${FIELD_CLASS}`}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="member">Member</SelectItem>
+                        <SelectItem value="admin">Admin</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <TeamMultiPicker
+                      teamIds={row.teamIds}
+                      onUpdate={(teamIds) => updateRow(row.key, { teamIds })}
+                      triggerRender={
+                        <Button
+                          type="button"
+                          variant="outline"
+                          aria-label={`Teams invitee ${index + 1} joins`}
+                          className={`col-span-2 w-full min-w-0 justify-start gap-1.5 overflow-hidden sm:col-span-1 ${FIELD_CLASS}`}
+                        />
+                      }
+                    />
+                    <Button
+                      aria-label={`Remove invitee ${index + 1}`}
+                      className="col-start-3 row-start-1 size-10 sm:col-start-4"
+                      disabled={rows.length === 1}
+                      onClick={() => removeRow(row.key)}
+                      size="icon"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </div>
+                  {row.error ? (
+                    <p
+                      role="alert"
+                      className="text-xs text-text-danger-default"
+                    >
+                      {row.error}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <Button
+              className="mt-3 px-2 text-text-brand-default"
+              onClick={addRow}
+              type="button"
+              variant="ghost"
+            >
+              <Plus className="size-4" />
+              Add a team member
+            </Button>
+          </div>
 
-          <div className="mt-6 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid shrink-0 grid-cols-2 gap-2 sm:mt-6">
             <Button
               className="h-10"
               onClick={onClose}
