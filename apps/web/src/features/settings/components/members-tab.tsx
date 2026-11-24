@@ -71,8 +71,21 @@ const BADGE_CLASS: Record<MemberRole, string> = {
   member: 'bg-badge-gray-background text-badge-gray-text',
 }
 
+/**
+ * Rounded table frame that caps its height and scrolls the body under a
+ * sticky header. `overflow-y-auto` also clips rows to the rounded corners.
+ */
 const TABLE_CLASS =
-  'overflow-hidden rounded-2xl border border-border-default bg-background-main-default'
+  'max-h-[min(36rem,70vh)] overflow-y-auto rounded-2xl border border-border-default bg-background-main-default'
+/**
+ * Sticky header row. Its bottom rule is an inset shadow on the cells because
+ * the first body row's top border scrolls away with the body, and collapsed
+ * table borders do not stick.
+ */
+const THEAD_CLASS =
+  'sticky top-0 z-10 [&_th]:bg-background-main-secondary [&_th]:shadow-[inset_0_-1px_0_var(--border-default)]'
+/** The sticky header draws the top rule, so the first row skips its own. */
+const TBODY_CLASS = '[&>tr:first-child]:border-t-0'
 const TH_CLASS = 'px-4 py-4 font-semibold text-text-default sm:px-6'
 /** Header counterpart of the body cells' left border, so dividers run top to bottom. */
 const TH_DIVIDER = 'border-l border-border-default'
@@ -539,8 +552,8 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
         <div className={TABLE_CLASS}>
           <table className="w-full table-fixed text-sm">
             <caption className="sr-only">Workspace members</caption>
-            <thead>
-              <tr className="bg-background-main-secondary">
+            <thead className={THEAD_CLASS}>
+              <tr>
                 <th className={`${TH_CLASS} text-left`}>User</th>
                 <th
                   className={`${TH_CLASS} ${TH_DIVIDER} text-center w-32 sm:w-48`}
@@ -554,7 +567,7 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
                 ) : null}
               </tr>
             </thead>
-            <tbody>
+            <tbody className={TBODY_CLASS}>
               {members.map((m) => (
                 <MemberRow
                   key={m.id}
@@ -589,8 +602,8 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
           <h2 className="text-sm font-semibold">Pending invitations</h2>
           <div className={TABLE_CLASS}>
             <table className="w-full table-fixed text-sm">
-              <thead>
-                <tr className="bg-background-main-secondary">
+              <thead className={THEAD_CLASS}>
+                <tr>
                   <th className={`${TH_CLASS} text-left`}>Email</th>
                   <th
                     className={`${TH_CLASS} ${TH_DIVIDER} text-center w-28 sm:w-36`}
@@ -609,7 +622,7 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
                   ) : null}
                 </tr>
               </thead>
-              <tbody>
+              <tbody className={TBODY_CLASS}>
                 {pendingInvitations.map((inv) => (
                   <InvitationRow
                     key={inv.id}
