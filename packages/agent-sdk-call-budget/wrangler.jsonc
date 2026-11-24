@@ -7,8 +7,10 @@
     "bindings": [
       { "name": "RootAgent", "class_name": "RootAgent" },
       // vitest-pool-workers needs this binding for ctx.exports to yield a facet-compatible class.
-      { "name": "RunFacet", "class_name": "RunFacet" }
-    ]
+      { "name": "RunFacet", "class_name": "RunFacet" },
+    ],
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RootAgent", "RunFacet"] }]
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RootAgent", "RunFacet"] },
+  ],
 }
