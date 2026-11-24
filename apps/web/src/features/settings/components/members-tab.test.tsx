@@ -99,6 +99,35 @@ describe('MembersTab invite', () => {
     )
   })
 
+  it('locks invite edits during submission and lets the user retry a failed row', async () => {
+    api.createMember
+      .mockRejectedValueOnce(new Error('Please retry'))
+      .mockResolvedValueOnce(undefined)
+    const email = renderTab()
+    const role = screen.getByRole('combobox', { name: 'Invitee 1 role' })
+    const team = screen.getByRole('button', { name: 'Teams invitee 1 joins' })
+    const remove = screen.getByRole('button', { name: 'Remove invitee 1' })
+    const add = screen.getByRole('button', {
+      name: 'Add a team member',
+      exact: true,
+    })
+    fireEvent.change(email, { target: { value: 'grace@example.com' } })
+    fireEvent.submit(email)
+
+    for (const control of [email, role, team, remove, add]) {
+      expect(control).toBeDisabled()
+    }
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Please retry')
+    expect(email).toBeEnabled()
+    expect(email).toHaveValue('grace@example.com')
+    fireEvent.submit(email)
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument(),
+    )
+    expect(api.createMember).toHaveBeenCalledTimes(2)
+  })
+
   it('keeps only the rows that failed, with their error', async () => {
     api.createMember.mockImplementation(
       async (_ws: string, body: { email: string }) => {

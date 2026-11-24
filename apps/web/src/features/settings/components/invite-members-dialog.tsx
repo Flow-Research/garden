@@ -91,12 +91,14 @@ export function InviteMembersDialog({
 
   const filledCount = rows.filter((row) => row.email.trim()).length
 
-  const updateRow = (key: number, patch: Partial<InviteRow>) =>
+  const updateRow = (key: number, patch: Partial<InviteRow>) => {
+    if (sendingRef.current) return
     setRows((current) =>
       current.map((row) =>
         row.key === key ? { ...row, ...patch, error: null } : row,
       ),
     )
+  }
 
   const addRow = () => {
     const key = nextKey.current++
@@ -202,6 +204,7 @@ export function InviteMembersDialog({
                       aria-invalid={row.error ? true : undefined}
                       aria-label={`Invitee ${index + 1} email`}
                       className={FIELD_CLASS}
+                      disabled={sending}
                       onChange={(event) =>
                         updateRow(row.key, { email: event.target.value })
                       }
@@ -211,6 +214,7 @@ export function InviteMembersDialog({
                       wrapperClassName="col-span-2 min-w-0 sm:col-span-1"
                     />
                     <Select
+                      disabled={sending}
                       value={row.role}
                       onValueChange={(value) =>
                         updateRow(row.key, { role: value as InviteRole })
@@ -236,13 +240,14 @@ export function InviteMembersDialog({
                           variant="outline"
                           aria-label={`Teams invitee ${index + 1} joins`}
                           className={`col-span-2 w-full min-w-0 justify-start gap-1.5 overflow-hidden sm:col-span-1 ${FIELD_CLASS}`}
+                          disabled={sending}
                         />
                       }
                     />
                     <Button
                       aria-label={`Remove invitee ${index + 1}`}
                       className="col-start-3 row-start-1 size-10 sm:col-start-4"
-                      disabled={rows.length === 1}
+                      disabled={sending || rows.length === 1}
                       onClick={() => removeRow(row.key)}
                       size="icon"
                       type="button"
@@ -264,6 +269,7 @@ export function InviteMembersDialog({
             </ul>
             <Button
               className="mt-3 px-2 text-text-brand-default"
+              disabled={sending}
               onClick={addRow}
               type="button"
               variant="ghost"
