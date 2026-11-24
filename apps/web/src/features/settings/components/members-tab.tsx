@@ -74,6 +74,8 @@ const BADGE_CLASS: Record<MemberRole, string> = {
 const TABLE_CLASS =
   'overflow-hidden rounded-2xl border border-border-default bg-background-main-default'
 const TH_CLASS = 'px-4 py-4 font-semibold text-text-default sm:px-6'
+/** Header counterpart of the body cells' left border, so dividers run top to bottom. */
+const TH_DIVIDER = 'border-l border-border-default'
 const TD_CLASS = 'border-l border-border-default px-4 py-4 text-center sm:px-6'
 
 const errorMessage = (cause: unknown, fallback: string) =>
@@ -540,9 +542,13 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
             <thead>
               <tr className="bg-background-main-secondary">
                 <th className={`${TH_CLASS} text-left`}>User</th>
-                <th className={`${TH_CLASS} text-center w-32 sm:w-48`}>Role</th>
+                <th
+                  className={`${TH_CLASS} ${TH_DIVIDER} text-center w-32 sm:w-48`}
+                >
+                  Role
+                </th>
                 {canManageWorkspace ? (
-                  <th className="w-14">
+                  <th className={`${TH_DIVIDER} w-14`}>
                     <span className="sr-only">Actions</span>
                   </th>
                 ) : null}
@@ -586,14 +592,18 @@ export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
               <thead>
                 <tr className="bg-background-main-secondary">
                   <th className={`${TH_CLASS} text-left`}>Email</th>
-                  <th className={`${TH_CLASS} text-center w-28 sm:w-36`}>
+                  <th
+                    className={`${TH_CLASS} ${TH_DIVIDER} text-center w-28 sm:w-36`}
+                  >
                     Role
                   </th>
-                  <th className={`${TH_CLASS} text-center w-28 sm:w-36`}>
+                  <th
+                    className={`${TH_CLASS} ${TH_DIVIDER} text-center w-28 sm:w-36`}
+                  >
                     Status
                   </th>
                   {canManageWorkspace ? (
-                    <th className="w-24">
+                    <th className={`${TH_DIVIDER} w-24`}>
                       <span className="sr-only">Actions</span>
                     </th>
                   ) : null}
