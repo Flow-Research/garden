@@ -226,21 +226,21 @@ function CommentRow({
 
   return (
     <div className={`py-3${isTemp ? ' opacity-60' : ''}`}>
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <ActorAvatar
           actorType={entry.actor_type}
           actorId={entry.actor_id}
           label={entry.actor_label}
           size={24}
         />
-        <span className="text-sm font-medium">
+        <span className="min-w-0 max-w-full truncate text-sm font-medium">
           {entry.actor_label ??
             getActorName(entry.actor_type, entry.actor_id ?? '')}
         </span>
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="text-xs text-muted-foreground cursor-default">
+              <span className="shrink-0 text-xs text-muted-foreground cursor-default">
                 {timeAgo(entry.created_at)}
               </span>
             }
@@ -251,7 +251,7 @@ function CommentRow({
         </Tooltip>
 
         {!isTemp && (
-          <div className="ml-auto flex items-center gap-0.5">
+          <div className="ml-auto flex shrink-0 items-center gap-0.5">
             <QuickEmojiPicker
               onSelect={(emoji) => onToggleReaction(entry.id, emoji)}
               align="end"
@@ -343,7 +343,7 @@ function CommentRow({
         </div>
       ) : (
         <>
-          <div className="mt-1.5 pl-8 text-sm leading-relaxed text-foreground/85">
+          <div className="mt-1.5 min-w-0 pl-8 text-sm leading-relaxed text-foreground/85 [overflow-wrap:anywhere]">
             <ReadonlyContent content={entry.content ?? ''} />
           </div>
           <AttachmentList
@@ -448,7 +448,7 @@ function CommentCard({
   return (
     <Card
       className={cn(
-        '!py-0 !gap-0 overflow-hidden border-0 bg-transparent shadow-none transition-colors duration-700',
+        '!py-0 !gap-0 min-w-0 overflow-hidden border-0 bg-transparent shadow-none transition-colors duration-700',
         isTemp && 'opacity-60',
         isHighlighted && 'ring-2 ring-brand/50 bg-brand/5',
       )}
@@ -456,7 +456,7 @@ function CommentCard({
       <Collapsible open={open} onOpenChange={setOpen}>
         {/* Header — always visible, acts as toggle */}
         <div className="py-2.5">
-          <div className="flex items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
             <ActorAvatar
               actorType={entry.actor_type}
               actorId={entry.actor_id}
@@ -506,7 +506,7 @@ function CommentCard({
             )}
 
             {open && !isTemp && (
-              <div className="ml-auto flex items-center gap-0.5">
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 <QuickEmojiPicker
                   onSelect={(emoji) => onToggleReaction(entry.id, emoji)}
                   align="end"
@@ -604,7 +604,7 @@ function CommentCard({
               </div>
             ) : (
               <>
-                <div className="pl-[34px] text-xs leading-relaxed text-muted-foreground">
+                <div className="min-w-0 pl-[34px] text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">
                   <ReadonlyContent content={entry.content ?? ''} />
                 </div>
                 <AttachmentList
@@ -613,7 +613,7 @@ function CommentCard({
                   className="mt-1.5 pl-[34px]"
                 />
                 {!isTemp && (
-                  <div className="mt-1.5 pl-[34px] flex items-center gap-2">
+                  <div className="mt-1.5 pl-[34px] flex flex-wrap items-center gap-2">
                     <ReactionBar
                       reactions={reactions}
                       currentUserId={currentUserId}
@@ -642,7 +642,7 @@ function CommentCard({
               key={reply.id}
               id={`comment-${reply.id}`}
               className={cn(
-                'border-t border-border/50 px-4 transition-colors duration-700',
+                'min-w-0 border-t border-border/50 px-1 transition-colors duration-700 sm:px-4',
                 highlightedCommentId === reply.id && 'bg-brand/5',
               )}
             >
@@ -661,7 +661,7 @@ function CommentCard({
           clicked Reply. Otherwise the comment ends at its body, keeping the
           activity stream quiet when threads are empty. */}
           {(replyOpen || allNestedReplies.length > 0) && (
-            <div className="border-t border-border/50 px-4 py-2.5">
+            <div className="min-w-0 border-t border-border/50 px-1 py-2.5 sm:px-4">
               <ReplyInput
                 issueId={issueId}
                 placeholder="Leave a reply..."

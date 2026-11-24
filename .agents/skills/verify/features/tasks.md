@@ -45,3 +45,34 @@ pnpm --filter @garden/web test src/features/issues/components/issue-detail.test.
 The component suite covers tab filtering, drafts, inline status updates, empty
 states, failed writes, retry, parent links, and approval availability. Record
 browser and persisted-write evidence separately.
+
+## Responsive layout regression
+
+Use a task with a long title and an unbroken description. Add a comment with an
+unbroken word, a wide Markdown table, a code block, and a reply. At widths of
+320, 390, 540, 768, and 1440px, open both tabs and run this browser assertion.
+It checks rendered bounds, including the loading wrapper that contains the
+page. Tables and code may scroll inside their containers.
+
+```js
+const viewport = document.documentElement.clientWidth
+const main = document.querySelector('main')
+const detail = main.querySelector('[data-boneyard-content]')
+const title = main.querySelector('[aria-label="Issue title"]')
+const failures = []
+if (main.scrollWidth > main.clientWidth + 1) failures.push('main overflows')
+if (detail.scrollWidth > detail.clientWidth + 1) failures.push('detail overflows')
+if (title.scrollHeight > title.clientHeight + 1) failures.push('title clips')
+for (const button of main.querySelectorAll('header button, [role="tab"]')) {
+  const rect = button.getBoundingClientRect()
+  if (rect.width && (rect.left < -1 || rect.right > viewport + 1)) {
+    failures.push(`${button.getAttribute('aria-label') ?? button.textContent} offscreen`)
+  }
+}
+if (failures.length) throw new Error(failures.join(', '))
+```
+
+At 320 and 390px, edit the wrapping title and press Enter. Read it back through
+`GET /api/issues/<id>`. Open Properties, confirm the dialog stays within the
+viewport, change a property, and close it with the visible Close button. Create
+a comment and reply, then reload to confirm both persist.

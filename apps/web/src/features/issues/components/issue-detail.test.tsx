@@ -14,7 +14,6 @@ import type {
   MockContentEditorHandle,
   MockEditorProps,
   MockSelector,
-  MockTitleEditorHandle,
 } from '@/test/mock-props'
 
 // ---------------------------------------------------------------------------
@@ -146,32 +145,6 @@ vi.mock('../../editor', () => ({
           }}
           placeholder={placeholder}
           data-testid="rich-text-editor"
-        />
-      )
-    },
-  ),
-  TitleEditor: forwardRef<MockTitleEditorHandle, MockEditorProps>(
-    function MockTitleEditor(
-      { defaultValue, placeholder, onBlur, onChange },
-      ref,
-    ) {
-      const valueRef = useRef(defaultValue || '')
-      const [value, setValue] = useState(defaultValue || '')
-      useImperativeHandle(ref, () => ({
-        getText: () => valueRef.current,
-        focus: () => {},
-      }))
-      return (
-        <input
-          value={value}
-          onChange={(e) => {
-            valueRef.current = e.target.value
-            setValue(e.target.value)
-            onChange?.(e.target.value)
-          }}
-          onBlur={() => onBlur?.(valueRef.current)}
-          placeholder={placeholder}
-          data-testid="title-editor"
         />
       )
     },
@@ -450,6 +423,57 @@ describe('IssueDetail (shared)', () => {
     expect(
       screen.getByDisplayValue('Add JWT auth to the backend'),
     ).toBeInTheDocument()
+  })
+
+  it('saves a wrapping title on blur and uses Enter to finish editing', async () => {
+    mockApiObj.updateIssue.mockResolvedValue({
+      ...mockIssue,
+      title: 'A long task title that remains editable on a narrow screen',
+    })
+    renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    expect(title.tagName).toBe('TEXTAREA')
+    fireEvent.change(title, {
+      target: {
+        value: 'A long task title that remains editable on a narrow screen',
+      },
+    })
+    title.focus()
+    fireEvent.keyDown(title, { key: 'Enter' })
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({
+          title: 'A long task title that remains editable on a narrow screen',
+        }),
+      ),
+    )
+    expect(title).not.toHaveFocus()
+  })
+
+  it('opens and closes task properties in a mobile sheet', async () => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)')
+    const media = vi
+      .spyOn(window, 'matchMedia')
+      .mockImplementation((query) => ({
+        ...mediaQuery,
+        media: query,
+        matches: query === '(max-width: 767px)',
+      }))
+    renderIssueDetail()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Toggle properties' }),
+    )
+    const sheet = await screen.findByRole('dialog', { name: 'Task properties' })
+    expect(sheet).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Task properties' }),
+      ).toBeNull(),
+    )
+    media.mockRestore()
   })
 
   it('fetches the issue even when the list already has a copy of it', async () => {

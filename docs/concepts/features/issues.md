@@ -81,7 +81,11 @@ The issue UI lives in `apps/web/src/features/issues/components`.
 
 ## Task detail keeps the history and conversation together
 
-Task detail uses a centered column with an editable title and description. Status,
+Task detail uses a centered column with an editable title and description. The
+column and its loading wrapper shrink to the available width. Long titles wrap
+in an auto-sizing text field, and Enter finishes editing. On phones, header
+actions use a separate row, conversation metadata wraps, and the properties
+sheet fits the viewport with a visible Close button. Status,
 priority, and due date are editable badges below the description, alongside
 reactions and attachment upload. The header provides **New Sub-task**, the
 existing actions menu, and a properties toggle. The properties rail retains

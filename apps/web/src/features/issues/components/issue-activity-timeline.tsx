@@ -344,11 +344,11 @@ export function IssueActivityTimeline({
                 <div className="mr-2 flex w-4 shrink-0 justify-center">
                   {leadIcon}
                 </div>
-                <div className="flex min-w-0 flex-1 items-center gap-1">
-                  <span className="shrink-0 font-medium text-foreground">
+                <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1 gap-y-0.5 [overflow-wrap:anywhere]">
+                  <span className="min-w-0 max-w-full font-medium text-foreground">
                     {getActorName(entry.actor_type, entry.actor_id ?? '')}
                   </span>
-                  <span className="truncate">
+                  <span className="min-w-0">
                     {formatActivity(entry, getActorName)}
                   </span>
                   <Tooltip>

@@ -42,7 +42,6 @@ import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import {
   ContentEditor,
   type ContentEditorRef,
-  TitleEditor,
   useFileDropZone,
   FileDropOverlay,
 } from '../../editor'
@@ -378,12 +377,12 @@ export function IssueDetail({
       loading={loading}
       // BoneyardSkeleton adds a wrapper div around children. Keep that wrapper
       // in the flex chain so the issue body remains height-capped and scrolls.
-      className="flex flex-1 min-h-0 [&>[data-boneyard-content=true]]:flex [&>[data-boneyard-content=true]]:flex-1 [&>[data-boneyard-content=true]]:min-h-0"
+      className="flex min-w-0 flex-1 min-h-0 [&>[data-boneyard-content=true]]:flex [&>[data-boneyard-content=true]]:min-w-0 [&>[data-boneyard-content=true]]:flex-1 [&>[data-boneyard-content=true]]:min-h-0"
     >
       {issue ? (
-        <div className="flex flex-1 min-h-0">
+        <div className="flex min-w-0 flex-1 min-h-0">
           <div className="flex h-full flex-1 min-w-0 min-h-0 flex-col overflow-hidden">
-            <PageHeader className="gap-2 bg-background text-sm">
+            <PageHeader className="h-auto min-h-12 flex-wrap gap-x-2 gap-y-1 bg-background px-3 py-2 text-sm sm:h-12 sm:flex-nowrap sm:px-4 sm:py-0">
               {onToggleContextRail && (
                 <Tooltip>
                   <TooltipTrigger
@@ -406,7 +405,7 @@ export function IssueDetail({
                   </TooltipContent>
                 </Tooltip>
               )}
-              <div className="flex flex-1 items-center gap-1.5 min-w-0 overflow-x-auto text-xs">
+              <div className="flex min-w-0 basis-[calc(100%-40px)] flex-1 items-center gap-1.5 overflow-x-auto text-xs sm:basis-auto">
                 <button
                   type="button"
                   onClick={handleOpenIssues}
@@ -445,7 +444,7 @@ export function IssueDetail({
                 )}
                 <span className="shrink-0">{issue.identifier}</span>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="ml-auto flex shrink-0 items-center gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -598,16 +597,26 @@ export function IssueDetail({
               ref={scrollContainerRef}
               className="relative flex-1 overflow-y-auto"
             >
-              <div className="mx-auto w-full max-w-[686px] px-5 pb-12 pt-8 sm:px-6 sm:pt-10">
-                <TitleEditor
+              <div className="mx-auto w-full max-w-[686px] px-4 pb-12 pt-6 sm:px-6 sm:pt-10">
+                <textarea
                   key={`title-${id}`}
+                  aria-label="Issue title"
                   defaultValue={issue.title}
                   placeholder="Issue title"
-                  className="w-full text-lg font-bold leading-snug tracking-tight"
-                  onBlur={(value) => {
-                    const trimmed = value.trim()
+                  rows={1}
+                  className="block field-sizing-content w-full min-w-0 resize-none border-0 bg-transparent p-0 text-lg font-bold leading-snug tracking-tight outline-none [overflow-wrap:anywhere] placeholder:text-muted-foreground"
+                  onBlur={(event) => {
+                    const trimmed = event.currentTarget.value.trim()
                     if (trimmed && trimmed !== issue.title)
                       handleUpdateField({ title: trimmed })
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      event.currentTarget.blur()
+                    } else if (event.key === 'Escape') {
+                      event.currentTarget.blur()
+                    }
                   }}
                 />
 
@@ -650,7 +659,7 @@ export function IssueDetail({
 
                 <div
                   {...descDropZoneProps}
-                  className="relative mt-2 rounded-lg"
+                  className="relative mt-2 min-w-0 rounded-lg [overflow-wrap:anywhere]"
                 >
                   <ContentEditor
                     ref={descEditorRef}
@@ -895,7 +904,7 @@ export function IssueDetail({
                     if (value === 'activity' || value === 'comments')
                       setTabSelection({ key: tabKey, tab: value })
                   }}
-                  className="gap-5"
+                  className="min-w-0 gap-5"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <TabsList
@@ -937,7 +946,7 @@ export function IssueDetail({
                   </div>
                   <TabsContent
                     value="activity"
-                    className="min-h-[196px] rounded-md bg-background-main-default-hover p-4 sm:p-5"
+                    className="min-h-[196px] min-w-0 rounded-md bg-background-main-default-hover p-3 sm:p-5"
                   >
                     {activeTab === 'activity' && (
                       <BoneyardSkeleton
@@ -971,7 +980,7 @@ export function IssueDetail({
                   <TabsContent
                     value="comments"
                     keepMounted
-                    className="space-y-5 rounded-md bg-background-main-default-hover p-4 sm:p-6"
+                    className="min-w-0 space-y-5 rounded-md bg-background-main-default-hover p-3 sm:p-6"
                   >
                     <h2 className="text-sm font-semibold">
                       Comments ({commentCount})
@@ -1055,8 +1064,8 @@ export function IssueDetail({
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetContent
                 side="right"
-                showCloseButton={false}
-                className="w-[320px] overflow-y-auto p-4"
+                aria-label="Task properties"
+                className="w-full max-w-[320px] overflow-y-auto p-4 data-[side=right]:w-full"
               >
                 {sidebarContent}
               </SheetContent>
