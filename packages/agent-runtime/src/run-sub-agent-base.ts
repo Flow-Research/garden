@@ -19,6 +19,11 @@ import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
 import {
+  runFailure,
+  toPublicRunFailure,
+  type RunFailure,
+} from '@garden/core/runs/failure'
+import {
   errorFields,
   type GardenLogFields,
   type GardenLogger,
@@ -39,6 +44,7 @@ import {
   resolveAgentModelProfile,
 } from './model'
 import { createRetiredModelTracker } from './model-retirement'
+import { classifyRunFailure as classifyRuntimeFailure } from './run-failure-matchers'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 import {
   classifyGardenContextOverflow,
@@ -304,7 +310,7 @@ export abstract class RunSubAgentBase<
   /** Moves a live run to `failed`; a no-op for runs already settled. */
   protected abstract forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
     loaded?: TLoaded,
   ): Promise<ResultValue<void, RunSubAgentError>>
   /**
@@ -628,12 +634,20 @@ export abstract class RunSubAgentBase<
         : null
     if (!runId) return
 
+    const failure = submission.error
+      ? await this.failureReasonForOutput(runId, submission.error)
+      : null
+    if (failure?.diagnostic) {
+      this.logRunWarning('turn_failed', {
+        runId,
+        cause: failure.cause,
+        diagnostic: failure.diagnostic,
+      })
+    }
     const payload: RunWorkflowTurnCompleteEvent = {
       submissionId: submission.submissionId,
       status: submission.status,
-      ...(submission.error
-        ? { error: await this.failureReasonForOutput(runId, submission.error) }
-        : {}),
+      ...(failure ? { failure: toPublicRunFailure(failure) } : {}),
     }
     // RunWorkflow also reconciles from Think's submission state when this
     // event never arrives, so a delivery that still fails after these retries
@@ -844,7 +858,7 @@ export abstract class RunSubAgentBase<
         String(inspectionResult.error),
       )
       await this.forceCloseFailed(input.runId, reason)
-      throw this.runtimeFailure(reason)
+      throw this.runtimeFailure(reason.cause)
     }
 
     const inspection = inspectionResult.value
@@ -941,7 +955,10 @@ export abstract class RunSubAgentBase<
       runId: input.runId,
       runStatus: input.runStatus,
     })
-    const failedResult = await this.forceCloseFailed(input.runId, reason)
+    const failedResult = await this.forceCloseFailed(
+      input.runId,
+      runFailure('turn_ended_without_resolution'),
+    )
     if (failedResult.isErr()) throw failedResult.error
     this.clearTurnState()
 
@@ -974,12 +991,12 @@ export abstract class RunSubAgentBase<
    */
   async failWorkflowTurn(input: {
     runId: string
-    reason: string
+    failure: RunFailure
   }): Promise<{ status: string }> {
     const entry = await this.verifyRunEntry(input.runId)
     if (entry.isErr()) throw entry.error
 
-    const failedResult = await this.closeFailedRun(input.runId, input.reason)
+    const failedResult = await this.forceCloseFailed(input.runId, input.failure)
     if (failedResult.isErr())
       throw await this.errorForOutput(input.runId, failedResult.error)
     this.clearTurnState()
@@ -1124,11 +1141,17 @@ export abstract class RunSubAgentBase<
 
   /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
   private async failureReasonForOutput(runId: string, reason: string) {
-    if (isHistoryUnverifiedMessage(reason)) return reason
     const authority = await this.authorizeFinalObservation(runId)
-    if (authority.isOk()) return this.retiredModel.failureReason(runId, reason)
+    if (authority.isOk()) {
+      return classifyRuntimeFailure({
+        error: reason,
+        turnFlags: {
+          modelRetired: this.retiredModel.wasRetired(runId, reason),
+        },
+      })
+    }
     this.aiObservation.discardTurn()
-    return 'brain_output_authority_denied'
+    return runFailure('brain_output_authority_denied')
   }
 
   private async errorForOutput(runId: string, error: RunSubAgentError) {
