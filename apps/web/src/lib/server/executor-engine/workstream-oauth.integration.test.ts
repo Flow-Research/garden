@@ -15,6 +15,7 @@ import {
   createExecutor,
   type FumaTables,
 } from '@executor-js/sdk/core'
+import { makeHostedFetch } from '@executor-js/sdk/host-internal'
 import { mcpPlugin } from '@executor-js/plugin-mcp/core'
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -54,6 +55,34 @@ describe('Workstream public OAuth lifecycle', () => {
     callbackExecutors.clear()
   })
 
+  it('does not follow a manual revocation redirect or forward its credential', async () => {
+    const http = vi.fn<typeof fetch>(
+      async () =>
+        new Response(null, {
+          status: 307,
+          headers: { location: 'https://other.example/revoke' },
+        }),
+    )
+    const guardedFetch = makeHostedFetch({
+      fetch: http,
+      resolveHostname: async () => [{ address: '93.184.216.34', family: 4 }],
+    })
+    const response = await guardedFetch(
+      `${issuer}/protocol/openid-connect/revoke`,
+      {
+        method: 'POST',
+        redirect: 'manual',
+        body: new URLSearchParams({ token: 'fixture-refresh-token' }),
+      },
+    )
+    expect(response.status).toBe(307)
+    expect(response.ok).toBe(false)
+    expect(http).toHaveBeenCalledTimes(1)
+    expect(http.mock.calls[0]?.[0]).toBe(
+      `${issuer}/protocol/openid-connect/revoke`,
+    )
+  })
+
   it('installs OAuth through discovery and binds callbacks and refresh to each member', async () => {
     const codes = new Map<
       string,
@@ -71,7 +100,8 @@ describe('Workstream public OAuth lifecycle', () => {
     const refreshGrantIds = new Map<string, string>()
     const callTokens: string[] = []
     const rejectedAccessTokens: string[] = []
-    let revocationAvailable = true
+    const revocationRedirects: RequestRedirect[] = []
+    let revocationStatus = 200
     let pauseRevocation: (() => Promise<void>) | undefined
     let pauseRefresh: ((token: string) => Promise<void>) | undefined
     let pauseRefreshResponse: ((token: string) => Promise<void>) | undefined
@@ -98,7 +128,13 @@ describe('Workstream public OAuth lifecycle', () => {
         return new Response(null, { status: 404 })
       }
       if (request.url === `${issuer}/protocol/openid-connect/revoke`) {
-        if (!revocationAvailable) return new Response(null, { status: 503 })
+        revocationRedirects.push(request.redirect)
+        if (revocationStatus !== 200) {
+          return new Response(null, {
+            status: revocationStatus,
+            headers: { location: 'https://other.example/revoke' },
+          })
+        }
         const body = new URLSearchParams(await request.text())
         expect(body.get('client_id')).toBe('garden-dev')
         expect(body.get('token_type_hint')).toBe('refresh_token')
@@ -473,19 +509,21 @@ describe('Workstream public OAuth lifecycle', () => {
         }))[0]
         expect(ref).toBeDefined()
         if (ref === undefined) return
-        revocationAvailable = false
         const storedBeforeRemoval = yield* aliceCredentialIds
         expect(storedBeforeRemoval).toHaveLength(2)
-        const unavailableRemoval = yield* restoredAlice.connections
-          .remove(ref)
-          .pipe(Effect.result)
-        expect(Result.isFailure(unavailableRemoval)).toBe(true)
-        expect(
-          yield* restoredAlice.connections.list({ integration: slug }),
-        ).toHaveLength(1)
-        expect(refreshTokens.has('member-a-refresh-2')).toBe(true)
-        expect(yield* aliceCredentialIds).toEqual(storedBeforeRemoval)
-        revocationAvailable = true
+        for (const status of [503, 307]) {
+          revocationStatus = status
+          const unavailableRemoval = yield* restoredAlice.connections
+            .remove(ref)
+            .pipe(Effect.result)
+          expect(Result.isFailure(unavailableRemoval)).toBe(true)
+          expect(
+            yield* restoredAlice.connections.list({ integration: slug }),
+          ).toHaveLength(1)
+          expect(refreshTokens.has('member-a-refresh-2')).toBe(true)
+          expect(yield* aliceCredentialIds).toEqual(storedBeforeRemoval)
+        }
+        revocationStatus = 200
         sqlite.exec(
           `create trigger reject_disconnect before delete on "${connection.names.sql}" when old.subject = 'member-a' begin select raise(abort, 'fixture disconnect write failure'); end`,
         )
@@ -762,6 +800,8 @@ describe('Workstream public OAuth lifecycle', () => {
         Effect.forEach(members, (executor) => executor.close()),
       )
     })
+    expect(revocationRedirects.length).toBeGreaterThan(0)
+    expect(new Set(revocationRedirects)).toEqual(new Set(['manual']))
   })
 
   it('retains regional callback token endpoints for other providers', async () => {

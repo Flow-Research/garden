@@ -74,3 +74,7 @@ Private chat HTTP and WebSocket handshakes require the current Garden member to 
 The public agent request edge discards client-supplied SDK routing metadata before dispatch. Only the authorized request URL selects a facet; the SDK may generate internal routing headers afterward. This prevents a forged parent handshake from selecting another member's chat through a reserved header while preserving ordinary HTTP bodies, cookies, and WebSocket upgrade headers.
 
 Follow the [Workstream verification scenario](../../../.agents/skills/verify/features/workstream.md) for browser authorization, personal isolation, refresh, cancellation, and a permission refusal. Live user-flow proof remains required; unit tests alone do not establish that a deployed callback or refresh works. The corresponding open proof gap is recorded in [known gaps](../../reference/known-gaps.md).
+
+Revocation uses manual redirect handling supported by Cloudflare Workers. A
+redirect or issuer failure leaves the local connection available for retry; the
+refresh credential is never forwarded to a redirect destination.
