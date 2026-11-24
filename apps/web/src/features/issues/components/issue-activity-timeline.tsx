@@ -143,6 +143,7 @@ function RunEventDebugDetails({ entry }: { entry: TimelineEntry }) {
  */
 export function IssueActivityTimeline({
   timeline,
+  view = 'activity',
   debugMode,
   highlightedId,
   issueId,
@@ -154,6 +155,7 @@ export function IssueActivityTimeline({
   onToggleReaction,
 }: {
   timeline: TimelineEntry[]
+  view?: 'activity' | 'comments'
   debugMode: boolean
   highlightedId: string | null
   issueId: string
@@ -165,6 +167,7 @@ export function IssueActivityTimeline({
   onToggleReaction: CommentCardProps['onToggleReaction']
 }): ReactNode {
   const topLevel = timeline
+    .filter((entry) => view === 'activity' || entry.type === 'comment')
     .filter((e) => e.type === 'activity' || !e.parent_id)
     // Most run events are noisy runtime telemetry.
     // Failures are product-visible because they tell
@@ -235,6 +238,21 @@ export function IssueActivityTimeline({
     }
   }
 
+  if (groups.length === 0) {
+    return (
+      <div className="flex min-h-[156px] flex-col items-center justify-center gap-2 px-4 text-center text-xs">
+        <p className="font-semibold">
+          {view === 'comments' ? 'No comments yet' : 'No activity yet'}
+        </p>
+        <p className="max-w-56 text-muted-foreground">
+          {view === 'comments'
+            ? 'Start a conversation about this task.'
+            : 'Task updates and agent activity will appear here.'}
+        </p>
+      </div>
+    )
+  }
+
   return groups.map((group) => {
     if (group.type === 'comment') {
       const entry = group.entries[0]
@@ -274,7 +292,7 @@ export function IssueActivityTimeline({
     if (!first) return null
 
     return (
-      <div key={first.id} className="mb-4 last:mb-0 px-4 flex flex-col gap-3">
+      <div key={first.id} className="mb-4 last:mb-0 flex flex-col gap-3">
         {group.entries.map((entry, _idx) => {
           const details = (entry.details ?? {}) as Record<string, string>
           const isStatusChange = entry.action === 'status_changed'
@@ -327,7 +345,7 @@ export function IssueActivityTimeline({
                   {leadIcon}
                 </div>
                 <div className="flex min-w-0 flex-1 items-center gap-1">
-                  <span className="shrink-0 font-medium">
+                  <span className="shrink-0 font-medium text-foreground">
                     {getActorName(entry.actor_type, entry.actor_id ?? '')}
                   </span>
                   <span className="truncate">
@@ -336,7 +354,7 @@ export function IssueActivityTimeline({
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <span className="ml-auto shrink-0 cursor-default">
+                        <span className="shrink-0 cursor-default">
                           {timeAgo(entry.created_at)}
                         </span>
                       }

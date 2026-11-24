@@ -3,7 +3,7 @@ title: Issues are the shared ledger of work for people and agents
 description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-24
 ---
 
 An issue is a unit of work that a person or an agent owns. The UI calls issues Tasks and shows them at `/tasks`. Assigning an issue to an agent turns it into a run: the agent works on the issue in the background, records what it did, and returns reviewable outputs to the same issue.
@@ -78,6 +78,28 @@ Computing the Inbox keeps it consistent with the data it summarizes. An item dis
 While a run is active, the issue queries in `apps/web/src/lib/issues/queries.ts` refetch every two seconds (`refetchInterval: 2000`). Issue and comment changes outside a run reach the client through the workspace realtime hub. `apps/web/src/lib/realtime/invalidation.ts` turns `issue:*` and `comment:*` events into query invalidations. The [realtime](../architecture/realtime.md) page explains why the hub only tells clients to refetch.
 
 The issue UI lives in `apps/web/src/features/issues/components`.
+
+## Task detail keeps the history and conversation together
+
+Task detail uses a centered column with an editable title and description. Status,
+priority, and due date are editable badges below the description, alongside
+reactions and attachment upload. The header provides **New Sub-task**, the
+existing actions menu, and a properties toggle. The properties rail retains
+assignee, project, parent task, creation details, and debug usage information.
+
+**Activity** shows the task's real timeline, including comments and visible agent
+failures. **Comments** shows only conversation entries and their replies, with a
+composer above them and a count derived from the loaded timeline. Switching tabs
+keeps the top-level comment draft. A comment focus link opens Comments directly.
+Subscribers can subscribe or unsubscribe and manage other participants beside
+the tabs.
+
+Agent runs, questions, approvals, plans, and reviewable outputs stay above the
+tabs so either view can reach them. Composer instructions describe an agent run
+only when the task is assigned to an agent. Tasks without an agent use a normal
+comment composer. Empty activity describes task updates rather than scheduled
+automation runs. Meeting cards and other sample content from design mockups are
+not task features.
 
 ## Automations do not create issues
 

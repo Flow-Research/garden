@@ -448,37 +448,29 @@ function CommentCard({
   return (
     <Card
       className={cn(
-        '!py-0 !gap-0 overflow-hidden transition-colors duration-700',
+        '!py-0 !gap-0 overflow-hidden border-0 bg-transparent shadow-none transition-colors duration-700',
         isTemp && 'opacity-60',
         isHighlighted && 'ring-2 ring-brand/50 bg-brand/5',
       )}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
         {/* Header — always visible, acts as toggle */}
-        <div className="px-3.5 py-2.5">
+        <div className="py-2.5">
           <div className="flex items-center gap-2.5">
-            <CollapsibleTrigger className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-              <ChevronRight
-                className={cn(
-                  'size-3.5 transition-transform',
-                  open && 'rotate-90',
-                )}
-              />
-            </CollapsibleTrigger>
             <ActorAvatar
               actorType={entry.actor_type}
               actorId={entry.actor_id}
               label={entry.actor_label}
               size={24}
             />
-            <span className="shrink-0 text-sm font-medium">
+            <span className="min-w-0 truncate text-xs font-semibold">
               {entry.actor_label ??
                 getActorName(entry.actor_type, entry.actor_id ?? '')}
             </span>
             <Tooltip>
               <TooltipTrigger
                 render={
-                  <span className="shrink-0 text-xs text-muted-foreground cursor-default">
+                  <span className="shrink-0 text-[10px] text-muted-foreground cursor-default">
                     {timeAgo(entry.created_at)}
                   </span>
                 }
@@ -487,6 +479,20 @@ function CommentCard({
                 {new Date(entry.created_at).toLocaleString()}
               </TooltipContent>
             </Tooltip>
+
+            <CollapsibleTrigger
+              aria-label={
+                open ? 'Collapse comment thread' : 'Expand comment thread'
+              }
+              className="ml-auto shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <ChevronRight
+                className={cn(
+                  'size-3.5 transition-transform',
+                  open && 'rotate-90',
+                )}
+              />
+            </CollapsibleTrigger>
 
             {!open && contentPreview && (
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -561,11 +567,11 @@ function CommentCard({
         {/* Collapsible body */}
         <CollapsibleContent>
           {/* Parent comment body */}
-          <div className="px-3.5 pb-2.5">
+          <div className="pb-2.5">
             {editing ? (
               <div
                 {...parentDropZoneProps}
-                className="relative pl-10"
+                className="relative pl-[34px]"
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') cancelEdit()
                 }}
@@ -598,16 +604,16 @@ function CommentCard({
               </div>
             ) : (
               <>
-                <div className="pl-10 text-sm leading-relaxed text-foreground/85">
+                <div className="pl-[34px] text-xs leading-relaxed text-muted-foreground">
                   <ReadonlyContent content={entry.content ?? ''} />
                 </div>
                 <AttachmentList
                   attachments={entry.attachments}
                   content={entry.content}
-                  className="mt-1.5 pl-10"
+                  className="mt-1.5 pl-[34px]"
                 />
                 {!isTemp && (
-                  <div className="mt-1.5 pl-10 flex items-center gap-2">
+                  <div className="mt-1.5 pl-[34px] flex items-center gap-2">
                     <ReactionBar
                       reactions={reactions}
                       currentUserId={currentUserId}

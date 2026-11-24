@@ -94,6 +94,8 @@ vi.mock('@/lib/workspace/queries', () => ({
   }),
 }))
 
+const navigationSearch = vi.hoisted(() => ({ value: '' }))
+
 // Mock navigation
 vi.mock('../../navigation', () => ({
   AppLink: ({ children, href, ...props }: ComponentProps<'a'>) => (
@@ -104,7 +106,7 @@ vi.mock('../../navigation', () => ({
   useNavigation: () => ({
     push: vi.fn(),
     pathname: '/issues/issue-1',
-    searchParams: new URLSearchParams(),
+    searchParams: new URLSearchParams(navigationSearch.value),
     getShareableUrl: undefined,
   }),
   useNavigationActions: () => ({ push: vi.fn() }),
@@ -241,97 +243,6 @@ vi.mock('@/lib/api', () => ({
   getApi: () => mockApiObj,
 }))
 
-// Mock issue config
-vi.mock('@garden/core/issues/config', () => ({
-  ALL_STATUSES: [
-    'todo',
-    'in_progress',
-    'in_review',
-    'done',
-    'blocked',
-    'cancelled',
-  ],
-  BOARD_STATUSES: ['blocked', 'todo', 'in_progress', 'in_review', 'done'],
-  STATUS_ORDER: [
-    'todo',
-    'in_progress',
-    'in_review',
-    'done',
-    'blocked',
-    'cancelled',
-  ],
-  STATUS_CONFIG: {
-    todo: {
-      label: 'Todo',
-      iconColor: 'text-muted-foreground',
-      hoverBg: 'hover:bg-accent',
-    },
-    in_progress: {
-      label: 'In Progress',
-      iconColor: 'text-warning',
-      hoverBg: 'hover:bg-warning/10',
-    },
-    in_review: {
-      label: 'In Review',
-      iconColor: 'text-success',
-      hoverBg: 'hover:bg-success/10',
-    },
-    done: {
-      label: 'Done',
-      iconColor: 'text-info',
-      hoverBg: 'hover:bg-info/10',
-    },
-    blocked: {
-      label: 'Blocked',
-      iconColor: 'text-destructive',
-      hoverBg: 'hover:bg-destructive/10',
-    },
-    cancelled: {
-      label: 'Cancelled',
-      iconColor: 'text-muted-foreground',
-      hoverBg: 'hover:bg-accent',
-    },
-  },
-  PRIORITY_ORDER: ['urgent', 'high', 'medium', 'low', 'none'],
-  PRIORITY_CONFIG: {
-    urgent: {
-      label: 'Urgent',
-      bars: 4,
-      color: 'text-destructive',
-      badgeBg: 'bg-destructive/10',
-      badgeText: 'text-destructive',
-    },
-    high: {
-      label: 'High',
-      bars: 3,
-      color: 'text-warning',
-      badgeBg: 'bg-warning/10',
-      badgeText: 'text-warning',
-    },
-    medium: {
-      label: 'Medium',
-      bars: 2,
-      color: 'text-warning',
-      badgeBg: 'bg-warning/10',
-      badgeText: 'text-warning',
-    },
-    low: {
-      label: 'Low',
-      bars: 1,
-      color: 'text-info',
-      badgeBg: 'bg-info/10',
-      badgeText: 'text-info',
-    },
-    none: {
-      label: 'No priority',
-      bars: 0,
-      color: 'text-muted-foreground',
-      badgeBg: 'bg-muted',
-      badgeText: 'text-muted-foreground',
-    },
-  },
-}))
-
 // Mock recent issues store
 const mockRecordVisit = vi.fn()
 vi.mock('@garden/app-state/issues/stores/recent-issues-store', () => ({
@@ -466,6 +377,7 @@ function commentBox() {
 }
 
 async function findCommentBox() {
+  fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
   await screen.findByRole('button', { name: 'Submit comment' })
   return commentBox()
 }
@@ -492,6 +404,7 @@ function renderIssueDetail(
 describe('IssueDetail (shared)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    navigationSearch.value = ''
     // Default: issue loads successfully
     mockApiObj.getIssue.mockResolvedValue(mockIssue)
     mockApiObj.listTimeline.mockResolvedValue(mockTimeline)
@@ -673,14 +586,14 @@ describe('IssueDetail (shared)', () => {
     })
   })
 
-  it('renders workspace name as breadcrumb link', async () => {
+  it('renders Tasks as breadcrumb link', async () => {
     renderIssueDetail()
 
     await waitFor(() => {
-      expect(screen.getByText('Test WS')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Tasks' })).toBeInTheDocument()
     })
 
-    expect(screen.getByText('Test WS')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tasks' })).toBeInTheDocument()
   })
 
   it('renders properties sidebar with status, priority, assignee, due date', async () => {
@@ -804,6 +717,82 @@ describe('IssueDetail (shared)', () => {
     expect(screen.queryByText('Could not load activity.')).toBeNull()
   })
 
+  it('opens Comments for a focused comment link', async () => {
+    navigationSearch.value = 'focus=comment:comment-1'
+    const scroll = vi
+      .spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+    renderIssueDetail()
+    expect(
+      await screen.findByRole('tab', { name: 'Comments' }),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByText('Started working on this')).toBeVisible()
+    await waitFor(() => expect(scroll).toHaveBeenCalled())
+    scroll.mockRestore()
+  })
+
+  it('filters comments without hiding conversation history from Activity', async () => {
+    mockApiObj.listTimeline.mockResolvedValue([
+      ...mockTimeline,
+      {
+        type: 'activity',
+        id: 'activity-1',
+        actor_type: 'member',
+        actor_id: 'user-1',
+        action: 'created',
+        created_at: '2026-01-15T00:00:00Z',
+      },
+    ])
+    renderIssueDetail()
+    expect(await screen.findByText('created this issue')).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+    expect(screen.getByRole('heading', { name: 'Comments (2)' })).toBeVisible()
+    expect(screen.queryByText('created this issue')).toBeNull()
+    expect(screen.getByText('Started working on this')).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+    expect(screen.getByText('created this issue')).toBeVisible()
+  })
+
+  it('retains a comment draft across tab switches', async () => {
+    renderIssueDetail()
+    fireEvent.change(await findCommentBox(), {
+      target: { value: 'Draft to keep' },
+    })
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+    expect(commentBox()).toHaveValue('Draft to keep')
+    expect(mockApiObj.createComment).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText(
+        'Sending starts a fresh turn with this as the trigger.',
+      ),
+    ).toBeNull()
+  })
+
+  it('shows task-specific empty states without sample automation content', async () => {
+    mockApiObj.listTimeline.mockResolvedValue([])
+    renderIssueDetail()
+    expect(await screen.findByText('No activity yet')).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+    expect(screen.getByText('No comments yet')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Comments (0)' })).toBeVisible()
+  })
+
+  it('updates task status from the inline badge', async () => {
+    mockApiObj.updateIssue.mockResolvedValue({ ...mockIssue, status: 'done' })
+    renderIssueDetail()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Status: In Progress' }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Done' }))
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ status: 'done' }),
+      ),
+    )
+  })
+
   it('disables approval actions when the preview has no request id', async () => {
     mockApiObj.getActiveRun.mockResolvedValue({
       run: {
@@ -857,6 +846,7 @@ describe('IssueDetail (shared)', () => {
 describe('IssueDetail parent and sub-issue pickers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    navigationSearch.value = ''
     mockApiObj.getIssue.mockResolvedValue(mockIssue)
     mockApiObj.listTimeline.mockResolvedValue(mockTimeline)
     mockApiObj.listIssueReactions.mockResolvedValue([])

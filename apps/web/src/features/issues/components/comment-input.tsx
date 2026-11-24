@@ -78,8 +78,8 @@ function CommentInput({
       {...dropZoneProps}
       className={
         accent === 'redirect'
-          ? 'relative flex max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-brand/40'
-          : 'relative flex max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-border'
+          ? 'relative flex min-h-20 max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-brand/40'
+          : 'relative flex min-h-20 max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-border'
       }
     >
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
@@ -100,7 +100,8 @@ function CommentInput({
         />
         <Button
           aria-label={submitting ? 'Submitting comment' : 'Submit comment'}
-          size="icon-sm"
+          size="icon-xs"
+          className="rounded-full"
           disabled={isEmpty || submitting}
           onClick={handleSubmit}
         >
