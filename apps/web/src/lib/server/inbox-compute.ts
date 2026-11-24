@@ -309,7 +309,9 @@ function payloadValue(payload: unknown, key: string): string | null {
 }
 
 function failedRunBody(run: RunRow, info: FailedRunEventInfo | undefined) {
-  const failure = parseRunFailure(info?.failedEvent?.payload ?? run.error).match({
+  const failure = parseRunFailure(
+    info?.failedEvent?.payload ?? run.error,
+  ).match({
     ok: (value) => value,
     err: () => runFailure('unknown'),
   })
@@ -326,7 +328,9 @@ function buildFailedRunSource(
   const latestTool = info?.latestToolStarted
     ? payloadValue(info.latestToolStarted.payload, 'tool')
     : null
-  const failure = parseRunFailure(info?.failedEvent?.payload ?? run.error).match({
+  const failure = parseRunFailure(
+    info?.failedEvent?.payload ?? run.error,
+  ).match({
     ok: (value) => value,
     err: () => runFailure('unknown'),
   })

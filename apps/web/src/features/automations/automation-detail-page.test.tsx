@@ -218,7 +218,11 @@ describe('AutomationDetailPage pause', () => {
 
 describe('AutomationDetailPage Decide card', () => {
   it('shows typed failure copy and preserves legacy failure text', async () => {
-    const run = (id: string, failure: AutomationRun['failure'], reason: string): AutomationRun => ({
+    const run = (
+      id: string,
+      failure: AutomationRun['failure'],
+      reason: string,
+    ): AutomationRun => ({
       id,
       automation_id: 'auto-1',
       trigger_id: null,
@@ -238,8 +242,16 @@ describe('AutomationDetailPage Decide card', () => {
       run('legacy', null, 'Legacy failure reason'),
     ])
 
-    expect(await screen.findByText(/The automation finished without producing any output\./)).toBeTruthy()
-    expect(screen.getByText(/Add more detail to the automation's instructions and run it again\./)).toBeTruthy()
+    expect(
+      await screen.findByText(
+        /The automation finished without producing any output\./,
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(
+        /Add more detail to the automation's instructions and run it again\./,
+      ),
+    ).toBeTruthy()
     expect(screen.getByText('Legacy failure reason')).toBeTruthy()
   })
 

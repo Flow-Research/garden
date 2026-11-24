@@ -119,7 +119,7 @@ function toTimelineRunEvent(row: {
       message:
         row.event.eventType === 'issue_run:failed'
           ? 'Run failed'
-          : row.event.message ?? null,
+          : (row.event.message ?? null),
       payload: safePayload,
       created_at: (row.event.createdAt ?? new Date()).toISOString(),
     },

@@ -160,7 +160,8 @@ export const RUN_FAILURE_DEFINITIONS = {
     category: 'run_lifecycle',
     retryable: false,
     title: 'The automation finished without producing any output.',
-    nextStep: "Add more detail to the automation's instructions and run it again.",
+    nextStep:
+      "Add more detail to the automation's instructions and run it again.",
   },
   brain_output_authority_denied: {
     category: 'permissions',

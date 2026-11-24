@@ -820,10 +820,10 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       .filter(Boolean)
       .join('\n\n')
     if (!output) {
-      const failedResult = await this.forceCloseFailed(
-        runId,
-        { ...runFailure('no_output'), diagnostic: 'automation_completed_without_output' },
-      )
+      const failedResult = await this.forceCloseFailed(runId, {
+        ...runFailure('no_output'),
+        diagnostic: 'automation_completed_without_output',
+      })
       if (failedResult.isErr()) {
         this.logRunWarning('close_failed', {
           runId,

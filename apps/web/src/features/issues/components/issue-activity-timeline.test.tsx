@@ -44,10 +44,16 @@ describe('IssueActivityTimeline run failures', () => {
       />,
     )
 
-    expect(screen.getByText(/agent run stopped: The run stopped for an unexpected reason\./i))
-      .toBeInTheDocument()
-    expect(screen.getByText(/Try again\. If it keeps happening, tell your workspace admin\./i))
-      .toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /agent run stopped: The run stopped for an unexpected reason\./i,
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /Try again\. If it keeps happening, tell your workspace admin\./i,
+      ),
+    ).toBeInTheDocument()
     expect(screen.queryByText(raw)).not.toBeInTheDocument()
   })
 })

@@ -6,10 +6,7 @@ import {
 import { TaggedError } from 'better-result'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import { createGardenLogger } from '@garden/observability/logger'
-import {
-  runFailure,
-  type PublicRunFailure,
-} from '@garden/core/runs/failure'
+import { runFailure, type PublicRunFailure } from '@garden/core/runs/failure'
 import type { AgentDO } from './agent-do'
 import {
   DECIDE_ANALYSIS_OWNER_WAIT_MS,
