@@ -108,8 +108,7 @@ describe('MembersTab invite', () => {
     const team = screen.getByRole('button', { name: 'Teams invitee 1 joins' })
     const remove = screen.getByRole('button', { name: 'Remove invitee 1' })
     const add = screen.getByRole('button', {
-      name: 'Add a team member',
-      exact: true,
+      name: /^Add a team member$/,
     })
     fireEvent.change(email, { target: { value: 'grace@example.com' } })
     fireEvent.submit(email)
