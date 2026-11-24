@@ -33,6 +33,10 @@ grant: 30 days idle and 90 days absolute maximum, enforced by Flow Identity.
 Revocation remains authoritative. This does not change Garden sign-in or grant
 any additional Workstream permissions.
 
+Revocation uses manual redirect handling supported by Cloudflare Workers. A
+redirect or issuer failure leaves the local connection available for retry; the
+refresh credential is never forwarded to a redirect destination.
+
 Disconnect revokes the saved authorization at Flow Identity. If the issuer is
 unavailable, Garden retains the connection and permits another attempt. If a
 reconnect replaces the grant during disconnect, the new authorization stays connected.
@@ -62,6 +66,14 @@ The Workstream MCP audience client scope must have **Include in token scope** en
 The deployment binding is optional, so an environment without a registered client can still run other connectors. Register and bind an appropriate client before enabling Workstream there. Merging into `dev` deploys `garden-dev`; staging promotion remains a separate maintainer action. See [deploy targets](../../reference/deploy-targets.md) and [environment and bindings](../../reference/environment-and-bindings.md).
 
 ## Implementation and proof
+
+The connections HTTP route uses `runExecutor` in `executor-runtime.ts`. Its
+request-scoped Executor supplies guarded fetch to plugins, while core revocation
+uses global fetch. The MCP execution stack in `executor-engine/mcp.ts` supplies
+guarded fetch to both plugins and core. Revocation therefore requires manual
+redirect handling on both paths. The SQLite lifecycle regression exercises
+disconnect through the production request-scoped constructor; separate guard
+tests cover redirect options on both `Request` and request initialization.
 
 The existing owners are `apps/web/src/lib/server/executor-engine/presets.ts`, `auth-contract.ts`, `install.ts`, and `apps/web/src/routes/api/executor/oauth/start.ts`. The SDK discovery patch uses the OpenID Connect issuer-path convention while preserving the RFC 8414 OAuth metadata convention. The installation regression runs the actual catalogue-to-probe-to-registration path, including discovery failure. No schema or storage migration is required. See [connector architecture](../architecture/connectors.md).
 
