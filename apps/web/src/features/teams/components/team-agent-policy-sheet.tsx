@@ -526,7 +526,7 @@ export function TeamAgentPolicySheet({
                   >
                     <Logo
                       aria-hidden="true"
-                      className="size-8 shrink-0 text-foreground"
+                      className="size-8 shrink-0 self-start text-foreground"
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                       <span className="text-base text-foreground">
