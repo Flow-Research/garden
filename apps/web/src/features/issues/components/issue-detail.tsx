@@ -906,7 +906,7 @@ export function IssueDetail({
                   }}
                   className="min-w-0 gap-5"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 bg-background py-3">
                     <TabsList
                       variant="line"
                       aria-label="Task activity"

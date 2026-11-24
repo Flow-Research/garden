@@ -76,3 +76,11 @@ At 320 and 390px, edit the wrapping title and press Enter. Read it back through
 `GET /api/issues/<id>`. Open Properties, confirm the dialog stays within the
 viewport, change a property, and close it with the visible Close button. Create
 a comment and reply, then reload to confirm both persist.
+
+## Sticky conversation navigation
+
+At phone and desktop widths, scroll a long task until the Activity and Comments
+bar reaches the top of the task body. Scroll farther and confirm that both tabs
+and subscriber controls remain beneath the task header without content showing
+through. Switch tabs while pinned. Scroll back above the conversation and confirm
+that the bar returns to its original position.

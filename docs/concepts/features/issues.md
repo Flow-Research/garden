@@ -96,7 +96,8 @@ failures. **Comments** shows only conversation entries and their replies, with a
 composer above them and a count derived from the loaded timeline. Switching tabs
 keeps the top-level comment draft. A comment focus link opens Comments directly.
 Subscribers can subscribe or unsubscribe and manage other participants beside
-the tabs.
+the tabs. The tabs and subscriber controls stick beneath the task header once
+scrolled into view, keeping navigation available through a long conversation.
 
 Agent runs, questions, approvals, plans, and reviewable outputs stay above the
 tabs so either view can reach them. Composer instructions describe an agent run
