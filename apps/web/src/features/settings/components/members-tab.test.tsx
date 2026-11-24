@@ -196,3 +196,94 @@ describe('MembersTab GitHub identity controls', () => {
     ).toHaveLength(2)
   })
 })
+
+describe('MembersTab GitHub menu visibility', () => {
+  const person = (
+    role: MemberWithUser['role'],
+    github: { id: string; login: string } | null,
+  ) =>
+    ({
+      ...OWNER,
+      id: `member-${role}`,
+      user_id: `user-${role}`,
+      role,
+      name: `The ${role}`,
+      email: `${role}@example.com`,
+      github_user_id: github?.id ?? null,
+      github_login: github?.login ?? null,
+    }) as MemberWithUser
+
+  function renderFor(viewerRole: string, linked: boolean) {
+    const github = linked ? { id: '1', login: 'octo' } : null
+    useAuthStore.setState({ user: { id: `user-${viewerRole}` } as User })
+    useWorkspaceStore.setState({
+      workspace: { id: 'ws-1', name: 'Garden' } as Workspace,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+    queryClient.setQueryData(workspaceKeys.members('ws-1'), [
+      person('owner', github),
+      person('admin', github),
+      person('member', github),
+    ])
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceIdProvider wsId="ws-1">
+          <MembersTab />
+        </WorkspaceIdProvider>
+      </QueryClientProvider>,
+    )
+  }
+
+  // The API allows a link or unlink when the viewer is an owner or admin and
+  // the target is not an owner, unless the viewer is an owner (own row too).
+  const allowed = (viewer: string, target: string) =>
+    (viewer === 'owner' || viewer === 'admin') &&
+    (target !== 'owner' || viewer === 'owner')
+
+  const cases = (['owner', 'admin', 'member'] as const).flatMap((viewer) =>
+    (['owner', 'admin', 'member'] as const).map(
+      (target) => [viewer, target] as const,
+    ),
+  )
+
+  it.each(cases)('viewer %s on a linked %s row', async (viewer, target) => {
+    renderFor(viewer, true)
+    const trigger = screen.queryByRole('button', {
+      name: `Actions for The ${target}`,
+    })
+    if (!allowed(viewer, target)) {
+      // Members never get a menu on any GitHub-only row, and a role change
+      // can still be allowed, so check the GitHub items specifically.
+      if (trigger) {
+        fireEvent.click(trigger)
+        await screen.findAllByRole('menuitem')
+      }
+      expect(
+        screen.queryByRole('menuitem', { name: /github/i }),
+      ).not.toBeInTheDocument()
+      return
+    }
+    fireEvent.click(trigger!)
+    expect(
+      await screen.findByRole('menuitem', { name: /edit github identity/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /unlink github/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers Link GitHub but not Unlink when the member has no GitHub linked', async () => {
+    renderFor('owner', false)
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for The member' }),
+    )
+    expect(
+      await screen.findByRole('menuitem', { name: /link github/i }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: /unlink github/i }),
+    ).not.toBeInTheDocument()
+  })
+})
