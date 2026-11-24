@@ -42,7 +42,7 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
   })
   return (
     <MotionConfig reducedMotion="user">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <motion.div layoutScroll className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1600px] px-4 py-8 sm:px-8 lg:px-12 lg:py-12">
           <header>
             <h1 className="text-xl font-semibold tracking-tight">
@@ -52,7 +52,8 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
               Make changes to specific parts of the platform to suit your need.
             </p>
           </header>
-          <nav
+          <motion.nav
+            layoutScroll
             aria-label="Settings sections"
             className="mt-10 overflow-x-auto pb-1"
           >
@@ -82,7 +83,7 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
                 </Link>
               ))}
             </div>
-          </nav>
+          </motion.nav>
           <div className="mt-6 min-w-0 sm:mt-10 lg:rounded-xl lg:bg-background-main-secondary lg:p-10">
             <Animate
               key={section}
@@ -94,7 +95,7 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
             </Animate>
           </div>
         </div>
-      </div>
+      </motion.div>
     </MotionConfig>
   )
 }
