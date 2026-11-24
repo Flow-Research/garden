@@ -1,4 +1,5 @@
 import {
+  useId,
   useState,
   type ComponentType,
   type ReactNode,
@@ -71,13 +72,32 @@ function DiscordLogo(props: SVGProps<SVGSVGElement>) {
   )
 }
 
-const CONNECTOR_LOGOS = {
-  discord: DiscordLogo,
-  github: BrandGithubIcon,
-  gmail: GmailIcon,
-  'google-drive': GoogleDriveIcon,
-  slack: SlackIcon,
-} satisfies Record<ConnectorId, ComponentType<SVGProps<SVGSVGElement>>>
+const CONNECTOR_CARDS = {
+  discord: {
+    Logo: DiscordLogo,
+    summary: 'Read and send messages, start threads, and react.',
+  },
+  github: {
+    Logo: BrandGithubIcon,
+    summary:
+      'Read and change code, manage issues and pull requests, and run workflows.',
+  },
+  gmail: {
+    Logo: GmailIcon,
+    summary: 'Read, draft, and label email. Send with Gmail API access.',
+  },
+  'google-drive': {
+    Logo: GoogleDriveIcon,
+    summary: 'Find, read, and create files.',
+  },
+  slack: {
+    Logo: SlackIcon,
+    summary: 'Read channels, draft and send messages, and create canvases.',
+  },
+} satisfies Record<
+  ConnectorId,
+  { Logo: ComponentType<SVGProps<SVGSVGElement>>; summary: string }
+>
 
 /** One Access chip. `area: null` is a design area Garden cannot back. */
 const ACCESS_CHIPS: readonly { area: TeamAgentArea | null; label: string }[] = [
@@ -306,6 +326,7 @@ export function TeamAgentPolicySheet({
   onOpenChange: (open: boolean) => void
 }) {
   const wsId = useWorkspaceId()
+  const connectorDescriptionPrefix = useId()
   const query = useQuery({
     ...teamAgentPolicyOptions(wsId, teamId),
     enabled: open,
@@ -490,9 +511,14 @@ export function TeamAgentPolicySheet({
               className={cn(TAB_PANEL_CLASS, 'flex flex-col gap-2')}
               value="connectors"
             >
+              <p className="mb-2 text-sm text-text-secondary">
+                Available actions depend on the connection&apos;s permissions
+                and approval rules.
+              </p>
               {connectorRegistry.map((connector) => {
                 const integration = integrationFor(connector.id)
-                const Logo = CONNECTOR_LOGOS[connector.id]
+                const { Logo, summary } = CONNECTOR_CARDS[connector.id]
+                const descriptionId = `${connectorDescriptionPrefix}-${connector.id}`
                 return (
                   <div
                     className="flex items-center gap-3 rounded-lg bg-muted px-3 py-3 sm:gap-4 sm:px-6 sm:py-4"
@@ -506,13 +532,17 @@ export function TeamAgentPolicySheet({
                       <span className="text-base text-foreground">
                         {connector.label}
                       </span>
-                      <span className="text-sm text-text-secondary">
-                        {integration
-                          ? statusLabelFor(integration.status)
-                          : 'Not set up in this workspace'}
-                      </span>
+                      <div id={descriptionId}>
+                        <p className="text-sm text-text-secondary">{summary}</p>
+                        <p className="mt-1 text-xs text-text-secondary">
+                          {integration
+                            ? statusLabelFor(integration.status)
+                            : 'Not set up in this workspace'}
+                        </p>
+                      </div>
                     </div>
                     <Switch
+                      aria-describedby={descriptionId}
                       aria-label={connector.label}
                       checked={
                         !policy.blocked_connector_ids.includes(connector.id)
