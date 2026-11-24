@@ -57,12 +57,12 @@ export function IssueSubscribersControl({
   agents: IssueDetailData['agents']
 }) {
   return (
-    <>
+    <div className="inline-flex items-center gap-2">
       <Button
         size="sm"
         aria-pressed={isSubscribed}
         onClick={onToggleSubscribe}
-        className="order-last gap-1.5 text-xs"
+        className="gap-1.5 text-xs"
       >
         <BellRing className="size-3.5" />
         {isSubscribed ? 'Unsubscribe' : 'Subscribe'}
@@ -179,6 +179,6 @@ export function IssueSubscribersControl({
           </Command>
         </PopoverContent>
       </Popover>
-    </>
+    </div>
   )
 }
