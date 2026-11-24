@@ -4,10 +4,7 @@ import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
-import {
-  TeamDetailCard,
-  type TeamTab,
-} from '@/features/teams/components/team-detail'
+import { TeamDetailCard } from '@/features/teams/components/team-detail'
 import {
   TEAM_GRID_CLASS,
   TeamManagementPanel,
@@ -153,17 +150,10 @@ function TeamDetailSkeleton() {
 
 /**
  * Settings › User Management › Team detail: a Teams breadcrumb over the same
- * Team detail card as `/teams/$teamId`, so every Team control is shared.
+ * Team detail card as `/teams/$teamId`, showing its Members view only. "See
+ * issues" opens the Team's Issues tab in the Teams area.
  */
-export function UserManagementTeamDetail({
-  teamId,
-  tab,
-  onTabChange,
-}: {
-  teamId: string
-  tab: TeamTab
-  onTabChange: (tab: TeamTab) => void
-}) {
+export function UserManagementTeamDetail({ teamId }: { teamId: string }) {
   const navigate = useNavigate()
   return (
     <TeamManagerOnly loading={<TeamDetailSkeleton />}>
@@ -172,8 +162,15 @@ export function UserManagementTeamDetail({
           <TeamBreadcrumb teamId={teamId} />
           <TeamDetailCard
             teamId={teamId}
-            tab={tab}
-            onTabChange={onTabChange}
+            tab="members"
+            showTabs={false}
+            onTabChange={(tab) =>
+              void navigate({
+                to: '/teams/$teamId',
+                params: { teamId },
+                search: { tab },
+              })
+            }
             onDeleted={() =>
               void navigate({ to: '/settings/user-management/teams' })
             }

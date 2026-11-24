@@ -235,6 +235,7 @@ export function TeamDetailCard({
   tab,
   onTabChange,
   onDeleted,
+  showTabs = true,
   className,
 }: {
   teamId: string
@@ -242,6 +243,11 @@ export function TeamDetailCard({
   onTabChange: (tab: TeamTab) => void
   /** Where to go once the Team is deleted; its detail page no longer exists. */
   onDeleted: () => void
+  /**
+   * Members / Issues / Repositories pills. Settings hides them and shows the
+   * Members view only.
+   */
+  showTabs?: boolean
   className?: string
 }) {
   const wsId = useWorkspaceId()
@@ -440,18 +446,20 @@ export function TeamDetailCard({
               ) : (
                 <span />
               )}
-              <TabsList className={TEAM_TABS_LIST_CLASS}>
-                {TAB_ITEMS.map((item) => (
-                  <TabsTrigger
-                    className={TEAM_TAB_TRIGGER_CLASS}
-                    key={item.value}
-                    value={item.value}
-                  >
-                    <item.icon className="size-4" />
-                    {item.label}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+              {showTabs ? (
+                <TabsList className={TEAM_TABS_LIST_CLASS}>
+                  {TAB_ITEMS.map((item) => (
+                    <TabsTrigger
+                      className={TEAM_TAB_TRIGGER_CLASS}
+                      key={item.value}
+                      value={item.value}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              ) : null}
             </div>
 
             <TabsContent className="mt-8 flex flex-col" value="members">

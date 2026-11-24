@@ -46,9 +46,18 @@ vi.mock('./members-tab', () => ({
   ),
 }))
 vi.mock('@/features/teams/components/team-detail', () => ({
-  TeamDetailCard: ({ teamId, tab }: { teamId: string; tab: string }) => (
+  TeamDetailCard: ({
+    teamId,
+    tab,
+    showTabs,
+  }: {
+    teamId: string
+    tab: string
+    showTabs?: boolean
+  }) => (
     <h2>
-      Team card {teamId} {tab}
+      Team card {teamId} {tab}{' '}
+      {showTabs === false ? 'without tabs' : 'with tabs'}
     </h2>
   ),
 }))
@@ -160,14 +169,7 @@ describe('User Management', () => {
   })
 
   it('shows the Team detail card under a Teams breadcrumb', () => {
-    renderWithRole(
-      'admin',
-      <UserManagementTeamDetail
-        teamId="team-1"
-        tab="members"
-        onTabChange={() => {}}
-      />,
-    )
+    renderWithRole('admin', <UserManagementTeamDetail teamId="team-1" />)
     const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' })
     expect(breadcrumb).toHaveTextContent('Teams/Platform')
     expect(screen.getByRole('link', { name: 'Teams' })).toHaveAttribute(
@@ -175,19 +177,14 @@ describe('User Management', () => {
       '/settings/user-management/teams',
     )
     expect(
-      screen.getByRole('heading', { name: 'Team card team-1 members' }),
+      screen.getByRole('heading', {
+        name: 'Team card team-1 members without tabs',
+      }),
     ).toBeVisible()
   })
 
   it('sends members from Team detail to Members', () => {
-    renderWithRole(
-      'member',
-      <UserManagementTeamDetail
-        teamId="team-1"
-        tab="members"
-        onTabChange={() => {}}
-      />,
-    )
+    renderWithRole('member', <UserManagementTeamDetail teamId="team-1" />)
     expect(screen.getByTestId('navigate')).toHaveAttribute(
       'data-to',
       '/settings/user-management/members',
