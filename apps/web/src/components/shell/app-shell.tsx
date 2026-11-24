@@ -367,7 +367,10 @@ export function AppShell() {
                     workspaces={workspaceListQuery.data ?? []}
                     currentWorkspaceId={workspace?.id ?? null}
                     collapsed={sidebarCollapsed}
-                    onAccount={() => openSettingsDialog()}
+                    onAccount={() => {
+                      setMobileNavOpen(false)
+                      void navigate({ to: '/settings' })
+                    }}
                     onInviteMembers={() => openSettingsDialog('members')}
                     onLogout={() => void handleLogout()}
                     onSwitchWorkspace={handleSwitchWorkspace}

@@ -6,7 +6,7 @@ owner: '@Umoren'
 last_reviewed: 2026-11-18
 ---
 
-Settings has an authenticated page at `/settings` for direct-link review during the staging rollout. Existing account and workspace menu entries still open the Settings modal. The page is not linked from application navigation yet.
+Select **Settings** in the account menu to open the authenticated `/settings` page. The workspace menu opens the Settings modal.
 
 ## Page shell
 
@@ -51,7 +51,7 @@ User Management has Members and Team sub-tabs, shown as pills, each with its own
 
 The design also shows Roles and Guests sub-tabs. Workspace roles are the fixed owner, admin and member set and Garden has no guest access, so neither sub-tab exists until the backend supports it.
 
-Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
+Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and routing the workspace Settings entry to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
 
 ## Verification
 
