@@ -84,3 +84,11 @@ bar reaches the top of the task body. Scroll farther and confirm that both tabs
 and subscriber controls remain beneath the task header without content showing
 through. Switch tabs while pinned. Scroll back above the conversation and confirm
 that the bar returns to its original position.
+
+## Comment card actions
+
+Check the avatar/author/time header, upper-right overflow menu, and reaction/Reply
+row below the body at 320px and desktop widths. Use the overflow menu to collapse
+and expand a thread, copy text, and edit your own comment. Confirm that the
+reaction picker opens from the footer, existing reactions still toggle, Reply
+opens the composer, and attachments remain accessible.

@@ -741,6 +741,25 @@ describe('IssueDetail (shared)', () => {
     expect(screen.queryByText('Could not load activity.')).toBeNull()
   })
 
+  it('keeps collapse and expand available in the comment menu', async () => {
+    renderIssueDetail()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Comment actions' }),
+    )
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Collapse thread' }),
+    )
+    expect(screen.queryByTestId('readonly-content')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }))
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Expand thread' }),
+    )
+    expect(screen.getByTestId('readonly-content')).toHaveTextContent(
+      'Started working on this',
+    )
+    expect(screen.getByRole('button', { name: 'Reply' })).toBeVisible()
+  })
+
   it('opens Comments for a focused comment link', async () => {
     navigationSearch.value = 'focus=comment:comment-1'
     const scroll = vi

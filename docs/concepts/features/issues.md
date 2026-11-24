@@ -99,6 +99,11 @@ Subscribers can subscribe or unsubscribe and manage other participants beside
 the tabs. The tabs and subscriber controls stick beneath the task header once
 scrolled into view, keeping navigation available through a long conversation.
 
+Comment cards place the avatar beside author and time, with the action menu at
+the top right. Reactions and Reply sit below the body, followed by an inset
+divider. Collapse and expand live in the action menu alongside existing copy,
+edit, and delete actions. Comment bodies, metadata, and actions wrap on phones.
+
 Agent runs, questions, approvals, plans, and reviewable outputs stay above the
 tabs so either view can reach them. Composer instructions describe an agent run
 only when the task is assigned to an agent. Tasks without an agent use a normal
