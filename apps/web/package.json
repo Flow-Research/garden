@@ -106,7 +106,7 @@
     "@tiptap/suggestion": "^3.22.1",
     "@xyflow/react": "^12.10.2",
     "agents": "catalog:",
-    "ai": "6.0.208",
+    "ai": "7.0.181",
     "better-auth": "1.7.16",
     "better-result": "^2.9.2",
     "boneyard-js": "^1.7.7",
