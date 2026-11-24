@@ -3,7 +3,7 @@ title: The run engine pairs Think submissions with Cloudflare Workflows
 description: How Garden turns an issue_run or automation_run row into a durable, resumable, cancellable Think agent loop, and which work does not belong there.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-05
+last_reviewed: 2026-11-24
 ---
 
 Garden runs two product surfaces, issues and automations, through one durable executor. The engine turns an `issue_run` or `automation_run` row into a Think agent loop that survives Durable Object eviction, waits for people, and stops when cancelled.
@@ -106,3 +106,5 @@ These rules keep the split between Workflow and facet intact:
 - Keep issue-run code and automation code separate. Share only product-neutral parts: `RunWorkflow`, model and tool setup, and MCP controller patterns.
 
 Open work on the engine, such as the staging lifecycle proof and the `queue` policy, is tracked in [known gaps](../../reference/known-gaps.md).
+
+The [agent SDK call budget test](../../../packages/agent-sdk-call-budget/README.md) counts root Durable Object calls for streamed text chunks with and without a viewer.
