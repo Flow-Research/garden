@@ -34,7 +34,9 @@ describe('retired agent model', () => {
     expect(DEFAULT_AGENT_MODEL_PROFILE.id).not.toBe(
       '@cf/moonshotai/kimi-k2.7-code',
     )
-    expect(DEFAULT_AGENT_MODEL_PROFILE.id).toBe('@cf/zai-org/glm-5.3')
+    expect(DEFAULT_AGENT_MODEL_PROFILE.id).toBe(
+      '@cf/deepseek-ai/deepseek-v4.1-flash-1017',
+    )
   })
 
   it('turns the SDK-masked 410/5028 failure into a clear reason', async () => {

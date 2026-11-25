@@ -152,6 +152,18 @@ describe('createAgentModel', () => {
     expect(createOpenAICompatibleSpy).not.toHaveBeenCalled()
   })
 
+  it('requests the default DeepSeek model at high reasoning effort', () => {
+    const modelSpy = vi.fn(() => ({ id: 'model' }))
+    createWorkersAISpy.mockReturnValue(modelSpy)
+
+    createAgentModel({ ai: {} as Ai })
+
+    expect(modelSpy).toHaveBeenCalledWith(
+      '@cf/deepseek-ai/deepseek-v4.1-flash-1017',
+      { reasoning_effort: 'high' },
+    )
+  })
+
   it('routes through the explicitly configured gateway', () => {
     const ai = {} as Ai
 
