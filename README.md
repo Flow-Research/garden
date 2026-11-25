@@ -9,6 +9,9 @@ allowed to do.
 > Read the [roadmap](docs/concepts/product/roadmap.md) and
 > [known gaps](docs/reference/known-gaps.md) before using it in production.
 
+Join the [Flow Research Discord](https://discord.gg/8b8ZtRu5VZ) and find the
+Garden team in `#garden`.
+
 ![Garden issue board with work grouped by status](docs/assets/readme/issues-board.webp)
 
 _Garden's shared issue board, with work moving from blocked and todo through
@@ -380,6 +383,10 @@ paths—Executor-hosted integrations and Garden-native adapters—described in
 Keep pull requests focused, include tests for behavior changes, and run the
 checks that CI will run before asking for review. Report vulnerabilities
 privately through [SECURITY.md](SECURITY.md).
+
+Questions about a change are welcome in `#garden` on the
+[Flow Research Discord](https://discord.gg/8b8ZtRu5VZ) before you open a pull
+request.
 
 ## Documentation
 
