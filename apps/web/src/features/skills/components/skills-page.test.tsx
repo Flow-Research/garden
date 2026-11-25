@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import {
   act,
+  configure,
   fireEvent,
   render,
   screen,
@@ -39,6 +40,10 @@ vi.mock('@/lib/api', () => ({
 vi.mock('../../common/markdown', () => ({
   Markdown: ({ children }: { children: string }) => <div>{children}</div>,
 }))
+
+// The page's first jsdom render can exceed Testing Library's 1s default on
+// loaded CI workers.
+configure({ asyncUtilTimeout: 5_000 })
 
 const WS_ID = 'ws-test'
 

@@ -4,7 +4,7 @@ import { and, eq, sql } from 'drizzle-orm'
 import { getAgentByName } from 'agents'
 import { z } from 'zod'
 import type { AgentDO } from '@garden/agent-runtime'
-import { bindExistingCapabilitiesToAgent } from './agent-bindings'
+import { bindExistingCapabilitiesToAgent } from '@/lib/server/queries/agents'
 import { getDb, requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
@@ -128,7 +128,6 @@ export async function ensureAgentRow(input: {
         )
         await bindExistingCapabilitiesToAgent({
           db: tx,
-          schema,
           agentId,
           grantedBy: input.ownerUserId,
         })

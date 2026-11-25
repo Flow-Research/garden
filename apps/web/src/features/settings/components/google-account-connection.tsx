@@ -10,9 +10,9 @@ import { authClient } from '@/lib/auth/client'
 import { authClientOperation } from '@/lib/auth/client-result'
 import { hasPasswordSignInMethod } from '@/lib/auth/sign-in-methods'
 import { getAuthProviderAvailability } from '@/lib/server/auth-providers'
+import { linkedAccountsQueryOptions } from '../account-queries'
 
 const authProviderQueryKey = ['auth', 'provider-availability']
-const linkedAccountsQueryKey = ['account', 'linked-accounts']
 
 type LinkedAccountState = {
   accounts: Array<{ id: string; providerId: string }>
@@ -44,14 +44,8 @@ export function GoogleAccountConnection() {
     isPending: linkedAccountsPending,
     refetch: refetchLinkedAccounts,
   } = useQuery({
-    queryKey: linkedAccountsQueryKey,
+    ...linkedAccountsQueryOptions(),
     enabled: authProviders?.google === true,
-    queryFn: () =>
-      authClientOperation({
-        fallbackMessage: 'Could not load linked accounts',
-        operation: 'list-linked-accounts',
-        request: () => authClient.listAccounts(),
-      }),
   })
 
   if (authProvidersPending) return null
@@ -159,19 +153,19 @@ export function GoogleAccountConnection() {
           </Button>
         </div>
       ) : (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4">
-          <div className="flex min-w-0 items-center gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-4 rounded-lg border p-4">
+          <div className="flex min-w-48 flex-1 items-start gap-3 sm:items-center">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
               <BrandGoogleIcon className="size-5" aria-hidden="true" />
             </span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">Google</p>
+            <div className="min-w-0 space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm leading-5 font-medium">Google</p>
                 <Badge variant={googleAccount ? 'secondary' : 'outline'}>
                   {googleAccount ? 'Connected' : 'Not connected'}
                 </Badge>
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs leading-5 text-muted-foreground">
                 {googleAccount && !canUnlinkGoogle
                   ? 'Google is your only sign-in method.'
                   : 'Use the same email as your Garden account.'}
@@ -185,6 +179,7 @@ export function GoogleAccountConnection() {
                 type="button"
                 size="sm"
                 variant="outline"
+                className="w-full sm:w-auto"
                 disabled={unlinking}
                 onClick={() => void handleUnlink()}
               >
@@ -197,6 +192,7 @@ export function GoogleAccountConnection() {
               type="button"
               size="sm"
               variant="outline"
+              className="w-full sm:w-auto"
               disabled={linking}
               onClick={() => void handleLink()}
             >
