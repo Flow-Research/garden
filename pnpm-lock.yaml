@@ -12,6 +12,9 @@ catalogs:
     '@cloudflare/codemode':
       specifier: 0.5.6
       version: 0.5.6
+    '@cloudflare/computer':
+      specifier: 0.10.0
+      version: 0.10.0
     '@cloudflare/sandbox':
       specifier: 0.12.4
       version: 0.12.4
@@ -649,6 +652,9 @@ importers:
       '@cloudflare/codemode':
         specifier: 'catalog:'
         version: 0.5.6(@modelcontextprotocol/sdk@1.32.2(@cfworker/json-schema@4.1.1)(zod@4.6.6))(ai@7.0.181(zod@4.6.6))(zod@4.6.6)
+      '@cloudflare/computer':
+        specifier: 'catalog:'
+        version: 0.10.0(@cloudflare/workers-types@5.20260808.1)(ai@7.0.181(zod@4.6.6))(just-bash@3.0.1)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)
       '@cloudflare/playwright':
         specifier: ^1.3.0
         version: 1.3.0
@@ -15189,7 +15195,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(jsdom@29.0.2(@noble/hashes@2.2.0))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))
+      vitest: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(jsdom@29.0.2(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
 
   '@vitest/expect@4.1.4':
     dependencies:
