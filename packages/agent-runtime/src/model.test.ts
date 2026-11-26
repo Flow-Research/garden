@@ -220,6 +220,7 @@ describe('resolveAgentModelProfile', () => {
   it('returns the Workers AI default profile with no env', () => {
     expect(resolveAgentModelProfile()).toBe(DEFAULT_AGENT_MODEL_PROFILE)
     expect(resolveAgentModelProfile({})).toBe(DEFAULT_AGENT_MODEL_PROFILE)
+    expect(DEFAULT_AGENT_MODEL_PROFILE.maxOutputTokens).toBe(16_000)
   })
 
   it('builds a zero-priced offline profile with env-driven window', () => {
@@ -230,6 +231,7 @@ describe('resolveAgentModelProfile', () => {
 
     expect(profile.provider).toBe('openai-compatible')
     expect(profile.contextWindowTokens).toBe(131072)
+    expect(profile.maxOutputTokens).toBe(16_000)
     expect(profile.pricePerToken).toEqual({
       input: 0,
       output: 0,

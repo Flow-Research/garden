@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCompactNumber, formatDateTime } from '@garden/core/format'
+import { formatRunFailure } from '@garden/core/runs/failure'
 import type { Agent } from '@garden/core/types'
 import type { Automation, AutomationRun, AutomationTrigger } from '@/lib/api'
 import type { AutomationRunStatus } from '@/lib/api/automations'
@@ -269,7 +270,11 @@ function RunRow({
           {run.source}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {run.failure_reason ? (
+          {run.failure ? (
+            <span className="text-destructive">
+              {formatRunFailure(run.failure)}
+            </span>
+          ) : run.failure_reason ? (
             <span className="text-destructive">{run.failure_reason}</span>
           ) : output ? (
             output

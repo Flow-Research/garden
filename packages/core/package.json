@@ -21,6 +21,7 @@
     "./issues/identifier": "./src/issues/identifier.ts",
     "./issues/order-key": "./src/issues/order-key.ts",
     "./issues/run-sync": "./src/issues/run-sync.ts",
+    "./runs/failure": "./src/runs/failure.ts",
     "./issues/work-product-pr-target": "./src/issues/work-product-pr-target.ts",
     "./issues/work-product-saved-file": "./src/issues/work-product-saved-file.ts",
     "./issues/triggers": "./src/issues/triggers.ts",
