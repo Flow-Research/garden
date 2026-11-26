@@ -3,7 +3,7 @@ title: The run engine pairs Think submissions with Cloudflare Workflows
 description: How Garden turns an issue_run or automation_run row into a durable, resumable, cancellable Think agent loop, and which work does not belong there.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-26
 ---
 
 Garden runs two product surfaces, issues and automations, through one durable executor. The engine turns an `issue_run` or `automation_run` row into a Think agent loop that survives Durable Object eviction, waits for people, and stops when cancelled.
@@ -57,6 +57,7 @@ The facet enforces the budget in two places:
 - **Before a turn.** The boundary guards fail a run whose recorded usage already meets the budget before a resumed turn starts.
 
 `usage_json` is cumulative for the whole run. Each turn starts from the recorded usage instead of zero.
+The shared `runUsageSnapshotSchema` validates every non-null value. A malformed value returns a run error, so the budget guard does not count it as zero spend.
 
 The budget is 2,000,000 tokens. Ten local issue runs on DeepSeek V4.1 Flash through an OpenRouter endpoint, with no connectors, used 48k to 203k tokens each, with a median near 130k, in 2 to 8 steps. Each step sent about 22k to 25k input tokens. One full 30-step turn of a connector-heavy run comes to about 1.2M tokens. The budget is about ten times the largest measured run, so it stops a runaway loop but leaves room for a full turn plus a resume. At list price, 2M input tokens cost about $0.60.
 

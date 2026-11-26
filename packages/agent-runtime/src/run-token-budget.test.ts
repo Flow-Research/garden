@@ -143,7 +143,7 @@ describe('run token budget', () => {
     expect(runTokenBudgetReached(450, 450)).toBe(true)
   })
 
-  it('reads persisted usage and ignores rows without a usage shape', () => {
+  it('returns no usage for empty values and parses valid persisted usage', () => {
     const persisted = {
       input_tokens: 10,
       output_tokens: 5,
@@ -154,8 +154,27 @@ describe('run token budget', () => {
       step_count: 1,
       recorded_at_ms: 1,
     }
-    expect(parsePersistedRunUsage(persisted)).toEqual(persisted)
-    expect(parsePersistedRunUsage(null)).toBeNull()
-    expect(parsePersistedRunUsage({ total_tokens: 'x' })).toBeNull()
+    expect(parsePersistedRunUsage(persisted)).toMatchObject({
+      status: 'ok',
+      value: persisted,
+    })
+    expect(parsePersistedRunUsage(null)).toMatchObject({
+      status: 'ok',
+      value: null,
+    })
+    expect(parsePersistedRunUsage(undefined)).toMatchObject({
+      status: 'ok',
+      value: null,
+    })
+  })
+
+  it('rejects malformed persisted usage', () => {
+    expect(parsePersistedRunUsage({ total_tokens: 'x' })).toMatchObject({
+      status: 'error',
+      error: {
+        _tag: 'PersistedRunUsageInvalidError',
+        issueSummary: expect.stringContaining('total_tokens'),
+      },
+    })
   })
 })

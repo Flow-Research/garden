@@ -1,6 +1,6 @@
 import type { StopCondition, ToolSet } from 'ai'
-import { z } from 'zod'
-import type { RunUsageSnapshot } from './run-usage'
+import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { runUsageSnapshotSchema, type RunUsageSnapshot } from './run-usage'
 
 /**
  * Most tokens one run may spend across all of its turns. A per-step output
@@ -14,25 +14,32 @@ export const RUN_TOKEN_BUDGET = 2_000_000
 /** Failure reason recorded on a run stopped by {@link RUN_TOKEN_BUDGET}. */
 export const RUN_TOKEN_BUDGET_EXCEEDED = 'run_token_budget_exceeded'
 
-const persistedRunUsageSchema = z.object({
-  input_tokens: z.number(),
-  output_tokens: z.number(),
-  cached_input_tokens: z.number(),
-  reasoning_tokens: z.number().optional(),
-  total_tokens: z.number(),
-  model: z.string(),
-  model_provider: z.string(),
-  step_count: z.number(),
-  recorded_at_ms: z.number(),
-})
+class PersistedRunUsageInvalidError extends TaggedError(
+  'PersistedRunUsageInvalidError',
+)<{
+  issueSummary: string
+  message: string
+}>() {}
 
-/**
- * Reads a run ledger's `usage_json`. A row with no usage yet, or with a
- * different shape, counts as no usage rather than failing the run.
- */
-export function parsePersistedRunUsage(json: unknown): RunUsageSnapshot | null {
-  const parsed = persistedRunUsageSchema.safeParse(json)
-  return parsed.success ? parsed.data : null
+/** Parses persisted usage. Missing data returns `null`; malformed data returns an error. */
+export function parsePersistedRunUsage(
+  json: unknown,
+): ResultValue<RunUsageSnapshot | null, PersistedRunUsageInvalidError> {
+  if (json === null || json === undefined) return Result.ok(null)
+
+  const parsed = runUsageSnapshotSchema.safeParse(json)
+  if (parsed.success) return Result.ok(parsed.data)
+
+  const issueSummary = parsed.error.issues
+    .map((issue) => `${issue.path.join('.') || 'usage_json'}: ${issue.message}`)
+    .join('; ')
+
+  return Result.err(
+    new PersistedRunUsageInvalidError({
+      issueSummary,
+      message: `Persisted run usage is invalid: ${issueSummary}`,
+    }),
+  )
 }
 
 export function runTokenBudgetReached(

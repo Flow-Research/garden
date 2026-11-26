@@ -1419,8 +1419,11 @@ export abstract class RunSubAgentBase<
       catch: (cause) =>
         this.dbError(`load ${this.runConfig().kind} run usage`, cause),
     })
-    if (result.isErr()) return Result.err(result.error)
-    return Result.ok(parsePersistedRunUsage(result.value[0]?.usageJson))
+    return result.andThen((rows) =>
+      parsePersistedRunUsage(rows[0]?.usageJson).mapError((cause) =>
+        this.dbError(`parse ${this.runConfig().kind} run usage`, cause),
+      ),
+    )
   }
 
   private async loadRunTimeoutSec(
