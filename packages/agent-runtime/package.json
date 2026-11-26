@@ -21,7 +21,6 @@
     "@cloudflare/computer": "catalog:",
     "@cloudflare/playwright": "^1.3.0",
     "@cloudflare/sandbox": "catalog:",
-    "@cloudflare/shell": "catalog:",
     "@cloudflare/think": "catalog:",
     "@garden/app-state": "workspace:*",
     "@garden/brain": "workspace:*",

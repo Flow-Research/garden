@@ -1,4 +1,4 @@
-import type { WorkspaceFsLike } from '@cloudflare/shell'
+import type { Workspace } from '@cloudflare/computer'
 import ExcelJS from 'exceljs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -43,11 +43,23 @@ function queryDatabase(...rows: unknown[][]) {
   return { select: () => query }
 }
 
+function bytesStream(bytes: Uint8Array) {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(bytes)
+      controller.close()
+    },
+  })
+}
+
 /** Creates the read-only workspace surface required by document tools. */
 function workspaceReading(bytes: Uint8Array) {
   return {
-    readFileBytes: vi.fn(async () => bytes),
-  } as unknown as WorkspaceFsLike
+    fs: {
+      readFile: vi.fn(async () => bytesStream(bytes)),
+      writeFile: vi.fn(async () => undefined),
+    },
+  } as unknown as Workspace
 }
 
 const canonicalSnapshot: DocumentSnapshot = {
@@ -213,11 +225,11 @@ describe('document image media types', () => {
       }),
     }
     mocks.getPooledDb.mockReturnValue(database)
-    const writeFileBytes = vi.fn(async () => undefined)
+    const writeFile = vi.fn(async () => undefined)
     const context: DocumentToolContext = {
       databaseUrl: 'postgres://test',
       documentArtifacts: documentAuthority(),
-      workspace: { writeFileBytes } as unknown as WorkspaceFsLike,
+      workspace: { fs: { writeFile } } as unknown as Workspace,
       threadId: 'thread-1',
     }
 
@@ -231,10 +243,9 @@ describe('document image media types', () => {
       ok: true,
       artifact: { mediaType: 'image/webp' },
     })
-    expect(writeFileBytes).toHaveBeenCalledWith(
+    expect(writeFile).toHaveBeenCalledWith(
       expect.stringContaining('/Screenshot.WEBP'),
       expect.any(Uint8Array),
-      'image/webp',
     )
   })
 
@@ -324,7 +335,7 @@ describe('canonical DOCX document tools', () => {
       text: 'Current canonical text',
       version_id: null,
     })
-    expect(workspace.readFileBytes).not.toHaveBeenCalled()
+    expect(workspace.fs.readFile).not.toHaveBeenCalled()
 
     mocks.getPooledDb.mockReturnValue(
       queryDatabase(
@@ -392,9 +403,11 @@ describe('canonical DOCX document tools', () => {
     })
     const apply = vi.fn(async () => ({ ok: true as const, outcome: conflict }))
     const workspace = {
-      readFileBytes: vi.fn(),
-      writeFileBytes: vi.fn(),
-    } as unknown as WorkspaceFsLike
+      fs: {
+        readFile: vi.fn(),
+        writeFile: vi.fn(),
+      },
+    } as unknown as Workspace
     const context: DocumentToolContext = {
       databaseUrl: 'postgres://test',
       documentArtifacts: documentAuthority({ apply }),
@@ -430,8 +443,8 @@ describe('canonical DOCX document tools', () => {
         upserts: [expect.objectContaining({ baseVersion: 2 })],
       }),
     )
-    expect(workspace.readFileBytes).not.toHaveBeenCalled()
-    expect(workspace.writeFileBytes).not.toHaveBeenCalled()
+    expect(workspace.fs.readFile).not.toHaveBeenCalled()
+    expect(workspace.fs.writeFile).not.toHaveBeenCalled()
   })
 
   it(
@@ -462,8 +475,8 @@ describe('canonical DOCX document tools', () => {
         databaseUrl: 'postgres://test',
         documentArtifacts: documentAuthority({ initializeDocx }),
         workspace: {
-          writeFileBytes: vi.fn(async () => undefined),
-        } as unknown as WorkspaceFsLike,
+          fs: { writeFile: vi.fn(async () => undefined) },
+        } as unknown as Workspace,
         threadId: 'thread-1',
       }
 

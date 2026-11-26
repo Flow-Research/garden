@@ -45,8 +45,8 @@ import {
   type ToolSet,
   type UIMessage,
 } from 'ai'
-import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
-import { Workspace } from '@cloudflare/shell'
+import { Workspace } from '@cloudflare/computer'
+import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
 import { and, asc, eq, or } from 'drizzle-orm'
@@ -1649,7 +1649,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   )
 
   override messageConcurrency: MessageConcurrency = 'merge'
-  override chatRecovery = true
   override contextOverflow = createGardenContextOverflow(
     // Field initializers run after super(), so this.env is populated: offline
     // local models need overflow bounds scaled to their context window, not
@@ -1692,10 +1691,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       await this.pauseMcpRuntime(reason, controller),
   })
 
+  // Think 0.24: Computer Workspace on DO storage replaces shell's sql/r2 Workspace.
   override workspace = new Workspace({
-    sql: this.ctx.storage.sql,
-    r2: this.env.FILES,
-    name: () => this.name,
+    storage: this.ctx.storage,
   })
   getModel(): LanguageModel {
     return createAgentModel({
@@ -2356,12 +2354,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       experimental_telemetry: {
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
         isEnabled: true,
-        metadata: {
-          agentClass: 'ChatSubAgent',
-          hasDocumentContext: Boolean(documentContext),
-          hasIntegrationRoute: routeDecision.status === 'selected',
-          selectedIntegration: routeDecision.routes[0]?.slug ?? '',
-        },
         recordInputs: false,
         recordOutputs: false,
       },
@@ -2696,28 +2688,34 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   async debugWorkspace(): Promise<DebugWorkspacePayload> {
-    const [rootEntries, allPaths, statsSettled] = await Promise.all([
-      this.workspace.readDir('/', { limit: 50 }),
-      this.workspace.glob('**/*'),
-      this.workspace
-        .getWorkspaceInfo()
-        .then((info) => ({ ok: true as const, info }))
-        .catch(() => ({ ok: false as const })),
+    const [rootDirents, found] = await Promise.all([
+      this.workspace.fs.readdir('/', { limit: 50 }),
+      this.workspace.fs.find('/', '**/*', { limit: 200 }),
     ])
-    const samplePaths = allPaths.slice(0, 50)
-    const toEntry = (entry: WorkspaceEntry): WorkspaceEntry => ({
-      path: entry.path,
+    const rootEntries: WorkspaceEntry[] = rootDirents.map((entry) => ({
+      path: `${entry.parentPath === '/' ? '' : entry.parentPath}/${entry.name}`.replace(
+        /\/+/g,
+        '/',
+      ),
       name: entry.name,
-      type: entry.type,
+      type: entry.isDirectory ? 'directory' : 'file',
       size: entry.size,
-      mimeType: entry.mimeType,
-      updatedAt: entry.updatedAt,
-    })
+      mimeType: '',
+      updatedAt: entry.mtime,
+    }))
+    const samplePaths: WorkspaceEntry[] = found.slice(0, 50).map((entry) => ({
+      path: entry.path,
+      name: entry.path.split('/').pop() ?? entry.path,
+      type: entry.type === 'dir' ? 'directory' : 'file',
+      size: 0,
+      mimeType: '',
+      updatedAt: 0,
+    }))
     return {
-      rootEntries: rootEntries.map(toEntry),
-      samplePaths: samplePaths.map(toEntry),
-      samplePathCount: allPaths.length,
-      stats: statsSettled.ok ? statsSettled.info : null,
+      rootEntries,
+      samplePaths,
+      samplePathCount: found.length,
+      stats: null,
     }
   }
 
@@ -2830,7 +2828,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   async debugTools(): Promise<DebugToolsPayload> {
     // Mirror what Think does inside `_runInferenceLoop` — the merged ToolSet
     // that actually reaches the model. No hand-written inventories here.
-    const workspaceTools = createWorkspaceTools(this.workspace) as ToolSet
+    const workspaceTools = createAITools({ workspace: this.workspace }) as ToolSet
     const baseTools = (this.getTools() ?? {}) as ToolSet
     const sessionTools = (await this.session
       .tools()
@@ -3097,16 +3095,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       }
     })
 
-    const loadedSkillKeys = Array.from(
-      (await this.session.getLoadedSkillKeys?.()) ?? [],
-    )
-
+    // agents/skills catalogs no longer expose per-session loaded skill keys.
     return {
       prompt,
       lineCount: prompt.split('\n').length,
       charCount: prompt.length,
       contextBlocks,
-      loadedSkillKeys,
+      loadedSkillKeys: [],
     }
   }
 

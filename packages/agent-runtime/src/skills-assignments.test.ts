@@ -22,11 +22,22 @@ vi.mock('@garden/db/runtime', async (importOriginal) => ({
 }))
 
 vi.mock('agents/skills', () => ({
+  SkillResourceNotFoundError: class SkillResourceNotFoundError extends Error {
+    constructor(
+      readonly skill: string,
+      readonly path: string,
+    ) {
+      super(`Skill resource not found: ${skill}/${path}`)
+      this.name = 'SkillResourceNotFoundError'
+    }
+  },
   r2: () => ({
     id: 'mock',
-    fingerprint: 'mock',
-    list: async () => [],
-    load: async () => null,
+    list: async () => ({ ok: true, value: { skills: [], invalid: [] } }),
+    readResource: async () => ({
+      ok: false,
+      error: new Error('mock skill source has no resources'),
+    }),
   }),
 }))
 

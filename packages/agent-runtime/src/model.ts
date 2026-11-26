@@ -254,6 +254,18 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
     waitUntilDebounceMs: 0,
   })
 
+  // @posthog/ai 8.x still types withTracing for LanguageModelV2|V3 only.
+  // Workers AI (and AI SDK 7) ship LanguageModelV4; wrap when supported,
+  // otherwise return the unwrapped model so turns still run.
+  if (
+    typeof model === 'object' &&
+    model !== null &&
+    'specificationVersion' in model &&
+    model.specificationVersion === 'v4'
+  ) {
+    return model
+  }
+
   return withTracing(model, posthog, {
     posthogDistinctId: config.tracing.distinctId,
     posthogTraceId: config.tracing.traceId,

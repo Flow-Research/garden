@@ -124,11 +124,6 @@ export class BrainAuditSubAgent extends Think<AgentRuntimeEnv> {
           experimental_telemetry: {
             functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
             isEnabled: true,
-            metadata: {
-              agentClass: 'BrainAuditSubAgent',
-              itemId: this.name,
-              runId: config.runId,
-            },
             recordInputs: false,
             recordOutputs: false,
           },

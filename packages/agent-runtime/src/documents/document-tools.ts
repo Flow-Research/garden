@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import type { WorkspaceFsLike } from '@cloudflare/shell'
+import type { Workspace } from '@cloudflare/computer'
 import { and, desc, eq, or } from 'drizzle-orm'
 import type ExcelJS from 'exceljs'
 import { getPooledDb } from '@garden/db/runtime'
@@ -88,7 +88,7 @@ export type DocumentArtifactToolAuthority = {
 export type DocumentToolContext = {
   documentArtifacts?: DocumentArtifactToolAuthority
   databaseUrl: string
-  workspace: WorkspaceFsLike
+  workspace: Workspace
   threadId: string
 }
 
@@ -597,10 +597,9 @@ export async function generateDocx(args: {
   const workspacePath = `/documents/${documentId}/versions/v1/${filename}`
   const writeResult = await Result.tryPromise({
     try: async () =>
-      await args.context.workspace.writeFileBytes(
+      await args.context.workspace.fs.writeFile(
         workspacePath,
         packResult.value,
-        contentTypeForFileType('docx'),
       ),
     catch: (error) =>
       new DocumentToolError({
@@ -1034,10 +1033,9 @@ export async function registerUploadedDocument(args: {
     args.bytes instanceof Uint8Array ? args.bytes : new Uint8Array(args.bytes)
   const writeResult = await Result.tryPromise({
     try: async () =>
-      await args.context.workspace.writeFileBytes(
+      await args.context.workspace.fs.writeFile(
         versionPath,
         byteArray,
-        args.mediaType ?? contentTypeForFileType(fileType, filename),
       ),
     catch: (error) =>
       new DocumentToolError({
@@ -1379,11 +1377,34 @@ async function extractDocumentText(
   )
 }
 
-async function readWorkspaceBytes(workspace: WorkspaceFsLike, path: string) {
+async function collectStreamBytes(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    if (!value) continue
+    chunks.push(value)
+    total += value.byteLength
+  }
+  const out = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    out.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return out
+}
+
+async function readWorkspaceBytes(workspace: Workspace, path: string) {
   return Result.tryPromise({
     try: async () => {
-      const bytes = await workspace.readFileBytes(path)
-      if (!bytes) throw new Error(`Document bytes not found: ${path}`)
+      const stream = await workspace.fs.readFile(path)
+      const bytes = await collectStreamBytes(stream)
+      if (bytes.byteLength === 0) {
+        throw new Error(`Document bytes not found: ${path}`)
+      }
       return Buffer.from(bytes)
     },
     catch: (error) =>

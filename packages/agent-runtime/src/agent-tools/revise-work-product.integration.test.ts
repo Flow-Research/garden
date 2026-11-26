@@ -116,7 +116,7 @@ describe('revise_work_product (integration)', () => {
       .where(eq(schema.issueRun.id, runId))
     return tool().execute!(
       { id: workProductId, ...input },
-      { toolCallId: randomUUID(), messages: [] },
+      { toolCallId: randomUUID(), messages: [], context: {} },
     )
   }
 

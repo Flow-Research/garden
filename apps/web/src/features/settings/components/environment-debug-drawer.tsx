@@ -202,7 +202,7 @@ const GROUP_LABEL: Record<ToolGroup, string> = {
 
 const GROUP_DESC: Record<ToolGroup, string> = {
   workspace:
-    'createWorkspaceTools(workspace): read/write/edit/list/find/grep/delete',
+    'createAITools({ workspace }): read/write/edit/list/find/grep/delete',
   custom: 'Agent getTools()',
   session: 'session.tools(): set_context / load_context',
   extension: 'Loaded sandboxed extension workers',

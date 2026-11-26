@@ -32,14 +32,8 @@ export function addStepUsage(
   const nextUsage = current ?? emptyRunUsage(ctx)
   const inputTokens = ctx.usage.inputTokens ?? 0
   const outputTokens = ctx.usage.outputTokens ?? 0
-  const cachedInputTokens =
-    ctx.usage.inputTokenDetails?.cacheReadTokens ??
-    ctx.usage.cachedInputTokens ??
-    0
-  const reasoningTokens =
-    ctx.usage.outputTokenDetails?.reasoningTokens ??
-    ctx.usage.reasoningTokens ??
-    0
+  const cachedInputTokens = ctx.usage.inputTokenDetails?.cacheReadTokens ?? 0
+  const reasoningTokens = ctx.usage.outputTokenDetails?.reasoningTokens ?? 0
   const stepTotal = ctx.usage.totalTokens ?? inputTokens + outputTokens
 
   nextUsage.input_tokens += inputTokens

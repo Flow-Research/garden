@@ -8,7 +8,7 @@ import {
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
-import { Workspace } from '@cloudflare/shell'
+import { Workspace } from '@cloudflare/computer'
 import type { Connection } from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
@@ -219,7 +219,6 @@ export abstract class RunSubAgentBase<
     })
   }
 
-  override chatRecovery = true
   override contextOverflow = createGardenContextOverflow(
     // Field initializers run after super(), so this.env is populated: offline
     // local models need overflow bounds scaled to their context window, not
@@ -232,10 +231,9 @@ export abstract class RunSubAgentBase<
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
 
+  // Think 0.24: Computer Workspace on DO storage replaces shell's sql/r2 Workspace.
   override workspace = new Workspace({
-    sql: this.ctx.storage.sql,
-    r2: this.env.FILES,
-    name: () => this.name,
+    storage: this.ctx.storage,
   })
 
   protected currentRunId: string | null = null
@@ -596,7 +594,6 @@ export abstract class RunSubAgentBase<
       experimental_telemetry: {
         functionId: `garden.${config.kind}-run.turn`,
         isEnabled: true,
-        metadata: this.telemetryMetadata(runId),
         recordInputs: false,
         recordOutputs: false,
       },

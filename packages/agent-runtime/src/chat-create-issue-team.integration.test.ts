@@ -21,7 +21,7 @@ vi.mock('@garden/db/runtime', async (importOriginal) => ({
 
 // chat-sub-agent-tools imports Workers-only modules (`cloudflare:` URLs) for its
 // sandbox and execute tools; this suite only drives create_issue, so stub them.
-vi.mock('@cloudflare/shell', () => ({}))
+vi.mock('@cloudflare/computer', () => ({ Workspace: class {} }))
 vi.mock('@cloudflare/think/tools/execute', () => ({}))
 
 type ChatContext = Parameters<typeof createIssueFromChat>[0]

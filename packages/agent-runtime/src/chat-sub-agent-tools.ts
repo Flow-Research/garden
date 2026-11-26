@@ -1,8 +1,6 @@
-import {
-  createWorkspaceStateBackend,
-  type WorkspaceFsLike,
-} from '@cloudflare/shell'
 import { Buffer } from 'node:buffer'
+import { Workspace } from '@cloudflare/computer'
+import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { createExecuteTool } from '@cloudflare/think/tools/execute'
 import type { Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { Result, type Result as ResultValue } from 'better-result'
@@ -80,7 +78,7 @@ type ChatSubAgentToolsInput = {
   exaApiKey?: string
   databaseUrl?: string
   threadId?: string
-  workspace: WorkspaceFsLike
+  workspace: Workspace
   loader: WorkerLoader
   loadExecutorCatalog?: (input: {
     workspaceId: string
@@ -1990,8 +1988,7 @@ export function createChatSubAgentTools({
   return {
     execute: createExecuteTool({
       ctx,
-      tools: {},
-      state: createWorkspaceStateBackend(workspace),
+      tools: createAITools({ workspace }),
       loader,
       description: COMPACT_EXECUTE_DESCRIPTION,
     }),
@@ -2242,10 +2239,9 @@ export function createChatSubAgentTools({
       },
     }),
 
-    readDocument: tool<
-      { documentId: string },
-      Awaited<ReturnType<typeof readDocument>>
-    >({
+    // AI SDK 7 `tool` takes <INPUT, OUTPUT, CONTEXT>; omit type args so
+    // inference keeps OUTPUT (a two-arg form would treat OUTPUT as CONTEXT).
+    readDocument: tool({
       description:
         "Read the full content of a product attachment/document. Text documents return text. Images are lazily loaded into the model, using the same private image-data tool-result pattern as Think's workspace read tool. Always call this before answering questions about, summarizing, citing, editing, or visually inspecting an uploaded attachment. When text cannot be extracted, the error explains why and how to recover.",
       inputSchema: z.object({

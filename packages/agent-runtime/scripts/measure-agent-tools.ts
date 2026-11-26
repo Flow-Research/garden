@@ -67,7 +67,7 @@ function reg(
   }
 }
 
-// ── Workspace tools (createWorkspaceTools) — both agents get these ──────
+// ── Workspace tools (createAITools) — both agents get these ──────
 const WORKSPACE_TOOL_SCHEMAS: Array<{
   name: string
   description: string

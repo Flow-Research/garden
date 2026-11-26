@@ -15,7 +15,7 @@ vi.mock('@garden/db/runtime', async (importOriginal) => ({
   getPooledDb: dbFactory.getPooledDb,
 }))
 
-vi.mock('@cloudflare/shell', () => ({}))
+vi.mock('@cloudflare/computer', () => ({ Workspace: class {} }))
 vi.mock('@cloudflare/think/tools/execute', () => ({}))
 
 type InventoryContext = Parameters<typeof listWorkspaceInventoryFromChat>[0]

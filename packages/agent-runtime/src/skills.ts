@@ -1,6 +1,10 @@
 import { and, eq, or } from 'drizzle-orm'
 import { Context, Effect, Layer, Schema } from 'effect'
-import { r2, type SkillSource } from 'agents/skills'
+import {
+  SkillResourceNotFoundError,
+  r2,
+  type SkillSource,
+} from 'agents/skills'
 import {
   agentSkillTarget,
   workspaceChatSkillTarget,
@@ -92,81 +96,54 @@ function dynamicAssignedSource(input: {
     refreshIntervalMs: 0,
   })
   let assignedNames: ReadonlySet<string> = new Set()
-  let assignmentFingerprint = ''
   let loaded = false
 
   const refreshAssignments = Effect.fn(
     'RuntimeSkillSources.refreshAssignments',
   )(function* () {
     const assignments = yield* input.loadAssignments()
-    const names = assignments
-      .map((assignment) => assignment.name)
-      .sort((left, right) => left.localeCompare(right))
-    assignedNames = new Set(names)
-    assignmentFingerprint = names.join(',')
+    assignedNames = new Set(
+      assignments.map((assignment) => assignment.name),
+    )
     loaded = true
   })
 
   const ensureAssignments = () => (loaded ? Effect.void : refreshAssignments())
 
-  const sdkCall = <A>(operation: string, run: () => Promise<A>) =>
-    Effect.tryPromise({
-      try: run,
-      catch: (cause) =>
-        new RuntimeSkillSourceError({
-          operation,
-          message: `Skill source ${operation} failed.`,
-          cause,
-        }),
-    })
-
   return {
     id: base.id,
-    get fingerprint() {
-      return `${base.fingerprint}:assignments:${assignmentFingerprint}`
-    },
     list: () =>
       Effect.runPromise(
         Effect.gen(function* () {
           yield* ensureAssignments()
-          if (assignedNames.size === 0) return []
-          const descriptors = yield* sdkCall('list', () => base.list())
-          return descriptors.filter((descriptor) =>
-            assignedNames.has(descriptor.name),
-          )
+          if (assignedNames.size === 0) {
+            return { ok: true as const, value: { skills: [], invalid: [] } }
+          }
+          const listed = yield* Effect.promise(() => base.list())
+          if (!listed.ok) return listed
+          return {
+            ok: true as const,
+            value: {
+              skills: listed.value.skills.filter((entry) =>
+                assignedNames.has(entry.skill.name),
+              ),
+              invalid: listed.value.invalid,
+            },
+          }
         }),
       ),
-    load: (name) =>
+    readResource: (skill, path) =>
       Effect.runPromise(
         Effect.gen(function* () {
           yield* ensureAssignments()
-          if (!assignedNames.has(name)) return null
-          return yield* sdkCall('load', () => base.load(name))
+          if (!assignedNames.has(skill)) {
+            return {
+              ok: false as const,
+              error: new SkillResourceNotFoundError(skill, path),
+            }
+          }
+          return yield* Effect.promise(() => base.readResource(skill, path))
         }),
-      ),
-    readResource: (name, path) =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          yield* ensureAssignments()
-          if (!assignedNames.has(name) || !base.readResource) return null
-          return yield* sdkCall('read resource', () =>
-            base.readResource
-              ? base.readResource(name, path)
-              : Promise.resolve(null),
-          )
-        }),
-      ),
-    refresh: () =>
-      Effect.runPromise(
-        Effect.all(
-          [
-            base.refresh
-              ? sdkCall('refresh', () => base.refresh?.() ?? Promise.resolve())
-              : Effect.void,
-            refreshAssignments(),
-          ],
-          { discard: true },
-        ),
       ),
   }
 }

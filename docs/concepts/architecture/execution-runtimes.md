@@ -8,13 +8,13 @@ last_reviewed: 2026-11-03
 
 Garden agents can run code in two places. Codemode runs JavaScript in a Dynamic Worker against the agent's Think workspace. The container sandbox runs shell commands and programs in a Cloudflare Sandbox Linux container. The two paths look alike from the model's side, but they have different file systems, limits, and risks. Mixing them up leads to bugs where a file "disappears" between tools.
 
-The versions in the `pnpm-workspace.yaml` catalog are `@cloudflare/think` 0.10.0, `@cloudflare/shell` 0.4.0, `@cloudflare/codemode` 0.4.3, and `@cloudflare/sandbox` 0.12.4.
+The versions in the `pnpm-workspace.yaml` catalog are `@cloudflare/think` 0.24.0, `@cloudflare/computer` 0.10.0, `@cloudflare/codemode` 0.5.6, and `@cloudflare/sandbox` 0.12.4.
 
 ## Codemode scripts the workspace
 
-`ChatSubAgent` gets its `execute` tool from `createExecuteTool` in `packages/agent-runtime/src/chat-sub-agent-tools.ts`. The call passes `state: createWorkspaceStateBackend(workspace)` and the `LOADER` Worker Loader binding. `AutomationRunSubAgent` and `IssueRunSubAgent` also pass `LOADER` to their codemode tools.
+`ChatSubAgent` gets its `execute` tool from `createExecuteTool` in `packages/agent-runtime/src/chat-sub-agent-tools.ts`. The call passes `tools: createAITools({ workspace })` and the `LOADER` Worker Loader binding. `AutomationRunSubAgent` and `IssueRunSubAgent` also pass `LOADER` to their codemode tools.
 
-Inside `execute`, the model writes JavaScript. That code reads and writes the Think and Shell `Workspace` through `state.*`. The workspace is durable state stored by the Durable Object. One `execute` call can read many files, edit several, transform JSON, and return a structured result. That keeps the outer model loop short, because twenty file operations count as one tool call.
+Inside `execute`, the model writes JavaScript. That code reaches workspace tools through `tools.*` (from `@cloudflare/computer/tools/ai-sdk`). The workspace is durable state on Durable Object storage via `@cloudflare/computer`. One `execute` call can read many files, edit several, transform JSON, and return a structured result. That keeps the outer model loop short, because twenty file operations count as one tool call.
 
 Codemode fits tasks such as "read these docs, update three workspace files, and summarize what changed".
 
@@ -35,7 +35,7 @@ That power has costs. The container has its own file system, cold starts, and cl
 
 ## The two file systems do not share files
 
-A file written through Think workspace tools or codemode `state.*` is not visible to `sandboxExec`. A file created in the container `/workspace` is not visible in the Think workspace unless a tool copies it back. No bridge exists.
+A file written through Think workspace tools or codemode `tools.*` is not visible to `sandboxExec`. A file created in the container `/workspace` is not visible in the Think workspace unless a tool copies it back. No bridge exists.
 
 Until one does, treat container files as scratch output and Think workspace files as durable Garden artifacts.
 

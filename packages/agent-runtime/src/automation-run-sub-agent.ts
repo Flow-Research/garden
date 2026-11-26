@@ -11,7 +11,7 @@ import type {
   ToolCallContext,
   ToolCallResultContext,
 } from '@cloudflare/think'
-import { createWorkspaceStateBackend } from '@cloudflare/shell'
+import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { createExecuteTool } from '@cloudflare/think/tools/execute'
 import { createBrowserTools } from 'agents/browser/ai'
 import { hasToolCall, tool, type ToolSet } from 'ai'
@@ -640,8 +640,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     return {
       execute: createExecuteTool({
         ctx: this.ctx,
-        tools: {},
-        state: createWorkspaceStateBackend(this.workspace),
+        tools: createAITools({ workspace: this.workspace }),
         loader: this.env.LOADER,
       }),
       complete_automation: tool({
