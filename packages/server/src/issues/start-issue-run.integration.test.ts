@@ -131,7 +131,8 @@ describe('startIssueRun (integration)', () => {
       .from(schema.issueRun)
       .where(eq(schema.issueRun.issueId, seeded.issueId))
     expect(run?.status).toBe('failed')
-    expect(run?.error).toContain('workflow create exploded')
+    expect(run?.error).toBe('workflow_start_failed')
+    expect(JSON.stringify(run)).not.toContain('workflow create exploded')
     expect(run?.finishedAt).not.toBeNull()
     const [issue] = await testDb.db
       .select({ activeRunId: schema.issue.activeRunId })
@@ -139,11 +140,18 @@ describe('startIssueRun (integration)', () => {
       .where(eq(schema.issue.id, seeded.issueId))
     expect(issue?.activeRunId).toBeNull()
     const events = await testDb.db
-      .select({ eventType: schema.issueRunEvent.eventType })
+      .select({
+        eventType: schema.issueRunEvent.eventType,
+        payload: schema.issueRunEvent.payload,
+      })
       .from(schema.issueRunEvent)
       .where(eq(schema.issueRunEvent.runId, run!.id))
     expect(events.map((e) => e.eventType)).toEqual(
       expect.arrayContaining(['issue_run:queued', 'issue_run:failed']),
     )
+    expect(
+      events.find((e) => e.eventType === 'issue_run:failed')?.payload,
+    ).toEqual({ failure: { cause: 'workflow_start_failed' } })
+    expect(JSON.stringify(events)).not.toContain('workflow create exploded')
   })
 })

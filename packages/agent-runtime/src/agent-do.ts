@@ -61,6 +61,8 @@ import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
+import type { RunFailure } from '@garden/core/runs/failure'
+import { formatRunFailure, parseRunFailure } from '@garden/core/runs/failure'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
@@ -1316,7 +1318,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   async failRunTurn(input: {
     runId: string
     issueId: string
-    reason: string
+    failure: RunFailure
   }): Promise<{ status: string }> {
     await this.requireIssueAccess(input.issueId)
     const issueAgent = await this.issueRunFacet(input.issueId)
@@ -1326,7 +1328,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   /** Automation counterpart of `failRunTurn`. */
   async failAutomationRunTurn(input: {
     runId: string
-    reason: string
+    failure: RunFailure
   }): Promise<{ status: string }> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
@@ -2609,6 +2611,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         id: schema.issueRunEvent.id,
         eventType: schema.issueRunEvent.eventType,
         message: schema.issueRunEvent.message,
+        payload: schema.issueRunEvent.payload,
         stream: schema.issueRunEvent.stream,
         createdAt: schema.issueRunEvent.createdAt,
       })
@@ -2620,7 +2623,12 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       )
 
     return events.flatMap((event) => {
-      const text = event.message?.trim()
+      const text =
+        event.eventType === 'issue_run:failed'
+          ? formatRunFailure(
+              parseRunFailure(event.payload).unwrapOr({ cause: 'unknown' }),
+            )
+          : event.message?.trim()
       if (!text) return []
       if (
         event.eventType !== 'issue_run:started' &&

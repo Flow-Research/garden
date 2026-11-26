@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { RunWorkflow } from './run-workflow'
+import { runFailure } from '@garden/core/runs/failure'
 import { MAX_TURN_EVENT_CHECKS } from './run-workflow-turn-wait'
 import {
   DECIDE_ANALYSIS_OWNER_WAIT_MS,
@@ -151,7 +152,7 @@ describe('RunWorkflow turn completion', () => {
     expect(agent.failRunTurn).toHaveBeenCalledWith({
       runId: 'run-1',
       issueId: 'issue-1',
-      reason: 'turn_timed_out',
+      failure: runFailure('turn_timed_out'),
     })
     expect(agent.completeRunTurn).not.toHaveBeenCalled()
   })
@@ -332,7 +333,7 @@ describe('RunWorkflow run status invariant', () => {
     expect(workflow.agent.failRunTurn).toHaveBeenCalledWith({
       runId: 'run-1',
       issueId: 'issue-1',
-      reason: 'workflow_ended_with_live_run',
+      failure: runFailure('workflow_ended_with_live_run'),
     })
     expect(result).toEqual({ runId: 'run-1', status: 'failed' })
     expect(step.reportComplete).toHaveBeenCalledWith({
