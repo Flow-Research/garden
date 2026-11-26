@@ -946,37 +946,37 @@ export function IssueDetail({
                     className="min-h-[196px] min-w-0 space-y-6 rounded-md bg-background-main-default-hover p-3 sm:p-5"
                   >
                     {activeTab === 'activity' && (
-                      <Suspense fallback={<IssueOutputSurfaceFallback />}>
-                        <IssueOutputSurface issue={issue} />
-                      </Suspense>
-                    )}
-                    {activeTab === 'activity' && (
-                      <BoneyardSkeleton
-                        name={ISSUE_DETAIL_TIMELINE_SKELETON}
-                        loading={timelineLoading}
-                        className="w-full"
-                      >
-                        {timelineLoadFailed ? (
-                          <LoadError
-                            message="Could not load activity."
-                            onRetry={retryTimeline}
-                            retrying={timelineRetrying}
-                          />
-                        ) : !timelineLoading ? (
-                          <IssueActivityTimeline
-                            timeline={timeline}
-                            debugMode={debugMode}
-                            highlightedId={highlightedId}
-                            issueId={id}
-                            currentUserId={user?.id}
-                            getActorName={getActorName}
-                            onReply={submitReply}
-                            onEdit={editComment}
-                            onDelete={deleteComment}
-                            onToggleReaction={handleToggleReaction}
-                          />
-                        ) : null}
-                      </BoneyardSkeleton>
+                      <>
+                        <Suspense fallback={<IssueOutputSurfaceFallback />}>
+                          <IssueOutputSurface issue={issue} />
+                        </Suspense>
+                        <BoneyardSkeleton
+                          name={ISSUE_DETAIL_TIMELINE_SKELETON}
+                          loading={timelineLoading}
+                          className="w-full"
+                        >
+                          {timelineLoadFailed ? (
+                            <LoadError
+                              message="Could not load activity."
+                              onRetry={retryTimeline}
+                              retrying={timelineRetrying}
+                            />
+                          ) : !timelineLoading ? (
+                            <IssueActivityTimeline
+                              timeline={timeline}
+                              debugMode={debugMode}
+                              highlightedId={highlightedId}
+                              issueId={id}
+                              currentUserId={user?.id}
+                              getActorName={getActorName}
+                              onReply={submitReply}
+                              onEdit={editComment}
+                              onDelete={deleteComment}
+                              onToggleReaction={handleToggleReaction}
+                            />
+                          ) : null}
+                        </BoneyardSkeleton>
+                      </>
                     )}
                   </TabsContent>
                   <TabsContent

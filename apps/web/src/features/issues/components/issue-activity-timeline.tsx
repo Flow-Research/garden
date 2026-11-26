@@ -137,8 +137,8 @@ function RunEventDebugDetails({ entry }: { entry: TimelineEntry }) {
 }
 
 /**
- * The issue's activity feed: comments (with threaded replies), agent status
- * entries and coalesced activity rows. Run telemetry is hidden unless it is a
+ * The issue's feed. `activity` shows coalesced system activity rows;
+ * `comments` shows comments (with threaded replies) and agent status entries. Run telemetry is hidden unless it is a
  * user-visible failure or debug mode is on.
  */
 export function IssueActivityTimeline({
@@ -167,7 +167,11 @@ export function IssueActivityTimeline({
   onToggleReaction: CommentCardProps['onToggleReaction']
 }): ReactNode {
   const topLevel = timeline
-    .filter((entry) => view === 'activity' || entry.type === 'comment')
+    .filter((entry) =>
+      view === 'activity'
+        ? entry.type === 'activity'
+        : entry.type === 'comment',
+    )
     .filter((e) => e.type === 'activity' || !e.parent_id)
     // Most run events are noisy runtime telemetry.
     // Failures are product-visible because they tell

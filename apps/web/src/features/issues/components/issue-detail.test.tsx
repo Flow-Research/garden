@@ -718,6 +718,7 @@ describe('IssueDetail (shared)', () => {
 
   it('renders comments from timeline', async () => {
     renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
 
     await waitFor(() => {
       expect(screen.getByText('Started working on this')).toBeInTheDocument()
@@ -735,14 +736,13 @@ describe('IssueDetail (shared)', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
-    expect(
-      await screen.findByText('Started working on this'),
-    ).toBeInTheDocument()
+    expect(await screen.findByText('No activity yet')).toBeInTheDocument()
     expect(screen.queryByText('Could not load activity.')).toBeNull()
   })
 
   it('keeps collapse and expand available in the comment menu', async () => {
     renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
     fireEvent.click(
       await screen.findByRole('button', { name: 'Comment actions' }),
     )
@@ -774,7 +774,7 @@ describe('IssueDetail (shared)', () => {
     scroll.mockRestore()
   })
 
-  it('filters comments without hiding conversation history from Activity', async () => {
+  it('splits system activity and comments across tabs', async () => {
     mockApiObj.listTimeline.mockResolvedValue([
       ...mockTimeline,
       {
@@ -788,6 +788,7 @@ describe('IssueDetail (shared)', () => {
     ])
     renderIssueDetail()
     expect(await screen.findByText('created this issue')).toBeVisible()
+    expect(screen.queryByText('Started working on this')).toBeNull()
     fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
     expect(screen.getByRole('heading', { name: 'Comments (2)' })).toBeVisible()
     expect(screen.queryByText('created this issue')).toBeNull()
