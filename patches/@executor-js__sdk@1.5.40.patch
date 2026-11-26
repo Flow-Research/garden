@@ -460,7 +460,7 @@ index 6cf936862fbea4d8f6a106fe9282aa7571336c76..c11570b791aa6146b079ac302ff3ccdb
 +    if (!token) return yield* new StorageError({ message: "Refresh credential unavailable; disconnection was not completed." });
 +    const response = yield* Effect8.tryPromise({
 +      try: () => (config.fetch ?? globalThis.fetch)("https://identity.flowresearch.tech/realms/flow/protocol/openid-connect/revoke", {
-+        method: "POST", redirect: "error", signal: AbortSignal.timeout(OAUTH2_DEFAULT_TIMEOUT_MS),
++        method: "POST", redirect: "manual", signal: AbortSignal.timeout(OAUTH2_DEFAULT_TIMEOUT_MS),
 +        headers: { "Content-Type": "application/x-www-form-urlencoded" },
 +        body: new URLSearchParams({ client_id: String(client.client_id), token_type_hint: "refresh_token", token })
 +      }),
@@ -616,3 +616,11 @@ index c7bab565f4f3c3f833ddf1237dc0ccbd44f1eab5..ef2a81cee2376670cff978e70649ba5d
    "HostedOutboundRequestBlocked",
    {
      url: Schema.String,
+@@ -155,6 +155,7 @@ var guardFetch = (underlying, options) => (async (input, init) => {
+       ...currentInit,
+       redirect: "manual"
+     });
++    if ((currentInit?.redirect ?? (current instanceof Request ? current.redirect : undefined)) === "manual") return response;
+     if (response.status >= 300 && response.status < 400 && response.headers.has("location") && redirects < maxRedirects) {
+       const next = new URL(response.headers.get("location"), url);
+       if (next.origin !== new URL(url).origin) {
