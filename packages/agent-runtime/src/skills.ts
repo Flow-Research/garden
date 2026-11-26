@@ -96,8 +96,10 @@ function dynamicAssignedSource(input: {
     refreshIntervalMs: 0,
   })
   let assignedNames: ReadonlySet<string> = new Set()
-  let loaded = false
 
+  // Think reuses SkillSource objects across turns, so assignments must be
+  // re-queried on each list/read — a one-shot load would freeze an empty set
+  // after the first turn with no assignments.
   const refreshAssignments = Effect.fn(
     'RuntimeSkillSources.refreshAssignments',
   )(function* () {
@@ -105,17 +107,14 @@ function dynamicAssignedSource(input: {
     assignedNames = new Set(
       assignments.map((assignment) => assignment.name),
     )
-    loaded = true
   })
-
-  const ensureAssignments = () => (loaded ? Effect.void : refreshAssignments())
 
   return {
     id: base.id,
     list: () =>
       Effect.runPromise(
         Effect.gen(function* () {
-          yield* ensureAssignments()
+          yield* refreshAssignments()
           if (assignedNames.size === 0) {
             return { ok: true as const, value: { skills: [], invalid: [] } }
           }
@@ -135,7 +134,7 @@ function dynamicAssignedSource(input: {
     readResource: (skill, path) =>
       Effect.runPromise(
         Effect.gen(function* () {
-          yield* ensureAssignments()
+          yield* refreshAssignments()
           if (!assignedNames.has(skill)) {
             return {
               ok: false as const,

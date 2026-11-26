@@ -597,7 +597,8 @@ export async function generateDocx(args: {
   const workspacePath = `/documents/${documentId}/versions/v1/${filename}`
   const writeResult = await Result.tryPromise({
     try: async () =>
-      await args.context.workspace.fs.writeFile(
+      await writeWorkspaceBytes(
+        args.context.workspace,
         workspacePath,
         packResult.value,
       ),
@@ -1033,7 +1034,8 @@ export async function registerUploadedDocument(args: {
     args.bytes instanceof Uint8Array ? args.bytes : new Uint8Array(args.bytes)
   const writeResult = await Result.tryPromise({
     try: async () =>
-      await args.context.workspace.fs.writeFile(
+      await writeWorkspaceBytes(
+        args.context.workspace,
         versionPath,
         byteArray,
       ),
@@ -1397,15 +1399,32 @@ async function collectStreamBytes(stream: ReadableStream<Uint8Array>) {
   return out
 }
 
+/** Parent directory of a workspace path (`/a/b/c` → `/a/b`). */
+function parentWorkspacePath(path: string) {
+  const trimmed = path.replace(/\/+$/, '')
+  const slash = trimmed.lastIndexOf('/')
+  return slash <= 0 ? '/' : trimmed.slice(0, slash)
+}
+
+/**
+ * Computer `fs.writeFile` does not create missing parents (Shell's
+ * `writeFileBytes` did). mkdir recursive first so generate/upload paths work.
+ */
+async function writeWorkspaceBytes(
+  workspace: Workspace,
+  path: string,
+  bytes: Uint8Array,
+) {
+  await workspace.fs.mkdir(parentWorkspacePath(path), { recursive: true })
+  await workspace.fs.writeFile(path, bytes)
+}
+
 async function readWorkspaceBytes(workspace: Workspace, path: string) {
   return Result.tryPromise({
     try: async () => {
       const stream = await workspace.fs.readFile(path)
-      const bytes = await collectStreamBytes(stream)
-      if (bytes.byteLength === 0) {
-        throw new Error(`Document bytes not found: ${path}`)
-      }
-      return Buffer.from(bytes)
+      // Empty files are valid; missing paths throw from fs.readFile.
+      return Buffer.from(await collectStreamBytes(stream))
     },
     catch: (error) =>
       new DocumentToolError({

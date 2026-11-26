@@ -11,10 +11,9 @@ describe('environment-debug metadata', () => {
     }
   })
 
-  it('lists the DO SQLite + R2 backing stores', () => {
+  it('lists the Computer Workspace backing store', () => {
     expect(VIRTUAL_FS_BACKING_STORES).toEqual([
-      'Durable Object SQLite',
-      'R2 spillover via FILES binding',
+      'Durable Object storage via @cloudflare/computer Workspace',
     ])
   })
 })
