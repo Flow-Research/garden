@@ -30,6 +30,7 @@
     "@garden/db": "workspace:*",
     "@garden/observability": "workspace:*",
     "@garden/server": "workspace:*",
+    "@modelcontextprotocol/server": "catalog:",
     "@posthog/ai": "8.4.0",
     "agents": "catalog:",
     "ai": "7.0.181",
