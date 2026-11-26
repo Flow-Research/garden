@@ -1,10 +1,6 @@
 import { and, eq, or } from 'drizzle-orm'
 import { Context, Effect, Layer, Schema } from 'effect'
-import {
-  SkillResourceNotFoundError,
-  r2,
-  type SkillSource,
-} from 'agents/skills'
+import { SkillResourceNotFoundError, r2, type SkillSource } from 'agents/skills'
 import {
   agentSkillTarget,
   workspaceChatSkillTarget,
@@ -104,9 +100,7 @@ function dynamicAssignedSource(input: {
     'RuntimeSkillSources.refreshAssignments',
   )(function* () {
     const assignments = yield* input.loadAssignments()
-    assignedNames = new Set(
-      assignments.map((assignment) => assignment.name),
-    )
+    assignedNames = new Set(assignments.map((assignment) => assignment.name))
   })
 
   return {

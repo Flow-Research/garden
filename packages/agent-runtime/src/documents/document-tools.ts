@@ -1034,11 +1034,7 @@ export async function registerUploadedDocument(args: {
     args.bytes instanceof Uint8Array ? args.bytes : new Uint8Array(args.bytes)
   const writeResult = await Result.tryPromise({
     try: async () =>
-      await writeWorkspaceBytes(
-        args.context.workspace,
-        versionPath,
-        byteArray,
-      ),
+      await writeWorkspaceBytes(args.context.workspace, versionPath, byteArray),
     catch: (error) =>
       new DocumentToolError({
         message: error instanceof Error ? error.message : String(error),

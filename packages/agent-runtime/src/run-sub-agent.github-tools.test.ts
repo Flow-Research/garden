@@ -33,7 +33,9 @@ vi.mock('@cloudflare/think', () => ({
 }))
 vi.mock('@cloudflare/think/tools/execute', () => ({}))
 vi.mock('@cloudflare/computer', () => ({ Workspace: class {} }))
-vi.mock('@cloudflare/computer/tools/ai-sdk', () => ({ createAITools: () => ({}) }))
+vi.mock('@cloudflare/computer/tools/ai-sdk', () => ({
+  createAITools: () => ({}),
+}))
 vi.mock('@cloudflare/sandbox', () => ({ getSandbox: vi.fn() }))
 vi.mock('agents', () => ({
   Agent: class {},
@@ -157,11 +159,14 @@ function createRunFacet(owner: { current: unknown } = { current: null }) {
 }
 
 const executeTool = async (tools: ToolSet, key: string) =>
-  await tools[key]?.execute?.({}, {
-    toolCallId: 'call',
-    messages: [],
-    context: {},
-  })
+  await tools[key]?.execute?.(
+    {},
+    {
+      toolCallId: 'call',
+      messages: [],
+      context: {},
+    },
+  )
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })

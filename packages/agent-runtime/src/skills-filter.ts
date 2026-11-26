@@ -1,8 +1,5 @@
 import type { AgentPermissions } from '@garden/core/agents/permissions'
-import {
-  SkillResourceNotFoundError,
-  type SkillSource,
-} from 'agents/skills'
+import { SkillResourceNotFoundError, type SkillSource } from 'agents/skills'
 import { DOC_BUILTIN_SKILLS } from './bundled-skills'
 
 export function isSkillAllowedBySlugs(

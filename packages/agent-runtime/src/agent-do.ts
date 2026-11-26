@@ -2828,7 +2828,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   async debugTools(): Promise<DebugToolsPayload> {
     // Mirror what Think does inside `_runInferenceLoop` — the merged ToolSet
     // that actually reaches the model. No hand-written inventories here.
-    const workspaceTools = createAITools({ workspace: this.workspace }) as ToolSet
+    const workspaceTools = createAITools({
+      workspace: this.workspace,
+    }) as ToolSet
     const baseTools = (this.getTools() ?? {}) as ToolSet
     const sessionTools = (await this.session
       .tools()
