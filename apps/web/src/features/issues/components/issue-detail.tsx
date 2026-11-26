@@ -943,7 +943,9 @@ export function IssueDetail({
                   onValueChange={(value) => {
                     if (value !== 'activity' && value !== 'comments') return
                     // Commit the new panel first so the scroll measures its layout.
-                    flushSync(() => setTabSelection({ key: tabKey, tab: value }))
+                    flushSync(() =>
+                      setTabSelection({ key: tabKey, tab: value }),
+                    )
                     scrollTabsToTop()
                   }}
                   className="min-w-0 gap-5"

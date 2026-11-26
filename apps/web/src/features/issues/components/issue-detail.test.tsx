@@ -361,13 +361,14 @@ function renderIssueDetail(
 ) {
   const queryClient = createTestQueryClient()
   seed?.(queryClient)
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceIdProvider wsId="ws-1">
         <IssueDetail issueId={issueId} />
       </WorkspaceIdProvider>
     </QueryClientProvider>,
   )
+  return { ...view, queryClient }
 }
 
 // ---------------------------------------------------------------------------
@@ -472,15 +473,12 @@ describe('IssueDetail (shared)', () => {
   })
 
   it('shows a title changed elsewhere and does not overwrite it on blur', async () => {
-    let client: QueryClient | undefined
-    renderIssueDetail('issue-1', (queryClient) => {
-      client = queryClient
-    })
+    const { queryClient } = renderIssueDetail()
     const title = await screen.findByRole('textbox', { name: 'Issue title' })
-    await waitFor(() => expect(client!.isFetching()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
     // React Query notifies observers on a later tick; flush it inside act.
     await act(async () => {
-      client!.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+      queryClient.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
         ...mockIssue,
         title: 'Renamed by someone else',
       })
@@ -493,17 +491,14 @@ describe('IssueDetail (shared)', () => {
   })
 
   it('keeps the title draft while editing when the title changes elsewhere', async () => {
-    let client: QueryClient | undefined
-    renderIssueDetail('issue-1', (queryClient) => {
-      client = queryClient
-    })
+    const { queryClient } = renderIssueDetail()
     const title = await screen.findByRole('textbox', { name: 'Issue title' })
-    await waitFor(() => expect(client!.isFetching()).toBe(0))
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
     fireEvent.focus(title)
     fireEvent.change(title, { target: { value: 'My draft title' } })
     // React Query notifies observers on a later tick; flush it inside act.
     await act(async () => {
-      client!.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+      queryClient.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
         ...mockIssue,
         title: 'Renamed by someone else',
       })
@@ -832,16 +827,14 @@ describe('IssueDetail (shared)', () => {
     renderIssueDetail()
     fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
     fireEvent.click(
-      (await screen.findAllByRole('button', { name: 'Comment actions' }))[0]!,
+      await screen.findByRole('button', { name: 'Comment actions' }),
     )
     fireEvent.click(
       await screen.findByRole('menuitem', { name: 'Collapse thread' }),
     )
     expect(screen.queryByTestId('readonly-content')).toBeNull()
 
-    fireEvent.click(
-      screen.getAllByRole('button', { name: 'Comment actions' })[0]!,
-    )
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }))
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
     expect(await screen.findByPlaceholderText('Edit comment...')).toBeVisible()
   })
@@ -907,7 +900,7 @@ describe('IssueDetail (shared)', () => {
     renderIssueDetail()
     fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
     fireEvent.click(
-      (await screen.findAllByRole('button', { name: 'Comment actions' }))[0]!,
+      await screen.findByRole('button', { name: 'Comment actions' }),
     )
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
     fireEvent.change(await screen.findByPlaceholderText('Edit comment...'), {
