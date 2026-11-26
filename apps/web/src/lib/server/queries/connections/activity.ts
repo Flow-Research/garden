@@ -1,10 +1,7 @@
 import { and, desc, eq } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
-/**
- * Connector tool-call activity feed. Before: inline in
- * `routes/api/connections/$connectorId/activity.ts`. After: queries only.
- */
+/** Lists recent tool-call audit rows for a connector in a workspace. */
 export async function listConnectorToolActivity(
   db: Db,
   input: { workspaceId: string; connectorId: string; limit?: number },

@@ -1,10 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
-/**
- * GitHub App installation row for a workspace. Before: inline selects in
- * `connections.ts` and `$connectorId.ts`. After: queries only.
- */
+/** Loads the GitHub App installation row for a workspace, if any. */
 export async function getGithubInstallationByWorkspace(
   db: Db,
   workspaceId: string,

@@ -6,7 +6,6 @@ import {
 } from '@/lib/server/validation/connections'
 import {
   badRequest,
-  json,
   notFound,
   requireSession,
   resolveWorkspaceId,
@@ -22,6 +21,7 @@ import {
   removeToolGrant,
   setToolGrant,
 } from '@/lib/server/connections/tool-grant-service'
+import { permissionGrantToResponse } from '@/lib/server/connections/grant-shared'
 
 /**
  * Tool-level grant PATCH/DELETE. Auth + Zod + permissionManage here; writes
@@ -71,26 +71,23 @@ export const Route = createFileRoute(
           trustLevel: payloadResult.value.trustLevel,
           grantedBy: session.user.id,
         })
-        if (result.isErr()) {
-          return result.error.status === 404
-            ? notFound(result.error.message)
-            : result.error.status === 400
-              ? badRequest(result.error.message)
-              : json({ error: result.error.message }, result.error.status)
-        }
-
-        capturePostHogEvent(appContext, {
-          distinctId: session.user.id,
-          event: GARDEN_ANALYTICS_EVENTS.toolPermissionGranted,
-          workspaceId,
-          properties: {
-            connector_id: params.connectorId,
-            tool_name: params.name,
-            agent_id: payloadResult.value.agentId,
-            trust_level: payloadResult.value.trustLevel,
+        return result.match({
+          ok: (value) => {
+            capturePostHogEvent(appContext, {
+              distinctId: session.user.id,
+              event: GARDEN_ANALYTICS_EVENTS.toolPermissionGranted,
+              workspaceId,
+              properties: {
+                connector_id: params.connectorId,
+                tool_name: params.name,
+                agent_id: payloadResult.value.agentId,
+                trust_level: payloadResult.value.trustLevel,
+              },
+            })
+            return Response.json(value)
           },
+          err: permissionGrantToResponse,
         })
-        return Response.json(result.value)
       },
       DELETE: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
@@ -132,10 +129,7 @@ export const Route = createFileRoute(
         })
         return result.match({
           ok: (value) => Response.json(value),
-          err: (error) =>
-            error.status === 404
-              ? notFound(error.message)
-              : json({ error: error.message }, error.status),
+          err: permissionGrantToResponse,
         })
       },
     },

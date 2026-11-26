@@ -3,10 +3,7 @@ import { schema, type Db } from '@/lib/server/db'
 
 type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
 
-/**
- * Tool-level permission grants. Before: inline in
- * `routes/api/connections/$connectorId/tools/$name/grant.ts`. After: queries.
- */
+/** Loads a capability row by connector id and tool name. */
 export async function getCapabilityByConnectorTool(
   db: Db,
   input: { connectorId: string; toolName: string },

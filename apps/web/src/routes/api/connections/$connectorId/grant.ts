@@ -7,7 +7,6 @@ import {
 } from '@/lib/server/validation/connections'
 import {
   badRequest,
-  json,
   notFound,
   requireSession,
   resolveWorkspaceId,
@@ -21,6 +20,7 @@ import {
   removeConnectionGrant,
   setConnectionGrant,
 } from '@/lib/server/connections/connection-grant-service'
+import { permissionGrantToResponse } from '@/lib/server/connections/grant-shared'
 
 /**
  * Connection-level grant PATCH/DELETE. Auth + Zod + permissionManage here;
@@ -64,13 +64,6 @@ export const Route = createFileRoute('/api/connections/$connectorId/grant')({
           return badRequest(payloadResult.error.message)
         }
 
-        // Reject before opening db — connection-scope auto is never valid.
-        if (payloadResult.value.trustLevel === 'auto') {
-          return badRequest(
-            'Auto trust is only available for individual read tools',
-          )
-        }
-
         const result = await setConnectionGrant({
           db: await appContext.db(),
           workspaceId,
@@ -81,12 +74,7 @@ export const Route = createFileRoute('/api/connections/$connectorId/grant')({
         })
         return result.match({
           ok: (value) => Response.json(value),
-          err: (error) =>
-            error.status === 404
-              ? notFound(error.message)
-              : error.status === 400
-                ? badRequest(error.message)
-                : json({ error: error.message }, error.status),
+          err: permissionGrantToResponse,
         })
       },
       DELETE: async ({ context, request, params }) => {
@@ -133,10 +121,7 @@ export const Route = createFileRoute('/api/connections/$connectorId/grant')({
         })
         return result.match({
           ok: (value) => Response.json(value),
-          err: (error) =>
-            error.status === 404
-              ? notFound(error.message)
-              : json({ error: error.message }, error.status),
+          err: permissionGrantToResponse,
         })
       },
     },

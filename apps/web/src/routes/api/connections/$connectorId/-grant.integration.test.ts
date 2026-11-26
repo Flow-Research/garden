@@ -100,12 +100,17 @@ describe('connection grant route authorization', () => {
   it('rejects auto trust at connection scope', async () => {
     mocks.requireWorkspacePermission.mockResolvedValueOnce(null)
 
-    const response = await invokePatch(
-      grantRequest({
+    const response = await invokeRouteHandler(Route, 'PATCH', {
+      context: {
+        // Service rejects auto before any query; route still opens the pool.
+        db: async () => ({}),
+      } as unknown as AppRequestContext,
+      request: grantRequest({
         agentId: '00000000-0000-4000-8000-000000000001',
         trustLevel: 'auto',
       }),
-    )
+      params: { connectorId: 'github' },
+    })
 
     expect(response?.status).toBe(400)
   })

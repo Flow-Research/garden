@@ -1,19 +1,17 @@
 import { and, eq } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
-type PermissionTrustLevel = 'auto' | 'allow' | 'ask'
+/** Connection-scoped grants never store `auto` (read-tool only). */
+type ConnectionScopedTrustLevel = 'allow' | 'ask'
 
-/**
- * Connection-level grant upsert/delete + activity events. Before: inline in
- * `routes/api/connections/$connectorId/grant.ts`. After: queries only.
- */
+/** Upserts a connection-level grant and records the activity event. */
 export async function upsertConnectionGrant(
   db: Db,
   input: {
     workspaceId: string
     agentId: string
     connectorId: string
-    trustLevel: Exclude<PermissionTrustLevel, 'auto'> | PermissionTrustLevel
+    trustLevel: ConnectionScopedTrustLevel
     grantedBy: string
   },
 ) {

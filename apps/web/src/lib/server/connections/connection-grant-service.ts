@@ -1,124 +1,104 @@
-import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { Result, type Result as ResultValue } from 'better-result'
 import type { Db } from '@/lib/server/db'
-import { agentExistsInWorkspace } from '@/lib/server/queries/issues/agents'
 import {
   deleteConnectionGrant,
   upsertConnectionGrant,
 } from '@/lib/server/queries/connections'
+import {
+  PermissionGrantError,
+  requireAgentInWorkspace,
+  type ConnectionScopedTrustLevel,
+  type PermissionTrustLevel,
+} from './grant-shared'
 
-export class ConnectionGrantError extends TaggedError('ConnectionGrantError')<{
-  message: string
-  status: number
-}>() {}
-
-type TrustLevel = 'auto' | 'allow' | 'ask'
+export { PermissionGrantError as ConnectionGrantError } from './grant-shared'
 
 /**
- * Connection-level grant PATCH/DELETE orchestration. Permission and connector
- * existence stay in the route. Before: SQL in grant route. After: Result
- * service over queries.
+ * Sets a connection-level permission grant after validating the agent and
+ * rejecting connection-scoped `auto` trust.
  */
-export async function setConnectionGrant(input: {
+export function setConnectionGrant(input: {
   db: Db
   workspaceId: string
   agentId: string
   connectorId: string
-  trustLevel: TrustLevel
+  trustLevel: PermissionTrustLevel
   grantedBy: string
-}): Promise<ResultValue<{ ok: true }, ConnectionGrantError>> {
-  if (input.trustLevel === 'auto') {
-    return Result.err(
-      new ConnectionGrantError({
-        status: 400,
-        message: 'Auto trust is only available for individual read tools',
-      }),
-    )
-  }
+}): Promise<ResultValue<{ ok: true }, PermissionGrantError>> {
+  return Result.gen(async function* () {
+    if (input.trustLevel === 'auto') {
+      return yield* Result.err(
+        new PermissionGrantError({
+          status: 400,
+          message: 'Auto trust is only available for individual read tools',
+        }),
+      )
+    }
+    // Narrow after the auto reject; Result.gen yield* erases control-flow narrowing.
+    const trustLevel = input.trustLevel as ConnectionScopedTrustLevel
 
-  const existsResult = await Result.tryPromise({
-    try: async () =>
-      await agentExistsInWorkspace(input.db, {
+    yield* Result.await(
+      requireAgentInWorkspace({
+        db: input.db,
         workspaceId: input.workspaceId,
         agentId: input.agentId,
       }),
-    catch: () =>
-      new ConnectionGrantError({
-        status: 500,
-        message: 'Failed to load agent for permission grant',
-      }),
-  })
-  if (existsResult.isErr()) return Result.err(existsResult.error)
-  if (!existsResult.value) {
-    return Result.err(
-      new ConnectionGrantError({
-        status: 404,
-        message: 'Agent not found',
+    )
+
+    yield* Result.await(
+      Result.tryPromise({
+        try: async () =>
+          await upsertConnectionGrant(input.db, {
+            workspaceId: input.workspaceId,
+            agentId: input.agentId,
+            connectorId: input.connectorId,
+            trustLevel,
+            grantedBy: input.grantedBy,
+          }),
+        catch: () =>
+          new PermissionGrantError({
+            status: 500,
+            message: 'Failed to update permission grant',
+          }),
       }),
     )
-  }
-
-  const mutation = await Result.tryPromise({
-    try: async () =>
-      await upsertConnectionGrant(input.db, {
-        workspaceId: input.workspaceId,
-        agentId: input.agentId,
-        connectorId: input.connectorId,
-        trustLevel: input.trustLevel,
-        grantedBy: input.grantedBy,
-      }),
-    catch: () =>
-      new ConnectionGrantError({
-        status: 500,
-        message: 'Failed to update permission grant',
-      }),
+    return Result.ok({ ok: true as const })
   })
-  if (mutation.isErr()) return Result.err(mutation.error)
-  return Result.ok({ ok: true })
 }
 
-export async function removeConnectionGrant(input: {
+/** Deletes a connection-level permission grant when the agent exists. */
+export function removeConnectionGrant(input: {
   db: Db
   workspaceId: string
   agentId: string
   connectorId: string
   actorId: string
-}): Promise<ResultValue<{ ok: true }, ConnectionGrantError>> {
-  const existsResult = await Result.tryPromise({
-    try: async () =>
-      await agentExistsInWorkspace(input.db, {
+}): Promise<ResultValue<{ ok: true }, PermissionGrantError>> {
+  return Result.gen(async function* () {
+    yield* Result.await(
+      requireAgentInWorkspace({
+        db: input.db,
         workspaceId: input.workspaceId,
         agentId: input.agentId,
-      }),
-    catch: () =>
-      new ConnectionGrantError({
-        status: 500,
-        message: 'Failed to load agent for permission grant',
-      }),
-  })
-  if (existsResult.isErr()) return Result.err(existsResult.error)
-  if (!existsResult.value) {
-    return Result.err(
-      new ConnectionGrantError({
-        status: 404,
-        message: 'Agent not found',
       }),
     )
-  }
 
-  const mutation = await Result.tryPromise({
-    try: async () =>
-      await deleteConnectionGrant(input.db, {
-        workspaceId: input.workspaceId,
-        agentId: input.agentId,
-        connectorId: input.connectorId,
-        actorId: input.actorId,
+    yield* Result.await(
+      Result.tryPromise({
+        try: async () =>
+          await deleteConnectionGrant(input.db, {
+            workspaceId: input.workspaceId,
+            agentId: input.agentId,
+            connectorId: input.connectorId,
+            actorId: input.actorId,
+          }),
+        catch: () =>
+          new PermissionGrantError({
+            status: 500,
+            message: 'Failed to delete permission grant',
+          }),
       }),
-    catch: () =>
-      new ConnectionGrantError({
-        status: 500,
-        message: 'Failed to delete permission grant',
-      }),
+    )
+    return Result.ok({ ok: true as const })
   })
-  if (mutation.isErr()) return Result.err(mutation.error)
-  return Result.ok({ ok: true })
 }

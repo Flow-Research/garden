@@ -168,10 +168,8 @@ const providerIdForIntegration = (
 }
 
 /**
- * Builds the shared connections snapshot for GET /api/connections.
- * Before: Effect program + GitHub/Discord reads lived in the route and forced
- * a `@/lib/server/db` type import (api-layering warn). After: route stays
- * auth/HTTP-only; this service owns catalog join + installation queries.
+ * Builds the shared connections snapshot for GET /api/connections from the
+ * Executor catalog plus GitHub and Discord installation rows.
  * Docs: docs/decisions/2026-11-09-api-layering.md.
  */
 export const buildConnectionsSnapshot = Effect.fn(

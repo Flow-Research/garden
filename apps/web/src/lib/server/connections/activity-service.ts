@@ -1,10 +1,7 @@
 import type { Db } from '@/lib/server/db'
 import { listConnectorToolActivity } from '@/lib/server/queries/connections'
 
-/**
- * Builds connector activity DTO. Before: map inline in activity route.
- * After: query + map here. Auth stays in the route.
- */
+/** Builds the connector activity feed DTO for the activity route. */
 export async function getConnectorActivityFeed(input: {
   db: Db
   workspaceId: string
