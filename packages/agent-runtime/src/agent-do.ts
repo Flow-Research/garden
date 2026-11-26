@@ -45,7 +45,7 @@ import {
   type ToolSet,
   type UIMessage,
 } from 'ai'
-import { Workspace } from '@cloudflare/computer'
+import { R2Bucket as mountR2Bucket, Workspace } from '@cloudflare/computer'
 import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
@@ -408,7 +408,6 @@ type DebugPromptPayload = {
   lineCount: number
   charCount: number
   contextBlocks: ContextBlockEntry[]
-  loadedSkillKeys: string[]
 }
 
 type RuntimeOkPayload = { ok: true }
@@ -1693,9 +1692,16 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       await this.pauseMcpRuntime(reason, controller),
   })
 
-  // Think 0.24: Computer Workspace on DO storage replaces shell's sql/r2 Workspace.
+  // Computer Workspace on DO storage; document bytes spill to FILES via a
+  // read-write R2 mount (Shell previously auto-spilled large files there).
   override workspace = new Workspace({
     storage: this.ctx.storage,
+    mounts: {
+      '/documents': mountR2Bucket(this.env.FILES, {
+        mode: 'read-write',
+        prefix: 'documents/',
+      }),
+    },
   })
   getModel(): LanguageModel {
     return createAgentModel({
@@ -3105,13 +3111,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       }
     })
 
-    // agents/skills catalogs no longer expose per-session loaded skill keys.
     return {
       prompt,
       lineCount: prompt.split('\n').length,
       charCount: prompt.length,
       contextBlocks,
-      loadedSkillKeys: [],
     }
   }
 

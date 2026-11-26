@@ -14,6 +14,7 @@ describe('environment-debug metadata', () => {
   it('lists the Computer Workspace backing store', () => {
     expect(VIRTUAL_FS_BACKING_STORES).toEqual([
       'Durable Object storage via @cloudflare/computer Workspace',
+      'FILES R2 mount at /documents (read-write, prefix documents/)',
     ])
   })
 })

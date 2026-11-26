@@ -3,9 +3,9 @@ import { beforeAll, expect, it, vi } from 'vitest'
 
 declare const __CHUNKS__: number
 
-const UNWATCHED_ROOT_CALLS_PER_CHUNK_MAX = 2.02
-const WATCHED_ROOT_CALLS_PER_CHUNK_MAX = 2.02
-// #436 should set these targets to 0 for unwatched runs and 1 for watched runs.
+const UNWATCHED_ROOT_CALLS_PER_CHUNK_MAX = 0
+// ~1.002 measured (a few non-chunk root RPCs with a viewer); keep tiny headroom.
+const WATCHED_ROOT_CALLS_PER_CHUNK_MAX = 1.01
 
 const expected = Array.from(
   { length: __CHUNKS__ },

@@ -142,7 +142,6 @@ export interface DebugPromptPayload {
   lineCount: number
   charCount: number
   contextBlocks: ContextBlockEntry[]
-  loadedSkillKeys: string[]
 }
 
 export interface LiveAgentStatePayload extends DebugMetaPayload {
@@ -203,4 +202,5 @@ export const DEBUG_SDK_STACK: readonly SdkVersionInfo[] = [
 
 export const VIRTUAL_FS_BACKING_STORES = [
   'Durable Object storage via @cloudflare/computer Workspace',
+  'FILES R2 mount at /documents (read-write, prefix documents/)',
 ] as const

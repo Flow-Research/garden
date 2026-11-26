@@ -14,7 +14,9 @@ The versions in the `pnpm-workspace.yaml` catalog are `@cloudflare/think` 0.24.0
 
 `ChatSubAgent` gets its `execute` tool from `createExecuteTool` in `packages/agent-runtime/src/chat-sub-agent-tools.ts`. The call passes `tools: createAITools({ workspace })` and the `LOADER` Worker Loader binding. `AutomationRunSubAgent` and `IssueRunSubAgent` also pass `LOADER` to their codemode tools.
 
-Inside `execute`, the model writes JavaScript. That code reaches workspace tools through `tools.*` (from `@cloudflare/computer/tools/ai-sdk`). The workspace is durable state on Durable Object storage via `@cloudflare/computer`. One `execute` call can read many files, edit several, transform JSON, and return a structured result. That keeps the outer model loop short, because twenty file operations count as one tool call.
+Inside `execute`, the model writes JavaScript. That code reaches workspace tools through `tools.*` (from `@cloudflare/computer/tools/ai-sdk`). The workspace is Durable Object storage via `@cloudflare/computer`, with `/documents` mounted read-write onto the `FILES` R2 bucket (`prefix: documents/`) so large document bytes do not sit only in DO storage. One `execute` call can read many files, edit several, transform JSON, and return a structured result. That keeps the outer model loop short, because twenty file operations count as one tool call.
+
+Pre-upgrade Shell auto-spill keys under other layouts are not remapped. Bytes already under `documents/` in `FILES` remain readable through the mount; anything that only lived in DO SQLite stays on that DO.
 
 Codemode fits tasks such as "read these docs, update three workspace files, and summarize what changed".
 
@@ -47,8 +49,8 @@ The table below sets the two paths side by side.
 | --- | --- | --- |
 | Runtime | Dynamic Worker through `LOADER` | Cloudflare Sandbox container |
 | Language | JavaScript | Shell, Python, JavaScript, and TypeScript |
-| File system | Think and Shell `Workspace` | Container `/workspace` |
-| Persistence | Durable Object storage | Container state, which sleeps when idle |
+| File system | Think Computer `Workspace` (+ `/documents` → `FILES`) | Container `/workspace` |
+| Persistence | DO storage + R2 mount for documents | Container state, which sleeps when idle |
 | Processes and ports | None | `sandboxStartProcess`, `sandboxExposePort` |
 | Approval | Must be enforced at dispatch | Outer tools, gated like other tools |
 

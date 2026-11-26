@@ -813,25 +813,6 @@ function PromptPanel({
             </div>
           ) : null}
 
-          {prompt.loadedSkillKeys.length > 0 ? (
-            <div>
-              <div className="mb-1 text-[11px] font-medium text-muted-foreground">
-                Loaded skills ({prompt.loadedSkillKeys.length})
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {prompt.loadedSkillKeys.map((key) => (
-                  <Badge
-                    key={key}
-                    variant="secondary"
-                    className="font-mono text-[10px]"
-                  >
-                    {key}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
           <Collapsible open={openPrompt} onOpenChange={setOpenPrompt}>
             <CollapsibleTrigger className="flex w-full items-center justify-between gap-2 rounded-md border px-2 py-1 text-left text-[11px] hover:bg-muted/20">
               <span className="flex items-center gap-2">

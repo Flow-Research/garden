@@ -8,7 +8,7 @@ import {
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
-import { Workspace } from '@cloudflare/computer'
+import { R2Bucket as mountR2Bucket, Workspace } from '@cloudflare/computer'
 import type { Connection } from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
@@ -45,6 +45,7 @@ import {
 } from './model'
 import { createRetiredModelTracker } from './model-retirement'
 import { classifyRunFailure as classifyRuntimeFailure } from './run-failure-matchers'
+import { thinkTurnTelemetry } from './think-telemetry'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 import {
   classifyGardenContextOverflow,
@@ -249,9 +250,16 @@ export abstract class RunSubAgentBase<
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
 
-  // Think 0.24: Computer Workspace on DO storage replaces shell's sql/r2 Workspace.
+  // Computer Workspace on DO storage; document bytes spill to FILES via a
+  // read-write R2 mount (Shell previously auto-spilled large files there).
   override workspace = new Workspace({
     storage: this.ctx.storage,
+    mounts: {
+      '/documents': mountR2Bucket(this.env.FILES, {
+        mode: 'read-write',
+        prefix: 'documents/',
+      }),
+    },
   })
 
   protected currentRunId: string | null = null
@@ -450,6 +458,7 @@ export abstract class RunSubAgentBase<
     return this.name
   }
 
+  /** Run identity copied into AI SDK 7 runtimeContext via thinkTurnTelemetry. */
   protected telemetryMetadata(runId: string): Record<string, string> {
     return { agentClass: this.runConfig().agentClass, runId }
   }
@@ -615,12 +624,10 @@ export abstract class RunSubAgentBase<
         onModelRetired: this.retiredModel.observeTurn(runId),
         tracing: this.aiObservation.modelTracing(),
       }),
-      experimental_telemetry: {
+      experimental_telemetry: thinkTurnTelemetry({
         functionId: `garden.${config.kind}-run.turn`,
-        isEnabled: true,
-        recordInputs: false,
-        recordOutputs: false,
-      },
+        metadata: this.telemetryMetadata(runId),
+      }),
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
       maxOutputTokens: resolveAgentModelProfile(this.env).maxOutputTokens,
