@@ -1005,35 +1005,35 @@ export function IssueDetail({
                     <h2 className="text-sm font-semibold">
                       Comments ({commentCount})
                     </h2>
-                    {activeTab === 'comments' && (
-                      <BoneyardSkeleton
-                        name={ISSUE_DETAIL_TIMELINE_SKELETON}
-                        loading={timelineLoading}
-                        className="w-full"
-                      >
-                        {timelineLoadFailed ? (
-                          <LoadError
-                            message="Could not load comments."
-                            onRetry={retryTimeline}
-                            retrying={timelineRetrying}
-                          />
-                        ) : !timelineLoading ? (
-                          <IssueActivityTimeline
-                            timeline={timeline}
-                            view="comments"
-                            debugMode={debugMode}
-                            highlightedId={highlightedId}
-                            issueId={id}
-                            currentUserId={user?.id}
-                            getActorName={getActorName}
-                            onReply={submitReply}
-                            onEdit={editComment}
-                            onDelete={deleteComment}
-                            onToggleReaction={handleToggleReaction}
-                          />
-                        ) : null}
-                      </BoneyardSkeleton>
-                    )}
+                    {/* Stays mounted while hidden so in-progress comment edits and
+                        reply drafts survive a switch to Activity. */}
+                    <BoneyardSkeleton
+                      name={ISSUE_DETAIL_TIMELINE_SKELETON}
+                      loading={timelineLoading}
+                      className="w-full"
+                    >
+                      {timelineLoadFailed ? (
+                        <LoadError
+                          message="Could not load comments."
+                          onRetry={retryTimeline}
+                          retrying={timelineRetrying}
+                        />
+                      ) : !timelineLoading ? (
+                        <IssueActivityTimeline
+                          timeline={timeline}
+                          view="comments"
+                          debugMode={debugMode}
+                          highlightedId={highlightedId}
+                          issueId={id}
+                          currentUserId={user?.id}
+                          getActorName={getActorName}
+                          onReply={submitReply}
+                          onEdit={editComment}
+                          onDelete={deleteComment}
+                          onToggleReaction={handleToggleReaction}
+                        />
+                      ) : null}
+                    </BoneyardSkeleton>
                     <div className="sticky bottom-0 z-10 -mx-3 -mb-3 flex items-start gap-3 rounded-b-md border-t bg-background-main-default-hover px-3 py-3 sm:-mx-6 sm:-mb-6 sm:px-6 sm:py-4">
                       {user && (
                         <ActorAvatar

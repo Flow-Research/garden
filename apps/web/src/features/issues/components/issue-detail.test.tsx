@@ -788,7 +788,7 @@ describe('IssueDetail (shared)', () => {
     ])
     renderIssueDetail()
     expect(await screen.findByText('created this issue')).toBeVisible()
-    expect(screen.queryByText('Started working on this')).toBeNull()
+    expect(screen.getByText('Started working on this')).not.toBeVisible()
     fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
     expect(screen.getByRole('heading', { name: 'Comments (2)' })).toBeVisible()
     expect(screen.queryByText('created this issue')).toBeNull()
@@ -811,6 +811,36 @@ describe('IssueDetail (shared)', () => {
         'Sending starts a fresh turn with this as the trigger.',
       ),
     ).toBeNull()
+  })
+
+  it('keeps an unfinished comment edit across tab switches and saves it', async () => {
+    mockApiObj.updateComment.mockResolvedValue({
+      ...mockTimeline[0],
+      content: 'Edited after switching tabs',
+    })
+    renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Comment actions' }))[0]!,
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    fireEvent.change(await screen.findByPlaceholderText('Edit comment...'), {
+      target: { value: 'Edited after switching tabs' },
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+
+    expect(screen.getByPlaceholderText('Edit comment...')).toHaveValue(
+      'Edited after switching tabs',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(mockApiObj.updateComment).toHaveBeenCalledWith(
+        'comment-1',
+        'Edited after switching tabs',
+      ),
+    )
   })
 
   it('shows task-specific empty states without sample automation content', async () => {
