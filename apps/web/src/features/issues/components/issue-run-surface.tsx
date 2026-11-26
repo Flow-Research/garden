@@ -327,7 +327,7 @@ export function IssueRunSurface({
       run.status === 'blocked')
 
   return (
-    <div className="space-y-3">
+    <div className="mt-6 space-y-3 empty:hidden">
       {showActive && run && (
         <ActiveRunPanel
           agent={{ name: 'Garden' }}
