@@ -137,9 +137,10 @@ function RunEventDebugDetails({ entry }: { entry: TimelineEntry }) {
 }
 
 /**
- * The issue's feed. `activity` shows coalesced system activity rows;
- * `comments` shows comments (with threaded replies) and agent status entries. Run telemetry is hidden unless it is a
- * user-visible failure or debug mode is on.
+ * The issue's feed. `activity` shows coalesced system activity rows plus one
+ * "replied" row per agent comment, linking to it in Comments. `comments` shows
+ * every comment, agent replies included, with threaded replies. Run telemetry
+ * is hidden unless it is a user-visible failure or debug mode is on.
  */
 export function IssueActivityTimeline({
   timeline,
@@ -153,9 +154,11 @@ export function IssueActivityTimeline({
   onEdit,
   onDelete,
   onToggleReaction,
+  onOpenComment,
 }: {
   timeline: TimelineEntry[]
   view?: 'activity' | 'comments'
+  onOpenComment?: (commentId: string) => void
   debugMode: boolean
   highlightedId: string | null
   issueId: string
@@ -218,13 +221,27 @@ export function IssueActivityTimeline({
     coalesced.push(entry)
   }
 
+  // Agent replies live in Comments; Activity links to each one by time.
+  const feed =
+    view === 'activity'
+      ? [
+          ...coalesced,
+          ...timeline.filter(
+            (entry) => entry.type === 'comment' && entry.actor_type === 'agent',
+          ),
+        ].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+      : coalesced
+
   // Group consecutive activities together so the connector line works
   const groups: {
     type: 'activities' | 'comment'
     entries: TimelineEntry[]
   }[] = []
-  for (const entry of coalesced) {
-    if (entry.type === 'activity') {
+  for (const entry of feed) {
+    if (entry.type === 'activity' || view === 'activity') {
       const last = groups[groups.length - 1]
       if (last?.type === 'activities') {
         last.entries.push(entry)
@@ -298,6 +315,16 @@ export function IssueActivityTimeline({
     return (
       <div key={first.id} className="mb-4 last:mb-0 flex flex-col gap-3">
         {group.entries.map((entry, _idx) => {
+          if (entry.type === 'comment') {
+            return (
+              <AgentReplyRow
+                key={entry.id}
+                entry={entry}
+                getActorName={getActorName}
+                onOpen={onOpenComment}
+              />
+            )
+          }
           const details = (entry.details ?? {}) as Record<string, string>
           const isStatusChange = entry.action === 'status_changed'
           const isPriorityChange = entry.action === 'priority_changed'
@@ -376,4 +403,37 @@ export function IssueActivityTimeline({
       </div>
     )
   })
+}
+
+function AgentReplyRow({
+  entry,
+  getActorName,
+  onOpen,
+}: {
+  entry: TimelineEntry
+  getActorName: (type: string, id: string) => string
+  onOpen?: (commentId: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen?.(entry.id)}
+      className="flex w-full items-center rounded-sm text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <div className="mr-2 flex w-4 shrink-0 justify-center">
+        <ActorAvatar
+          actorType={entry.actor_type}
+          actorId={entry.actor_id}
+          size={16}
+        />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1 gap-y-0.5 [overflow-wrap:anywhere]">
+        <span className="min-w-0 max-w-full font-medium text-foreground">
+          {getActorName(entry.actor_type, entry.actor_id ?? '')}
+        </span>
+        <span className="min-w-0">replied</span>
+        <span className="shrink-0">· {timeAgo(entry.created_at)}</span>
+      </div>
+    </button>
+  )
 }

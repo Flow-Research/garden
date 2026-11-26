@@ -14,8 +14,9 @@ Create one unassigned task, one task with sub-tasks, and one assigned to an agen
 3. Open **Comments**, type a draft, switch to **Activity**, and return. The draft
    must remain. Submit it and confirm that the count updates and the comment
    survives reload. Edit it, reply, react, attach a file, and delete a test reply.
-4. Confirm that Activity contains task changes and conversation, while Comments
-   excludes property changes. A comment focus URL must select Comments and bring
+4. Confirm that Activity contains task changes and one "replied" row per agent
+   reply, while Comments holds every comment and excludes property changes.
+   Selecting a "replied" row must open Comments and highlight that reply. A comment focus URL must select Comments and bring
    the target into view. With an empty timeline, each tab must show its own empty
    message without scheduled automation or sample meeting content.
 5. Subscribe and unsubscribe. Open **Manage subscribers** and change a test

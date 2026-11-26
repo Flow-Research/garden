@@ -344,6 +344,15 @@ export function IssueDetail({
     return () => clearTimeout(timer)
   }, [highlightedId])
 
+  const openComment = (commentId: string) => {
+    // Commit the Comments panel first so the reply is laid out before scrolling.
+    flushSync(() => setTabSelection({ key: tabKey, tab: 'comments' }))
+    document
+      .getElementById(`comment-${commentId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedId(commentId)
+  }
+
   const handleUpdateField = useCallback(
     (updates: Partial<UpdateIssueRequest>) => {
       if (!issue) return
@@ -1020,6 +1029,7 @@ export function IssueDetail({
                               onEdit={editComment}
                               onDelete={deleteComment}
                               onToggleReaction={handleToggleReaction}
+                              onOpenComment={openComment}
                             />
                           ) : null}
                         </BoneyardSkeleton>

@@ -799,7 +799,9 @@ describe('IssueDetail (shared)', () => {
     )
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
-    expect(await screen.findByText('No activity yet')).toBeInTheDocument()
+    expect(
+      await screen.findByRole('button', { name: /replied/ }),
+    ).toBeInTheDocument()
     expect(screen.queryByText('Could not load activity.')).toBeNull()
   })
 
@@ -874,6 +876,24 @@ describe('IssueDetail (shared)', () => {
     expect(screen.getByText('Started working on this')).toBeVisible()
     fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
     expect(screen.getByText('created this issue')).toBeVisible()
+  })
+
+  it('links each agent reply from Activity and keeps it in Comments', async () => {
+    const scroll = vi
+      .spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+    renderIssueDetail()
+    const row = await screen.findByRole('button', { name: /replied/ })
+    expect(screen.getAllByRole('button', { name: /replied/ })).toHaveLength(1)
+    expect(screen.getByText('I can help with this')).not.toBeVisible()
+    fireEvent.click(row)
+    expect(screen.getByRole('tab', { name: 'Comments' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByText('I can help with this')).toBeVisible()
+    expect(scroll).toHaveBeenCalled()
+    scroll.mockRestore()
   })
 
   it('retains a comment draft across tab switches', async () => {
