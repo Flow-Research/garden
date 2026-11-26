@@ -198,7 +198,10 @@ export function IssueDetail({
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const tabsRef = useRef<HTMLDivElement>(null)
   // A tab switch shows the new tab from its start; scrolls only when the
-  // tabs' top is already above the viewport, so it never jumps down.
+  // tabs' top is already above the viewport, so it never jumps down. Panels
+  // hide during base-ui's exit phase (`data-ending-style`); otherwise the
+  // outgoing panel keeps its height for a frame and scroll anchoring shifts
+  // the page once it unmounts.
   const scrollTabsToTop = () => {
     const container = scrollContainerRef.current
     const tabs = tabsRef.current
@@ -958,7 +961,7 @@ export function IssueDetail({
                   </div>
                   <TabsContent
                     value="activity"
-                    className="min-h-[196px] min-w-0 space-y-6 rounded-md bg-background-main-default-hover p-3 sm:p-5"
+                    className="min-h-[196px] min-w-0 space-y-6 rounded-md data-[ending-style]:hidden bg-background-main-default-hover p-3 sm:p-5"
                   >
                     {activeTab === 'activity' && (
                       <>
@@ -997,7 +1000,7 @@ export function IssueDetail({
                   <TabsContent
                     value="comments"
                     keepMounted
-                    className="min-w-0 space-y-5 rounded-md bg-background-main-default-hover p-3 sm:p-6"
+                    className="min-w-0 space-y-5 rounded-md bg-background-main-default-hover p-3 data-[ending-style]:hidden sm:p-6"
                   >
                     <h2 className="text-sm font-semibold">
                       Comments ({commentCount})
