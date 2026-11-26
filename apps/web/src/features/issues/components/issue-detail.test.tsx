@@ -6,7 +6,7 @@ import {
   type ComponentProps,
 } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Issue, TimelineEntry } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
@@ -449,6 +449,54 @@ describe('IssueDetail (shared)', () => {
       ),
     )
     expect(title).not.toHaveFocus()
+  })
+
+  it('shows a title changed elsewhere and does not overwrite it on blur', async () => {
+    let client: QueryClient | undefined
+    renderIssueDetail('issue-1', (queryClient) => {
+      client = queryClient
+    })
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    await waitFor(() => expect(client!.isFetching()).toBe(0))
+    // React Query notifies observers on a later tick; flush it inside act.
+    await act(async () => {
+      client!.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+        ...mockIssue,
+        title: 'Renamed by someone else',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(title).toHaveValue('Renamed by someone else')
+    fireEvent.focus(title)
+    fireEvent.blur(title)
+    expect(mockApiObj.updateIssue).not.toHaveBeenCalled()
+  })
+
+  it('keeps the title draft while editing when the title changes elsewhere', async () => {
+    let client: QueryClient | undefined
+    renderIssueDetail('issue-1', (queryClient) => {
+      client = queryClient
+    })
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    await waitFor(() => expect(client!.isFetching()).toBe(0))
+    fireEvent.focus(title)
+    fireEvent.change(title, { target: { value: 'My draft title' } })
+    // React Query notifies observers on a later tick; flush it inside act.
+    await act(async () => {
+      client!.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+        ...mockIssue,
+        title: 'Renamed by someone else',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(title).toHaveValue('My draft title')
+    fireEvent.blur(title)
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ title: 'My draft title' }),
+      ),
+    )
   })
 
   it('opens and closes task properties in a mobile sheet', async () => {

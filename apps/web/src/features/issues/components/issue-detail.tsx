@@ -124,6 +124,45 @@ interface IssueDetailProps {
   contextRailOpen?: boolean
 }
 
+/**
+ * Inline title editor. Shows the live `title` until the user focuses it, then
+ * holds their draft, so a title changed elsewhere mid-session is never
+ * overwritten by a stale value on blur.
+ */
+function IssueTitleField({
+  title,
+  onSave,
+}: {
+  title: string
+  onSave: (title: string) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  return (
+    <textarea
+      aria-label="Issue title"
+      value={draft ?? title}
+      placeholder="Issue title"
+      rows={1}
+      className="block field-sizing-content w-full min-w-0 resize-none border-0 bg-transparent p-0 text-lg font-bold leading-snug tracking-tight outline-none [overflow-wrap:anywhere] placeholder:text-muted-foreground"
+      onFocus={() => setDraft((current) => current ?? title)}
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={() => {
+        const trimmed = (draft ?? title).trim()
+        setDraft(null)
+        if (trimmed && trimmed !== title) onSave(trimmed)
+      }}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          event.currentTarget.blur()
+        } else if (event.key === 'Escape') {
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
+
 // ---------------------------------------------------------------------------
 // IssueDetail
 // ---------------------------------------------------------------------------
@@ -613,26 +652,10 @@ export function IssueDetail({
               className="relative flex-1 overflow-y-auto"
             >
               <div className="mx-auto w-full max-w-[686px] px-4 pb-12 pt-6 sm:px-6 sm:pt-10">
-                <textarea
+                <IssueTitleField
                   key={`title-${id}`}
-                  aria-label="Issue title"
-                  defaultValue={issue.title}
-                  placeholder="Issue title"
-                  rows={1}
-                  className="block field-sizing-content w-full min-w-0 resize-none border-0 bg-transparent p-0 text-lg font-bold leading-snug tracking-tight outline-none [overflow-wrap:anywhere] placeholder:text-muted-foreground"
-                  onBlur={(event) => {
-                    const trimmed = event.currentTarget.value.trim()
-                    if (trimmed && trimmed !== issue.title)
-                      handleUpdateField({ title: trimmed })
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') {
-                      event.preventDefault()
-                      event.currentTarget.blur()
-                    } else if (event.key === 'Escape') {
-                      event.currentTarget.blur()
-                    }
-                  }}
+                  title={issue.title}
+                  onSave={(title) => handleUpdateField({ title })}
                 />
 
                 {parentIssue && (
