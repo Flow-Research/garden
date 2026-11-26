@@ -163,13 +163,25 @@ function sdkHandshake() {
     .spyOn(parent, 'onBeforeSubAgent')
     .mockResolvedValue(undefined)
   const forwarded = vi.fn(async () => undefined)
-  const resolveChild = vi.fn(async () => ({
-    _cf_handleSubAgentWebSocketConnect: forwarded,
-  }))
+  const resolveChild = vi.fn(
+    async (_className: string, _name: string) => ({
+      _cf_handleSubAgentWebSocketConnect: forwarded,
+    }),
+  )
   // Agents 0.34 wakes facets through DynamicAgents.resolve, not the old
-  // `_cf_resolveSubAgent` leaf the fixture used to replace.
-  vi.spyOn(parent._dynamicAgents, 'resolve').mockImplementation(
-    async (className: string, name: string) => resolveChild(className, name),
+  // `_cf_resolveSubAgent` leaf the fixture used to replace. Private field —
+  // reach it via Reflect so the test stays typed without casting through Agent.
+  const dynamicAgents = Reflect.get(parent, '_dynamicAgents') as {
+    resolve: (...args: unknown[]) => Promise<unknown>
+  }
+  vi.spyOn(dynamicAgents, 'resolve').mockImplementation(
+    async (...args: unknown[]) => {
+      const [className, name] = args
+      if (typeof className !== 'string' || typeof name !== 'string') {
+        throw new Error('DynamicAgents.resolve expected className and name')
+      }
+      return resolveChild(className, name)
+    },
   )
   const received: Request[] = []
   // Agents 0.34: Agent.fetch falls through to lifecycle.fetch (no PartyServer
