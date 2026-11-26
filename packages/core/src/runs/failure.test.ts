@@ -42,6 +42,19 @@ describe('run failure registry', () => {
     })
   })
 
+  it('maps token budget exhaustion to the approved platform limit copy', () => {
+    expect(parseRunFailure({ reason: 'run_token_budget_exceeded' })).toEqual(
+      Result.ok({ cause: 'run_token_budget_exceeded' }),
+    )
+    expect(describeRunFailure({ cause: 'run_token_budget_exceeded' })).toEqual({
+      category: 'platform_limit',
+      retryable: true,
+      title: 'The run hit its limit of 2 million tokens.',
+      nextStep:
+        'Split the task into smaller issues, or narrow its scope, then try again.',
+    })
+  })
+
   it('maps unknown legacy text to safe unknown copy', () => {
     const raw = 'provider secret: customer prompt and token abc123'
     const parsed = parseRunFailure({ error: raw, reason: raw })
@@ -61,7 +74,11 @@ describe('run failure registry', () => {
 
   it('keeps cause definitions exhaustive for every registered code', () => {
     expect(RUN_FAILURE_CAUSES).toEqual(
-      expect.arrayContaining(['output_cap_reached', 'unknown']),
+      expect.arrayContaining([
+        'output_cap_reached',
+        'run_token_budget_exceeded',
+        'unknown',
+      ]),
     )
     for (const cause of RUN_FAILURE_CAUSES) {
       const description = describeRunFailure(runFailure(cause))

@@ -45,6 +45,7 @@ Readers parse older rows and event payloads at the boundary. A known legacy reas
 | --- | --- | --- |
 | `subrequest_limit` | The answer got too long for one run. | Try again with a narrower request, or split the task. |
 | `output_cap_reached` | The agent ran out of room before finishing its answer. | Try again with a narrower request, or split the task. |
+| `run_token_budget_exceeded` | The run hit its limit of 2 million tokens. | Split the task into smaller issues, or narrow its scope, then try again. |
 | `model_unavailable` | The AI model didn't respond. | Try again in a few minutes. |
 | `model_retired` | The AI model this agent uses was retired by its provider. | Ask a workspace admin to choose a new model. |
 | `tool_failed` | `{Connector name} failed during the run.` If no name is available: `A connected tool failed during the run.` | Auth: `Reconnect {Connector name} in Connectors.` Permission: `Check what {Connector name} is allowed to access.` Rate limit: `Wait a few minutes and try again.` Other: `Try again.` |

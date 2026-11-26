@@ -6,6 +6,7 @@ import type { ConnectorError } from '../connectors/errors'
 export const RUN_FAILURE_CAUSES = [
   'subrequest_limit',
   'output_cap_reached',
+  'run_token_budget_exceeded',
   'model_unavailable',
   'model_retired',
   'tool_failed',
@@ -117,6 +118,13 @@ export const RUN_FAILURE_DEFINITIONS = {
     retryable: true,
     title: 'The agent ran out of room before finishing its answer.',
     nextStep: 'Try again with a narrower request, or split the task.',
+  },
+  run_token_budget_exceeded: {
+    category: 'platform_limit',
+    retryable: true,
+    title: 'The run hit its limit of 2 million tokens.',
+    nextStep:
+      'Split the task into smaller issues, or narrow its scope, then try again.',
   },
   model_unavailable: {
     category: 'model',
