@@ -163,11 +163,9 @@ function sdkHandshake() {
     .spyOn(parent, 'onBeforeSubAgent')
     .mockResolvedValue(undefined)
   const forwarded = vi.fn(async () => undefined)
-  const resolveChild = vi.fn(
-    async (_className: string, _name: string) => ({
-      _cf_handleSubAgentWebSocketConnect: forwarded,
-    }),
-  )
+  const resolveChild = vi.fn(async (_className: string, _name: string) => ({
+    _cf_handleSubAgentWebSocketConnect: forwarded,
+  }))
   // Agents 0.34 wakes facets through DynamicAgents.resolve, not the old
   // `_cf_resolveSubAgent` leaf the fixture used to replace. Private field —
   // reach it via Reflect so the test stays typed without casting through Agent.
