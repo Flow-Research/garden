@@ -1,4 +1,5 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { Result } from 'better-result'
 import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
@@ -195,6 +196,17 @@ export function IssueDetail({
     [],
   )
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const tabsRef = useRef<HTMLDivElement>(null)
+  // A tab switch shows the new tab from its start; scrolls only when the
+  // tabs' top is already above the viewport, so it never jumps down.
+  const scrollTabsToTop = () => {
+    const container = scrollContainerRef.current
+    const tabs = tabsRef.current
+    if (!container || !tabs) return
+    const offset =
+      tabs.getBoundingClientRect().top - container.getBoundingClientRect().top
+    if (offset < 0) container.scrollTop += offset
+  }
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const didHighlightRef = useRef<string | null>(null)
   const [parentPickerOpen, setParentPickerOpen] = useState(false)
@@ -896,10 +908,13 @@ export function IssueDetail({
                 <div className="my-10 border-t" />
 
                 <Tabs
+                  ref={tabsRef}
                   value={activeTab}
                   onValueChange={(value) => {
-                    if (value === 'activity' || value === 'comments')
-                      setTabSelection({ key: tabKey, tab: value })
+                    if (value !== 'activity' && value !== 'comments') return
+                    // Commit the new panel first so the scroll measures its layout.
+                    flushSync(() => setTabSelection({ key: tabKey, tab: value }))
+                    scrollTabsToTop()
                   }}
                   className="min-w-0 gap-5"
                 >
