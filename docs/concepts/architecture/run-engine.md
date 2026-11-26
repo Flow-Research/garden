@@ -3,7 +3,7 @@ title: The run engine pairs Think submissions with Cloudflare Workflows
 description: How Garden turns an issue_run or automation_run row into a durable, resumable, cancellable Think agent loop, and which work does not belong there.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-26
 ---
 
 Garden runs two product surfaces, issues and automations, through one durable executor. The engine turns an `issue_run` or `automation_run` row into a Think agent loop that survives Durable Object eviction, waits for people, and stops when cancelled.
@@ -46,6 +46,20 @@ A run moves through these steps:
 7. **Close the turn.** The Workflow calls `AgentDO.completeRunTurn` or `completeAutomationRunTurn`. The facet inspects the submission and writes the product status. An `error` or `skipped` submission fails the run. An `aborted` submission cancels the run if cancel was requested and fails it otherwise. A `completed` submission that leaves the run `queued` or `running`, with no Decide wait, fails the run with reason `turn_ended_without_resolution` and an `issue_run:failed` event. This covers a turn that stopped on a failed resolution tool, such as a `revise_work_product` database error (FLO-150).
 8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input` or `waiting_for_approval`) makes the Workflow wait for a `run-control` event. An automation turn that returns `waitingOn: { kind: "decide_analysis", decideRunId }` makes the Workflow wait for `decide-analysis-finished:<decideRunId>`, bounded by `DECIDE_ANALYSIS_OWNER_WAIT_MS`, then run the next turn in resume mode. See [Decide](../features/decide.md#in-an-automation-the-run-pauses-and-resumes). Any other status means the run row is still live: the Workflow fails the run with reason `workflow_ended_with_live_run` before it ends, so an instance never completes while its run looks in progress.
 9. **Hit the cap.** After 200 turns with no end, the Workflow reports `max_turns_exceeded`.
+
+## Token budget
+
+A run may spend at most `RUN_TOKEN_BUDGET` total tokens (input plus output) across all of its turns. The constant lives in `packages/agent-runtime/src/run-token-budget.ts`. A per-step output cap does not bound a run with many steps, and each step re-sends the whole context as input, so input grows with step count.
+
+The facet enforces the budget in two places:
+
+- **Between steps.** A stop condition adds the tokens of earlier turns, read from the run's `usage_json`, to the steps of the current turn. Once the sum reaches the budget, the turn stops and the run fails with reason `run_token_budget_exceeded`. The AI SDK checks stop conditions only when the model asks to continue, so a turn that ends on its own, or on a terminal tool such as `create_work_product`, settles normally. A run can overshoot the budget by at most one step.
+- **Before a turn.** The boundary guards fail a run whose recorded usage already meets the budget before a resumed turn starts.
+
+`usage_json` is cumulative for the whole run. Each turn starts from the recorded usage instead of zero.
+The shared `runUsageSnapshotSchema` validates every non-null value. A malformed value returns a run error, so the budget guard does not count it as zero spend.
+
+The budget is 2,000,000 tokens. Ten local issue runs on DeepSeek V4.1 Flash through an OpenRouter endpoint, with no connectors, used 48k to 203k tokens each, with a median near 130k, in 2 to 8 steps. Each step sent about 22k to 25k input tokens. One full 30-step turn of a connector-heavy run comes to about 1.2M tokens. The budget is about ten times the largest measured run, so it stops a runaway loop but leaves room for a full turn plus a resume. At list price, 2M input tokens cost about $0.60.
 
 ## Two ledgers share one engine
 

@@ -57,6 +57,12 @@ import { assembleFoundationPrompt } from './prompt'
 import { loadRuntimeSkillSources } from './skills'
 import { isHistoryUnverifiedMessage } from './brain-run-authority'
 import {
+  RUN_TOKEN_BUDGET_EXCEEDED,
+  parsePersistedRunUsage,
+  runTokenBudgetReached,
+  runTokenBudgetStopCondition,
+} from './run-token-budget'
+import {
   addStepUsage,
   normalizeRunUsage,
   type RunUsageSnapshot,
@@ -191,7 +197,9 @@ type DriveTurnResult =
       submissionId: string
     }
 
-type BoundaryGuardResult = 'continue' | 'cancelled' | 'timeout'
+type BoundaryGuardResult =
+  | { kind: 'continue'; usage: RunUsageSnapshot | null }
+  | { kind: 'cancelled' | 'timeout' | typeof RUN_TOKEN_BUDGET_EXCEEDED }
 
 const DEFAULT_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
@@ -243,6 +251,8 @@ export abstract class RunSubAgentBase<
   /** Team policies of the user who started the run, reloaded every turn. */
   protected currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   protected aggUsage: RunUsageSnapshot | null = null
+  /** Set when the run token budget, not the model or a terminal tool, ended the turn. */
+  private stoppedByTokenBudget = false
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
   private mcpRuntime: {
     runId: string | null
@@ -498,9 +508,10 @@ export abstract class RunSubAgentBase<
     const guardResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (guardResult.isErr())
       throw await this.errorForOutput(runId, guardResult.error)
-    if (guardResult.value !== 'continue') {
-      throw new RunTurnStopped(this.turnStoppedName(), guardResult.value)
+    if (guardResult.value.kind !== 'continue') {
+      throw new RunTurnStopped(this.turnStoppedName(), guardResult.value.kind)
     }
+    const priorUsage = guardResult.value.usage
 
     const prepareResult = await this.prepareRun(loadedResult.value, false)
     if (prepareResult.isErr())
@@ -513,7 +524,8 @@ export abstract class RunSubAgentBase<
     this.currentTeamPolicy = teamPolicyResult.value
     this.activateRun(loadedResult.value)
     this.startTurnState(runId, loadedResult.value)
-    this.aggUsage = null
+    this.aggUsage = priorUsage
+    this.stoppedByTokenBudget = false
     this.aiObservation.startTurn(
       this.observationIdentity(loadedResult.value, runId),
       ctx,
@@ -603,7 +615,7 @@ export abstract class RunSubAgentBase<
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
       sendReasoning: true,
-      stopWhen: this.turnStopConditions(),
+      stopWhen: this.turnStopWhen(priorUsage?.total_tokens ?? 0),
       system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
       tools: stableMcpTools,
       activeTools: mcpController
@@ -729,6 +741,18 @@ export abstract class RunSubAgentBase<
         this.logRunWarning('close_failed', {
           runId,
           reason: 'turn_error',
+          ...errorFields(failedResult.error),
+        })
+      }
+    } else if (this.stoppedByTokenBudget) {
+      const failedResult = await this.closeFailedRun(
+        runId,
+        RUN_TOKEN_BUDGET_EXCEEDED,
+      )
+      if (failedResult.isErr()) {
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: RUN_TOKEN_BUDGET_EXCEEDED,
           ...errorFields(failedResult.error),
         })
       }
@@ -1053,7 +1077,7 @@ export abstract class RunSubAgentBase<
 
     const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
-    if (boundaryResult.value !== 'continue') {
+    if (boundaryResult.value.kind !== 'continue') {
       return Result.ok({ kind: 'stopped' })
     }
 
@@ -1307,7 +1331,7 @@ export abstract class RunSubAgentBase<
     loaded: TLoaded,
   ): Promise<ResultValue<BoundaryGuardResult, RunSubAgentError>> {
     if (!this.isActiveRunStatus(loaded.run.status)) {
-      return Result.ok('cancelled')
+      return Result.ok({ kind: 'cancelled' })
     }
 
     if (loaded.run.cancelRequestedAt) {
@@ -1317,7 +1341,7 @@ export abstract class RunSubAgentBase<
         loaded,
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
-      return Result.ok('cancelled')
+      return Result.ok({ kind: 'cancelled' })
     }
 
     const timeoutSec = await this.loadRunTimeoutSec(loaded.run.agentId)
@@ -1343,10 +1367,63 @@ export abstract class RunSubAgentBase<
         loaded,
       )
       if (failedResult.isErr()) return Result.err(failedResult.error)
-      return Result.ok('timeout')
+      return Result.ok({ kind: 'timeout' })
     }
 
-    return Result.ok('continue')
+    const usage = await this.loadRunUsage(loaded.run.id)
+    if (usage.isErr()) return Result.err(usage.error)
+    if (usage.value && runTokenBudgetReached(usage.value.total_tokens)) {
+      const failedResult = await this.closeFailedRun(
+        loaded.run.id,
+        RUN_TOKEN_BUDGET_EXCEEDED,
+        loaded,
+      )
+      if (failedResult.isErr()) return Result.err(failedResult.error)
+      return Result.ok({ kind: RUN_TOKEN_BUDGET_EXCEEDED })
+    }
+
+    return Result.ok({ kind: 'continue', usage: usage.value })
+  }
+
+  /**
+   * The run's terminal-tool stop conditions, then the run token budget. The
+   * budget is checked last so a step that both calls a terminal tool and
+   * crosses the budget settles normally instead of failing.
+   */
+  private turnStopWhen(
+    priorTurnTokens: number,
+  ): NonNullable<TurnConfig['stopWhen']> {
+    const terminal = [this.turnStopConditions()].flat()
+    const budget = runTokenBudgetStopCondition({ priorTurnTokens })
+    return async (options) => {
+      const results = await Promise.all(terminal.map((c) => c(options)))
+      if (results.some(Boolean)) return true
+      if (!(await budget(options))) return false
+      this.stoppedByTokenBudget = true
+      return true
+    }
+  }
+
+  /** Usage the run has already spent, summed across its earlier turns. */
+  private async loadRunUsage(
+    runId: string,
+  ): Promise<ResultValue<RunUsageSnapshot | null, RunSubAgentError>> {
+    const table = this.runTable()
+    const result = await Result.tryPromise({
+      try: async () =>
+        await this.getDb()
+          .select({ usageJson: table.usageJson })
+          .from(table)
+          .where(eq(table.id, runId))
+          .limit(1),
+      catch: (cause) =>
+        this.dbError(`load ${this.runConfig().kind} run usage`, cause),
+    })
+    return result.andThen((rows) =>
+      parsePersistedRunUsage(rows[0]?.usageJson).mapError((cause) =>
+        this.dbError(`parse ${this.runConfig().kind} run usage`, cause),
+      ),
+    )
   }
 
   private async loadRunTimeoutSec(
@@ -1411,6 +1488,7 @@ export abstract class RunSubAgentBase<
     this.currentRunId = null
     this.currentPermissions = null
     this.aggUsage = null
+    this.stoppedByTokenBudget = false
   }
 
   /**
