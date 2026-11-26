@@ -12,6 +12,7 @@
     "teams",
     "settings",
     "permissions",
-    "handbook"
+    "handbook",
+    "model-health-check"
   ]
 }
