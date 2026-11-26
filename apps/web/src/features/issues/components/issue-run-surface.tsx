@@ -177,12 +177,12 @@ function latestEventSummary(events: IssueRunEvent[]) {
 }
 
 function OutputSection({ children }: { children: ReactNode }) {
-  return <section className="mt-8 space-y-2">{children}</section>
+  return <section className="space-y-2">{children}</section>
 }
 
 export function IssueOutputSurfaceFallback() {
   return (
-    <section className="mt-8">
+    <section>
       <div className="rounded-lg border bg-card p-3">
         <Skeleton className="h-4 w-44" />
         <Skeleton className="mt-3 h-3 w-full" />
