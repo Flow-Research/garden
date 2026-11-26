@@ -828,6 +828,24 @@ describe('IssueDetail (shared)', () => {
     expect(screen.getByRole('button', { name: 'Reply' })).toBeVisible()
   })
 
+  it('expands a collapsed thread when editing its comment', async () => {
+    renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Comment actions' }))[0]!,
+    )
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Collapse thread' }),
+    )
+    expect(screen.queryByTestId('readonly-content')).toBeNull()
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Comment actions' })[0]!,
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    expect(await screen.findByPlaceholderText('Edit comment...')).toBeVisible()
+  })
+
   it('opens Comments for a focused comment link', async () => {
     navigationSearch.value = 'focus=comment:comment-1'
     const scroll = vi

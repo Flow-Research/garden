@@ -395,6 +395,8 @@ function CommentCard({
 
   const startEdit = () => {
     cancelledRef.current = false
+    // The editor lives inside CollapsibleContent; a collapsed thread hides it.
+    setOpen(true)
     setEditing(true)
   }
 
