@@ -62,10 +62,12 @@ export function IssueSubscribersControl({
         size="sm"
         aria-pressed={isSubscribed}
         onClick={onToggleSubscribe}
-        className="gap-1.5 text-xs"
+        className="gap-1.5 text-xs max-sm:size-7 max-sm:px-0"
       >
         <BellRing className="size-3.5" />
-        {isSubscribed ? 'Unsubscribe' : 'Subscribe'}
+        <span className="max-sm:sr-only">
+          {isSubscribed ? 'Unsubscribe' : 'Subscribe'}
+        </span>
       </Button>
       <Popover>
         <PopoverTrigger
