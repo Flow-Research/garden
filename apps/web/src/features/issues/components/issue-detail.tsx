@@ -987,29 +987,6 @@ export function IssueDetail({
                     <h2 className="text-sm font-semibold">
                       Comments ({commentCount})
                     </h2>
-                    <div className="flex items-start gap-3">
-                      {user && (
-                        <ActorAvatar
-                          actorType="member"
-                          actorId={user.id}
-                          size={24}
-                          className="shrink-0"
-                        />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <ContextualComposer
-                          key={id}
-                          issueId={id}
-                          onSubmit={submitComment}
-                          onOpenChat={
-                            issue.assignee_type === 'agent' && issue.assignee_id
-                              ? handleOpenChat
-                              : undefined
-                          }
-                          openChatPending={openChatPending}
-                        />
-                      </div>
-                    </div>
                     {activeTab === 'comments' && (
                       <BoneyardSkeleton
                         name={ISSUE_DETAIL_TIMELINE_SKELETON}
@@ -1039,6 +1016,29 @@ export function IssueDetail({
                         ) : null}
                       </BoneyardSkeleton>
                     )}
+                    <div className="sticky bottom-0 z-10 -mx-3 -mb-3 flex items-start gap-3 rounded-b-md border-t bg-background-main-default-hover px-3 py-3 sm:-mx-6 sm:-mb-6 sm:px-6 sm:py-4">
+                      {user && (
+                        <ActorAvatar
+                          actorType="member"
+                          actorId={user.id}
+                          size={24}
+                          className="mt-2 shrink-0"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <ContextualComposer
+                          key={id}
+                          issueId={id}
+                          onSubmit={submitComment}
+                          onOpenChat={
+                            issue.assignee_type === 'agent' && issue.assignee_id
+                              ? handleOpenChat
+                              : undefined
+                          }
+                          openChatPending={openChatPending}
+                        />
+                      </div>
+                    </div>
                   </TabsContent>
                 </Tabs>
               </div>
