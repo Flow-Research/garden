@@ -66,6 +66,14 @@ The shared `runUsageSnapshotSchema` validates every non-null value. A malformed 
 
 The budget is 2,000,000 tokens. Ten local issue runs on DeepSeek V4.1 Flash through an OpenRouter endpoint, with no connectors, used 48k to 203k tokens each, with a median near 130k, in 2 to 8 steps. Each step sent about 22k to 25k input tokens. One full 30-step turn of a connector-heavy run comes to about 1.2M tokens. The budget is about ten times the largest measured run, so it stops a runaway loop but leaves room for a full turn plus a resume. At list price, 2M input tokens cost about $0.60.
 
+## Output cap
+
+Each issue and automation run step can generate at most 16,000 tokens. Thinking tokens count toward this cap. A 300-token cap produced an empty answer with finish reason `length` in the [step output measurements](../../../packages/agent-runtime/benchmarks/step-output/2026-11-26-deepseek-v4.1-flash-high.jsonl).
+
+The largest measured normal step used 3,439 tokens. The [Agent SDK call budget test](../../../packages/agent-sdk-call-budget/README.md) measured 2.02 root Durable Object calls per streamed chunk. The step output measurements averaged about 3.5 output tokens per chunk. Cloudflare's 10,000-call limit allows about 4,950 chunks. At 3.5 output tokens per chunk, that gives a ceiling of about 17,300 tokens. The 16,000-token cap stays below that ceiling and above the largest measured normal step.
+
+Recheck this cap after the Agents SDK 0.34 upgrade. The current call measurement uses Agents SDK 0.17.3.
+
 ## Two ledgers share one engine
 
 The two surfaces keep separate ledgers and status words:

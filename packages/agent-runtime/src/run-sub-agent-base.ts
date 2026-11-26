@@ -69,6 +69,10 @@ import {
   runTokenBudgetStopCondition,
 } from './run-token-budget'
 import {
+  isOutputCapFinishReason,
+  RUN_OUTPUT_CAP_REACHED,
+} from './run-output-cap'
+import {
   addStepUsage,
   normalizeRunUsage,
   type RunUsageSnapshot,
@@ -259,6 +263,7 @@ export abstract class RunSubAgentBase<
   protected aggUsage: RunUsageSnapshot | null = null
   /** Set when the run token budget, not the model or a terminal tool, ended the turn. */
   private stoppedByTokenBudget = false
+  private stoppedByOutputCap = false
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
   private mcpRuntime: {
     runId: string | null
@@ -532,6 +537,7 @@ export abstract class RunSubAgentBase<
     this.startTurnState(runId, loadedResult.value)
     this.aggUsage = priorUsage
     this.stoppedByTokenBudget = false
+    this.stoppedByOutputCap = false
     this.aiObservation.startTurn(
       this.observationIdentity(loadedResult.value, runId),
       ctx,
@@ -620,6 +626,7 @@ export abstract class RunSubAgentBase<
       },
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
+      maxOutputTokens: resolveAgentModelProfile(this.env).maxOutputTokens,
       sendReasoning: true,
       stopWhen: this.turnStopWhen(priorUsage?.total_tokens ?? 0),
       system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
@@ -690,6 +697,9 @@ export abstract class RunSubAgentBase<
     this.aiObservation.stepFinished(ctx)
     const runId = this.currentRunId
     if (!runId) return
+    if (isOutputCapFinishReason(ctx.finishReason)) {
+      this.stoppedByOutputCap = true
+    }
 
     const nextUsage = addStepUsage(this.aggUsage, ctx)
     this.aggUsage = nextUsage
@@ -767,6 +777,18 @@ export abstract class RunSubAgentBase<
         this.logRunWarning('close_failed', {
           runId,
           reason: RUN_TOKEN_BUDGET_EXCEEDED,
+          ...errorFields(failedResult.error),
+        })
+      }
+    } else if (this.stoppedByOutputCap) {
+      const failedResult = await this.closeFailedRun(
+        runId,
+        RUN_OUTPUT_CAP_REACHED,
+      )
+      if (failedResult.isErr()) {
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: RUN_OUTPUT_CAP_REACHED,
           ...errorFields(failedResult.error),
         })
       }
@@ -1517,6 +1539,7 @@ export abstract class RunSubAgentBase<
     this.currentPermissions = null
     this.aggUsage = null
     this.stoppedByTokenBudget = false
+    this.stoppedByOutputCap = false
   }
 
   /**
