@@ -451,6 +451,26 @@ describe('IssueDetail (shared)', () => {
     expect(title).not.toHaveFocus()
   })
 
+  it('keeps editing the title when Enter confirms IME composition', async () => {
+    renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    title.focus()
+    fireEvent.change(title, { target: { value: '認証を実装' } })
+    fireEvent.keyDown(title, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(title, { key: 'Enter', keyCode: 229 })
+    expect(title).toHaveFocus()
+    expect(mockApiObj.updateIssue).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(title, { key: 'Enter' })
+    expect(title).not.toHaveFocus()
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ title: '認証を実装' }),
+      ),
+    )
+  })
+
   it('shows a title changed elsewhere and does not overwrite it on blur', async () => {
     let client: QueryClient | undefined
     renderIssueDetail('issue-1', (queryClient) => {

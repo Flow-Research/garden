@@ -152,6 +152,10 @@ function IssueTitleField({
         if (trimmed && trimmed !== title) onSave(trimmed)
       }}
       onKeyDown={(event) => {
+        // Enter/Escape during IME composition confirm or cancel the candidate
+        // text; they must not finish editing. Safari reports the committing
+        // keydown with isComposing false but keyCode 229.
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return
         if (event.key === 'Enter') {
           event.preventDefault()
           event.currentTarget.blur()
