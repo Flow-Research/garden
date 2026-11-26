@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppEnv } from '@/lib/server/env'
-import { agentsSdk } from '@/test/agents-sdk-fixture'
+import { agentsSdk, createAgentTestContext } from '@/test/agents-sdk-fixture'
 
 const harness = vi.hoisted(() => ({
   session: vi.fn(),
@@ -152,15 +152,10 @@ function sdkHandshake() {
       return false
     }
   }
-  const context = {
+  const context = createAgentTestContext({
     id: { name: hostName },
     exports: { ChatSubAgent: class {} },
-    storage: {
-      sql: { exec: () => Object.assign([], { toArray: () => [] }) },
-      get: async () => undefined,
-    },
-    getWebSockets: () => [],
-  }
+  })
   const parent = Reflect.construct(Parent, [context, {}]) as InstanceType<
     typeof Parent
   >
@@ -171,14 +166,16 @@ function sdkHandshake() {
   const resolveChild = vi.fn(async () => ({
     _cf_handleSubAgentWebSocketConnect: forwarded,
   }))
-  Object.defineProperty(parent, '_cf_resolveSubAgent', { value: resolveChild })
+  // Agents 0.34 wakes facets through DynamicAgents.resolve, not the old
+  // `_cf_resolveSubAgent` leaf the fixture used to replace.
+  vi.spyOn(parent._dynamicAgents, 'resolve').mockImplementation(
+    async (className: string, name: string) => resolveChild(className, name),
+  )
   const received: Request[] = []
-  const platform = Object.getPrototypeOf(agentsSdk.Agent.prototype) as {
-    fetch: (request: Request) => Promise<Response>
-  }
-  // The SDK still owns fetch routing, its guard, generated metadata and onConnect.
-  // Replace only PartyServer's platform socket acceptance (Node has no 101 pair).
-  vi.spyOn(platform, 'fetch').mockImplementation(async (incoming) => {
+  // Agents 0.34: Agent.fetch falls through to lifecycle.fetch (no PartyServer
+  // base). Stub that leaf so Node can simulate socket acceptance without a
+  // 101 upgrade pair.
+  vi.spyOn(parent.lifecycle, 'fetch').mockImplementation(async (incoming) => {
     received.push(incoming)
     if (incoming.headers.get('upgrade')?.toLowerCase() === 'websocket') {
       const connection = {
