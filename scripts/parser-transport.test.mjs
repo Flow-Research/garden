@@ -8,7 +8,6 @@ import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
 import { gzipSync } from 'node:zlib'
 
@@ -24,6 +23,7 @@ const codemodeRequire = createRequire(
 const openApiRequire = createRequire(
   import.meta.resolve('@executor-js/plugin-openapi/core'),
 )
+const wranglerRequire = createRequire(import.meta.resolve('wrangler'))
 const undiciOwners = [
   ['miniflare', createRequire(import.meta.resolve('miniflare'))],
   [
@@ -411,37 +411,22 @@ extendedKeyUsage = serverAuth
   })
 }
 
-for (const [label, text, parsed] of [
-  [
-    'valid',
-    'name = "local-parser-fixture"\ncompatibility_date = "2026-11-21"\n',
-    true,
-  ],
-  ['incomplete', 'name = [\n', false],
-]) {
-  test(`Think inspect reports ${label} TOML through its actual project reader`, async (context) => {
-    const directory = await mkdtemp(join(tmpdir(), 'garden-parser-config-'))
-    context.after(() => rm(directory, { recursive: true, force: true }))
-    await writeFile(join(directory, 'wrangler.toml'), text)
-    const entry = fileURLToPath(
-      new URL('./cli/index.js', import.meta.resolve('@cloudflare/think')),
+{
+  // Think 0.24 dropped its inspect CLI; wrangler remains the TOML/smol-toml owner.
+  const { parse: parseToml } = wranglerRequire('smol-toml')
+
+  test('the wrangler TOML owner parses a valid document', () => {
+    const result = parseToml(
+      'name = "local-parser-fixture"\ncompatibility_date = "2026-11-21"\n',
     )
-    const child = spawnSync(
-      process.execPath,
-      [entry, 'inspect', '--root', directory, '--json'],
-      {
-        timeout: fixtureTimeoutMs,
-        maxBuffer: 65_536,
-        encoding: 'utf8',
-      },
+    assert.equal(result.name, 'local-parser-fixture')
+  })
+
+  test('the wrangler TOML owner refuses incomplete input', () => {
+    assert.throws(
+      () => parseToml('name = [\n'),
+      (error) =>
+        error instanceof Error && /Invalid TOML|unfinished array/i.test(error.message),
     )
-    assert.equal(child.error, undefined)
-    assert.equal(child.status, 0, child.stderr)
-    const result = JSON.parse(child.stdout)
-    assert.equal(result.wranglerConfig.parsed, parsed)
-    if (parsed) {
-      assert.equal(result.wranglerConfig.error, undefined)
-      assert.equal(result.workerConfig.name, 'local-parser-fixture')
-    } else assert.equal(typeof result.wranglerConfig.error, 'string')
   })
 }
