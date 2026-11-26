@@ -929,13 +929,13 @@ export function IssueDetail({
                     >
                       <TabsTrigger
                         value="activity"
-                        className="h-8 rounded-none px-4 text-xs font-normal after:bottom-0 after:h-px after:bg-brand"
+                        className="h-8 rounded-none px-3 text-xs font-normal sm:px-4 after:bottom-0 after:h-px after:bg-brand"
                       >
                         Activity
                       </TabsTrigger>
                       <TabsTrigger
                         value="comments"
-                        className="h-8 rounded-none px-4 text-xs font-normal after:bottom-0 after:h-px after:bg-brand"
+                        className="h-8 rounded-none px-3 text-xs font-normal sm:px-4 after:bottom-0 after:h-px after:bg-brand"
                       >
                         Comments
                       </TabsTrigger>
