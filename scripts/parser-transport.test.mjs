@@ -426,7 +426,8 @@ extendedKeyUsage = serverAuth
     assert.throws(
       () => parseToml('name = [\n'),
       (error) =>
-        error instanceof Error && /Invalid TOML|unfinished array/i.test(error.message),
+        error instanceof Error &&
+        /Invalid TOML|unfinished array/i.test(error.message),
     )
   })
 }
