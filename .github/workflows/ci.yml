@@ -48,6 +48,9 @@ jobs:
       - name: Verify docs
         run: pnpm verify:docs
 
+      - name: Verify diagrams
+        run: pnpm verify:diagrams
+
       - name: Lint
         run: pnpm lint
 
