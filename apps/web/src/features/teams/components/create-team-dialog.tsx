@@ -185,7 +185,11 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
             </span>
           </div>
         ) : (
-          <ul className="mt-3 flex max-h-56 flex-col overflow-y-auto">
+          <ul
+            // `-mr-3 pr-3` moves the scrollbar into the dialog padding: thin
+            // overlay scrollbars otherwise draw over the checkboxes.
+            className="mt-3 -mr-3 flex max-h-56 flex-col overflow-y-auto pr-3"
+          >
             {entries.map((entry) => (
               <li key={entry.key}>
                 {/* Phones stack name over email; `sm:contents` lifts both
