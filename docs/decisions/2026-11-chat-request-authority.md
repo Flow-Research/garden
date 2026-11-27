@@ -112,9 +112,9 @@ Separate outer-boundary tests cover actual Better Auth cookies.
 
 The proposal continuation has three local proofs: browser dispatch to the production method, the SDK path with the same options, and the Garden policy.
 The gated Brain suite runs the production chat facet in a Worker for one native handoff turn with a controlled model.
-No test sends a browser socket turn to the production facet in a Worker.
+A local Chromium run sent a private chat request through the production Worker and received the final response from a controlled model.
 The SDK facet bridge passes its local source-retention test.
-Full Garden facet startup and all deferred product interactions remain required before merge readiness.
+The local browser run covers facet startup and one text turn. The deferred product interactions still require proof before merge.
 Server warmup does not acquire authority from cached thread lookups.
 Without an actual connection or explicit current handoff, private chat operations refuse access.
 

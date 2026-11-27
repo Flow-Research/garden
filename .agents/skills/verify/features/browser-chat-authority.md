@@ -79,5 +79,16 @@ Required observations include these results:
 
 These local results do not establish a real-provider exploit, deployed behavior or full native chat acceptance.
 The gated Brain suite (`GARDEN_ITEST_HELIX=1`) runs the production chat facet in a Worker for the native fixture turn with its session handoff.
-No test sends a browser socket turn to the production chat facet in a Worker.
+A local Chromium run on 27 November 2026 covered a signed-in text turn through the production Worker. The source commit was `b53ed2a99779dffc1bbb95333dc2d016db063b31`. The private thread ID was `f6da5ac2-8e00-41c7-86d5-7a190e85d69a`. The request ID was `06412224-339c-42c3-8bed-23aad91393b4`.
+
+To repeat the local browser check:
+
+1. Start disposable PostgreSQL. Set `DATABASE_URL` to that database and run its Garden migrations.
+2. Set `BETTER_AUTH_URL` to the local app origin. Set a fresh `BETTER_AUTH_SECRET`. Set `GARDEN_MODEL_BASE_URL` to a loopback OpenAI-compatible service that streams a known text response. Run `pnpm --filter @garden/web dev:offline`.
+3. Open that origin in a clean browser. Use the same-origin API to sign up with a test email. Create a workspace, agent and private chat thread.
+4. Use the thread's `hostName` and `runtime_key` to open `/agents/agent-d-o/{hostName}/sub/chat-sub-agent/{runtime_key}` as a browser WebSocket. Use the browser session from step 3.
+5. Send the SDK's `cf_agent_use_chat_request` frame with a new request ID and one user text message. Confirm that the local model receives the request.
+6. Check the response frames for that request ID. Confirm that the known model text arrives before the final frame with `done: true`.
+
+This run used the local model and temporary data. Deferred tool decisions, recovery and the deployed service still require separate browser checks.
 The [request decision](../../../../docs/decisions/2026-11-chat-request-authority.md) lists the known design limits.
