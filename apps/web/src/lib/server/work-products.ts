@@ -14,7 +14,7 @@ import {
   type WorkProductSavedFile,
 } from '@garden/core/issues/work-product-saved-file'
 import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
-import { resolveGithubToolOwner } from '@garden/connectors/github/identity'
+import { resolveGithubWriteOwner } from '@garden/connectors/github/identity'
 import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
   issueSourceBindingSelectSchema,
@@ -407,10 +407,16 @@ async function callConnectorTool(args: {
 
   // Owner identity gate (#332): writeback args are agent-authored, so a
   // hallucinated owner must not reach GitHub from this path either.
-  const ownerGate = resolveGithubToolOwner({
+  const ownerGate = await resolveGithubWriteOwner({
     accountLogin: installation.accountLogin,
+    installationId: installation.installationId,
+    env: {
+      GITHUB_APP_ID: args.env.GITHUB_APP_ID,
+      GITHUB_CLIENT_ID: args.env.GITHUB_CLIENT_ID,
+      GITHUB_APP_PRIVATE_KEY: args.env.GITHUB_APP_PRIVATE_KEY,
+    },
     input: args.toolArgs,
-    mode: 'write',
+    ownerField: args.toolName === 'fork_repository' ? 'organization' : 'owner',
   })
   if (ownerGate.kind === 'reject') {
     return Result.err(invalidState(ownerGate.message))

@@ -14,7 +14,8 @@ function run(overrides: Partial<Run>): Run {
     status: 'running',
     started_at: null,
     finished_at: null,
-    error: null,
+    failure: null,
+    blocked_reason: null,
     usage: null,
     ...overrides,
   } as Run
@@ -64,5 +65,37 @@ describe('ActiveRunPanel', () => {
     render(panel({ run: run({ status: 'waiting_for_approval' }) }))
 
     expect(screen.queryByRole('button', { name: /edit/i })).toBeNull()
+  })
+
+  it('shows the typed failure title and next step', () => {
+    render(
+      panel({
+        run: run({
+          status: 'failed',
+          failure: { cause: 'turn_timed_out' },
+        }),
+      }),
+    )
+
+    expect(
+      screen.getByText(
+        'The run took too long and was stopped. Try again, or split the task.',
+      ),
+    ).toBeTruthy()
+  })
+
+  it('shows the agent-authored reason for a blocked run', () => {
+    render(
+      panel({
+        run: run({
+          status: 'blocked',
+          blocked_reason: 'The repository needs a deployment key.',
+        }),
+      }),
+    )
+
+    expect(
+      screen.getByText('The repository needs a deployment key.'),
+    ).toBeTruthy()
   })
 })

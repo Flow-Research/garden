@@ -139,9 +139,9 @@ describe('GitHubRestClient remint-once', () => {
     expect(mint).toHaveBeenCalledTimes(1)
   })
 
-  // #332: the request path decides whether a 404 gets the owner/repo retry
-  // hint, so the client, not just the error mapper, is covered.
-  it('adds the retry hint when a repository path 404s', async () => {
+  // A missing branch must not redirect an explicit repository request to a
+  // different repository from the installation inventory.
+  it('omits the repository retry hint when a sub-resource 404s', async () => {
     mintOk('ghs_ok')
 
     const fetch: typeof globalThis.fetch = (async () =>
@@ -153,6 +153,34 @@ describe('GitHubRestClient remint-once', () => {
         return yield* client.request({
           operation: 'github.listBranches',
           path: '/repos/acme/garden/branches',
+        })
+      }).pipe(
+        Effect.provide(
+          makeGitHubBaseLayer(
+            { installationId: '42', appId: '1', privateKey: 'pem' },
+            { fetch },
+          ),
+        ),
+        Effect.flip,
+      ),
+    )
+
+    expect(error).toBeInstanceOf(ConnectorNotFoundError)
+    expect(error.message).not.toContain('list_repositories')
+  })
+
+  it('adds the inventory hint for a bare repository lookup', async () => {
+    mintOk('ghs_ok')
+
+    const fetch: typeof globalThis.fetch = (async () =>
+      new Response('Not Found', { status: 404 })) as typeof globalThis.fetch
+
+    const error = await Effect.runPromise(
+      Effect.gen(function* () {
+        const client = yield* GitHubRestClient
+        return yield* client.request({
+          operation: 'github.getRepository',
+          path: '/repos/acme/garden',
         })
       }).pipe(
         Effect.provide(

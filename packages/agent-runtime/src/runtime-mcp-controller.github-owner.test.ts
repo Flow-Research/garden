@@ -57,24 +57,23 @@ function githubToolSurface(accountLogin?: string) {
   }
 
   const controller = new RuntimeMcpController(host)
-  const accounts = Reflect.get(
+  Reflect.apply(
+    Reflect.get(controller, 'activateNativeConnectorBindings'),
     controller,
-    'activeNativeConnectorAccounts',
-  ) as Map<
-    string,
-    {
-      accountId: string | null
-      accountLogin?: string | null
-      status: 'connected' | 'degraded'
-    }
-  >
-  accounts.set('github', {
-    accountId: '42',
-    status: 'connected',
-    accountLogin,
-  })
+    [
+      [
+        {
+          connectorId: 'github',
+          accountId: '42',
+          status: 'connected',
+          accountLogin,
+        },
+      ],
+    ],
+  )
   Reflect.set(controller, 'activeGitHubHostedMcpTools', [
     { name: 'list_issues', description: 'hosted', inputSchema: {} },
+    { name: 'actions_get', description: 'hosted', inputSchema: {} },
     { name: 'issue_write', description: 'hosted', inputSchema: {} },
   ])
 
@@ -94,9 +93,11 @@ function githubToolSurface(accountLogin?: string) {
     callTool,
     fetchSpy,
     runHostedRead: (input: unknown) => run(hosted('list_issues'), input),
+    runHostedOnlyRead: (input: unknown) => run(hosted('actions_get'), input),
     runHostedWrite: (input: unknown) => run(hosted('issue_write'), input),
     runNativeRead: (input: unknown) => run(native('list_branches'), input),
     runNativeWrite: (input: unknown) => run(native('issue_write'), input),
+    runNativeFork: (input: unknown) => run(native('fork_repository'), input),
   }
 }
 
@@ -113,6 +114,13 @@ describe('github owner identity gate (#332)', () => {
     const input = { owner: 'cloudflare', repo: 'agents', state: 'open' }
     await expect(runHostedRead(input)).resolves.toEqual({ ok: true })
     expect(callTool).toHaveBeenCalledWith('42', 'list_issues', input)
+  })
+
+  it('lets a hosted-only read use an external owner', async () => {
+    const { runHostedOnlyRead, callTool } = githubToolSurface(ACCOUNT)
+    const input = { owner: 'cloudflare', repo: 'agents', run_id: 1 }
+    await expect(runHostedOnlyRead(input)).resolves.toEqual({ ok: true })
+    expect(callTool).toHaveBeenCalledWith('42', 'actions_get', input)
   })
 
   it('corrects a case-variant owner on the hosted read', async () => {
@@ -145,6 +153,29 @@ describe('github owner identity gate (#332)', () => {
       message: expect.stringContaining('is not the connected GitHub account'),
     })
     expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('lets a fork use an external source and checks its destination', async () => {
+    const { runNativeFork, fetchSpy } = githubToolSurface(ACCOUNT)
+    const result = await runNativeFork({
+      owner: 'cloudflare',
+      repo: 'agents',
+      organization: 'other-org',
+    })
+    expect(result).toMatchObject({
+      error: true,
+      message: expect.stringContaining('organization "other-org"'),
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+
+    const allowed = await runNativeFork({
+      owner: 'cloudflare',
+      repo: 'agents',
+      organization: ACCOUNT,
+    })
+    expect(allowed).not.toMatchObject({
+      message: expect.stringContaining('is not the connected GitHub account'),
+    })
   })
 
   it('rejects a hallucinated owner on the hosted write before dispatch', async () => {

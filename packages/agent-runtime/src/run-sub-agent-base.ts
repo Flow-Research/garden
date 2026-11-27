@@ -19,6 +19,11 @@ import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
 import {
+  runFailure,
+  toPublicRunFailure,
+  type RunFailure,
+} from '@garden/core/runs/failure'
+import {
   errorFields,
   type GardenLogFields,
   type GardenLogger,
@@ -38,6 +43,8 @@ import {
   createAgentModel,
   resolveAgentModelProfile,
 } from './model'
+import { createRetiredModelTracker } from './model-retirement'
+import { classifyRunFailure as classifyRuntimeFailure } from './run-failure-matchers'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 import {
   classifyGardenContextOverflow,
@@ -47,7 +54,6 @@ import {
 import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
-  type McpHost,
   type RuntimeMcpError,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -55,6 +61,17 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { loadRuntimeSkillSources } from './skills'
+import { isHistoryUnverifiedMessage } from './brain-run-authority'
+import {
+  RUN_TOKEN_BUDGET_EXCEEDED,
+  parsePersistedRunUsage,
+  runTokenBudgetReached,
+  runTokenBudgetStopCondition,
+} from './run-token-budget'
+import {
+  isOutputCapFinishReason,
+  RUN_OUTPUT_CAP_REACHED,
+} from './run-output-cap'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -123,6 +140,7 @@ export type RunTurnInput = {
 
 export type RunSubAgentErrorCode =
   | 'database_failed'
+  | 'history_unverified'
   | 'invalid_state'
   | 'not_found'
   | 'runtime_failed'
@@ -140,6 +158,11 @@ export type RunSubAgentErrorFields = {
  */
 export type RunSubAgentError = Error &
   Readonly<RunSubAgentErrorFields> & { readonly _tag: string }
+
+/** `history_unverified` only reaches a caller that asked for it with `'report'`. */
+export type RunFacetTurnStartResult =
+  | RunWorkflowTurnStartResult
+  | { kind: 'history_unverified' }
 
 /**
  * Thrown from `beforeTurn` when a boundary guard (cancellation, timeout or a
@@ -184,7 +207,9 @@ type DriveTurnResult =
       submissionId: string
     }
 
-type BoundaryGuardResult = 'continue' | 'cancelled' | 'timeout'
+type BoundaryGuardResult =
+  | { kind: 'continue'; usage: RunUsageSnapshot | null }
+  | { kind: 'cancelled' | 'timeout' | typeof RUN_TOKEN_BUDGET_EXCEEDED }
 
 const DEFAULT_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
@@ -236,18 +261,14 @@ export abstract class RunSubAgentBase<
   /** Team policies of the user who started the run, reloaded every turn. */
   protected currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   protected aggUsage: RunUsageSnapshot | null = null
+  /** Set when the run token budget, not the model or a terminal tool, ended the turn. */
+  private stoppedByTokenBudget = false
+  private stoppedByOutputCap = false
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
-  private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
-    getController: () => this.getMcpController(),
-    fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
-    waitForConnections: async (timeoutMs) =>
-      await this.mcp.waitForConnections({ timeout: timeoutMs }),
-    getServerStates: () =>
-      this.getMcpServers().servers as RuntimeMcpServerStates,
-    connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    logger: this.runConfig().logger,
-    readinessPolicy: 'required',
-  })
+  private mcpRuntime: {
+    runId: string | null
+    preparer: RuntimeMcpConnectionPreparer
+  } | null = null
 
   maxSteps = 30
 
@@ -304,7 +325,7 @@ export abstract class RunSubAgentBase<
   /** Moves a live run to `failed`; a no-op for runs already settled. */
   protected abstract forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
     loaded?: TLoaded,
   ): Promise<ResultValue<void, RunSubAgentError>>
   /**
@@ -426,9 +447,16 @@ export abstract class RunSubAgentBase<
     return null
   }
 
+  /** Id of the issue or automation run this facet serves; the facet name by default. */
+  protected runObjectId() {
+    return this.name
+  }
+
   protected telemetryMetadata(runId: string): Record<string, string> {
     return { agentClass: this.runConfig().agentClass, runId }
   }
+
+  private readonly retiredModel = createRetiredModelTracker()
 
   getModel(): LanguageModel {
     return createAgentModel({
@@ -465,7 +493,7 @@ export abstract class RunSubAgentBase<
         bucket: this.env.FILES,
         databaseUrl: this.env.HYPERDRIVE.connectionString,
       },
-      { kind: this.runConfig().kind, id: this.name },
+      { kind: this.runConfig().kind, id: this.runObjectId() },
     )
   }
 
@@ -491,9 +519,10 @@ export abstract class RunSubAgentBase<
     const guardResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (guardResult.isErr())
       throw await this.errorForOutput(runId, guardResult.error)
-    if (guardResult.value !== 'continue') {
-      throw new RunTurnStopped(this.turnStoppedName(), guardResult.value)
+    if (guardResult.value.kind !== 'continue') {
+      throw new RunTurnStopped(this.turnStoppedName(), guardResult.value.kind)
     }
+    const priorUsage = guardResult.value.usage
 
     const prepareResult = await this.prepareRun(loadedResult.value, false)
     if (prepareResult.isErr())
@@ -506,7 +535,9 @@ export abstract class RunSubAgentBase<
     this.currentTeamPolicy = teamPolicyResult.value
     this.activateRun(loadedResult.value)
     this.startTurnState(runId, loadedResult.value)
-    this.aggUsage = null
+    this.aggUsage = priorUsage
+    this.stoppedByTokenBudget = false
+    this.stoppedByOutputCap = false
     this.aiObservation.startTurn(
       this.observationIdentity(loadedResult.value, runId),
       ctx,
@@ -517,9 +548,7 @@ export abstract class RunSubAgentBase<
     )
     await this.onTurnStarted(runId)
 
-    const mcpController = await this.mcpConnectionPreparer.ensureForTurn(
-      `${config.kind}-turn`,
-    )
+    const mcpController = await this.prepareMcpForTurn(`${config.kind}-turn`)
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
     if (observedChangesResult.isErr()) {
       this.logRunWarning('mcp_tool_changes_capture_failed', {
@@ -585,6 +614,7 @@ export abstract class RunSubAgentBase<
         ai: this.env.AI,
         env: this.env,
         gatewayId: this.env.AI_GATEWAY_ID,
+        onModelRetired: this.retiredModel.observeTurn(runId),
         tracing: this.aiObservation.modelTracing(),
       }),
       experimental_telemetry: {
@@ -596,8 +626,9 @@ export abstract class RunSubAgentBase<
       },
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
+      maxOutputTokens: resolveAgentModelProfile(this.env).maxOutputTokens,
       sendReasoning: true,
-      stopWhen: this.turnStopConditions(),
+      stopWhen: this.turnStopWhen(priorUsage?.total_tokens ?? 0),
       system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
       tools: stableMcpTools,
       activeTools: mcpController
@@ -622,12 +653,20 @@ export abstract class RunSubAgentBase<
         : null
     if (!runId) return
 
+    const failure = submission.error
+      ? await this.failureReasonForOutput(runId, submission.error)
+      : null
+    if (failure?.diagnostic) {
+      this.logRunWarning('turn_failed', {
+        runId,
+        cause: failure.cause,
+        diagnostic: failure.diagnostic,
+      })
+    }
     const payload: RunWorkflowTurnCompleteEvent = {
       submissionId: submission.submissionId,
       status: submission.status,
-      ...(submission.error
-        ? { error: await this.failureReasonForOutput(runId, submission.error) }
-        : {}),
+      ...(failure ? { failure: toPublicRunFailure(failure) } : {}),
     }
     // RunWorkflow also reconciles from Think's submission state when this
     // event never arrives, so a delivery that still fails after these retries
@@ -658,6 +697,9 @@ export abstract class RunSubAgentBase<
     this.aiObservation.stepFinished(ctx)
     const runId = this.currentRunId
     if (!runId) return
+    if (isOutputCapFinishReason(ctx.finishReason)) {
+      this.stoppedByOutputCap = true
+    }
 
     const nextUsage = addStepUsage(this.aggUsage, ctx)
     this.aggUsage = nextUsage
@@ -726,6 +768,30 @@ export abstract class RunSubAgentBase<
           ...errorFields(failedResult.error),
         })
       }
+    } else if (this.stoppedByTokenBudget) {
+      const failedResult = await this.closeFailedRun(
+        runId,
+        RUN_TOKEN_BUDGET_EXCEEDED,
+      )
+      if (failedResult.isErr()) {
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: RUN_TOKEN_BUDGET_EXCEEDED,
+          ...errorFields(failedResult.error),
+        })
+      }
+    } else if (this.stoppedByOutputCap) {
+      const failedResult = await this.closeFailedRun(
+        runId,
+        RUN_OUTPUT_CAP_REACHED,
+      )
+      if (failedResult.isErr()) {
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: RUN_OUTPUT_CAP_REACHED,
+          ...errorFields(failedResult.error),
+        })
+      }
     } else {
       await this.finishSettledTurn(runId, result)
     }
@@ -745,11 +811,17 @@ export abstract class RunSubAgentBase<
    * This and `completeWorkflowTurn` are Workflow RPC targets, so failures are
    * thrown (the Workflow step must reject to retry) — always as the run's
    * tagged error, keeping its code and cause.
+   *
+   * With `historyUnverified: 'report'`, a start refused because retained
+   * history cannot be verified returns `history_unverified` and leaves the run
+   * open, so the caller can start it on a fresh context. With `'fail'`, that
+   * refusal fails the run with its fixed reason.
    */
   async executeWorkflowTurn(
     mode: RunTurnMode,
     input: TInput,
-  ): Promise<RunWorkflowTurnStartResult> {
+    historyUnverified: 'fail' | 'report' = 'fail',
+  ): Promise<RunFacetTurnStartResult> {
     const entry = await this.verifyRunEntry(input.runId)
     if (entry.isErr()) throw entry.error
 
@@ -776,6 +848,13 @@ export abstract class RunSubAgentBase<
     }
 
     const driveResult = await this.driveTurn(mode, input)
+    if (
+      driveResult.isErr() &&
+      driveResult.error.code === 'history_unverified' &&
+      mode === 'start' &&
+      historyUnverified === 'report'
+    )
+      return { kind: 'history_unverified' }
     if (driveResult.isErr()) {
       await this.closeFailedRun(input.runId, driveResult.error.message)
       throw await this.errorForOutput(input.runId, driveResult.error)
@@ -825,7 +904,7 @@ export abstract class RunSubAgentBase<
         String(inspectionResult.error),
       )
       await this.forceCloseFailed(input.runId, reason)
-      throw this.runtimeFailure(reason)
+      throw this.runtimeFailure(reason.cause)
     }
 
     const inspection = inspectionResult.value
@@ -922,7 +1001,10 @@ export abstract class RunSubAgentBase<
       runId: input.runId,
       runStatus: input.runStatus,
     })
-    const failedResult = await this.forceCloseFailed(input.runId, reason)
+    const failedResult = await this.forceCloseFailed(
+      input.runId,
+      runFailure('turn_ended_without_resolution'),
+    )
     if (failedResult.isErr()) throw failedResult.error
     this.clearTurnState()
 
@@ -955,12 +1037,12 @@ export abstract class RunSubAgentBase<
    */
   async failWorkflowTurn(input: {
     runId: string
-    reason: string
+    failure: RunFailure
   }): Promise<{ status: string }> {
     const entry = await this.verifyRunEntry(input.runId)
     if (entry.isErr()) throw entry.error
 
-    const failedResult = await this.closeFailedRun(input.runId, input.reason)
+    const failedResult = await this.forceCloseFailed(input.runId, input.failure)
     if (failedResult.isErr())
       throw await this.errorForOutput(input.runId, failedResult.error)
     this.clearTurnState()
@@ -1034,7 +1116,7 @@ export abstract class RunSubAgentBase<
 
     const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
-    if (boundaryResult.value !== 'continue') {
+    if (boundaryResult.value.kind !== 'continue') {
       return Result.ok({ kind: 'stopped' })
     }
 
@@ -1105,13 +1187,26 @@ export abstract class RunSubAgentBase<
 
   /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
   private async failureReasonForOutput(runId: string, reason: string) {
+    if (isHistoryUnverifiedMessage(reason)) {
+      return { ...runFailure('unknown'), diagnostic: reason }
+    }
     const authority = await this.authorizeFinalObservation(runId)
-    if (authority.isOk()) return reason
+    if (authority.isOk()) {
+      return classifyRuntimeFailure({
+        error: reason,
+        turnFlags: {
+          modelRetired: this.retiredModel.wasRetired(runId, reason),
+        },
+      })
+    }
     this.aiObservation.discardTurn()
-    return 'brain_output_authority_denied'
+    return runFailure('brain_output_authority_denied')
   }
 
   private async errorForOutput(runId: string, error: RunSubAgentError) {
+    if (isHistoryUnverifiedMessage(error.message)) {
+      return { ...runFailure('unknown'), diagnostic: error.message }
+    }
     const authority = await this.authorizeFinalObservation(runId)
     if (authority.isOk()) return error
     this.aiObservation.discardTurn()
@@ -1286,7 +1381,7 @@ export abstract class RunSubAgentBase<
     loaded: TLoaded,
   ): Promise<ResultValue<BoundaryGuardResult, RunSubAgentError>> {
     if (!this.isActiveRunStatus(loaded.run.status)) {
-      return Result.ok('cancelled')
+      return Result.ok({ kind: 'cancelled' })
     }
 
     if (loaded.run.cancelRequestedAt) {
@@ -1296,7 +1391,7 @@ export abstract class RunSubAgentBase<
         loaded,
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
-      return Result.ok('cancelled')
+      return Result.ok({ kind: 'cancelled' })
     }
 
     const timeoutSec = await this.loadRunTimeoutSec(loaded.run.agentId)
@@ -1322,10 +1417,63 @@ export abstract class RunSubAgentBase<
         loaded,
       )
       if (failedResult.isErr()) return Result.err(failedResult.error)
-      return Result.ok('timeout')
+      return Result.ok({ kind: 'timeout' })
     }
 
-    return Result.ok('continue')
+    const usage = await this.loadRunUsage(loaded.run.id)
+    if (usage.isErr()) return Result.err(usage.error)
+    if (usage.value && runTokenBudgetReached(usage.value.total_tokens)) {
+      const failedResult = await this.closeFailedRun(
+        loaded.run.id,
+        RUN_TOKEN_BUDGET_EXCEEDED,
+        loaded,
+      )
+      if (failedResult.isErr()) return Result.err(failedResult.error)
+      return Result.ok({ kind: RUN_TOKEN_BUDGET_EXCEEDED })
+    }
+
+    return Result.ok({ kind: 'continue', usage: usage.value })
+  }
+
+  /**
+   * The run's terminal-tool stop conditions, then the run token budget. The
+   * budget is checked last so a step that both calls a terminal tool and
+   * crosses the budget settles normally instead of failing.
+   */
+  private turnStopWhen(
+    priorTurnTokens: number,
+  ): NonNullable<TurnConfig['stopWhen']> {
+    const terminal = [this.turnStopConditions()].flat()
+    const budget = runTokenBudgetStopCondition({ priorTurnTokens })
+    return async (options) => {
+      const results = await Promise.all(terminal.map((c) => c(options)))
+      if (results.some(Boolean)) return true
+      if (!(await budget(options))) return false
+      this.stoppedByTokenBudget = true
+      return true
+    }
+  }
+
+  /** Usage the run has already spent, summed across its earlier turns. */
+  private async loadRunUsage(
+    runId: string,
+  ): Promise<ResultValue<RunUsageSnapshot | null, RunSubAgentError>> {
+    const table = this.runTable()
+    const result = await Result.tryPromise({
+      try: async () =>
+        await this.getDb()
+          .select({ usageJson: table.usageJson })
+          .from(table)
+          .where(eq(table.id, runId))
+          .limit(1),
+      catch: (cause) =>
+        this.dbError(`load ${this.runConfig().kind} run usage`, cause),
+    })
+    return result.andThen((rows) =>
+      parsePersistedRunUsage(rows[0]?.usageJson).mapError((cause) =>
+        this.dbError(`parse ${this.runConfig().kind} run usage`, cause),
+      ),
+    )
   }
 
   private async loadRunTimeoutSec(
@@ -1390,10 +1538,41 @@ export abstract class RunSubAgentBase<
     this.currentRunId = null
     this.currentPermissions = null
     this.aggUsage = null
+    this.stoppedByTokenBudget = false
+    this.stoppedByOutputCap = false
   }
 
-  private getMcpController() {
-    const host: McpHost = {
+  /**
+   * One controller and preparer per run. A facet hosts successive runs, and
+   * the preparer skips its refresh while warm, so sharing them across runs
+   * would hand a new run the previous run's connector accounts.
+   */
+  private mcpConnectionPreparer() {
+    const runId = this.currentRunId
+    if (this.mcpRuntime?.runId === runId) return this.mcpRuntime.preparer
+
+    const controller = this.createMcpController()
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
+      waitForConnections: async (timeoutMs) =>
+        await this.mcp.waitForConnections({ timeout: timeoutMs }),
+      getServerStates: () =>
+        this.getMcpServers().servers as RuntimeMcpServerStates,
+      connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
+      logger: this.runConfig().logger,
+      readinessPolicy: 'required',
+    })
+    this.mcpRuntime = { runId, preparer }
+    return preparer
+  }
+
+  private async prepareMcpForTurn(reason: string) {
+    return await this.mcpConnectionPreparer().ensureForTurn(reason)
+  }
+
+  private createMcpController() {
+    return new RuntimeMcpController({
       name: this.name,
       env: this.env,
       ctx: this.ctx,
@@ -1407,17 +1586,12 @@ export abstract class RunSubAgentBase<
         }),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveMcpIdentity(),
-    }
-    const decideOwner = this.decideAnalysisOwner()
-    return new RuntimeMcpController(
-      decideOwner === null
-        ? host
-        : { ...host, decideAnalysisOwner: () => decideOwner },
-    )
+      decideAnalysisOwner: () => this.decideAnalysisOwner(),
+    })
   }
 
   /** Loads MCP connections on demand for a tool that needs them mid-turn. */
   protected async ensureMcpConnectionsLoaded(reason: string) {
-    return await this.mcpConnectionPreparer.ensureLoaded(reason)
+    return await this.mcpConnectionPreparer().ensureLoaded(reason)
   }
 }

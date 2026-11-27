@@ -8,7 +8,10 @@ import { getConnectorById } from '@garden/connectors'
 import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
 import { makeDiscordBaseLayer } from '@garden/connectors/discord/services'
-import { resolveGithubToolOwner } from '@garden/connectors/github/identity'
+import {
+  resolveGithubToolOwner,
+  resolveGithubWriteOwner,
+} from '@garden/connectors/github/identity'
 import {
   GitHubHostedMcpClient,
   makeGitHubHostedMcpBaseLayer,
@@ -394,11 +397,11 @@ export type McpHost = {
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >
   /**
-   * The Decide owner this host's `decide_analyze` calls belong to. Omitted
-   * means a chat facet, whose name is the thread key. Run facets supply it
-   * so an automation's analysis is owned by its run, never by a chat.
+   * The Decide owner this host's `decide_analyze` calls belong to, read per
+   * call. Omitted or null means the facet name is the chat thread key. Run
+   * facets supply it so an automation's analysis is owned by its run.
    */
-  decideAnalysisOwner?: () => DecideAnalysisOwner
+  decideAnalysisOwner?: () => DecideAnalysisOwner | null
 }
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
@@ -1106,14 +1109,30 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
                 execute: async (input) => {
-                  // Owner identity gate (#332): reject a hallucinated owner
-                  // on writes and canonicalize casing on every call before
-                  // any GitHub request is built, beside the assignee gate.
-                  const ownerGate = resolveGithubToolOwner({
+                  // Confirm a mismatched write against the server-selected
+                  // installation before the repository request is built.
+                  const mode = githubOwnerGateMode(nativeTool.riskClass)
+                  const ownerArgs = {
                     accountLogin: githubAccount.accountLogin,
                     input,
-                    mode: githubOwnerGateMode(nativeTool.riskClass),
-                  })
+                    ownerField:
+                      nativeTool.name === 'fork_repository'
+                        ? ('organization' as const)
+                        : ('owner' as const),
+                  }
+                  const ownerGate =
+                    mode === 'read'
+                      ? resolveGithubToolOwner({ ...ownerArgs, mode })
+                      : await resolveGithubWriteOwner({
+                          ...ownerArgs,
+                          installationId: githubAccount.accountId!,
+                          env: {
+                            GITHUB_APP_ID: this.host.env.GITHUB_APP_ID,
+                            GITHUB_CLIENT_ID: this.host.env.GITHUB_CLIENT_ID,
+                            GITHUB_APP_PRIVATE_KEY:
+                              this.host.env.GITHUB_APP_PRIVATE_KEY,
+                          },
+                        })
                   if (ownerGate.kind === 'reject') {
                     return { error: true, message: ownerGate.message }
                   }
@@ -1205,17 +1224,32 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
                 execute: async (input) => {
-                  // Same owner identity gate as the native surface (#332):
-                  // the hosted server takes free-hand owner/repo too. Its
-                  // risk class comes from the same connector registry.
-                  const ownerGate = resolveGithubToolOwner({
+                  // Hosted tools share the native owner's write boundary.
+                  const mode = githubOwnerGateMode(
+                    getConnectorById('github')?.tools[hostedTool.name]
+                      ?.riskClass,
+                  )
+                  const ownerArgs = {
                     accountLogin: githubAccount.accountLogin,
                     input,
-                    mode: githubOwnerGateMode(
-                      getConnectorById('github')?.tools[hostedTool.name]
-                        ?.riskClass,
-                    ),
-                  })
+                    ownerField:
+                      hostedTool.name === 'fork_repository'
+                        ? ('organization' as const)
+                        : ('owner' as const),
+                  }
+                  const ownerGate =
+                    mode === 'read'
+                      ? resolveGithubToolOwner({ ...ownerArgs, mode })
+                      : await resolveGithubWriteOwner({
+                          ...ownerArgs,
+                          installationId: githubAccount.accountId!,
+                          env: {
+                            GITHUB_APP_ID: this.host.env.GITHUB_APP_ID,
+                            GITHUB_CLIENT_ID: this.host.env.GITHUB_CLIENT_ID,
+                            GITHUB_APP_PRIVATE_KEY:
+                              this.host.env.GITHUB_APP_PRIVATE_KEY,
+                          },
+                        })
                   if (ownerGate.kind === 'reject') {
                     return { error: true, message: ownerGate.message }
                   }

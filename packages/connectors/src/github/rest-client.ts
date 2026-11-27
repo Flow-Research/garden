@@ -21,11 +21,10 @@ import {
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 
 /**
- * Matches `/repos/{owner}/{repo}` request paths (with or without a
- * sub-resource suffix) so 404 handling can tell a wrong owner/repo guess
- * (#332) from a missing issue, workflow, or search result.
+ * Only a bare repository lookup can identify a missing repository. A 404 on
+ * a sub-resource can mean that the file, ref, or issue is missing instead.
  */
-const REPOSITORY_PATH_PATTERN = /^\/repos\/[^/]+\/[^/]+/
+const REPOSITORY_PATH_PATTERN = /^\/repos\/[^/]+\/[^/?]+\/?(?:\?.*)?$/
 
 export type GitHubAppConfigShape = {
   readonly appId?: string

@@ -132,4 +132,40 @@ describe('resolveGithubToolOwner', () => {
       input: { owner: ACCOUNT, repo: 'garden' },
     })
   })
+
+  it('checks a fork destination without changing its external source', () => {
+    const input = {
+      owner: 'cloudflare',
+      repo: 'agents',
+      organization: 'flow-research',
+    }
+    expect(
+      resolveGithubToolOwner({
+        accountLogin: ACCOUNT,
+        input,
+        mode: 'write',
+        ownerField: 'organization',
+      }),
+    ).toEqual({ kind: 'proceed', input: { ...input, organization: ACCOUNT } })
+
+    expect(
+      resolveGithubToolOwner({
+        accountLogin: ACCOUNT,
+        input: { owner: 'cloudflare', repo: 'agents' },
+        mode: 'write',
+        ownerField: 'organization',
+      }).kind,
+    ).toBe('proceed')
+
+    const rejected = resolveGithubToolOwner({
+      accountLogin: ACCOUNT,
+      input: { ...input, organization: 'other-org' },
+      mode: 'write',
+      ownerField: 'organization',
+    })
+    expect(rejected.kind).toBe('reject')
+    if (rejected.kind === 'reject') {
+      expect(rejected.message).toContain('organization "Flow-Research"')
+    }
+  })
 })

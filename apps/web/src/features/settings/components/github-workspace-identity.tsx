@@ -6,6 +6,7 @@ import { toast } from 'sonner'
 import type { MemberWithUser } from '@garden/core/types'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button, buttonVariants } from '@garden/ui/components/ui/button'
+import { cn } from '@garden/ui/lib/utils'
 import {
   Dialog,
   DialogContent,
@@ -102,30 +103,31 @@ export function GithubWorkspaceIdentitySection() {
           Loading membership...
         </div>
       ) : (
-        <div className="flex min-w-0 items-center gap-3 rounded-lg border p-4">
+        <div className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-4 rounded-lg border p-4 sm:items-center">
           <span className="flex size-9 shrink-0 items-center justify-center rounded-md border bg-background">
             <BrandGithubIcon className="size-5" aria-hidden="true" />
           </span>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <p className="text-sm font-medium">GitHub</p>
+          <div className="min-w-48 flex-1 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm leading-5 font-medium">GitHub</p>
               <Badge
                 variant={membership.github_login ? 'secondary' : 'outline'}
               >
                 {membership.github_login ? 'Linked' : 'Not linked'}
               </Badge>
             </div>
-            <p className="truncate text-xs text-muted-foreground">
+            <p className="text-xs leading-5 break-words text-muted-foreground">
               {membership.github_login
                 ? `@${membership.github_login}`
-                : 'Not linked yet. Agents cannot assign GitHub issues to you.'}
+                : 'Link your account so agents can assign GitHub issues to you.'}
             </p>
           </div>
           {membership.github_login ? (
             <Button
               type="button"
               size="sm"
-              variant="ghost"
+              variant="outline"
+              className="w-full sm:w-auto"
               disabled={unlinking}
               onClick={() => void handleUnlink()}
             >
@@ -135,7 +137,11 @@ export function GithubWorkspaceIdentitySection() {
           ) : (
             <a
               href="/api/github/identity/start"
-              className={buttonVariants({ size: 'sm', variant: 'outline' })}
+              className={cn(
+                // cn resolves the base border-transparent against outline's border.
+                buttonVariants({ size: 'sm', variant: 'outline' }),
+                'w-full sm:w-auto',
+              )}
             >
               Link with GitHub
             </a>

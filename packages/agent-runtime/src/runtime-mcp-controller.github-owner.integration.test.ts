@@ -40,7 +40,10 @@ type GithubCall = {
   authorization: string | null
 }
 
-type GithubStubOptions = { branchesStatus?: number }
+type GithubStubOptions = {
+  branchesStatus?: number
+  canonicalAccount?: string
+}
 
 /**
  * Effect's `FetchHttpClient` captures the platform `fetch` reference once, so
@@ -86,6 +89,7 @@ const githubHttp = vi.hoisted(() => {
 function stubGithub(options: GithubStubOptions = {}): GithubCall[] {
   githubHttp.state.calls = []
   githubHttp.state.handler = async (input, init) => {
+    const account = options.canonicalAccount ?? ACCOUNT
     const url =
       input instanceof URL
         ? input
@@ -95,6 +99,9 @@ function stubGithub(options: GithubStubOptions = {}): GithubCall[] {
         status,
         headers: { 'content-type': 'application/json' },
       })
+    if (url.pathname === `/app/installations/${INSTALLATION_ID}`) {
+      return json({ account: { login: account } })
+    }
     if (
       url.pathname === `/app/installations/${INSTALLATION_ID}/access_tokens`
     ) {
@@ -116,13 +123,19 @@ function stubGithub(options: GithubStubOptions = {}): GithubCall[] {
       return json([{ name: 'main', commit: { sha: 'def456' } }])
     }
     if (
-      url.pathname === `/repos/${ACCOUNT}/garden/issues` &&
+      url.pathname === '/repos/cloudflare/agents/forks' &&
+      init?.method === 'POST'
+    ) {
+      return json({ full_name: `${account}/agents` }, 202)
+    }
+    if (
+      url.pathname === `/repos/${account}/garden/issues` &&
       init?.method === 'POST'
     ) {
       return json(
         {
           number: 7,
-          html_url: `https://github.com/${ACCOUNT}/garden/issues/7`,
+          html_url: `https://github.com/${account}/garden/issues/7`,
         },
         201,
       )
@@ -212,6 +225,8 @@ function githubToolSurface() {
       run(tool('github', 'list_branches'), input),
     runNativeWrite: (input: unknown) =>
       run(tool('github', 'issue_write'), input),
+    runNativeFork: (input: unknown) =>
+      run(tool('github', 'fork_repository'), input),
     runHostedRead: (input: unknown) =>
       run(tool('github-mcp', 'list_issues'), input),
     runHostedWrite: (input: unknown) =>
@@ -248,7 +263,60 @@ describe('GitHub owner gate end to end (#332)', () => {
       error: true,
       message: expect.stringContaining(ACCOUNT),
     })
-    expect(calls).toEqual([])
+    expect(calls.map((call) => call.path)).toEqual([
+      `/app/installations/${INSTALLATION_ID}`,
+    ])
+  })
+
+  it('allows a renamed installation owner after one canonical identity lookup', async () => {
+    const renamed = 'Flow-Research-New'
+    const calls = stubGithub({ canonicalAccount: renamed })
+    const { runNativeWrite } = githubToolSurface()
+    await expect(
+      runNativeWrite({ owner: renamed, repo: 'garden', title: 'Fix' }),
+    ).resolves.toMatchObject({ number: 7 })
+    expect(calls.map((call) => call.path)).toEqual([
+      `/app/installations/${INSTALLATION_ID}`,
+      `/app/installations/${INSTALLATION_ID}/access_tokens`,
+      `/repos/${renamed}/garden/issues`,
+    ])
+  })
+
+  it('blocks the write when the installation owner cannot be confirmed', async () => {
+    const calls = stubGithub()
+    githubHttp.state.handler = async () =>
+      new Response(JSON.stringify({ message: 'Unavailable' }), { status: 503 })
+    const { runNativeWrite } = githubToolSurface()
+    await expect(
+      runNativeWrite({
+        owner: 'Renamed-Research',
+        repo: 'garden',
+        title: 'Fix',
+      }),
+    ).resolves.toMatchObject({
+      error: true,
+      message: expect.stringContaining('Flow-Research'),
+    })
+    expect(calls.map((call) => call.path)).toEqual([
+      `/app/installations/${INSTALLATION_ID}`,
+    ])
+  })
+
+  it('forks an external repository into the connected organization', async () => {
+    const calls = stubGithub()
+    const { runNativeFork } = githubToolSurface()
+
+    await expect(
+      runNativeFork({
+        owner: 'cloudflare',
+        repo: 'agents',
+        organization: ACCOUNT,
+      }),
+    ).resolves.toEqual({ full_name: `${ACCOUNT}/agents` })
+    expect(calls.map((call) => call.path)).toEqual([
+      `/app/installations/${INSTALLATION_ID}/access_tokens`,
+      '/repos/cloudflare/agents/forks',
+    ])
   })
 
   it('corrects a re-cased owner and reads the repository with the canonical path', async () => {
@@ -292,9 +360,8 @@ describe('GitHub owner gate end to end (#332)', () => {
     expect(calls.at(-1)?.path).toBe('/repos/cloudflare/agents/branches')
   })
 
-  // Wrong repository name (right owner) still 404s at GitHub; the tool result
-  // must carry the retry hint through the real error classification.
-  it('returns the list_repositories hint when the repository name 404s', async () => {
+  // A branch 404 cannot identify whether the repository or branch is absent.
+  it('does not redirect a branch 404 to another repository', async () => {
     const calls = stubGithub({ branchesStatus: 404 })
     const { runNativeRead } = githubToolSurface()
 
@@ -302,7 +369,7 @@ describe('GitHub owner gate end to end (#332)', () => {
 
     expect(result).toMatchObject({
       error: true,
-      message: expect.stringContaining('list_repositories'),
+      message: expect.not.stringContaining('list_repositories'),
     })
     expect(calls.at(-1)?.path).toBe(`/repos/${ACCOUNT}/garden-cli/branches`)
   })
@@ -319,7 +386,9 @@ describe('GitHub owner gate end to end (#332)', () => {
 
     expect(result).toMatchObject({ error: true })
     expect(callHostedTool).not.toHaveBeenCalled()
-    expect(calls).toEqual([])
+    expect(calls.map((call) => call.path)).toEqual([
+      `/app/installations/${INSTALLATION_ID}`,
+    ])
   })
 
   it('corrects a re-cased owner on a native write before POSTing', async () => {
