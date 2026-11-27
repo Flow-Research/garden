@@ -182,7 +182,7 @@ AI binding. Two things to know about that binding:
 `docker compose -f compose.dev.yaml exec ollama ollama list` for the Docker
 option).
 
-**File upload fails while indexing:** offline mode embeds with `GARDEN_EMBEDDING_MODEL` (`all-minilm` by default) at `GARDEN_MODEL_BASE_URL` (`POST /v1/embeddings`). Pull that model, then retry the upload. A 404 means the embedding model is missing. A dimension error means the model is not 384-d. If a local request times out, increase `GARDEN_EMBEDDING_TIMEOUT_SECONDS`. `Binding AI needs to be run remotely` means this process is not in offline mode or explicitly set to `GARDEN_EMBEDDING_PROVIDER=openai-compatible`; start it with `pnpm dev:offline`.
+**File upload fails while indexing:** offline mode embeds with `GARDEN_EMBEDDING_MODEL` (`all-minilm` by default) at `GARDEN_MODEL_BASE_URL` (`POST /v1/embeddings`). Pull that model, then retry the upload. A 404 means the embedding model is missing. A dimension error means the model is not 384-d. If a local request times out, increase `GARDEN_EMBEDDING_TIMEOUT_SECONDS`. `Binding AI needs to be run remotely` means this process is not in offline mode or explicitly set to `GARDEN_EMBEDDING_PROVIDER=openai-compatible`; [return to the local model](docs/development/onboarding.md#return-to-the-local-model).
 
 **Workers AI fails in standard mode:** run `wrangler whoami` again and check
 that `CLOUDFLARE_ACCOUNT_ID` in `.env` belongs to the authenticated account.
@@ -217,7 +217,8 @@ deliberately.
 
 `pnpm dev:containers` enables Cloudflare Sandbox containers. Core application
 state still runs locally and Workers AI remains remote. This mode requires
-Docker:
+Docker. Follow the [Workers AI setup](docs/development/onboarding.md#use-workers-ai-when-required)
+to select the correct Helix database, then use this command in place of `pnpm dev`:
 
 ```bash
 pnpm dev:containers

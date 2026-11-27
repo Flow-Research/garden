@@ -155,15 +155,17 @@ pnpm dev
 
 Use the `garden-workers-ai` project only with the Workers AI embedding model.
 On first use, this project creates its own Postgres and Helix volumes. Create
-a workspace and add the files you want to search. The original project keeps
+an account and workspace and add the files you want to search. The original project keeps
 its local data.
-
-To return to Ollama, stop the Garden app. Stop the Workers AI services with
-`docker compose -p garden-workers-ai -f compose.dev.yaml stop`. Then use the
-local model instructions above to start the original project.
 
 Workers AI usage can create charges on your Cloudflare account. The default
 model, `@cf/zai-org/glm-5.3`, is not available on the free plan.
+
+### Return to the local model
+
+Stop the Garden app. Stop the Workers AI services with
+`docker compose -p garden-workers-ai -f compose.dev.yaml stop`. Then use the
+local model instructions above to start the original project.
 
 ## Understand the system boundaries
 
@@ -285,16 +287,16 @@ docker compose -f compose.dev.yaml exec ollama ollama list
 File upload also embeds. Offline mode calls `POST /v1/embeddings` with
 `all-minilm` (384 dimensions), not the chat model and not Workers AI. If
 indexing says that model was not found, pull it and retry the upload. If it
-still says `Binding AI needs to be run remotely`, restart with
-`pnpm dev:offline` so `GARDEN_OFFLINE` reaches the worker. Vectors from
+still says `Binding AI needs to be run remotely`, follow the steps to
+[return to the local model](#return-to-the-local-model). Vectors from
 `all-minilm` and Workers AI `bge-small` are the same width and are not
 interchangeable; use one embedding provider for a given Helix database.
 
 ### Workers AI does not respond
 
 Run `wrangler whoami` again. Confirm that `CLOUDFLARE_ACCOUNT_ID` matches the
-authenticated account. Use the local-model configuration if the account does
-not have the Workers paid plan.
+authenticated account. If the account does not have the Workers paid plan,
+[return to the local model](#return-to-the-local-model).
 
 ### A connector is unavailable
 

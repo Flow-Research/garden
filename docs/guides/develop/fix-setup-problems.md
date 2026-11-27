@@ -47,7 +47,7 @@ It starts a separate Compose project so Workers AI searches its own Helix data.
 
 If a run fails with "The configured AI model was retired by its provider", Cloudflare has removed the model that Garden is configured to use. Update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts` to a supported model. Deployed targets report this daily through the [model health check](../../concepts/features/model-health-check.md).
 
-Run `wrangler whoami` again. Confirm that `CLOUDFLARE_ACCOUNT_ID` matches the signed-in account. If the account is not on the Workers paid plan, use `pnpm dev:offline`.
+Run `wrangler whoami` again. Confirm that `CLOUDFLARE_ACCOUNT_ID` matches the signed-in account. If the account is not on the Workers paid plan, [return to the local model](../../development/onboarding.md#return-to-the-local-model).
 
 ## A connector is unavailable
 
