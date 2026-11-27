@@ -22,10 +22,12 @@ The same value goes in two places. The gateway reads it as `BRAIN_API_SECRET`. G
 
 1. Create a Docker Compose resource from the Garden repository.
 2. Set the Compose file path to `compose.brain.yaml`.
-3. Under **Environment Variables**, add `BRAIN_API_SECRET` with the secret.
-4. Deploy the stack.
-5. Confirm that the `helix` and `gateway` services are running.
-6. Assign a domain to the `gateway` service only. Set its container port to `3000` and leave the path empty.
+3. Under **Environment Variables**, add `BRAIN_API_SECRET`, `S3_BUCKET`, `DB_PATH`, `AWS_ENDPOINT`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY`.
+4. Mark the gateway secret and both R2 credential values as protected variables.
+5. Follow [Prepare R2 storage](#prepare-r2-storage) before the first R2 deploy.
+6. Deploy the stack.
+7. Confirm that the `helix` and `gateway` services are running.
+8. Assign a domain to the `gateway` service only. Set its container port to `3000` and leave the path empty.
 
 The production domain is `https://brain-api.flowresearch.tech`. Do not assign a domain to `helix`.
 
@@ -74,27 +76,23 @@ Garden sends `Authorization: Bearer <HELIX_API_KEY>` to `POST <HELIX_URL>/v2/que
 
     An invalid query with the right secret returns a Helix validation error. That error proves the request reached HelixDB.
 
-## Move storage to R2
+## Prepare R2 storage
 
-HelixDB uses either `HELIX_DATA_DIR` or `S3_BUCKET`, never both. Switching does not copy data, so plan the data move first.
+`compose.brain.yaml` selects R2 with `S3_BUCKET`. It does not mount the old `helix-data` volume. Deployment does not move data from that volume to R2.
 
-1. In the `helix` service, remove the `HELIX_DATA_DIR` variable and the `helix-data` volume mount.
-2. Add these variables to the `helix` service:
+The owner must confirm that the old volume contains only disposable test data before accepting an empty R2 database. If old data must remain available, complete the approved migration into the target prefix and verify the retained records there before switching traffic. Test a restore in a separate prefix. Keep the old volume until that decision and the checks after cutover finish.
 
-    ```yaml
-    environment:
-      S3_BUCKET: ${S3_BUCKET}
-      S3_REGION: ${S3_REGION:-auto}
-      DB_PATH: ${DB_PATH:-production/}
-      AWS_ENDPOINT: ${AWS_ENDPOINT}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
-    ```
+Set `S3_BUCKET` to the R2 bucket name. Set `AWS_ENDPOINT` to its HTTPS S3 endpoint. Set `S3_REGION` to `auto` or leave it unset. Set `DB_PATH` to a unique prefix for this deployment, such as `production/` for production. Do not reuse the same bucket and prefix for staging or preview.
 
-3. Add the values to the deployment environment as protected variables.
-4. Redeploy and run the checks above.
+Compose requires the bucket, prefix, endpoint, access key, and secret key. These checks only test that values exist. They do not prove that Helix opened the intended R2 location. Confirm that the pinned `v0.0.4` image reads these variables before deployment. Helix requires conditional object writes, so confirm that R2 rejects writes when an object condition fails.
 
-Do not delete the `helix-data` volume while it holds data you need.
+Create an R2 token with read, write, and list access to this bucket only. Do not use an account-wide token. Store both token values as protected variables in Coolify. Do not set `HELIX_DATA_DIR` with `S3_BUCKET`.
+
+Before the cutover, make an independent backup of data that must survive. Record the bucket and prefix in the operations record. Set up a backup schedule and test a restore into a separate prefix. Do not treat the R2 bucket as its own backup.
+
+Before switching traffic, record either the owner’s confirmation that the old data is disposable or the completed migration and verified record comparison. Stop the old Helix container before the new container opens the same bucket and prefix. Keep one writer on that prefix during deployment and rollback. Confirm this stop-before-start order in Coolify before the first cutover.
+
+After the deploy, send a valid HelixDB v2 write query with a unique test record. Read that record through the gateway. Restart only the Helix container, then read the same record again. Confirm that objects appeared under the intended R2 bucket and prefix. A successful `/readyz` response alone does not prove persistence.
 
 ## Rotate the secret
 
@@ -162,5 +160,10 @@ Before you connect production Garden, confirm each item:
 - HelixDB has no public domain and no published host port.
 - Only the Caddy gateway is public.
 - `HELIX_URL` and `HELIX_API_KEY` exist only in Garden's server environment.
-- Persistent storage and backups are planned.
+- The owner confirmed that the old data is disposable, or the approved migration finished and the retained records were verified at the target.
+- The R2 token reaches only the selected bucket.
+- Production and nonproduction use different R2 prefixes.
+- A separate backup exists and a restore into another prefix worked.
+- Coolify stops the old Helix writer before starting its replacement.
+- A written record remains readable after a Helix restart.
 - The authenticated `/readyz` check passes.

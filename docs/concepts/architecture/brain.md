@@ -32,7 +32,7 @@ The components split the work like this:
 
 - **Garden's server** holds the Brain credentials. It authenticates users, picks the active workspace, and builds every Helix query. `HelixClient` in `packages/brain/src/services/HelixClient.ts` sends each query as `POST <HELIX_URL>/v2/query` with a 30 second deadline.
 - **The Caddy gateway** is the only public entry. It answers `/healthz` without auth, checks the bearer secret on every other path, removes the `Authorization` header, and forwards the request to `helix:8080`. It returns 401 for anything else.
-- **HelixDB** stores the graph and vectors and runs queries. It has no public domain and no host port. Its data sits in the `helix-data` Docker volume.
+- **HelixDB** stores the graph and vectors and runs queries. It has no public domain and no host port. The production Compose file selects R2 object storage.
 - **Docker Compose** puts both services on one private network and gives HelixDB the host name `helix`.
 - **Coolify** handles deploys, environment variables, volumes, logs, the public domain, and TLS. It does not do Brain authentication. Caddy does.
 
@@ -55,9 +55,9 @@ The rules this layer follows:
 - One workspace cannot read or change another workspace's records.
 - Agents and automations use typed Brain operations, not raw queries.
 
-## Storage is local for now
+## Storage in the production stack
 
-HelixDB stores data in the `helix-data` volume through `HELIX_DATA_DIR`. HelixDB can use S3-compatible storage such as R2 instead, but not both at once. Switching does not copy existing data. The [deploy Brain guide](../../guides/operate/deploy-brain.md) has the steps.
+`compose.brain.yaml` selects R2 with `S3_BUCKET`. The local development stack still uses a Docker volume through `HELIX_DATA_DIR`. HelixDB cannot use both storage modes at once. Switching the production stack does not copy data from the old `helix-data` volume. The [deploy Brain guide](../../guides/operate/deploy-brain.md) records the cutover requirements.
 
 ## Run authority and repeated write-back
 

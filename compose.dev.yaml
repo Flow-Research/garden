@@ -7,7 +7,7 @@
 #
 # It also boots HelixDB, the Brain graph/vector store, on 6968 — the port
 # `wrangler.containers.jsonc` and the Brain tests already point HELIX_URL at.
-# Data persists in a volume like the deployed compose.brain.yaml stack.
+# Local data persists in a volume. The deployed compose.brain.yaml stack uses R2.
 #
 # `pnpm offline:up:ollama` additionally starts Ollama for offline mode
 # (`pnpm dev:offline`), serving the default local model on 11434. Skip the
