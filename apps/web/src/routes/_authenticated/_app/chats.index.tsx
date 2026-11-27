@@ -13,7 +13,7 @@ function ChatsIndexRoute() {
   // (smoke-observed 2026-09: sending from /chats looked like a vanishing send).
   return (
     <AgentInteractionScreen
-      className="min-h-0 flex-1 bg-background"
+      className="min-h-0 flex-1"
       onSessionChange={(session) => openChatSession(session)}
     />
   )
