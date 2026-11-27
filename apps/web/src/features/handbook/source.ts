@@ -6,7 +6,8 @@ import { handbookBasePath } from './base-path'
  * The handbook renders the repository's `docs/` folder, so a merged pull
  * request updates the site with no second copy to keep in sync. Only the
  * Diátaxis folders are pages. `docs/README.md` stays a GitHub and agent
- * reading guide, and `assets/`, `templates/`, and `garden-os/` are not pages.
+ * reading guide, and `assets/`, `diagrams/`, `templates/`, and `garden-os/` are
+ * not pages.
  *
  * `applyMdxPreset` keeps Fumadocs' default heading, TOC, and code plugins;
  * a collection-level `mdxOptions` alone would drop them. `async` keeps each
