@@ -109,6 +109,20 @@ describe('TeamAgentPolicySheet', () => {
     expect(toast.success).toHaveBeenCalled()
   })
 
+  it('describes what an unconnected provider offers and shows its setup status', async () => {
+    apiMocks.getTeamAgentPolicy.mockResolvedValue(response())
+    renderSheet()
+
+    fireEvent.click(
+      await screen.findByRole('tab', { name: 'Connector Grants' }),
+    )
+    expect(
+      screen.getByRole('switch', { name: 'Google Drive' }),
+    ).toHaveAccessibleDescription(
+      'Find, read, and create files. Not set up in this workspace',
+    )
+  })
+
   it('rolls the cache back when the save fails', async () => {
     apiMocks.getTeamAgentPolicy.mockResolvedValue(response())
     apiMocks.updateTeamAgentPolicy.mockRejectedValue(new Error('nope'))
