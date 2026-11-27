@@ -31,3 +31,16 @@
   --color-fd-accent-foreground: var(--accent-foreground);
   --color-fd-ring: var(--ring);
 }
+
+/*
+ * draw.io diagrams carry their own light palette (white page, dark text,
+ * pastel fills), and an `<img>` SVG cannot read the page theme. A white card
+ * keeps them legible in dark mode without inverting their colors. The bundled
+ * asset name keeps the `.drawio` part of `name.drawio.svg`.
+ */
+.prose img[src*='.drawio'] {
+  background: #fff;
+  border: 1px solid var(--color-fd-border);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+}

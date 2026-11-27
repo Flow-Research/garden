@@ -11,6 +11,12 @@ Pstack is the default workflow for agents that have it. Contributors without
 pstack follow the same scope, design, implementation, proof, review, and
 handoff steps. Do not treat pstack as a runtime dependency of Garden.
 
+Architecture diagrams in `docs/diagrams/` must match the code. When a change
+touches what a diagram shows (components, a run flow, the host protocol, or
+storage), update the diagram and its "checked against" commit in the same pull
+request. Follow `.agents/skills/diagrams/SKILL.md`. The PR contract enforces
+this for the paths in `docs/diagrams/manifest.json`.
+
 Session rules:
 
 - When talking to the user, sacrifice grammar for concision. Drop articles, punctuation, capitalization — whatever shaves words without losing meaning.
