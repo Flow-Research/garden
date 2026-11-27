@@ -10,6 +10,12 @@ import type {
   IssueWorkProduct,
 } from '@garden/core/types'
 import {
+  parseRunFailure,
+  runFailure,
+  runFailureEventPayloadSchema,
+  toPublicRunFailure,
+} from '@garden/core/runs/failure'
+import {
   canResumeWaitingRun,
   LIVE_RUN_STATUSES,
   shouldSkipIssueRunStart,
@@ -23,8 +29,6 @@ import {
   type RunWorkflowBinding,
   type RunWorkflowControlEvent,
 } from '../runtime-bindings'
-
-const WORKFLOW_START_FAILURE_RETRY_DELAY_MS = 5_000
 
 export class IssueRunServiceError extends TaggedError('IssueRunServiceError')<{
   code:
@@ -210,7 +214,27 @@ function usageFromJson(value: unknown): IssueRun['usage'] {
   }
 }
 
+function storedRunFailure(row: typeof schema.issueRun.$inferSelect) {
+  const resultFailure = parseRunFailure(row.resultJson).match({
+    ok: (failure) => failure,
+    err: () => runFailure('unknown'),
+  })
+  if (resultFailure.cause !== 'unknown') return resultFailure
+  return parseRunFailure(row.error).match({
+    ok: (failure) => failure,
+    err: () => runFailure('unknown'),
+  })
+}
+
 export function toIssueRun(row: typeof schema.issueRun.$inferSelect): IssueRun {
+  const resultJson = objectOrNull(row.resultJson)
+  const blockedReason =
+    resultJson?.resolution === 'mark_blocked' &&
+    typeof resultJson.reason === 'string'
+      ? resultJson.reason
+      : row.status === 'blocked'
+        ? row.error
+        : null
   return {
     id: row.id,
     workspace_id: row.workspaceId,
@@ -224,10 +248,11 @@ export function toIssueRun(row: typeof schema.issueRun.$inferSelect): IssueRun {
     workflow_instance_id: row.workflowInstanceId,
     cancel_requested_at: dateToIso(row.cancelRequestedAt),
     context_snapshot: objectOrNull(row.contextSnapshot),
-    result_json: objectOrNull(row.resultJson),
+    result_json: resultJson,
     usage_json: objectOrNull(row.usageJson),
     usage: usageFromJson(row.usageJson),
-    error: row.error ?? null,
+    failure: row.status === 'failed' ? storedRunFailure(row) : null,
+    blocked_reason: blockedReason,
     started_at: dateToIso(row.startedAt),
     finished_at: dateToIso(row.finishedAt),
     created_at: dateToIso(row.createdAt) ?? new Date().toISOString(),
@@ -238,6 +263,18 @@ export function toIssueRun(row: typeof schema.issueRun.$inferSelect): IssueRun {
 export function toIssueRunEvent(
   row: typeof schema.issueRunEvent.$inferSelect,
 ): IssueRunEvent {
+  const payload = objectOrNull(row.payload)
+  const safePayload =
+    row.eventType === 'issue_run:failed'
+      ? {
+          failure: toPublicRunFailure(
+            parseRunFailure(payload).match({
+              ok: (failure) => failure,
+              err: () => runFailure('unknown'),
+            }),
+          ),
+        }
+      : payload
   return {
     id: row.id,
     workspace_id: row.workspaceId,
@@ -247,8 +284,11 @@ export function toIssueRunEvent(
     event_type: row.eventType as IssueRunEvent['event_type'],
     stream: row.stream as IssueRunEvent['stream'],
     level: row.level as IssueRunEvent['level'],
-    message: row.message ?? null,
-    payload: objectOrNull(row.payload),
+    message:
+      row.eventType === 'issue_run:failed'
+        ? 'Run failed'
+        : (row.message ?? null),
+    payload: safePayload,
     created_at: dateToIso(row.createdAt) ?? new Date().toISOString(),
   }
 }
@@ -425,7 +465,7 @@ async function finalizeOrphanedRunCancelled(args: {
           .update(schema.issueRun)
           .set({
             status: 'cancelled',
-            error: args.error.message,
+            error: 'workflow_start_failed',
             resultJson: { resolution: 'cancelled', reason: args.error.reason },
             finishedAt: now,
             updatedAt: now,
@@ -553,6 +593,10 @@ async function markStartFailed(args: {
   runId: string
   error: IssueRunServiceError
 }): Promise<ResultValue<void, IssueRunServiceError>> {
+  const failure = {
+    ...runFailure('workflow_start_failed'),
+    diagnostic: args.error.message,
+  }
   const db = getDb(args.env)
   const now = new Date()
   const writeResult = await Result.tryPromise({
@@ -562,7 +606,7 @@ async function markStartFailed(args: {
           .update(schema.issueRun)
           .set({
             status: 'failed',
-            error: args.error.message,
+            error: 'workflow_start_failed',
             finishedAt: now,
             updatedAt: now,
           })
@@ -600,11 +644,9 @@ async function markStartFailed(args: {
     stream: 'system',
     level: 'error',
     message: 'Run failed before workflow start',
-    payload: {
-      reason: 'workflow_start_failed',
-      retry_after_ms: WORKFLOW_START_FAILURE_RETRY_DELAY_MS,
-      error: args.error.message,
-    },
+    payload: runFailureEventPayloadSchema.parse({
+      failure: toPublicRunFailure(failure),
+    }),
   })
   if (eventResult.isErr()) return Result.err(eventResult.error)
 

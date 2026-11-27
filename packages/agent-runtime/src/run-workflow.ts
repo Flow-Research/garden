@@ -6,6 +6,7 @@ import {
 import { TaggedError } from 'better-result'
 import { disposeRpcResult } from '@garden/app-state/platform/rpc'
 import { createGardenLogger } from '@garden/observability/logger'
+import { runFailure, type PublicRunFailure } from '@garden/core/runs/failure'
 import type { AgentDO } from './agent-do'
 import {
   DECIDE_ANALYSIS_OWNER_WAIT_MS,
@@ -99,7 +100,7 @@ export type RunWorkflowTurnCompletion = {
 }
 
 export type RunWorkflowTurnCompleteEvent = {
-  error?: string
+  failure?: PublicRunFailure
   status: string
   submissionId: string
 }
@@ -233,16 +234,16 @@ export class RunWorkflow extends AgentWorkflow<
           `turn-${turn}-live-run-failed`,
           { retries: TURN_RETRIES },
           async () => {
-            const reason = 'workflow_ended_with_live_run'
+            const failure = runFailure('workflow_ended_with_live_run')
             return event.payload.kind === 'automation'
               ? disposeRpcResult(
-                  await this.agent.failAutomationRunTurn({ runId, reason }),
+                  await this.agent.failAutomationRunTurn({ runId, failure }),
                 )
               : disposeRpcResult(
                   await this.agent.failRunTurn({
                     runId,
                     issueId: event.payload.issueId,
-                    reason,
+                    failure,
                   }),
                 )
           },
@@ -396,20 +397,20 @@ export class RunWorkflow extends AgentWorkflow<
           `turn-${input.turn}-timed-out`,
           { retries: TURN_RETRIES },
           async () => {
-            const reason = 'turn_timed_out'
+            const failure = runFailure('turn_timed_out')
             const failed =
               payload.kind === 'automation'
                 ? disposeRpcResult(
                     await this.agent.failAutomationRunTurn({
                       runId: input.runId,
-                      reason,
+                      failure,
                     }),
                   )
                 : disposeRpcResult(
                     await this.agent.failRunTurn({
                       runId: input.runId,
                       issueId: payload.issueId,
-                      reason,
+                      failure,
                     }),
                   )
             return { status: failed.status }
