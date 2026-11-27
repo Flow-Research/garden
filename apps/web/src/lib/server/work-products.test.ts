@@ -578,23 +578,23 @@ const filesState = vi.hoisted(() => ({
 }))
 
 vi.mock('./brain-folders', () => ({
-  listBrainFolders: async (args: { workspaceId: string }) =>
-    filesState.folders.filter(
-      (folder) => folder.workspaceId === args.workspaceId,
-    ),
-  createBrainFolder: async (args: {
-    workspaceId: string
-    name: string
-    privacy: string
-  }) => {
-    const id = `created-${filesState.folders.length}`
-    filesState.folders.push({
-      id,
-      workspaceId: args.workspaceId,
-      name: args.name,
-      privacy: args.privacy,
-    })
-    return { id }
+  getOrCreateApprovedFolder: async (_db: unknown, workspaceId: string) => {
+    const name = 'Flow Research'
+    const existing = filesState.folders.find(
+      (folder) =>
+        folder.workspaceId === workspaceId &&
+        folder.name === name &&
+        folder.privacy === 'shared',
+    )
+    if (existing) return existing
+    const folder = {
+      id: `created-${filesState.folders.length}`,
+      workspaceId,
+      name,
+      privacy: 'shared',
+    }
+    filesState.folders.push(folder)
+    return folder
   },
   addBrainFolderFile: async (args: { folderId: string; fileId: string }) => {
     filesState.memberships.push({

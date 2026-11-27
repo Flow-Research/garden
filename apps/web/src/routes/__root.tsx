@@ -7,6 +7,7 @@ import {
 import type { QueryClient } from '@tanstack/react-query'
 import { Suspense, lazy } from 'react'
 import { PostHogErrorBoundary, PostHogProvider } from '@posthog/react'
+import { GardenBackdrop } from '@/components/garden-foliage'
 import { WebProviders } from '@/components/web-providers'
 import {
   isPostHogBrowserEnabled,
@@ -140,6 +141,7 @@ function RootErrorFallback() {
 function RootAppShell() {
   return (
     <WebProviders>
+      <GardenBackdrop />
       <Outlet />
     </WebProviders>
   )

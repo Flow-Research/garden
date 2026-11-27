@@ -3,7 +3,7 @@ title: Issues are the shared ledger of work for people and agents
 description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-24
 ---
 
 An issue is a unit of work that a person or an agent owns. The UI calls issues Tasks and shows them at `/tasks`. Assigning an issue to an agent turns it into a run: the agent works on the issue in the background, records what it did, and returns reviewable outputs to the same issue.
@@ -70,7 +70,7 @@ The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accu
 
 An issue can carry source bindings. `packages/server/src/issues/source-binding.ts` attaches and lists them. During a run the agent reads the bound item with the `read_source` tool from `packages/agent-runtime/src/agent-tools/read-source.ts`, so it works from the original pull request, message, or email thread instead of a pasted summary.
 
-The run returns its results as work products. The `create_work_product` and `revise_work_product` tools write `issue_work_product` rows. A work product is a reviewable deliverable such as a report, checklist, plan, or proposed change. `apps/web/src/lib/server/work-products.ts` handles review and apply.
+The run returns its results as work products. The `create_work_product` and `revise_work_product` tools write `issue_work_product` rows. A work product is a reviewable deliverable such as a report, checklist, plan, or proposed change. `apps/web/src/lib/server/work-products.ts` handles review and apply. The task page's **Activity** tab shows work-product cards followed by system activity (status changes, run failures); comments and agent replies live in the **Comments** tab, and Activity links to each agent reply.
 
 Approving a work product offers two choices, and the review request must name one through the required `close_issue` flag. **Approve** (`close_issue: false`) marks the work product approved and moves an `in_review` issue back to `in_progress`, so the issue stays open and a later `@Garden` comment can start a follow-up run. **Approve and close** (`close_issue: true`) moves an `in_review` issue to `done`. Comment wakeups skip `done` issues, so closing ends agent follow-ups until someone reopens the issue. Both choices leave an issue in any other status unchanged.
 
@@ -80,9 +80,9 @@ The server then reads the head of the base branch, creates `garden/work-product-
 
 Approving a workspace-wide document saves it to Files & Folders. When a `brief`, `plan`, `report`, or `checklist` work product is approved, through either **Approve** or **Approve and close**, the server writes the approved body (the edited body when the reviewer edited it) as `<title-slug>.md` through `saveBrainFileUpload` in `apps/web/src/lib/server/brain-file-upload.ts`. That is the same stage, index, and audit path that `POST /api/brain/files` uses, so the file is owned by the approving person and is indexed and searchable like an upload. `pull_request` and `connector_reply` work products are not saved. There is no manual save control and no folder picker.
 
-Team issue documents stay on the issue because Brain files are readable by all workspace members. A workspace issue saves to the shared folder named after the workspace. Names longer than 50 characters use the shared folder “Approved workspace documents”. Garden creates the shared folder if necessary. The file is added to the folder, Garden records `payload.saved_file` (`workProductSavedFileSchema` in `packages/core/src/issues/work-product-saved-file.ts`: file id, name, folder id, content URL, who saved it, when), and it appends `issue_run:work_product_saved_to_files` with the approving person as `actor_user_id`.
+Team issue documents stay on the issue because Brain files are readable by all workspace members. A workspace issue saves to the shared folder named after the workspace. Names longer than 50 characters use the shared folder “Approved workspace documents”. If the shared folder does not exist, concurrent approvals in the same workspace create one folder and use it for every document. The file is added to the folder, Garden records `payload.saved_file` (`workProductSavedFileSchema` in `packages/core/src/issues/work-product-saved-file.ts`: file id, name, folder id, content URL, who saved it, when), and it appends `issue_run:work_product_saved_to_files` with the approving person as `actor_user_id`.
 
-Saving is a copy, not an apply. It leaves `status` and `applied_external_*` unchanged, so Apply and Apply as PR stay available. Approving a revised work product again overwrites the file identified by the system save event for this work product in place through `overwriteBrainFile`: same file id and R2 key, new bytes, with the Brain item's `size_bytes` and `updated_at` updated by `Brain.replaceFileContent` in the same write that marks it for re-indexing, and the run event carries `overwritten: true`. If that file was deleted from Files, Garden saves a new file and records it instead.
+Saving preserves `status` and `applied_external_*`, so Apply and Apply as PR stay available. The system save event identifies the file for this work product. When a person approves a revision, Garden updates that file only if the person owns it and still has access to its scope. The file keeps its ID and R2 key. `Brain.replaceFileContent` updates the size and time and marks it for indexing. The run event records `overwritten: true`. If the file was deleted or belongs to another person, Garden saves a copy for the current approver and records its link. A retry uses that approver’s existing copy, including a partial save that has no save event yet. Only an approved work product can be saved.
 
 A failed save does not undo the approval. The approve response carries `files`, which is `{ status: 'saved', ... }`, `{ status: 'skipped' }` for a type that is not saved, or `{ status: 'failed', message }`. On failure the client shows the toast "Approved, but saving to Files failed" with the message, and the run gets an `issue_run:work_product_save_failed` event at level `error`, so the failure stays on the run timeline after the toast is gone. The issue and inbox cards offer Retry saving to Files for unsaved workspace documents after approval, including documents already applied. A retry leaves the approval and issue status intact.
 
@@ -105,6 +105,41 @@ Computing the Inbox keeps it consistent with the data it summarizes. An item dis
 While a run is active, the issue queries in `apps/web/src/lib/issues/queries.ts` refetch every two seconds (`refetchInterval: 2000`). Issue and comment changes outside a run reach the client through the workspace realtime hub. `apps/web/src/lib/realtime/invalidation.ts` turns `issue:*` and `comment:*` events into query invalidations. The [realtime](../architecture/realtime.md) page explains why the hub only tells clients to refetch.
 
 The issue UI lives in `apps/web/src/features/issues/components`.
+
+## Task detail keeps the history and conversation together
+
+Task detail uses a centered column with an editable title and description. The
+column and its loading wrapper shrink to the available width. Long titles wrap
+in an auto-sizing text field, and Enter finishes editing. On phones, header
+actions use a separate row, conversation metadata wraps, and the properties
+sheet fits the viewport with a visible Close button. Status,
+priority, and due date are editable badges below the description, alongside
+reactions and attachment upload. The header provides **New Sub-task**, the
+existing actions menu, and a properties toggle. The properties rail retains
+assignee, project, parent task, creation details, and debug usage information.
+
+**Activity** shows work-product cards, then system activity such as status
+changes and run failures. Each agent reply also appears there as one
+"<agent> replied" row; selecting it opens **Comments** and highlights the reply.
+**Comments** shows every comment, agent replies included, with threaded replies,
+a count derived from the loaded timeline, and the composer below the thread.
+Switching tabs
+keeps the top-level comment draft. A comment focus link opens Comments directly.
+Subscribers can subscribe or unsubscribe and manage other participants beside
+the tabs. The tabs and subscriber controls stick beneath the task header once
+scrolled into view, keeping navigation available through a long conversation.
+
+Comment cards place the avatar beside author and time, with the action menu at
+the top right. Reactions and Reply sit below the body, followed by an inset
+divider. Collapse and expand live in the action menu alongside existing copy,
+edit, and delete actions. Comment bodies, metadata, and actions wrap on phones.
+
+Agent runs, questions, approvals, plans, and reviewable outputs stay above the
+tabs so either view can reach them. Composer instructions describe an agent run
+only when the task is assigned to an agent. Tasks without an agent use a normal
+comment composer. Empty activity describes task updates rather than scheduled
+automation runs. Meeting cards and other sample content from design mockups are
+not task features.
 
 ## Automations do not create issues
 

@@ -7,7 +7,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { describe, expect, it } from 'vitest'
+import { MotionGlobalConfig } from 'motion/react'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { SettingsPageShell } from './settings-page-shell'
 
 async function renderSettings(path = '/settings/profile') {
@@ -40,6 +41,11 @@ async function renderSettings(path = '/settings/profile') {
 }
 
 describe('Settings page shell', () => {
+  // Assert the settled state; animation timing is not under test here.
+  beforeAll(() => {
+    MotionGlobalConfig.skipAnimations = true
+  })
+
   it('opens a section directly and marks its link current', async () => {
     await renderSettings('/settings/preferences')
     expect(
