@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import {
-  ChevronRight,
+  CornerUpLeft,
   Copy,
   Download,
   FileText,
@@ -26,7 +26,6 @@ import {
 import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   Collapsible,
-  CollapsibleTrigger,
   CollapsibleContent,
 } from '@garden/ui/components/ui/collapsible'
 import { ActorAvatar } from '../../common/actor-avatar'
@@ -220,27 +219,24 @@ function CommentRow({
   }
 
   const reactions = entry.reactions ?? []
-  const contentText = entry.content ?? ''
-  const isLongContent =
-    contentText.length > 500 || contentText.split('\n').length > 8
 
   return (
     <div className={`py-3${isTemp ? ' opacity-60' : ''}`}>
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
         <ActorAvatar
           actorType={entry.actor_type}
           actorId={entry.actor_id}
           label={entry.actor_label}
           size={24}
         />
-        <span className="text-sm font-medium">
+        <span className="min-w-0 max-w-full truncate text-sm font-medium">
           {entry.actor_label ??
             getActorName(entry.actor_type, entry.actor_id ?? '')}
         </span>
         <Tooltip>
           <TooltipTrigger
             render={
-              <span className="text-xs text-muted-foreground cursor-default">
+              <span className="shrink-0 text-xs text-muted-foreground cursor-default">
                 {timeAgo(entry.created_at)}
               </span>
             }
@@ -251,11 +247,7 @@ function CommentRow({
         </Tooltip>
 
         {!isTemp && (
-          <div className="ml-auto flex items-center gap-0.5">
-            <QuickEmojiPicker
-              onSelect={(emoji) => onToggleReaction(entry.id, emoji)}
-              align="end"
-            />
+          <div className="ml-auto flex shrink-0 items-center gap-0.5">
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
@@ -343,7 +335,7 @@ function CommentRow({
         </div>
       ) : (
         <>
-          <div className="mt-1.5 pl-8 text-sm leading-relaxed text-foreground/85">
+          <div className="mt-1.5 min-w-0 pl-8 text-sm leading-relaxed text-foreground/85 [overflow-wrap:anywhere]">
             <ReadonlyContent content={entry.content ?? ''} />
           </div>
           <AttachmentList
@@ -357,7 +349,7 @@ function CommentRow({
               currentUserId={currentUserId}
               onToggle={(emoji) => onToggleReaction(entry.id, emoji)}
               getActorName={getActorName}
-              hideAddButton={!isLongContent}
+              hideAddButton={false}
               className="mt-1.5 pl-8"
             />
           )}
@@ -403,6 +395,8 @@ function CommentCard({
 
   const startEdit = () => {
     cancelledRef.current = false
+    // The editor lives inside CollapsibleContent; a collapsed thread hides it.
+    setOpen(true)
     setEditing(true)
   }
 
@@ -439,54 +433,45 @@ function CommentCard({
   const replyCount = allNestedReplies.length
   const contentPreview = (entry.content ?? '').replace(/\n/g, ' ').slice(0, 80)
   const reactions = entry.reactions ?? []
-  const contentText = entry.content ?? ''
-  const isLongContent =
-    contentText.length > 500 || contentText.split('\n').length > 8
 
   const isHighlighted = highlightedCommentId === entry.id
 
   return (
     <Card
       className={cn(
-        '!py-0 !gap-0 overflow-hidden transition-colors duration-700',
+        'gap-0 min-w-0 overflow-hidden rounded-xl border-0 bg-card p-3 shadow-none ring-0 transition-colors duration-700 sm:p-5',
         isTemp && 'opacity-60',
         isHighlighted && 'ring-2 ring-brand/50 bg-brand/5',
       )}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
-        {/* Header — always visible, acts as toggle */}
-        <div className="px-3.5 py-2.5">
-          <div className="flex items-center gap-2.5">
-            <CollapsibleTrigger className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
-              <ChevronRight
-                className={cn(
-                  'size-3.5 transition-transform',
-                  open && 'rotate-90',
-                )}
-              />
-            </CollapsibleTrigger>
+        <div className="mb-2">
+          <div className="flex items-start gap-3">
             <ActorAvatar
               actorType={entry.actor_type}
               actorId={entry.actor_id}
               label={entry.actor_label}
-              size={24}
+              size={32}
             />
-            <span className="shrink-0 text-sm font-medium">
-              {entry.actor_label ??
-                getActorName(entry.actor_type, entry.actor_id ?? '')}
-            </span>
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <span className="shrink-0 text-xs text-muted-foreground cursor-default">
-                    {timeAgo(entry.created_at)}
-                  </span>
-                }
-              />
-              <TooltipContent side="top">
-                {new Date(entry.created_at).toLocaleString()}
-              </TooltipContent>
-            </Tooltip>
+            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-1">
+              <span className="min-w-0 max-w-full break-words text-sm font-semibold [overflow-wrap:anywhere]">
+                {entry.actor_label ??
+                  getActorName(entry.actor_type, entry.actor_id ?? '')}
+              </span>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <span className="text-xs text-muted-foreground cursor-default">
+                      <span aria-hidden="true">· </span>
+                      {timeAgo(entry.created_at)}
+                    </span>
+                  }
+                />
+                <TooltipContent side="top">
+                  {new Date(entry.created_at).toLocaleString()}
+                </TooltipContent>
+              </Tooltip>
+            </div>
 
             {!open && contentPreview && (
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
@@ -499,12 +484,8 @@ function CommentCard({
               </span>
             )}
 
-            {open && !isTemp && (
-              <div className="ml-auto flex items-center gap-0.5">
-                <QuickEmojiPicker
-                  onSelect={(emoji) => onToggleReaction(entry.id, emoji)}
-                  align="end"
-                />
+            {!isTemp && (
+              <div className="ml-auto flex shrink-0 items-center gap-0.5">
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
@@ -519,6 +500,12 @@ function CommentCard({
                     }
                   />
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => setOpen((current) => !current)}
+                    >
+                      {open ? 'Collapse thread' : 'Expand thread'}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => {
                         copyMarkdown(entry.content ?? '')
@@ -561,11 +548,11 @@ function CommentCard({
         {/* Collapsible body */}
         <CollapsibleContent>
           {/* Parent comment body */}
-          <div className="px-3.5 pb-2.5">
+          <div className="pb-2.5">
             {editing ? (
               <div
                 {...parentDropZoneProps}
-                className="relative pl-10"
+                className="relative pl-[44px]"
                 onKeyDown={(e) => {
                   if (e.key === 'Escape') cancelEdit()
                 }}
@@ -598,29 +585,33 @@ function CommentCard({
               </div>
             ) : (
               <>
-                <div className="pl-10 text-sm leading-relaxed text-foreground/85">
+                <div className="min-w-0 pl-[44px] text-sm leading-relaxed text-foreground/85 [overflow-wrap:anywhere] [&_[data-mention-type=agent]]:rounded-md">
                   <ReadonlyContent content={entry.content ?? ''} />
                 </div>
                 <AttachmentList
                   attachments={entry.attachments}
                   content={entry.content}
-                  className="mt-1.5 pl-10"
+                  className="mt-1.5 pl-[44px]"
                 />
                 {!isTemp && (
-                  <div className="mt-1.5 pl-10 flex items-center gap-2">
+                  <div className="mt-4 pl-[44px] flex flex-wrap items-center gap-2">
+                    <QuickEmojiPicker
+                      onSelect={(emoji) => onToggleReaction(entry.id, emoji)}
+                    />
                     <ReactionBar
                       reactions={reactions}
                       currentUserId={currentUserId}
                       onToggle={(emoji) => onToggleReaction(entry.id, emoji)}
                       getActorName={getActorName}
-                      hideAddButton={!isLongContent}
+                      hideAddButton
                     />
                     {!replyOpen && allNestedReplies.length === 0 && (
                       <button
                         type="button"
                         onClick={() => setReplyOpen(true)}
-                        className="ml-auto text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                        className="inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-ring"
                       >
+                        <CornerUpLeft className="size-3.5" />
                         Reply
                       </button>
                     )}
@@ -628,6 +619,7 @@ function CommentCard({
                 )}
               </>
             )}
+            <div className="ml-[44px] mt-4 border-t border-border/60" />
           </div>
 
           {/* Replies */}
@@ -636,7 +628,7 @@ function CommentCard({
               key={reply.id}
               id={`comment-${reply.id}`}
               className={cn(
-                'border-t border-border/50 px-4 transition-colors duration-700',
+                'min-w-0 border-t border-border/50 px-1 transition-colors duration-700 sm:px-4',
                 highlightedCommentId === reply.id && 'bg-brand/5',
               )}
             >
@@ -655,7 +647,7 @@ function CommentCard({
           clicked Reply. Otherwise the comment ends at its body, keeping the
           activity stream quiet when threads are empty. */}
           {(replyOpen || allNestedReplies.length > 0) && (
-            <div className="border-t border-border/50 px-4 py-2.5">
+            <div className="min-w-0 border-t border-border/50 px-1 py-2.5 sm:px-4">
               <ReplyInput
                 issueId={issueId}
                 placeholder="Leave a reply..."

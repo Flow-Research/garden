@@ -17,3 +17,4 @@ file when a shipped user path needs repeatable proof.
 | [Home dashboard](./dashboard.md) | Overview, distributions, detail panels, responsive layout, and navigation | Component regression coverage; local-app evidence recorded separately |
 | [Settings page](./settings.md) | Direct section links, browser history, responsive shell, and existing modal entry | Shell route regression coverage; local-app evidence recorded separately |
 | [Responsive Skills library](./skills.md) | Browse, filter, read and edit complete skill bundles on mobile and desktop | Component/client regression tests; local offline browser proof |
+| [Task detail](./tasks.md) | Edit task properties, browse activity and comments, manage sub-tasks, and review agent work | Component regressions; local browser proof recorded separately |

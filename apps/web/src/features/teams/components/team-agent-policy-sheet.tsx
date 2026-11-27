@@ -1,4 +1,10 @@
-import { useState, type ReactNode } from 'react'
+import {
+  useId,
+  useState,
+  type ComponentType,
+  type ReactNode,
+  type SVGProps,
+} from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Option } from 'effect'
 import {
@@ -9,13 +15,18 @@ import {
   UserRoundCog,
 } from 'lucide-react'
 import { useWorkspaceId } from '@garden/app-state/hooks'
-import { connectorRegistry } from '@garden/connectors'
+import { connectorRegistry, type ConnectorId } from '@garden/connectors'
 import type {
   TeamAgentArea,
   TeamAgentPolicy,
   TeamBlockableRiskClass,
   TeamRiskClass,
 } from '@garden/core/teams/agent-policy'
+import {
+  GmailIcon,
+  GoogleDriveIcon,
+  SlackIcon,
+} from '@garden/ui/components/icons'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
@@ -44,10 +55,49 @@ import {
 import { cn } from '@garden/ui/lib/utils'
 import { toast } from 'sonner'
 import { statusLabelFor } from '@/features/connections/components/connection-helpers'
-import { ProviderIcon } from '@/features/connections/components/provider-icon'
+import { BrandGithubIcon } from '@/components/icons/brand-github-icon'
 import { connectionListOptions } from '@/lib/workspace/queries'
 import { useUpdateTeamAgentPolicy } from '../mutations'
 import { teamAgentPolicyOptions } from '../queries'
+
+// https://github.com/simple-icons/simple-icons/blob/develop/icons/discord.svg
+function DiscordLogo(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" {...props}>
+      <path
+        fill="#5865F2"
+        d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"
+      />
+    </svg>
+  )
+}
+
+const CONNECTOR_CARDS = {
+  discord: {
+    Logo: DiscordLogo,
+    summary: 'Read and send messages, start threads, and react.',
+  },
+  github: {
+    Logo: BrandGithubIcon,
+    summary:
+      'Read and change code, manage issues and pull requests, and run workflows.',
+  },
+  gmail: {
+    Logo: GmailIcon,
+    summary: 'Read, draft, and label email. Send with Gmail API access.',
+  },
+  'google-drive': {
+    Logo: GoogleDriveIcon,
+    summary: 'Find, read, and create files.',
+  },
+  slack: {
+    Logo: SlackIcon,
+    summary: 'Read channels, draft and send messages, and create canvases.',
+  },
+} satisfies Record<
+  ConnectorId,
+  { Logo: ComponentType<SVGProps<SVGSVGElement>>; summary: string }
+>
 
 /** One Access chip. `area: null` is a design area Garden cannot back. */
 const ACCESS_CHIPS: readonly { area: TeamAgentArea | null; label: string }[] = [
@@ -122,13 +172,13 @@ function PolicyRow({
 }) {
   return (
     <div
-      className="flex items-center justify-between gap-6 border-b border-border-default py-4 first:pt-0 last:border-b-0"
+      className="flex flex-col gap-3 border-b border-border-default py-4 first:pt-0 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
       data-disabled={disabled || undefined}
     >
       <div className="flex min-w-0 flex-col gap-1.5">
         <span
           className={cn(
-            'flex items-center gap-2 text-base',
+            'flex flex-wrap items-center gap-2 text-base',
             disabled ? 'text-text-secondary' : 'text-foreground',
           )}
         >
@@ -175,7 +225,7 @@ function CheckTile({
   return (
     <label
       className={cn(
-        'flex h-10 items-center gap-2.5 rounded-md border border-border-default px-3 text-sm whitespace-nowrap text-foreground',
+        'flex min-h-10 max-w-full items-center gap-2.5 rounded-md border border-border-default px-3 py-1.5 text-sm text-foreground',
         soon || locked ? 'cursor-not-allowed' : 'cursor-pointer',
         soon && 'text-text-secondary',
         className,
@@ -186,7 +236,7 @@ function CheckTile({
         disabled={soon || locked}
         onCheckedChange={onChange}
       />
-      <span className="truncate">{label}</span>
+      <span>{label}</span>
       {soon ? (
         <span aria-hidden className="contents">
           <ComingSoon />
@@ -218,7 +268,7 @@ function RowSelect({
     >
       <SelectTrigger
         aria-label={label}
-        className="h-10! shrink-0 gap-6 rounded-md bg-background px-3 text-sm"
+        className="h-10! w-full shrink-0 gap-6 rounded-md bg-background px-3 text-sm sm:w-fit"
       >
         <SelectValue>
           {(current: string) =>
@@ -244,7 +294,10 @@ function toggle<T>(list: readonly T[], value: T, present: boolean): T[] {
 }
 
 const TAB_TRIGGER_CLASS =
-  'h-10 min-w-0 flex-1 gap-1.5 rounded-none px-2 text-sm font-normal text-text-secondary after:bg-text-brand-secondary data-active:text-foreground'
+  'h-auto min-h-11 flex-auto shrink-0 gap-1.5 rounded-none px-2 py-1 text-sm font-normal text-text-secondary after:bg-text-brand-secondary focus-visible:ring-inset focus-visible:-outline-offset-2 group-data-[orientation=horizontal]/tabs:after:bottom-0 data-active:text-foreground lg:min-h-10 lg:gap-1 lg:px-1.5'
+
+const TAB_PANEL_CLASS =
+  'min-h-0 overflow-y-auto overscroll-contain pt-4 pb-4 lg:pt-8'
 
 /**
  * Team agent policy side sheet ("Team settings"), opened from the Team detail
@@ -273,6 +326,7 @@ export function TeamAgentPolicySheet({
   onOpenChange: (open: boolean) => void
 }) {
   const wsId = useWorkspaceId()
+  const connectorDescriptionPrefix = useId()
   const query = useQuery({
     ...teamAgentPolicyOptions(wsId, teamId),
     enabled: open,
@@ -317,22 +371,23 @@ export function TeamAgentPolicySheet({
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : close())}
     >
-      <SheetContent className="w-full gap-0 bg-background data-[side=right]:sm:max-w-3xl [&>[data-slot=sheet-close]]:top-6 [&>[data-slot=sheet-close]]:right-6">
-        <SheetHeader className="gap-3 px-8 pt-11 pb-8">
-          <div className="flex items-center gap-3">
+      <SheetContent className="gap-0 bg-background data-[side=right]:h-dvh data-[side=right]:w-full data-[side=right]:sm:max-w-3xl lg:[&>[data-slot=sheet-close]]:top-6 lg:[&>[data-slot=sheet-close]]:right-6">
+        <SheetHeader className="shrink-0 gap-2 px-4 pt-4 pb-4 sm:px-6 lg:gap-3 lg:px-8 lg:pt-11 lg:pb-8">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pr-9">
             <Settings
               aria-hidden
-              className="size-7 text-text-secondary"
+              className="size-6 shrink-0 text-text-secondary lg:size-7"
               strokeWidth={1.5}
             />
-            <SheetTitle className="text-xl font-medium">
+            <SheetTitle className="text-lg font-medium lg:text-xl">
               Team settings
             </SheetTitle>
             <Badge
-              className="h-6 rounded-md px-2 text-sm font-normal tracking-wide text-text-secondary uppercase"
+              className="h-6 min-w-0 max-w-full rounded-md px-2 text-sm font-normal tracking-wide text-text-secondary uppercase"
+              title={teamName}
               variant="secondary"
             >
-              {teamName}
+              <span className="truncate">{teamName}</span>
             </Badge>
           </div>
           <SheetDescription className="text-sm text-text-secondary">
@@ -347,9 +402,12 @@ export function TeamAgentPolicySheet({
         </SheetHeader>
 
         {policy ? (
-          <Tabs className="min-h-0 flex-1 gap-0 px-8" defaultValue="agents">
+          <Tabs
+            className="min-h-0 flex-1 gap-0 px-4 sm:px-6 lg:px-8"
+            defaultValue="agents"
+          >
             <TabsList
-              className="h-10! w-full justify-start gap-0 border-b border-border-default bg-muted p-0"
+              className="h-auto! w-full shrink-0 items-stretch justify-start gap-0 overflow-x-auto overscroll-x-contain border-b border-border-default bg-muted p-0"
               variant="line"
             >
               <TabsTrigger className={TAB_TRIGGER_CLASS} value="agents">
@@ -371,7 +429,7 @@ export function TeamAgentPolicySheet({
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent className="overflow-y-auto pt-8 pb-4" value="agents">
+            <TabsContent className={TAB_PANEL_CLASS} value="agents">
               <PolicyRow
                 control={
                   <RowSelect
@@ -421,7 +479,7 @@ export function TeamAgentPolicySheet({
                   hint="Define what agents are restricted from doing"
                   title="Restricted"
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {RESTRICTED_CARDS.map(({ riskClass, label }) => (
                     <CheckTile
                       checked={
@@ -450,31 +508,41 @@ export function TeamAgentPolicySheet({
             </TabsContent>
 
             <TabsContent
-              className="flex flex-col gap-2 overflow-y-auto pt-8 pb-4"
+              className={cn(TAB_PANEL_CLASS, 'flex flex-col gap-2')}
               value="connectors"
             >
+              <p className="mb-2 text-sm text-text-secondary">
+                Available actions depend on the connection&apos;s permissions
+                and approval rules.
+              </p>
               {connectorRegistry.map((connector) => {
                 const integration = integrationFor(connector.id)
+                const { Logo, summary } = CONNECTOR_CARDS[connector.id]
+                const descriptionId = `${connectorDescriptionPrefix}-${connector.id}`
                 return (
                   <div
-                    className="flex items-center gap-4 rounded-lg bg-muted px-6 py-4"
+                    className="flex items-center gap-3 rounded-lg bg-muted px-3 py-3 sm:gap-4 sm:px-6 sm:py-4"
                     key={connector.id}
                   >
-                    <ProviderIcon
-                      className="size-8 shrink-0 object-contain text-text-secondary"
-                      icon={integration?.icon ?? Option.none()}
+                    <Logo
+                      aria-hidden="true"
+                      className="size-8 shrink-0 self-start text-foreground"
                     />
                     <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                       <span className="text-base text-foreground">
                         {connector.label}
                       </span>
-                      <span className="text-sm text-text-secondary">
-                        {integration
-                          ? statusLabelFor(integration.status)
-                          : 'Not set up in this workspace'}
-                      </span>
+                      <div id={descriptionId}>
+                        <p className="text-sm text-text-secondary">{summary}</p>
+                        <p className="mt-1 text-xs text-text-secondary">
+                          {integration
+                            ? statusLabelFor(integration.status)
+                            : 'Not set up in this workspace'}
+                        </p>
+                      </div>
                     </div>
                     <Switch
+                      aria-describedby={descriptionId}
                       aria-label={connector.label}
                       checked={
                         !policy.blocked_connector_ids.includes(connector.id)
@@ -497,10 +565,7 @@ export function TeamAgentPolicySheet({
               })}
             </TabsContent>
 
-            <TabsContent
-              className="overflow-y-auto pt-8 pb-4"
-              value="approvals"
-            >
+            <TabsContent className={TAB_PANEL_CLASS} value="approvals">
               {APPROVAL_ROWS.map((row) => (
                 <PolicyRow
                   control={
@@ -566,14 +631,14 @@ export function TeamAgentPolicySheet({
             </TabsContent>
           </Tabs>
         ) : (
-          <div className="flex-1 px-8 text-sm text-text-secondary">
+          <div className="flex-1 px-4 text-sm text-text-secondary sm:px-6 lg:px-8">
             {query.isError
               ? 'Agent policy could not be loaded.'
               : 'Loading agent policy…'}
           </div>
         )}
 
-        <SheetFooter className="grid grid-cols-2 gap-2 px-8 pt-6 pb-14">
+        <SheetFooter className="grid shrink-0 grid-cols-2 gap-2 border-t border-border-default px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 lg:border-t-0 lg:px-8 lg:pt-6 lg:pb-14">
           <Button className="h-10" onClick={close} variant="outline">
             Cancel
           </Button>
