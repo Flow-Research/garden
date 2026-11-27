@@ -1,3 +1,4 @@
+import { safeFileHref } from '@garden/ui/markdown'
 import { mergeAttributes, Node } from '@tiptap/core'
 import {
   NodeViewWrapper,
@@ -8,11 +9,11 @@ import { Download, FileText } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 
-const FILE_MARKDOWN = /^!file\[([^\]]*)\]\((https?:\/\/[^)]+)\)/
+const FILE_MARKDOWN = /^!file\[([^\]]*)\]\(([^)\r\n]+)\)/
 
 /** Visual node for a file attachment embedded in editor content. */
 function FileCardView({ node }: NodeViewProps) {
-  const href = String(node.attrs.href || '')
+  const href = safeFileHref(node.attrs.href)
   const filename = String(node.attrs.filename || '')
   const uploading = Boolean(node.attrs.uploading)
 
@@ -76,7 +77,7 @@ export const FileCardExtension = Node.create({
       {
         tag: 'div[data-type="fileCard"]',
         getAttrs: (element) => ({
-          href: (element as HTMLElement).dataset.href ?? '',
+          href: safeFileHref((element as HTMLElement).dataset.href),
           filename: (element as HTMLElement).dataset.filename ?? '',
         }),
       },
@@ -88,7 +89,7 @@ export const FileCardExtension = Node.create({
       'div',
       mergeAttributes(HTMLAttributes, {
         'data-type': 'fileCard',
-        'data-href': node.attrs.href,
+        'data-href': safeFileHref(node.attrs.href),
         'data-filename': node.attrs.filename,
       }),
     ]
@@ -101,10 +102,12 @@ export const FileCardExtension = Node.create({
     tokenize(source: string) {
       const match = FILE_MARKDOWN.exec(source)
       if (!match) return undefined
+      const href = safeFileHref(match[2])
+      if (!href) return undefined
       return {
         type: 'fileCard',
         raw: match[0],
-        attributes: { filename: match[1], href: match[2] },
+        attributes: { filename: match[1], href },
       }
     },
   },
@@ -112,7 +115,7 @@ export const FileCardExtension = Node.create({
     helpers.createNode('fileCard', token.attributes),
   renderMarkdown: (node) => {
     const filename = node.attrs?.filename || 'file'
-    const href = node.attrs?.href || ''
+    const href = safeFileHref(node.attrs?.href)
     return `!file[${filename}](${href})`
   },
 
