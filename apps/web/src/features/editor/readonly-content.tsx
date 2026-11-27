@@ -33,6 +33,7 @@ import { MemberMentionTag } from '../common/member-mention-tag'
 import { ImageLightbox } from './extensions/image-view'
 import { useLinkHover, LinkHoverCard } from './link-hover-card'
 import { openLink, isMentionHref } from './utils/link-handler'
+import { safeFileHref } from '@garden/ui/markdown'
 import { preprocessMarkdown } from './utils/preprocess'
 import './content-editor.css'
 import { issuePath } from '@/features/navigation/use-surface-navigation'
@@ -233,8 +234,7 @@ const components: Partial<Components> = {
     const dataType = node?.properties?.dataType as string | undefined
     if (dataType === 'fileCard') {
       const rawHref = (node?.properties?.dataHref as string) || ''
-      // Only allow http(s) URLs to prevent javascript: and other dangerous schemes.
-      const href = /^https?:\/\//i.test(rawHref) ? rawHref : ''
+      const href = safeFileHref(rawHref)
       const filename = (node?.properties?.dataFilename as string) || ''
       return (
         <div className="my-1 flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1 transition-colors hover:bg-muted">
