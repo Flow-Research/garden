@@ -333,6 +333,33 @@ describe('native session controller', () => {
     expect(app.runReads()).toBe(1)
   })
 
+  it('retains the newest queued draft for the same identity after suspension', async () => {
+    const app = await fixture()
+    await app.controller.connect(app.origin)
+    await app.controller.selectWorkspace('a')
+    const writeDraft = app.ports.writeDraft
+    let release!: () => void
+    let signal!: () => void
+    const started = new Promise<void>((resolve) => {
+      signal = resolve
+    })
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    app.ports.writeDraft = async (raw) => {
+      signal()
+      await blocked
+      await writeDraft(raw)
+    }
+    const first = app.controller.saveDraft('a')
+    await started
+    const second = app.controller.saveDraft('ab')
+    app.controller.suspend()
+    release()
+    await Promise.all([first, second])
+    expect(JSON.parse(app.draft() ?? '{}').text).toBe('ab')
+  })
+
   it('serializes draft saves before logout erasure', async () => {
     const app = await fixture()
     await app.controller.connect(app.origin)

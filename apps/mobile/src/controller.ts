@@ -912,7 +912,7 @@ export function createMobileController(ports: MobilePorts) {
     const saved = await Result.tryPromise({
       try: () =>
         draftStorage(async () => {
-          if (turn === generation && draft === encode())
+          if (state.accountId && state.workspaceId && draft === encode())
             await ports.writeDraft(draft)
         }),
       catch: () =>
