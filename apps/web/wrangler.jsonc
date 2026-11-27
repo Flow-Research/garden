@@ -51,10 +51,10 @@
     },
   ],
   "triggers": {
-    // The reconciler performs ledger cleanup without a durable deadline. A
-    // 12-hour cadence avoids unnecessary database wakeups while still repairing
-    // stale product state.
-    "crons": ["0 */12 * * *"],
+    // Each pattern maps to one job in `scheduledJobs` in src/server.ts:
+    // - "0 */12 * * *": issue-run reconciler (stale ledger cleanup).
+    // - "0 8 * * *": daily model health check (docs/concepts/features/model-health-check.md).
+    "crons": ["0 */12 * * *", "0 8 * * *"],
   },
   "dev": {
     "enable_containers": false,
@@ -172,6 +172,9 @@
     "DISCORD_PUBLIC_KEY": "",
     "DISCORD_BOT_PERMISSIONS": "",
     "RESEND_API_KEY": "",
+    // Comma-separated team addresses for operational alerts. Empty means
+    // alerts are logged but not emailed.
+    "GARDEN_ALERT_EMAIL": "",
   },
   "migrations": [
     {

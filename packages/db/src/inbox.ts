@@ -557,11 +557,7 @@ export async function upsertPermissionRequestInbox(args: {
 
   const recipients = row.request.teamId
     ? await teamPolicyApproverIds(args.db, args.workspaceId, row.request.teamId)
-    : row.issue?.teamId
-      ? await resolveIssueRecipientIds(args.db, row.issue, {
-          agentId: row.request.agentId,
-        })
-      : await workspacePermissionApproverIds(args.db, args.workspaceId)
+    : await workspacePermissionApproverIds(args.db, args.workspaceId)
   const titleSuffix = row.issue ? ` on ${row.issue.title}` : ''
   await Promise.all(
     recipients.map((recipientId) =>

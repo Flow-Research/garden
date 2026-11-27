@@ -35,9 +35,31 @@ vi.mock('@tanstack/react-router', () => ({
   Navigate: ({ to }: { to: string }) => (
     <div data-testid="navigate" data-to={to} />
   ),
+  useNavigate: () => vi.fn(),
 }))
 vi.mock('./members-tab', () => ({
-  MembersTab: () => <h2>Members content</h2>,
+  MembersTab: ({ toolbar }: { toolbar?: React.ReactNode }) => (
+    <>
+      {toolbar}
+      <h2>Members content</h2>
+    </>
+  ),
+}))
+vi.mock('@/features/teams/components/team-detail', () => ({
+  TeamDetailCard: ({
+    teamId,
+    tab,
+    showTabs,
+  }: {
+    teamId: string
+    tab: string
+    showTabs?: boolean
+  }) => (
+    <h2>
+      Team card {teamId} {tab}{' '}
+      {showTabs === false ? 'without tabs' : 'with tabs'}
+    </h2>
+  ),
 }))
 const api = vi.hoisted(() => ({ listMembers: vi.fn() }))
 vi.mock('@/lib/api', async (importActual) => ({
@@ -146,9 +168,26 @@ describe('User Management', () => {
     expect(screen.queryByRole('button', { name: 'Create a Team' })).toBeNull()
   })
 
-  it('names the Team on its detail page', () => {
+  it('shows the Team detail card under a Teams breadcrumb', () => {
     renderWithRole('admin', <UserManagementTeamDetail teamId="team-1" />)
-    expect(screen.getByRole('heading', { name: 'Platform' })).toBeVisible()
-    expect(screen.getByRole('link', { name: 'Team' })).toBeVisible()
+    const breadcrumb = screen.getByRole('navigation', { name: 'Breadcrumb' })
+    expect(breadcrumb).toHaveTextContent('Teams/Platform')
+    expect(screen.getByRole('link', { name: 'Teams' })).toHaveAttribute(
+      'href',
+      '/settings/user-management/teams',
+    )
+    expect(
+      screen.getByRole('heading', {
+        name: 'Team card team-1 members without tabs',
+      }),
+    ).toBeVisible()
+  })
+
+  it('sends members from Team detail to Members', () => {
+    renderWithRole('member', <UserManagementTeamDetail teamId="team-1" />)
+    expect(screen.getByTestId('navigate')).toHaveAttribute(
+      'data-to',
+      '/settings/user-management/members',
+    )
   })
 })

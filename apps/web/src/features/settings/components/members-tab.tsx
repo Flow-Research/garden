@@ -1,34 +1,24 @@
-import { useRef, useState } from 'react'
+import { memo, useCallback, useState, type ReactNode } from 'react'
 import {
   Crown,
   Shield,
   User,
-  Plus,
   MoreHorizontal,
   UserMinus,
-  Clock,
   X,
-  Mail,
-  MailWarning,
   SendHorizontal,
   Unlink,
 } from 'lucide-react'
+import { Result } from 'better-result'
+import { toast } from 'sonner'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BrandGithubIcon } from '@/components/icons/brand-github-icon'
-import { ActorAvatar } from '../../common/actor-avatar'
 import type { MemberWithUser, MemberRole, Invitation } from '@garden/core/types'
-import { Input } from '@garden/ui/components/ui/input'
 import { Button } from '@garden/ui/components/ui/button'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { LoadError } from '@garden/ui/components/common/load-error'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem,
-} from '@garden/ui/components/ui/select'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -39,9 +29,6 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuSubContent,
 } from '@garden/ui/components/ui/dropdown-menu'
-import { Result } from 'better-result'
-import { toast } from 'sonner'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useWorkspaceId } from '@garden/app-state/hooks'
@@ -55,7 +42,7 @@ import {
   GithubIdentityLinkDialog,
   githubIdentityStatusLabel,
 } from './github-workspace-identity'
-import { TeamMultiPicker } from '@/features/teams/components/team-picker'
+import { InviteMembersButton } from './invite-members-dialog'
 
 const roleConfig: Record<
   MemberRole,
@@ -78,7 +65,143 @@ const roleConfig: Record<
   },
 }
 
-function MemberRow({
+const BADGE_CLASS: Record<MemberRole, string> = {
+  owner: 'bg-badge-blue-background text-badge-blue-text',
+  admin: 'bg-badge-blue-background text-badge-blue-text',
+  member: 'bg-badge-gray-background text-badge-gray-text',
+}
+
+/**
+ * Rounded table frame that caps its height and scrolls the body under a
+ * sticky header. `overflow-y-auto` also clips rows to the rounded corners.
+ */
+const TABLE_CLASS =
+  'max-h-[min(36rem,70vh)] overflow-y-auto rounded-2xl border border-border-default bg-background-main-default'
+/**
+ * Sticky header row. Its bottom rule is an inset shadow on the cells because
+ * the first body row's top border scrolls away with the body, and collapsed
+ * table borders do not stick.
+ */
+const THEAD_CLASS =
+  'sticky top-0 z-10 [&_th]:bg-background-main-secondary [&_th]:shadow-[inset_0_-1px_0_var(--border-default)]'
+/** The sticky header draws the top rule, so the first row skips its own. */
+const TBODY_CLASS = '[&>tr:first-child]:border-t-0'
+const TH_CLASS = 'px-4 py-4 font-semibold text-text-default sm:px-6'
+/** Header counterpart of the body cells' left border, so dividers run top to bottom. */
+const TH_DIVIDER = 'border-l border-border-default'
+const TD_CLASS = 'border-l border-border-default px-4 py-4 text-center sm:px-6'
+
+const errorMessage = (cause: unknown, fallback: string) =>
+  cause instanceof Error ? cause.message : fallback
+
+function MemberActions({
+  member,
+  canEditRole,
+  canEditGithub,
+  canRemove,
+  canManageOwners,
+  busy,
+  onRoleChange,
+  onRemove,
+  onLinkGithub,
+  onUnlinkGithub,
+}: {
+  member: MemberWithUser
+  canEditRole: boolean
+  canEditGithub: boolean
+  canRemove: boolean
+  canManageOwners: boolean
+  busy: boolean
+  onRoleChange: (role: MemberRole) => void
+  onRemove: () => void
+  onLinkGithub: () => void
+  onUnlinkGithub: () => void
+}) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button
+            aria-label={`Actions for ${member.name}`}
+            variant="ghost"
+            size="icon-sm"
+            disabled={busy}
+          >
+            <MoreHorizontal className="size-4 text-muted-foreground" />
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end" className="w-auto">
+        {canEditRole && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <Shield className="size-3.5" />
+              Change role
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-auto">
+              {(
+                Object.entries(roleConfig) as [
+                  MemberRole,
+                  (typeof roleConfig)[MemberRole],
+                ][]
+              ).map(([role, config]) => {
+                if (role === 'owner' && !canManageOwners) return null
+                const Icon = config.icon
+                return (
+                  <DropdownMenuItem
+                    key={role}
+                    onClick={() => onRoleChange(role)}
+                  >
+                    <Icon className="size-3.5" />
+                    <div className="flex flex-col">
+                      <span>{config.label}</span>
+                      <span className="text-xs font-normal text-muted-foreground">
+                        {config.description}
+                      </span>
+                    </div>
+                    {member.role === role && (
+                      <span className="ml-auto text-xs text-muted-foreground">
+                        &#10003;
+                      </span>
+                    )}
+                  </DropdownMenuItem>
+                )
+              })}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
+        {canEditGithub && (
+          <DropdownMenuItem onClick={onLinkGithub}>
+            <BrandGithubIcon className="h-3.5 w-3.5" />
+            {member.github_login ? 'Edit GitHub identity' : 'Link GitHub'}
+          </DropdownMenuItem>
+        )}
+        {canEditGithub && member.github_login ? (
+          <DropdownMenuItem onClick={onUnlinkGithub}>
+            <Unlink className="h-3.5 w-3.5" />
+            Unlink GitHub
+          </DropdownMenuItem>
+        ) : null}
+        {canRemove && (canEditRole || canEditGithub) ? (
+          <DropdownMenuSeparator />
+        ) : null}
+        {canRemove && (
+          <DropdownMenuItem variant="destructive" onClick={onRemove}>
+            <UserMinus className="size-3.5" />
+            Remove from workspace
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/**
+ * Memoized: callbacks take the member instead of closing over it, so the
+ * parent passes the same functions to every row and a row re-renders only
+ * when its own member, permissions or busy flag change.
+ */
+const MemberRow = memo(function MemberRow({
   member,
   canManage,
   canManageOwners,
@@ -94,130 +217,68 @@ function MemberRow({
   canManageOwners: boolean
   isSelf: boolean
   busy: boolean
-  onRoleChange: (role: MemberRole) => void
-  onRemove: () => void
-  onLinkGithub: () => void
-  onUnlinkGithub: () => void
+  onRoleChange: (member: MemberWithUser, role: MemberRole) => void
+  onRemove: (member: MemberWithUser) => void
+  onLinkGithub: (member: MemberWithUser) => void
+  onUnlinkGithub: (member: MemberWithUser) => void
 }) {
-  const rc = roleConfig[member.role]
-  const RoleIcon = rc.icon
   const canEditRole =
     canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
-  const canRemove =
-    canManage && !isSelf && (member.role !== 'owner' || canManageOwners)
+  const canRemove = canEditRole
   /**
    * Owner/admin only, own row included; an owner's row needs an owner, the
    * same rule as role edits (matches the API's 403s).
    */
   const canEditGithub =
     canManage && (member.role !== 'owner' || canManageOwners)
-  const showMenu = canEditRole || canRemove || canEditGithub
-  const githubLabel = githubIdentityStatusLabel(member)
 
   return (
-    <li className="flex items-center gap-3 py-3">
-      <ActorAvatar actorType="member" actorId={member.user_id} size={32} />
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{member.name}</div>
-        <div className="truncate text-xs text-muted-foreground">
-          {member.email}
-        </div>
-        <div className="truncate text-xs text-muted-foreground">
-          {githubLabel}
-        </div>
-      </div>
-      {showMenu && (
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button
-                aria-label="Member actions"
-                variant="ghost"
-                size="icon-sm"
-                disabled={busy}
-              >
-                <MoreHorizontal className="size-4 text-muted-foreground" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="end" className="w-auto">
-            {canEditRole && (
-              <DropdownMenuSub>
-                <DropdownMenuSubTrigger>
-                  <Shield className="size-3.5" />
-                  Change role
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent className="w-auto">
-                  {(
-                    Object.entries(roleConfig) as [
-                      MemberRole,
-                      (typeof roleConfig)[MemberRole],
-                    ][]
-                  ).map(([role, config]) => {
-                    if (role === 'owner' && !canManageOwners) return null
-                    const Icon = config.icon
-                    return (
-                      <DropdownMenuItem
-                        key={role}
-                        onClick={() => onRoleChange(role)}
-                      >
-                        <Icon className="size-3.5" />
-                        <div className="flex flex-col">
-                          <span>{config.label}</span>
-                          <span className="text-xs font-normal text-muted-foreground">
-                            {config.description}
-                          </span>
-                        </div>
-                        {member.role === role && (
-                          <span className="ml-auto text-xs text-muted-foreground">
-                            &#10003;
-                          </span>
-                        )}
-                      </DropdownMenuItem>
-                    )
-                  })}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            )}
-            {canEditGithub && (
-              <DropdownMenuItem onClick={onLinkGithub}>
-                <BrandGithubIcon className="h-3.5 w-3.5" />
-                {member.github_login ? 'Edit GitHub identity' : 'Link GitHub'}
-              </DropdownMenuItem>
-            )}
-            {canEditGithub && member.github_login ? (
-              <DropdownMenuItem onClick={onUnlinkGithub}>
-                <Unlink className="h-3.5 w-3.5" />
-                Unlink GitHub
-              </DropdownMenuItem>
-            ) : null}
-            {canRemove && (canEditRole || canEditGithub) ? (
-              <DropdownMenuSeparator />
-            ) : null}
-            {canRemove && (
-              <DropdownMenuItem variant="destructive" onClick={onRemove}>
-                <UserMinus className="size-3.5" />
-                Remove from workspace
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )}
-      <Badge variant="secondary">
-        <RoleIcon className="size-3" />
-        {rc.label}
-      </Badge>
-    </li>
+    <tr className="border-t border-border-default">
+      <td className="px-4 py-4 sm:px-6">
+        <span className="flex min-w-0 flex-col">
+          <span className="truncate text-text-default">{member.name}</span>
+          <span className="truncate text-text-secondary">{member.email}</span>
+          <span className="flex min-w-0 items-center gap-1 text-xs text-text-tertiary">
+            <BrandGithubIcon className="size-3 shrink-0" />
+            <span className="truncate">
+              {githubIdentityStatusLabel(member)}
+            </span>
+          </span>
+        </span>
+      </td>
+      <td className={TD_CLASS}>
+        <Badge className={BADGE_CLASS[member.role]}>
+          {roleConfig[member.role].label}
+        </Badge>
+      </td>
+      {canManage ? (
+        <td className="border-l border-border-default px-2 py-4 text-center">
+          {canEditRole || canEditGithub ? (
+            <MemberActions
+              member={member}
+              canEditRole={canEditRole}
+              canEditGithub={canEditGithub}
+              canRemove={canRemove}
+              canManageOwners={canManageOwners}
+              busy={busy}
+              onRoleChange={(role) => onRoleChange(member, role)}
+              onRemove={() => onRemove(member)}
+              onLinkGithub={() => onLinkGithub(member)}
+              onUnlinkGithub={() => onUnlinkGithub(member)}
+            />
+          ) : null}
+        </td>
+      ) : null}
+    </tr>
   )
-}
+})
 
 /**
- * Invitation rows distinguish expired invites (pending status, past
- * expiresAt) from live ones so admins see why a link stopped working, and get
- * a one-click resend that refreshes the same invite instead of creating a
- * duplicate row.
+ * Expired invites (pending status, past expiresAt) are told apart from live
+ * ones so admins see why a link stopped working. Resend refreshes the same
+ * invite instead of creating a duplicate row.
  */
-function InvitationRow({
+const InvitationRow = memo(function InvitationRow({
   invitation,
   canManage,
   onRevoke,
@@ -226,86 +287,111 @@ function InvitationRow({
 }: {
   invitation: Invitation
   canManage: boolean
-  onRevoke: () => void
-  onResend: () => void
+  onRevoke: (invitation: Invitation) => void
+  onResend: (invitation: Invitation) => void
   busy: boolean
 }) {
-  const rc = roleConfig[invitation.role]
   const expired = new Date(invitation.expiresAt).getTime() <= Date.now()
 
   return (
-    <li className="flex items-center gap-3 py-3">
-      <div className="flex size-8 items-center justify-center rounded-full bg-muted">
-        {expired ? (
-          <MailWarning className="size-4 text-muted-foreground" />
-        ) : (
-          <Mail className="size-4 text-muted-foreground" />
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{invitation.email}</div>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <Clock className="size-3" />
-          <span>{expired ? 'Expired — resend to reactivate' : 'Pending'}</span>
-        </div>
-      </div>
-      {canManage && (
-        <>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={busy}
-            onClick={onResend}
-            title={expired ? 'Resend (extends expiry)' : 'Resend invitation'}
-          >
-            <SendHorizontal className="size-4 text-muted-foreground" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            disabled={busy}
-            onClick={onRevoke}
-            title="Revoke invitation"
-          >
-            <X className="size-4 text-muted-foreground" />
-          </Button>
-        </>
-      )}
-      <Badge variant="outline">{rc.label}</Badge>
-    </li>
+    <tr className="border-t border-border-default">
+      <td className="truncate px-4 py-4 text-text-default sm:px-6">
+        {invitation.email}
+      </td>
+      <td className={TD_CLASS}>
+        <Badge className={BADGE_CLASS[invitation.role]}>
+          {roleConfig[invitation.role].label}
+        </Badge>
+      </td>
+      <td className={`${TD_CLASS} text-text-secondary`}>
+        {expired ? 'Expired' : 'Pending'}
+      </td>
+      {canManage ? (
+        <td className="border-l border-border-default px-2 py-4">
+          <span className="flex items-center justify-center gap-1">
+            <Button
+              aria-label={`Resend invitation to ${invitation.email}`}
+              variant="ghost"
+              size="icon-sm"
+              disabled={busy}
+              onClick={() => onResend(invitation)}
+              title={expired ? 'Resend (extends expiry)' : 'Resend invitation'}
+            >
+              <SendHorizontal className="size-4 text-muted-foreground" />
+            </Button>
+            <Button
+              aria-label={`Revoke invitation to ${invitation.email}`}
+              variant="ghost"
+              size="icon-sm"
+              disabled={busy}
+              onClick={() => onRevoke(invitation)}
+              title="Revoke invitation"
+            >
+              <X className="size-4 text-muted-foreground" />
+            </Button>
+          </span>
+        </td>
+      ) : null}
+    </tr>
   )
-}
+})
 
 const NO_MEMBERS: MemberWithUser[] = []
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
-export function MembersTab() {
+/**
+ * Runs one member or invitation write, tracking its row as busy. A failure
+ * toasts and rejects so an open confirm dialog stays open.
+ */
+async function runRowAction(
+  setBusy: (id: string | null) => void,
+  id: string,
+  action: () => Promise<unknown>,
+  fallback: string,
+  onDone: () => void,
+) {
+  setBusy(id)
+  const result = await Result.tryPromise({
+    try: action,
+    catch: (cause) => errorMessage(cause, fallback),
+  })
+  setBusy(null)
+  return result.match({
+    ok: () => onDone(),
+    err: (message) => {
+      toast.error(message)
+      return Promise.reject(new Error(message))
+    },
+  })
+}
+
+type ConfirmAction = {
+  title: string
+  description: string
+  confirmLabel: string
+  pendingLabel: string
+  onConfirm: () => Promise<void>
+}
+
+/**
+ * Workspace members and pending invitations as tables, with the Add a Team
+ * Member dialog for owners and admins. Per-member role, GitHub identity and
+ * removal live in each row's ⋯ menu. `toolbar` fills the left of the action
+ * row; Settings puts its sub-tab pills there.
+ */
+export function MembersTab({ toolbar }: { toolbar?: ReactNode }) {
   const user = useAuthStore((s) => s.user)
   const workspace = useWorkspaceStore((s) => s.workspace)
   const qc = useQueryClient()
-  // The one workspace id for reads, writes and invalidation alike; writes
-  // used the store's copy while invalidation used this one.
   const wsId = useWorkspaceId()
   const membersQuery = useQuery(memberListOptions(wsId))
   const members = membersQuery.data ?? NO_MEMBERS
   const { data: invitations = [] } = useQuery(invitationListOptions(wsId))
 
-  const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState<MemberRole>('member')
-  const [inviteTeamIds, setInviteTeamIds] = useState<string[]>([])
-  const [inviteLoading, setInviteLoading] = useState(false)
   const [memberActionId, setMemberActionId] = useState<string | null>(null)
   const [invitationActionId, setInvitationActionId] = useState<string | null>(
     null,
   )
-  const [confirmAction, setConfirmAction] = useState<{
-    title: string
-    description: string
-    confirmLabel: string
-    pendingLabel: string
-    variant?: 'destructive'
-    onConfirm: () => Promise<void>
-  } | null>(null)
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null)
   const [githubTarget, setGithubTarget] = useState<MemberWithUser | null>(null)
 
   const currentMember = members.find((m) => m.user_id === user?.id) ?? null
@@ -316,266 +402,242 @@ export function MembersTab() {
     currentMember?.role === 'owner' || currentMember?.role === 'admin'
   const isOwner = currentMember?.role === 'owner'
 
-  // Enter in the email field used to call this directly, past the disabled
-  // button, so a second Enter sent a duplicate invitation.
-  const inviteInFlightRef = useRef(false)
-  const handleInviteMember = async () => {
-    const email = inviteEmail.trim()
-    if (!workspace || !email || inviteInFlightRef.current) return
-    if (!EMAIL_PATTERN.test(email)) {
-      toast.error('Enter a valid email address')
-      return
-    }
-    inviteInFlightRef.current = true
-    setInviteLoading(true)
-    try {
-      await api.createMember(wsId, {
-        email,
-        role: inviteRole,
-        ...(inviteTeamIds.length ? { team_ids: inviteTeamIds } : {}),
-      })
-      setInviteEmail('')
-      setInviteRole('member')
-      setInviteTeamIds([])
-      qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
-      toast.success('Invitation sent')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to send invitation')
-    } finally {
-      inviteInFlightRef.current = false
-      setInviteLoading(false)
-    }
-  }
+  const workspaceName = workspace?.name ?? 'this workspace'
 
-  const handleRevokeInvitation = (invitation: Invitation) => {
-    if (!workspace) return
-    setConfirmAction({
-      title: 'Revoke invitation',
-      description: `Revoke the invitation to ${invitation.email}? They will no longer be able to join this workspace.`,
-      confirmLabel: 'Revoke',
-      pendingLabel: 'Revoking…',
-      variant: 'destructive',
-      onConfirm: () => {
-        setInvitationActionId(invitation.id)
-        return api
-          .revokeInvitation(wsId, invitation.id)
-          .then(() => {
-            qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
-            toast.success('Invitation revoked')
+  // Stable across renders so the memoized rows skip unrelated updates such as
+  // a confirm dialog opening or another row going busy.
+  const handleRevokeInvitation = useCallback(
+    (invitation: Invitation) =>
+      setConfirmAction({
+        title: 'Revoke invitation',
+        description: `Revoke the invitation to ${invitation.email}? They will no longer be able to join this workspace.`,
+        confirmLabel: 'Revoke',
+        pendingLabel: 'Revoking…',
+        onConfirm: () =>
+          runRowAction(
+            setInvitationActionId,
+            invitation.id,
+            () => api.revokeInvitation(wsId, invitation.id),
+            'Failed to revoke invitation',
+            () => {
+              void qc.invalidateQueries({
+                queryKey: workspaceKeys.invitations(wsId),
+              })
+              toast.success('Invitation revoked')
+            },
+          ),
+      }),
+    [qc, wsId],
+  )
+
+  const handleResendInvitation = useCallback(
+    (invitation: Invitation) =>
+      void runRowAction(
+        setInvitationActionId,
+        invitation.id,
+        () =>
+          api.createMember(wsId, {
+            email: invitation.email,
+            role: invitation.role,
+            resend: true,
+          }),
+        'Failed to resend invitation',
+        () => {
+          void qc.invalidateQueries({
+            queryKey: workspaceKeys.invitations(wsId),
           })
-          .catch((e: unknown) => {
-            toast.error(
-              e instanceof Error ? e.message : 'Failed to revoke invitation',
-            )
-            throw e
-          })
-          .finally(() => setInvitationActionId(null))
-      },
-    })
-  }
+          toast.success(`Invitation resent to ${invitation.email}`)
+        },
+      ).catch(() => undefined),
+    [qc, wsId],
+  )
 
-  const handleResendInvitation = (invitation: Invitation) => {
-    if (!workspace) return
-    setInvitationActionId(invitation.id)
-    void api
-      .createMember(wsId, {
-        email: invitation.email,
-        role: invitation.role,
-        resend: true,
-      })
-      .then(() => {
-        qc.invalidateQueries({ queryKey: workspaceKeys.invitations(wsId) })
-        toast.success(`Invitation resent to ${invitation.email}`)
-      })
-      .catch((e: unknown) => {
-        toast.error(
-          e instanceof Error ? e.message : 'Failed to resend invitation',
-        )
-      })
-      .finally(() => setInvitationActionId(null))
-  }
+  const handleRoleChange = useCallback(
+    (member: MemberWithUser, role: MemberRole) =>
+      void runRowAction(
+        setMemberActionId,
+        member.id,
+        () => api.updateMember(wsId, member.id, { role }),
+        'Failed to update member',
+        () => {
+          void qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+          toast.success('Role updated')
+        },
+      ).catch(() => undefined),
+    [qc, wsId],
+  )
 
-  const handleRoleChange = async (memberId: string, role: MemberRole) => {
-    if (!workspace) return
-    setMemberActionId(memberId)
-    try {
-      await api.updateMember(wsId, memberId, { role })
-      qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
-      toast.success('Role updated')
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Failed to update member')
-    } finally {
-      setMemberActionId(null)
-    }
-  }
+  const handleRemoveMember = useCallback(
+    (member: MemberWithUser) =>
+      setConfirmAction({
+        title: `Remove ${member.name}`,
+        description: `Remove ${member.name} from ${workspaceName}? They will lose access to this workspace.`,
+        confirmLabel: 'Remove',
+        pendingLabel: 'Removing…',
+        onConfirm: () =>
+          runRowAction(
+            setMemberActionId,
+            member.id,
+            () => api.deleteMember(wsId, member.id),
+            'Failed to remove member',
+            () => {
+              void qc.invalidateQueries({
+                queryKey: workspaceKeys.members(wsId),
+              })
+              toast.success('Member removed')
+            },
+          ),
+      }),
+    [qc, wsId, workspaceName],
+  )
 
-  const handleRemoveMember = (member: MemberWithUser) => {
-    if (!workspace) return
-    setConfirmAction({
-      title: `Remove ${member.name}`,
-      description: `Remove ${member.name} from ${workspace.name}? They will lose access to this workspace.`,
-      confirmLabel: 'Remove',
-      pendingLabel: 'Removing…',
-      variant: 'destructive',
-      onConfirm: () => {
-        setMemberActionId(member.id)
-        return api
-          .deleteMember(wsId, member.id)
-          .then(() => {
-            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
-            toast.success('Member removed')
-          })
-          .catch((e: unknown) => {
-            toast.error(
-              e instanceof Error ? e.message : 'Failed to remove member',
-            )
-            throw e
-          })
-          .finally(() => setMemberActionId(null))
-      },
-    })
-  }
-
-  const handleUnlinkGithub = (member: MemberWithUser) => {
-    if (!workspace) return
-    setConfirmAction({
-      title: `Unlink GitHub for ${member.name}`,
-      description: `Remove the GitHub identity for ${member.name}? Mirrored GitHub issue assignment will show not linked until an owner or admin links it again.`,
-      confirmLabel: 'Unlink',
-      pendingLabel: 'Unlinking...',
-      variant: 'destructive',
-      onConfirm: async () => {
-        setMemberActionId(member.id)
-        const result = await Result.tryPromise({
-          try: () =>
-            api.updateMember(workspace.id, member.id, {
-              github_user_id: null,
-              github_login: null,
-            }),
-          catch: (cause) =>
-            cause instanceof Error
-              ? cause.message
-              : 'Failed to unlink GitHub identity',
-        })
-        setMemberActionId(null)
-        result.match({
-          ok: () => {
-            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
-            toast.success('GitHub identity unlinked')
-          },
-          err: (message) => toast.error(message),
-        })
-      },
-    })
-  }
+  const handleUnlinkGithub = useCallback(
+    (member: MemberWithUser) =>
+      setConfirmAction({
+        title: `Unlink GitHub for ${member.name}`,
+        description: `Remove the GitHub identity for ${member.name}? Mirrored GitHub issue assignment will show not linked until an owner or admin links it again.`,
+        confirmLabel: 'Unlink',
+        pendingLabel: 'Unlinking...',
+        onConfirm: () =>
+          runRowAction(
+            setMemberActionId,
+            member.id,
+            () =>
+              api.updateMember(wsId, member.id, {
+                github_user_id: null,
+                github_login: null,
+              }),
+            'Failed to unlink GitHub identity',
+            () => {
+              void qc.invalidateQueries({
+                queryKey: workspaceKeys.members(wsId),
+              })
+              toast.success('GitHub identity unlinked')
+            },
+          ),
+      }),
+    [qc, wsId],
+  )
 
   if (!workspace) return null
 
   return (
-    <div className="space-y-12">
-      <section className="space-y-5">
-        <header>
-          <h2 className="text-base font-semibold">
-            Members{' '}
-            {membersQuery.data ? (
-              <span className="font-normal text-muted-foreground">
-                ({members.length})
-              </span>
-            ) : null}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            People with access to this workspace.
-          </p>
-        </header>
+    <div className="flex flex-col gap-8">
+      {toolbar || canManageWorkspace ? (
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          {toolbar}
+          {canManageWorkspace ? (
+            <InviteMembersButton workspaceId={wsId} />
+          ) : null}
+        </div>
+      ) : null}
 
-        {canManageWorkspace && (
-          <form
-            className="grid gap-2 sm:grid-cols-[1fr_120px_140px_auto]"
-            noValidate
-            onSubmit={(event) => {
-              event.preventDefault()
-              void handleInviteMember()
-            }}
-          >
-            <Input
-              type="email"
-              aria-label="Email address to invite"
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              placeholder="user@company.com"
-            />
-            <Select
-              value={inviteRole}
-              onValueChange={(value) => setInviteRole(value as MemberRole)}
-            >
-              <SelectTrigger size="sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="member">Member</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-              </SelectContent>
-            </Select>
-            <TeamMultiPicker
-              teamIds={inviteTeamIds}
-              onUpdate={setInviteTeamIds}
-              triggerRender={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  aria-label="Teams the invitee joins"
-                  className="justify-start gap-1.5 overflow-hidden"
+      {membersQuery.isPending ? (
+        <div
+          className="flex flex-col gap-2"
+          aria-busy="true"
+          aria-label="Loading members"
+        >
+          <Skeleton className="h-14 w-full rounded-2xl" />
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      ) : membersQuery.isError && members.length === 0 ? (
+        <LoadError
+          message="Could not load members."
+          onRetry={() => void membersQuery.refetch()}
+          retrying={membersQuery.isFetching}
+        />
+      ) : (
+        <div className={TABLE_CLASS}>
+          <table className="w-full table-fixed text-sm">
+            <caption className="sr-only">Workspace members</caption>
+            <thead className={THEAD_CLASS}>
+              <tr>
+                <th className={`${TH_CLASS} text-left`}>User</th>
+                <th
+                  className={`${TH_CLASS} ${TH_DIVIDER} text-center w-32 sm:w-48`}
+                >
+                  Role
+                </th>
+                {canManageWorkspace ? (
+                  <th className={`${TH_DIVIDER} w-14`}>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                ) : null}
+              </tr>
+            </thead>
+            <tbody className={TBODY_CLASS}>
+              {members.map((m) => (
+                <MemberRow
+                  key={m.id}
+                  member={m}
+                  canManage={canManageWorkspace}
+                  canManageOwners={isOwner}
+                  isSelf={m.user_id === user?.id}
+                  busy={memberActionId === m.id}
+                  onRoleChange={handleRoleChange}
+                  onRemove={handleRemoveMember}
+                  onLinkGithub={setGithubTarget}
+                  onUnlinkGithub={handleUnlinkGithub}
                 />
-              }
-            />
-            <Button
-              type="submit"
-              size="sm"
-              disabled={inviteLoading || !inviteEmail.trim()}
-            >
-              <Plus className="size-3.5" />
-              {inviteLoading ? 'Inviting...' : 'Invite'}
-            </Button>
-          </form>
-        )}
+              ))}
+              {members.length === 0 ? (
+                <tr className="border-t border-border-default">
+                  <td
+                    colSpan={canManageWorkspace ? 3 : 2}
+                    className="px-6 py-8 text-center text-text-secondary"
+                  >
+                    No members found.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-        {membersQuery.isPending ? (
-          <div
-            className="space-y-2 border-t pt-3"
-            aria-busy="true"
-            aria-label="Loading members"
-          >
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-10 w-full" />
+      {pendingInvitations.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold">Pending invitations</h2>
+          <div className={TABLE_CLASS}>
+            <table className="w-full table-fixed text-sm">
+              <thead className={THEAD_CLASS}>
+                <tr>
+                  <th className={`${TH_CLASS} text-left`}>Email</th>
+                  <th
+                    className={`${TH_CLASS} ${TH_DIVIDER} text-center w-28 sm:w-36`}
+                  >
+                    Role
+                  </th>
+                  <th
+                    className={`${TH_CLASS} ${TH_DIVIDER} text-center w-28 sm:w-36`}
+                  >
+                    Status
+                  </th>
+                  {canManageWorkspace ? (
+                    <th className={`${TH_DIVIDER} w-24`}>
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  ) : null}
+                </tr>
+              </thead>
+              <tbody className={TBODY_CLASS}>
+                {pendingInvitations.map((inv) => (
+                  <InvitationRow
+                    key={inv.id}
+                    invitation={inv}
+                    canManage={canManageWorkspace}
+                    onRevoke={handleRevokeInvitation}
+                    onResend={handleResendInvitation}
+                    busy={invitationActionId === inv.id}
+                  />
+                ))}
+              </tbody>
+            </table>
           </div>
-        ) : membersQuery.isError && members.length === 0 ? (
-          <LoadError
-            message="Could not load members."
-            onRetry={() => void membersQuery.refetch()}
-            retrying={membersQuery.isFetching}
-          />
-        ) : members.length > 0 ? (
-          <ul className="divide-y border-t">
-            {members.map((m) => (
-              <MemberRow
-                key={m.id}
-                member={m}
-                canManage={canManageWorkspace}
-                canManageOwners={isOwner}
-                isSelf={m.user_id === user?.id}
-                busy={memberActionId === m.id}
-                onRoleChange={(role) => handleRoleChange(m.id, role)}
-                onRemove={() => handleRemoveMember(m)}
-                onLinkGithub={() => setGithubTarget(m)}
-                onUnlinkGithub={() => handleUnlinkGithub(m)}
-              />
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-muted-foreground">No members found.</p>
-        )}
-      </section>
+        </section>
+      )}
 
       {githubTarget ? (
         <GithubIdentityLinkDialog
@@ -584,36 +646,13 @@ export function MembersTab() {
           onOpenChange={(open) => {
             if (!open) setGithubTarget(null)
           }}
-          workspaceId={workspace.id}
+          workspaceId={wsId}
           member={githubTarget}
           onSaved={() =>
-            qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
+            void qc.invalidateQueries({ queryKey: workspaceKeys.members(wsId) })
           }
         />
       ) : null}
-
-      {pendingInvitations.length > 0 && (
-        <section className="space-y-5">
-          <header>
-            <h2 className="text-base font-semibold">Pending invitations</h2>
-            <p className="text-sm text-muted-foreground">
-              Invitations that haven't been accepted yet.
-            </p>
-          </header>
-          <ul className="divide-y border-t">
-            {pendingInvitations.map((inv) => (
-              <InvitationRow
-                key={inv.id}
-                invitation={inv}
-                canManage={canManageWorkspace}
-                onRevoke={() => handleRevokeInvitation(inv)}
-                onResend={() => handleResendInvitation(inv)}
-                busy={invitationActionId === inv.id}
-              />
-            ))}
-          </ul>
-        </section>
-      )}
 
       <ConfirmDialog
         open={!!confirmAction}
@@ -624,9 +663,7 @@ export function MembersTab() {
         description={confirmAction?.description}
         confirmLabel={confirmAction?.confirmLabel ?? 'Confirm'}
         pendingLabel={confirmAction?.pendingLabel}
-        tone={
-          confirmAction?.variant === 'destructive' ? 'destructive' : 'default'
-        }
+        tone="destructive"
         onConfirm={() =>
           confirmAction ? confirmAction.onConfirm() : Promise.resolve()
         }

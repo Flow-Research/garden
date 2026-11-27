@@ -11,7 +11,6 @@
     "apps/web/src/features/issues/hooks/use-issue-timeline.ts": 4,
     "apps/web/src/features/modals/create-issue.tsx": 1,
     "apps/web/src/features/settings/components/account-tab.tsx": 6,
-    "apps/web/src/features/settings/components/members-tab.tsx": 2,
     "apps/web/src/features/teams/components/team-dialogs.tsx": 2,
     "apps/web/src/lib/redirect.ts": 1,
     "apps/web/src/lib/server/automations.ts": 1,

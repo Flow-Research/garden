@@ -1,6 +1,6 @@
 ---
 title: Authentication and server-function dependency security
-description: Patched dependency family, callback preservation, and required compatibility evidence.
+description: Patched dependency families, callback preservation, and required compatibility evidence.
 status: proposal
 owner: "@Umoren"
 last_reviewed: 2026-11-21
@@ -56,6 +56,48 @@ The TLS fixture requires OpenSSL and creates a temporary self-signed certificate
 Cleanup removes its temporary files and closes its owned connections.
 These tests cover local Node owners. Deployed Worker behavior retains its separate requirements.
 
+## Build tools and same-branch packages
+
+The third dependency unit keeps each package in the version branch that its parent declares.
+An override is a root `package.json` rule that makes pnpm install an exact version.
+
+| Dependency                 | Selected version | Parent that installs it                         |
+| -------------------------- | ---------------- | ----------------------------------------------- |
+| `brace-expansion` major 1  | `1.1.22`         | ExcelJS archive tooling through `minimatch@3`   |
+| `brace-expansion` major 2  | `2.1.8`          | TypeORM and archive tooling through `minimatch` |
+| `brace-expansion` major 5  | `5.0.13`         | just-bash through `minimatch@10`                |
+| `isomorphic-git`           | `1.38.6`         | `@cloudflare/shell`                             |
+| `browserslist`             | `4.28.7`         | Babel                                           |
+| `nanoid` major 3           | `3.3.18`         | PostCSS                                         |
+| `source-map-js`            | `1.2.2`          | PostCSS                                         |
+| `postcss`                  | `8.5.26`         | Vite                                            |
+| `vite`                     | `8.2.4`          | `@garden/web` and Vitest                        |
+| `launch-editor`            | `2.14.2`         | TanStack devtools                               |
+| `sharp`                    | `0.35.5`         | Miniflare, the embedding library, root scripts  |
+
+The `brace-expansion` versions are the newest release of each branch.
+The first patched releases still have an open moderate advisory.
+All workspace packages now use one Vite version. The web build moved from Vite `8.0.16` to `8.2.4`, which uses Rolldown `1.2`.
+Vite `8.2.4` declares `postcss@^8.5.26`, so the PostCSS override moved from `8.5.23` to `8.5.26`.
+Vite `8.2.4` reads path aliases only from the TypeScript project that includes the importing file.
+The root `apps/web/tsconfig.json` now references `apps/web/tsconfig.test.json`, so web test files keep the `@/` aliases. The typecheck commands are unchanged.
+One Sharp version replaces the two earlier versions. Both Miniflare versions declare Sharp `0.35.2`, so `0.35.5` is in their branch.
+The embedding library `@xenova/transformers` declares Sharp `^0.32.0`. Sharp was already outside that range. A test reads and resizes an image through that library.
+The Vite and `launch-editor` advisory applies to Windows only. The local checks are the production build and the Vitest suites, not an exploit test.
+
+The compatibility tests use the installed owners.
+Each `minimatch` owner expands valid brace sets and returns from the nested brace inputs in the advisories.
+The `@cloudflare/shell` Git commands run on its in-memory file system.
+A checkout must refuse to write a file below a directory symlink that leaves the working tree. A symlink is a file that points to another path.
+Babel resolves browser targets. Browserslist reads custom usage statistics that contain inherited key names such as `__proto__`.
+The PostCSS identifier generator ends when the size is zero. That check runs in a child process.
+PostCSS retains a previous source map and refuses an indexed source map with an extreme section offset.
+`scripts/screenshot-webp.mjs` converts generated PNG and SVG inputs in a temporary directory and refuses a truncated PNG.
+
+GraphQL Tools, protobufjs, Tiptap and ProseMirror View retain their high audit findings.
+The patched GraphQL Tools and protobufjs releases are in a later major version than their parents declare.
+Tiptap and ProseMirror View need a separate rich-text unit with editor tests.
+
 ## Server functions
 
 A server function is an HTTP operation supplied by TanStack Start.
@@ -103,6 +145,37 @@ Replaying the consumed state cannot repeat the write.
 Google unlink uses the auth account row ID required by Better Auth 1.7.
 The server looks up that ID among the caller's accounts before it applies Garden's password and Google unlink policy.
 Password removal remains refused.
+
+## Rich-text editor dependencies
+
+Tiptap is the rich-text editor library of `@garden/web`. Tiptap uses ProseMirror for its document model and view.
+`ContentEditor` is the only Tiptap editor. Issue, comment, reply and create-issue forms use it.
+All `@tiptap/*` packages use the exact version `3.33.0`. The Tiptap packages declare exact versions of each other, so the versions must stay equal.
+
+| Dependency          | Before   | Selected version | Advisory fixed                                                     |
+| ------------------- | -------- | ---------------- | ------------------------------------------------------------------ |
+| `@tiptap/*`         | `3.22.4` | `3.33.0`         | Markdown attribute parse time (3.30.5), `mergeAttributes` (3.30.4) |
+| `prosemirror-view`  | `1.41.8` | `1.42.9`         | Attribute validation for pasted slice context (1.42.3)             |
+| `prosemirror-model` | `1.25.4` | `1.25.13`        | None. `@tiptap/pm` `3.33.0` declares `^1.25.12`.                   |
+| `linkifyjs`         | `4.3.2`  | `4.4.0`          | None. The link extension declares it.                              |
+
+Version `1.43.0` of `prosemirror-view` is in the declared range. The lock file keeps `1.42.9`, because `1.43.0` was released on 2026-11-19 and changes mouse selection handling.
+No override holds this version. A later lock update can select `1.43.0`.
+
+A slice context is the list of parent nodes that ProseMirror writes into the `data-pm-slice` attribute of copied HTML.
+The paste extension of Garden sends HTML with this attribute to the ProseMirror paste path.
+The patched view runs attribute validators for the parent nodes in the slice context.
+Garden node attributes declare no validators. Thus the patch does not change the result of a Garden paste.
+The ProseMirror model ignores context attributes that a node does not declare.
+
+The vulnerable Markdown attribute parsers are in `@tiptap/core`. The upstream mention extension uses the inline parser.
+The Garden mention extension replaces that tokenizer. The Garden editor did not show the slow parse with the old version.
+
+The compatibility tests render the actual `ContentEditor` with Garden extensions.
+They load and save headings, marks, lists, quotes, code blocks, tables, mentions and file cards.
+They type Markdown shortcuts, typography and a URL, and set and refuse links.
+They paste plain Markdown, a URL over selected text, and HTML from another Garden editor.
+Separate tests check the patched parse time, the `mergeAttributes` prototype result and slice-context validation.
 
 ## Acceptance
 

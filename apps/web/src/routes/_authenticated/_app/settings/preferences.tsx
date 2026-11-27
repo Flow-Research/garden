@@ -1,17 +1,8 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { AppearanceTab } from '@/features/settings/components/appearance-tab'
-import { SettingsPanel } from '@/features/settings/components/settings-page-shell'
+import { PreferencesSettings } from '@/features/settings/components/preferences-settings'
 
 export const Route = createFileRoute(
   '/_authenticated/_app/settings/preferences',
 )({
-  component: AppearanceTabSection,
+  component: PreferencesSettings,
 })
-
-function AppearanceTabSection() {
-  return (
-    <SettingsPanel>
-      <AppearanceTab />
-    </SettingsPanel>
-  )
-}

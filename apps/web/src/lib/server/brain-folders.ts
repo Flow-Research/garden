@@ -105,6 +105,53 @@ export async function getBrainFolder(args: {
   return rows[0] ?? null
 }
 
+/** Serializes the first automatic folder save on the workspace row. */
+export function getOrCreateApprovedFolder(
+  db: DbLike,
+  workspaceId: string,
+  userId: string,
+) {
+  return db.transaction(async (tx) => {
+    const [workspace] = await tx
+      .select({ name: schema.organization.name })
+      .from(schema.organization)
+      .where(eq(schema.organization.id, workspaceId))
+      .for('no key update')
+    if (!workspace) throw new Error('Workspace not found')
+    const name =
+      Array.from(workspace.name).length <= 50
+        ? workspace.name
+        : 'Approved workspace documents'
+    const selection = {
+      id: schema.brainFolder.id,
+      name: schema.brainFolder.name,
+    }
+    const [existing] = await tx
+      .select(selection)
+      .from(schema.brainFolder)
+      .where(
+        and(
+          eq(schema.brainFolder.workspaceId, workspaceId),
+          eq(schema.brainFolder.name, name),
+          eq(schema.brainFolder.privacy, 'shared'),
+        ),
+      )
+      .orderBy(desc(schema.brainFolder.createdAt), schema.brainFolder.id)
+      .limit(1)
+    if (existing) return existing
+    const folders = await tx
+      .insert(schema.brainFolder)
+      .values({
+        workspaceId,
+        name,
+        privacy: 'shared',
+        createdBy: userId,
+      })
+      .returning(selection)
+    return requireReturnedRow(folders, 'shared work product folder')
+  })
+}
+
 export async function createBrainFolder(args: {
   env: Pick<AppEnv, 'HYPERDRIVE'>
   workspaceId: string

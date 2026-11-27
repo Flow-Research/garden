@@ -92,9 +92,9 @@ function MetricCard({
       type="button"
       onClick={onClick}
       className={cn(
-        'group flex h-full min-w-0 cursor-pointer flex-col rounded-xl border border-border/50 bg-muted/25 p-4 text-left transition-colors hover:border-border hover:bg-muted/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:p-5',
+        'group flex h-full min-w-0 cursor-pointer flex-col rounded-xl border border-border/50 bg-background bg-linear-to-b from-muted/25 to-muted/25 p-4 text-left transition-colors hover:border-border hover:from-muted/60 hover:to-muted/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring sm:p-5',
         warning &&
-          'border-warning/20 bg-warning/[0.03] hover:border-warning/40 hover:bg-warning/[0.06]',
+          'border-warning/20 from-warning/[0.03] to-warning/[0.03] hover:border-warning/40 hover:from-warning/[0.06] hover:to-warning/[0.06]',
       )}
     >
       <span className="flex min-h-8 w-full items-center justify-between gap-2">
@@ -164,7 +164,7 @@ function DashboardPanel({
   children: React.ReactNode
 }) {
   return (
-    <section className="min-w-0 rounded-xl border border-border/50 bg-muted/25 p-4 sm:p-5">
+    <section className="min-w-0 rounded-xl border border-border/50 bg-background bg-linear-to-b from-muted/25 to-muted/25 p-4 sm:p-5">
       <div className="mb-3 flex min-h-7 items-center justify-between gap-3">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         {action ??
@@ -291,7 +291,7 @@ function DashboardMetricGridFallback() {
       {Array.from({ length: 4 }, (_, index) => (
         <div
           key={index}
-          className="min-w-0 rounded-xl border border-border/50 bg-muted/25 p-4 sm:p-5"
+          className="min-w-0 rounded-xl border border-border/50 bg-background bg-linear-to-b from-muted/25 to-muted/25 p-4 sm:p-5"
         >
           <div className="flex h-8 items-center justify-between gap-2">
             <SectionPlaceholder className="h-3 w-20 max-w-full" />
