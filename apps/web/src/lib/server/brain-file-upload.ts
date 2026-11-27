@@ -1,5 +1,6 @@
 import { DateTime, Effect, Layer, Result as EffectResult } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { and, eq } from 'drizzle-orm'
 import {
   buildContentDisposition,
   normalizeDownloadFilename,
@@ -14,6 +15,7 @@ import {
   makeBrainFileIngestionLayer,
 } from '@/lib/server/brain-file-ingestion'
 import type { AppEnv } from '@/lib/server/env'
+import { getDb, schema } from '@/lib/server/db'
 
 const brainFileUploadLogger = createGardenLogger({
   service: 'garden-staging',
@@ -41,16 +43,15 @@ function brainStorageKey(input: {
 }
 
 /**
- * Stores one file in a workspace's Files & Folders. Before #381 this lived
- * inline in `POST /api/brain/files`, so the only way into Files was a manual
- * upload. "Save to Files" for an approved work product now needs the same
- * write, so both callers share this one path: stage to R2, adopt as a Brain
- * file item, then index and audit in the background (the upload behaviour),
- * which keeps saved work products searchable like any upload.
+ * Stores one file in a workspace's Files & Folders. `POST /api/brain/files`
+ * and work-product approval share this one path: stage to R2, adopt as a
+ * Brain file item, then index and audit in the background, which keeps saved
+ * work products searchable like any upload.
  */
 export async function saveBrainFileUpload(args: {
   env: AppEnv
   file: File
+  workProductId?: string
   ownerUserId: string
   waitUntil?: (promise: Promise<unknown>) => void
   workspaceId: string
@@ -70,6 +71,7 @@ export async function saveBrainFileUpload(args: {
       Effect.flatMap(BrainFileIngestion, (ingestion) =>
         ingestion.stage({
           file: args.file,
+          workProductId: args.workProductId,
           itemId,
           ownerUserId: args.ownerUserId,
           r2Key,
@@ -92,6 +94,30 @@ export async function saveBrainFileUpload(args: {
     )
   }
   const added = stageResult.success
+
+  // A partial earlier save can leave bytes in Brain before the folder link
+  // and save event are recorded. Reconcile the body on that same item.
+  if (args.workProductId && added.r2Key !== r2Key) {
+    const existing = await overwriteBrainFile({
+      env: args.env,
+      fileId: added.id,
+      body: await args.file.text(),
+      ownerUserId: args.ownerUserId,
+      waitUntil: args.waitUntil,
+      workspaceId: args.workspaceId,
+    })
+    return existing.andThen((item) =>
+      item
+        ? Result.ok(item)
+        : Result.err(
+            new BrainFileUploadError({
+              code: 'upload_failed',
+              message:
+                'The saved work product file disappeared. Retry saving to Files.',
+            }),
+          ),
+    )
+  }
 
   if (!added.indexed) {
     scheduleIndex({
@@ -153,6 +179,35 @@ export async function overwriteBrainFile(args: {
   }
   const item = readResult.success
   if (item === null || item.r2Key === undefined) return Result.ok(null)
+  if (
+    item.origin.actor._tag !== 'Human' ||
+    item.origin.actor.userId !== args.ownerUserId ||
+    (item.scope?.kind === 'user' && item.scope.userId !== args.ownerUserId)
+  ) {
+    return Result.ok(null)
+  }
+  if (item.scope?.kind === 'team') {
+    const teamId = item.scope.teamId
+    const membership = await Result.tryPromise({
+      try: async () => {
+        const db = await getDb(args.env)
+        return db
+          .select({ teamId: schema.teamMember.teamId })
+          .from(schema.teamMember)
+          .where(
+            and(
+              eq(schema.teamMember.workspaceId, args.workspaceId),
+              eq(schema.teamMember.teamId, teamId),
+              eq(schema.teamMember.userId, args.ownerUserId),
+            ),
+          )
+          .limit(1)
+      },
+      catch: failed,
+    })
+    if (membership.isErr()) return Result.err(membership.error)
+    if (membership.value.length === 0) return Result.ok(null)
+  }
 
   const r2Key = item.r2Key
   const bytes = new TextEncoder().encode(args.body)

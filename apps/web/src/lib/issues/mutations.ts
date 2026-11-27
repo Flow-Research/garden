@@ -9,6 +9,7 @@ import { Result } from 'better-result'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { inboxKeys } from '@/lib/inbox/queries'
+import { brainFileKeys, brainFolderKeys } from '@/features/brain/queries'
 import { issueKeys, CLOSED_PAGE_SIZE } from './queries'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { Issue, IssueReaction } from '@garden/core/types'
@@ -766,15 +767,11 @@ export type WorkProductReviewAction =
   | 'request_changes'
   | 'apply'
   | 'apply_pr'
-  | 'save_to_files'
+  | 'retry_files'
 
-/**
- * Maps a UI review action to the review endpoint's request body.
- * `save_to_files` carries the folder the person picked.
- */
+/** Maps a UI review action to the review endpoint's request body. */
 function reviewRequestBody(
   action: WorkProductReviewAction,
-  folderId: string | undefined,
 ): WorkProductReviewInput {
   switch (action) {
     case 'approve':
@@ -785,27 +782,35 @@ function reviewRequestBody(
       return { action: 'request_changes' }
     case 'apply':
       return { action: 'apply' }
+    case 'retry_files':
+      return { action: 'retry_files' }
     case 'apply_pr':
       return { action: 'apply_pr' }
-    case 'save_to_files':
-      return { action: 'save_to_files', folder_id: folderId ?? '' }
   }
 }
 
 /** Approve, approve and close, request changes on, or apply a work product. */
 export function useReviewWorkProduct(issueId: string | null) {
   const invalidate = useIssueActionInvalidation(issueId)
+  const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (vars: {
-      id: string
-      action: WorkProductReviewAction
-      folderId?: string
-    }) =>
-      api.reviewWorkProduct(
-        vars.id,
-        reviewRequestBody(vars.action, vars.folderId),
-      ),
-    onSuccess: invalidate,
+    mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
+      api.reviewWorkProduct(vars.id, reviewRequestBody(vars.action)),
+    onSuccess: (outcome) => {
+      invalidate()
+      if (outcome.action !== 'approve' && outcome.action !== 'retry_files')
+        return
+      // Approval saves documents to Files; a failed save keeps the approval.
+      if (outcome.files.status === 'failed') {
+        toast.error(
+          `Approved, but saving to Files failed: ${outcome.files.message}`,
+        )
+      }
+      if (outcome.files.status === 'saved') {
+        void queryClient.invalidateQueries({ queryKey: brainFileKeys.all })
+        void queryClient.invalidateQueries({ queryKey: brainFolderKeys.all })
+      }
+    },
     onError: () => toast.error('Failed to update work product'),
   })
 }

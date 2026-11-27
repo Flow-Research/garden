@@ -23,10 +23,17 @@ import {
   requireAgentAccess,
   requireChatFacetAccess,
 } from '@/lib/server/agent-do-router'
-import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
-import { reconcile } from '@/lib/server/issue-run-reconciler'
-import { dispatchNotificationEmails } from '@/lib/server/email/notifications'
 import { createRuntimeDbClient } from '@garden/db/runtime'
+import { dispatchNotificationEmails } from '@/lib/server/email/notifications'
+import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
+import {
+  ISSUE_RUN_RECONCILE_CRON,
+  reconcile,
+} from '@/lib/server/issue-run-reconciler'
+import {
+  MODEL_HEALTH_CHECK_CRON,
+  runModelHealthCheck,
+} from '@/lib/server/model-health-check'
 import {
   createGardenLogger,
   errorFields,
@@ -347,6 +354,38 @@ async function logReturnedErrorResponse(input: {
   )
 }
 
+/**
+ * One job per Cron Trigger pattern. Cloudflare dispatches a separate
+ * `scheduled` event for each pattern in `triggers.crons`, so jobs fail
+ * independently. Keep these keys equal to the crons in `wrangler.jsonc` and
+ * `alchemy.run.ts`; `server.test.ts` checks both.
+ */
+const scheduledJobs: Record<string, (env: ServerEnv) => Promise<void>> = {
+  [ISSUE_RUN_RECONCILE_CRON]: async (env) => {
+    const result = await reconcile(env)
+    if (result.isErr()) {
+      webLogger.error('issue_run.reconcile.failed', {
+        message: result.error.message,
+      })
+    }
+  },
+  '* * * * *': async (env) => {
+    const client = await createRuntimeDbClient(env.HYPERDRIVE)
+    const result = await dispatchNotificationEmails({
+      db: client.db,
+      env,
+    }).finally(() => client.close())
+    result.match({
+      ok: (report) => webLogger.info('notification_email.dispatch', report),
+      err: (error) =>
+        webLogger.error('notification_email.failed', errorFields(error)),
+    })
+  },
+  [MODEL_HEALTH_CHECK_CRON]: async (env) => {
+    await runModelHealthCheck(env)
+  },
+}
+
 export default {
   async scheduled(
     controller: ScheduledController,
@@ -355,34 +394,20 @@ export default {
   ) {
     bindAppEnv(env)
 
-    // Cloudflare passes the matching cron to the shared scheduled handler.
-    // Keep reconciliation on its original schedule, independent of email.
-    if (controller.cron === '* * * * *') {
-      const dispatched = await Result.tryPromise(async () => {
-        const client = await createRuntimeDbClient(env.HYPERDRIVE)
-        return dispatchNotificationEmails({ db: client.db, env }).finally(() =>
-          client.close(),
-        )
-      })
-      dispatched.match({
-        ok: (result) =>
-          result.match({
-            ok: (report) =>
-              webLogger.info('notification_email.dispatch', report),
-            err: (error) =>
-              webLogger.error('notification_email.failed', errorFields(error)),
-          }),
-        err: (error) =>
-          webLogger.error('notification_email.failed', errorFields(error)),
-      })
+    const job = scheduledJobs[controller.cron]
+    if (!job) {
+      webLogger.error('scheduled.unknown_cron', { cron: controller.cron })
       return
     }
-
     ctx.waitUntil(
-      reconcile(env).then((result) => {
+      Result.tryPromise({
+        try: async () => await job(env),
+        catch: (cause) => cause,
+      }).then((result) => {
         if (result.isErr()) {
-          webLogger.error('issue_run.reconcile.failed', {
-            message: result.error.message,
+          webLogger.error('scheduled.job_failed', {
+            cron: controller.cron,
+            ...errorFields(result.error),
           })
         }
       }),

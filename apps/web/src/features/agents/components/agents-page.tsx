@@ -86,7 +86,7 @@ export default function AgentsPage({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b px-6 py-3">
         <div>
           <h1 className="text-base font-semibold text-foreground">Agents</h1>

@@ -1,6 +1,10 @@
 // @vitest-environment node
+import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Result } from 'better-result'
 import type { AppEnv } from '@/lib/server/env'
+import type * as IssueRunReconciler from '@/lib/server/issue-run-reconciler'
+import type * as ModelHealthCheck from '@/lib/server/model-health-check'
 import { agentsSdk } from '@/test/agents-sdk-fixture'
 
 const harness = vi.hoisted(() => ({
@@ -9,6 +13,10 @@ const harness = vi.hoisted(() => ({
   routeAgentRequest: vi.fn(),
   parentReads: vi.fn(),
   threadReads: vi.fn(),
+  reconcile: vi.fn(),
+  modelHealthCheck: vi.fn(),
+  dispatchNotificationEmails: vi.fn(),
+  closeEmailDb: vi.fn(),
 }))
 
 vi.mock('@tanstack/react-start/server-entry', () => ({ default: {} }))
@@ -41,9 +49,22 @@ vi.mock('@cloudflare/sandbox', () => ({
   proxyToSandbox: async () => null,
   Sandbox: class {},
 }))
+vi.mock('@garden/db/runtime', () => ({
+  createRuntimeDbClient: async () => ({ db: {}, close: harness.closeEmailDb }),
+}))
+vi.mock('@/lib/server/email/notifications', () => ({
+  dispatchNotificationEmails: harness.dispatchNotificationEmails,
+}))
 vi.mock('@/lib/auth', () => ({ createSessionAuth: vi.fn() }))
 vi.mock('@/lib/server/env', () => ({ bindAppEnv: vi.fn() }))
-vi.mock('@/lib/server/issue-run-reconciler', () => ({ reconcile: vi.fn() }))
+vi.mock('@/lib/server/issue-run-reconciler', async (importOriginal) => ({
+  ...(await importOriginal<typeof IssueRunReconciler>()),
+  reconcile: harness.reconcile,
+}))
+vi.mock('@/lib/server/model-health-check', async (importOriginal) => ({
+  ...(await importOriginal<typeof ModelHealthCheck>()),
+  runModelHealthCheck: harness.modelHealthCheck,
+}))
 vi.mock('@/lib/server/context', () => ({
   createAppRequestContext: vi.fn(),
   getLoggedAuthSession: harness.session,
@@ -401,5 +422,113 @@ describe('private chat facet authorization at the Worker boundary', () => {
     expect((await request(path)).status).toBe(200)
     expect(harness.threadReads).not.toHaveBeenCalled()
     expect(harness.routeAgentRequest).toHaveBeenCalledOnce()
+  })
+})
+
+const { ISSUE_RUN_RECONCILE_CRON } =
+  await import('@/lib/server/issue-run-reconciler')
+const { MODEL_HEALTH_CHECK_CRON } =
+  await import('@/lib/server/model-health-check')
+
+describe('scheduled', () => {
+  async function fire(cron: string) {
+    const pending: Promise<unknown>[] = []
+    const ctx = {
+      waitUntil: (promise: Promise<unknown>) => {
+        pending.push(promise)
+      },
+    } as ExecutionContext
+    await worker.scheduled(
+      { cron, scheduledTime: Date.now(), noRetry: () => {} },
+      {} as AppEnv,
+      ctx,
+    )
+    await Promise.all(pending)
+  }
+
+  beforeEach(() => {
+    harness.reconcile.mockResolvedValue({
+      isErr: () => false,
+    })
+    harness.modelHealthCheck.mockResolvedValue({
+      report: { status: 'healthy' },
+      alert: 'not_needed',
+    })
+  })
+
+  it('dispatches notification email only on the minute schedule and closes its database', async () => {
+    harness.dispatchNotificationEmails.mockResolvedValue(
+      Result.ok({ kind: 'unconfigured' }),
+    )
+    await fire('* * * * *')
+    expect(harness.dispatchNotificationEmails).toHaveBeenCalledOnce()
+    expect(harness.closeEmailDb).toHaveBeenCalledOnce()
+    expect(harness.modelHealthCheck).not.toHaveBeenCalled()
+    expect(harness.reconcile).not.toHaveBeenCalled()
+  })
+
+  it('runs only the reconciler on its cron', async () => {
+    await fire(ISSUE_RUN_RECONCILE_CRON)
+
+    expect(harness.dispatchNotificationEmails).not.toHaveBeenCalled()
+    expect(harness.reconcile).toHaveBeenCalledOnce()
+    expect(harness.modelHealthCheck).not.toHaveBeenCalled()
+  })
+
+  it('runs only the model health check on its cron', async () => {
+    await fire(MODEL_HEALTH_CHECK_CRON)
+
+    expect(harness.dispatchNotificationEmails).not.toHaveBeenCalled()
+    expect(harness.modelHealthCheck).toHaveBeenCalledOnce()
+    expect(harness.reconcile).not.toHaveBeenCalled()
+  })
+
+  it('logs a job that throws instead of failing the invocation', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    harness.modelHealthCheck.mockRejectedValue(new Error('boom'))
+
+    await expect(fire(MODEL_HEALTH_CHECK_CRON)).resolves.toBeUndefined()
+
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'scheduled.job_failed',
+        cron: MODEL_HEALTH_CHECK_CRON,
+      }),
+    )
+  })
+
+  it('runs no job for an unknown cron', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await fire('*/5 * * * *')
+
+    expect(harness.reconcile).not.toHaveBeenCalled()
+    expect(harness.modelHealthCheck).not.toHaveBeenCalled()
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ event: 'scheduled.unknown_cron' }),
+    )
+  })
+
+  it('deploys exactly the crons that have jobs', () => {
+    const jobs = [
+      ISSUE_RUN_RECONCILE_CRON,
+      MODEL_HEALTH_CHECK_CRON,
+      '* * * * *',
+    ].sort()
+    const wrangler = readFileSync(
+      new URL('../wrangler.jsonc', import.meta.url),
+      'utf8',
+    )
+    const alchemy = readFileSync(
+      new URL('../../../alchemy.run.ts', import.meta.url),
+      'utf8',
+    )
+    const crons = (source: string, pattern: RegExp) =>
+      [...(pattern.exec(source)?.[1] ?? '').matchAll(/["']([^"']+)["']/g)]
+        .map((match) => match[1])
+        .sort()
+
+    expect(crons(wrangler, /"crons":\s*\[([^\]]*)\]/)).toEqual(jobs)
+    expect(crons(alchemy, /crons:\s*\[([^\]]*)\]/)).toEqual(jobs)
   })
 })
