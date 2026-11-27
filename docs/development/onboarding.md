@@ -133,13 +133,28 @@ pnpm --filter @garden/web exec wrangler login
 pnpm --filter @garden/web exec wrangler whoami
 ```
 
-Add the reported account ID to `CLOUDFLARE_ACCOUNT_ID` in `.env`. Then run:
+Add the reported account ID to `CLOUDFLARE_ACCOUNT_ID` in `.env`. Use the local
+`DATABASE_URL` and `HELIX_URL` from `.env.example` for this setup.
+
+Ollama and Workers AI use different models to create search vectors. Each
+model needs its own Helix data. Stop the local Compose services to free their
+ports. Then start a separate Compose project for Workers AI:
 
 ```bash
-pnpm offline:up
+docker compose -f compose.dev.yaml --profile ollama stop
+COMPOSE_PROJECT_NAME=garden-workers-ai pnpm offline:up
 pnpm --filter @garden/db db:migrate
 pnpm dev
 ```
+
+Use the `garden-workers-ai` project only with the Workers AI embedding model.
+On first use, this project creates its own Postgres and Helix volumes. Create
+a workspace and add the files you want to search. The original project keeps
+its local data.
+
+To return to Ollama, stop the Garden app. Stop the Workers AI services with
+`docker compose -p garden-workers-ai -f compose.dev.yaml stop`. Then use the
+local model instructions above to start the original project.
 
 Workers AI usage can create charges on your Cloudflare account. The default
 model, `@cf/moonshotai/kimi-k2.7-code`, is not available on the free plan.
