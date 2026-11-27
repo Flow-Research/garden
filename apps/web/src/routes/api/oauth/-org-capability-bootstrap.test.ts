@@ -53,3 +53,23 @@ it('syncs an org OAuth connection with the verified actor and no user mirror', a
   )
   expect(mocks.mirrorExecutorConnection).not.toHaveBeenCalled()
 })
+
+it('keeps the completed org connection when its tools need a resync', async () => {
+  mocks.syncCapabilities.mockReturnValue(
+    Effect.fail(new Error('Catalog unavailable')),
+  )
+  const result = await Effect.runPromise(
+    settleOAuthCallback({
+      identity: { tenant: 'workspace-a', subject: 'admin-a' },
+      state: 'state',
+      code: 'code',
+      providerError: null,
+      providerErrorDescription: null,
+    }),
+  )
+  expect(result).toEqual({
+    ok: true,
+    warning: expect.stringContaining('Resync'),
+  })
+  expect(mocks.complete).toHaveBeenCalledOnce()
+})

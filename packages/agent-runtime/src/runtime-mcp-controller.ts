@@ -1381,7 +1381,16 @@ export class RuntimeMcpController {
       capability.riskClass,
     )
 
+    // Discovered Executor tools use send_external for a mandatory catalog
+    // approval. Grants created while the tool was read-only cannot remove it.
+    const connector = getConnectorById(args.connectorId)
+    const catalogRequiresApproval =
+      connector !== undefined &&
+      !isNativeConnector(connector) &&
+      capability.riskClass === 'send_external'
+
     if (
+      !catalogRequiresApproval &&
       !teamApproval &&
       args.shouldAutoApprove?.({
         connectorId: args.connectorId,
@@ -1502,7 +1511,7 @@ export class RuntimeMcpController {
       connectionTrust: connectionGrantResult.value[0]?.trustLevel,
       riskClass: capability.riskClass,
     })
-    if (trustLevel !== 'ask' && !teamApproval) {
+    if (trustLevel !== 'ask' && !teamApproval && !catalogRequiresApproval) {
       return Result.ok(false)
     }
 

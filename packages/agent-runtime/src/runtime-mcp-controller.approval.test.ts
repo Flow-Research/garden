@@ -338,11 +338,19 @@ describe('connector tool approval gate (integration)', () => {
       name: 'list_files',
       riskClass: 'read',
     })
+    const shareCapabilityId = randomUUID()
     await testDb.db.insert(schema.capability).values({
-      id: randomUUID(),
+      id: shareCapabilityId,
       connectorType: 'google-drive',
       name: 'share_file',
       riskClass: 'send_external',
+    })
+    await testDb.db.insert(schema.permissionGrant).values({
+      id: randomUUID(),
+      agentId: seeded.agentId,
+      capabilityId: shareCapabilityId,
+      trustLevel: 'auto',
+      grantedBy: seeded.ownerId,
     })
     const executorController = makeController(
       seeded,

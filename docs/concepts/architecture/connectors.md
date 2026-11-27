@@ -36,6 +36,8 @@ Executor stores integration and connection state in the `EXECUTOR_DB` D1 databas
 
 `packages/connectors/src/sdk.ts` defines four risk classes: `read`, `write`, `send_external`, and `destructive`. An agent's trust level for a tool is `auto`, `allow`, or `ask`. `packages/connectors/src/capabilities.ts` maps a risk class to its default trust and resolves the effective trust for a connection.
 
+An Executor catalog tool that requires approval still needs approval when an agent has an automatic grant. This applies to both seeded and administrator-issued grants. An existing approval can satisfy the normal approval policy.
+
 Unknown tools fail closed. A tool with no risk class defaults to `ask`. Unclassified native or hosted GitHub tools are not exposed at all. Executor receives tenant and member identity from Garden, and it never replaces Garden's workspace authorization checks.
 
 The `capability` table has one row per connector and tool name across all workspaces. Executor lists tools for one workspace and member at a time. Sync adds those tools, but a partial Executor list cannot remove shared rows or lower their stored risk. If two lists give different risks for one name, sync keeps the stricter risk. It seeds grants only for tools in the current list. The Garden native registry defines its full tool list, so native sync can update definitions and remove names that the registry no longer defines.

@@ -20,6 +20,7 @@ const logger = createGardenLogger({
 const callbackHtml = (result: {
   readonly ok: boolean
   readonly error?: string
+  readonly warning?: string
 }) =>
   `<!doctype html><html><body><script>
 const result = ${JSON.stringify(result).replace(/</g, '\\u003c')};
@@ -85,6 +86,11 @@ export const settleOAuthCallback = Effect.fn('ExecutorOAuth.settleCallback')(
               ...errorFields(syncResult.failure),
             }),
           )
+          return {
+            ok: true as const,
+            warning:
+              'Connection authorized. Open Manage and select Resync to load its tools.',
+          }
         }
       }
     } else {
