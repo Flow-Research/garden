@@ -7,12 +7,18 @@ const routeSource = (relativePath: string) =>
 
 describe('in-process Executor API route boundaries', () => {
   it('loads the connection catalog through the in-process SDK', async () => {
-    const source = await routeSource('./connections.ts')
+    const [route, service] = await Promise.all([
+      routeSource('./connections.ts'),
+      routeSource('../../lib/server/connections/list-service.ts'),
+    ])
+    expect(route).toContain('buildConnectionsSnapshot(')
 
-    expect(source).toContain('loadExecutorCatalog(identity)')
-    expect(source).toContain("from '@/lib/server/executor-runtime'")
-    expect(source).not.toContain('executor-connectors-service')
-    expect(source).not.toContain('EXECUTOR_CONNECTORS')
+    expect(service).toContain('loadExecutorCatalog(identity)')
+    expect(service).toContain("from '@/lib/server/executor-runtime'")
+    for (const source of [route, service]) {
+      expect(source).not.toContain('executor-connectors-service')
+      expect(source).not.toContain('EXECUTOR_CONNECTORS')
+    }
   })
 
   it('keeps registry, preview, and install on Garden API routes', async () => {
@@ -42,7 +48,7 @@ describe('in-process Executor API route boundaries', () => {
 
     for (const source of [start, callback]) {
       expect(source).toContain("from '@executor-js/sdk/core'")
-      expect(source).toContain("from '@/lib/server/executor-runtime'")
+      expect(service).toContain("from '@/lib/server/executor-runtime'")
       expect(source).not.toContain('executor-connectors-service')
       expect(source).not.toContain('EXECUTOR_CONNECTORS')
       expect(source).not.toContain("from '@/lib/server/harnessy-runtime'")
@@ -57,7 +63,7 @@ describe('in-process Executor API route boundaries', () => {
     const source = await routeSource('./connections/$connectorId.ts')
 
     expect(source).toContain("from '@executor-js/sdk/core'")
-    expect(source).toContain("from '@/lib/server/executor-runtime'")
+    expect(service).toContain("from '@/lib/server/executor-runtime'")
     expect(source).toContain('runExecutor(')
     expect(source).toContain('executor.connections.refresh')
     expect(source).toContain('executor.connections.remove')
