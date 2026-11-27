@@ -1,3 +1,5 @@
+import { scopeKey, type BrainScope } from '@garden/brain/domain/scope'
+
 /** Canonicalizes presentation differences while keeping changed facts distinct. */
 export const normalizeBrainWriteBackClaim = (claim: string): string =>
   claim.trim().toLowerCase().replace(/\s+/g, ' ')
@@ -19,3 +21,18 @@ export const brainWriteBackCanonicalKey = (
   workspaceId: string,
   claimHash: string,
 ): string => `${workspaceId}:${claimHash}`
+
+/** Uses a collision-resistant digest because this value backs unique indexes. */
+export const brainWriteBackClaimHash = async (
+  scope: BrainScope,
+  claim: string,
+): Promise<string> => {
+  const value = `${scopeKey(scope)}:${normalizeBrainWriteBackClaim(claim)}`
+  const bytes = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(value),
+  )
+  return [...new Uint8Array(bytes)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')
+}

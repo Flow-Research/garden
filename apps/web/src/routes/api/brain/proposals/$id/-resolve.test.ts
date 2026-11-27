@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { createHash } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { DateTime, Effect, Layer } from 'effect'
 import { ItemId, Kind } from '@garden/brain/domain'
@@ -66,7 +67,7 @@ const proposalRow = () => ({
   id: proposalId,
   workspaceId,
   runId: 'run-1',
-  claimHash: 'hash-1',
+  claimHash: 'legacy-run-hash',
   claim: 'Alice prefers short replies.',
   kind: 'preference',
   confidence: 0.9,
@@ -110,7 +111,12 @@ function fakeDb(row: ReturnType<typeof proposalRow>) {
       }),
     })),
   }
-  return { db, updates, row, canInsertCompeting: () => row.status !== 'pending' }
+  return {
+    db,
+    updates,
+    row,
+    canInsertCompeting: () => row.status !== 'pending',
+  }
 }
 
 function resolveRequest(action: 'approve' | 'reject' = 'approve') {
@@ -162,7 +168,7 @@ describe('resolveBrainProposal user scope', () => {
     mockArchiveInboxItemsByKey.mockResolvedValue(undefined)
   })
 
-  it('writes the stored user scope when the scoped owner approves', async () => {
+  it('uses the direct-write identity when the owner approves a legacy run-scoped claim', async () => {
     const { db, updates } = fakeDb(proposalRow())
 
     const response = await postResolve({ db, userId: ownerId })
@@ -177,7 +183,9 @@ describe('resolveBrainProposal user scope', () => {
       scope: { kind: 'user', userId: ownerId },
       canonical: {
         type: 'brain-write-back-claim',
-        value: `${workspaceId}:hash-1`,
+        value: `${workspaceId}:${createHash('sha256')
+          .update(`user:${ownerId}:alice prefers short replies.`)
+          .digest('hex')}`,
       },
     })
     expect(updates).toMatchObject([{ status: 'approved', decidedBy: ownerId }])

@@ -14,7 +14,10 @@ import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import type { AppEnv } from '@/lib/server/env'
 import { parseJsonBody } from '@/lib/server/validation/common'
-import { brainWriteBackCanonicalKey } from '@garden/agent-runtime/src/brain-write-back-identity'
+import {
+  brainWriteBackCanonicalKey,
+  brainWriteBackClaimHash,
+} from '@garden/agent-runtime/src/brain-write-back-identity'
 
 const resolveBodySchema = z
   .object({ action: z.enum(['approve', 'reject']) })
@@ -108,6 +111,8 @@ export const resolveBrainProposal = async ({
         }
 
         if (approveLayer !== null) {
+          // Older rows keep their original run-specific hash for database history.
+          const claimHash = await brainWriteBackClaimHash(row.scope, row.claim)
           const writeResult = await Effect.runPromise(
             Effect.result(
               Effect.flatMap(Brain, (brain) =>
@@ -121,7 +126,7 @@ export const resolveBrainProposal = async ({
                     type: 'brain-write-back-claim',
                     value: brainWriteBackCanonicalKey(
                       row.workspaceId,
-                      row.claimHash,
+                      claimHash,
                     ),
                   },
                   actor: {

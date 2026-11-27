@@ -17,6 +17,7 @@ import * as schema from '@garden/db/schema'
 import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
 import {
   brainWriteBackCanonicalKey,
+  brainWriteBackClaimHash,
   brainWriteProposalOperationKey,
   normalizeBrainWriteBackClaim,
 } from './brain-write-back-identity'
@@ -117,17 +118,6 @@ const proposeInputSchema = z
   })
   .strict()
 
-/** Uses a collision-resistant digest because this value backs unique indexes. */
-const claimDigest = async (value: string): Promise<string> => {
-  const bytes = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(value),
-  )
-  return [...new Uint8Array(bytes)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('')
-}
-
 /** Confirms exact semantic identity after search narrows likely matches. */
 const matchesExistingClaim = (
   claim: string,
@@ -186,9 +176,14 @@ export function createBrainWriteBackTools(
       if (scope === 'user' && context.userId === undefined) {
         return { ok: true, action: 'skipped', reason: 'no-user-scope' }
       }
-      const normalizedClaim = normalizeBrainWriteBackClaim(input.claim)
-      const scopeIdentity = scope === 'user' ? `user:${context.userId}` : 'org'
-      const claimHash = await claimDigest(`${scopeIdentity}:${normalizedClaim}`)
+      const resolvedScope =
+        scope === 'user' && context.userId !== undefined
+          ? userScope(context.userId)
+          : orgScope()
+      const claimHash = await brainWriteBackClaimHash(
+        resolvedScope,
+        input.claim,
+      )
       const candidate: WriteCandidate = {
         claimHash,
         claim: input.claim,
@@ -197,10 +192,6 @@ export function createBrainWriteBackTools(
         sensitive: input.sensitive,
         scope,
       }
-      const resolvedScope =
-        candidate.scope === 'user' && context.userId !== undefined
-          ? userScope(context.userId)
-          : orgScope()
       const [decision] = decideWriteBack([candidate], {
         directWriteConfidence: BRAIN_WRITE_BACK_DIRECT_WRITE_CONFIDENCE,
       })
