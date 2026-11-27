@@ -30,10 +30,16 @@ export const githubPullRequestWebhookSchema = z.object({
     body: z.string().nullable(),
     draft: z.boolean().default(false),
     merged: z.boolean().nullable().default(false),
+    state: z.enum(['open', 'closed']).optional(),
     updated_at: z
       .string()
       .refine((value) => Number.isFinite(Date.parse(value))),
   }),
+  changes: z
+    .object({
+      body: z.object({ from: z.string().nullable() }).optional(),
+    })
+    .optional(),
   sender: z.object({ login: z.string() }).nullable().optional(),
 })
 
@@ -55,7 +61,12 @@ export type GitHubPullRequestTarget = {
   signal: PullRequestSignal
   /** Issue numbers in this repository the body closes. */
   linkedIssueNumbers: number[]
+  removedIssueNumbers: number[]
   updatedAtMs: number
+}
+
+export type GitHubPullRequestBindingMatch = GitHubWebhookBindingMatch & {
+  issueNumber: number
 }
 
 /** Maps a `pull_request` action onto a signal; other actions are ignored. */
@@ -70,6 +81,13 @@ function pullRequestSignal(
       return 'opened_ready'
     case 'converted_to_draft':
       return 'converted_to_draft'
+    case 'edited':
+      return pr.changes?.body !== undefined &&
+        pr.pull_request.state !== 'closed'
+        ? pr.pull_request.draft
+          ? 'opened_draft'
+          : 'opened_ready'
+        : null
     case 'closed':
       return pr.pull_request.merged ? 'merged' : 'closed_unmerged'
     default:
@@ -116,10 +134,29 @@ export function parseGitHubPullRequestTarget(
   const pr = parsed.data
   const signal = pullRequestSignal(pr)
   if (!signal) return Result.ok(null)
-  const linkedIssueNumbers = closingIssueNumbers(
+  const currentIssueNumbers = closingIssueNumbers(
     pr.pull_request.body,
     pr.repository.full_name,
   )
+  const previousIssueNumbers =
+    pr.action === 'edited'
+      ? closingIssueNumbers(
+          pr.changes?.body?.from ?? null,
+          pr.repository.full_name,
+        )
+      : []
+  const removedIssueNumbers = previousIssueNumbers.filter(
+    (number) => !currentIssueNumbers.includes(number),
+  )
+  const linkedIssueNumbers =
+    pr.action === 'edited'
+      ? [
+          ...currentIssueNumbers.filter(
+            (number) => !previousIssueNumbers.includes(number),
+          ),
+          ...removedIssueNumbers,
+        ]
+      : currentIssueNumbers
   if (linkedIssueNumbers.length === 0) return Result.ok(null)
   return Result.ok({
     installationId: String(pr.installation.id),
@@ -130,6 +167,7 @@ export function parseGitHubPullRequestTarget(
     senderLogin: pr.sender?.login ?? null,
     signal,
     linkedIssueNumbers,
+    removedIssueNumbers,
     updatedAtMs: Date.parse(pr.pull_request.updated_at),
   })
 }
@@ -215,16 +253,19 @@ function openPullRequests(metadata: unknown): number[] {
  */
 export async function applyGitHubPullRequestUpdate(args: {
   tx: GitHubWebhookTx
-  binding: GitHubWebhookBindingMatch
+  binding: GitHubPullRequestBindingMatch
   target: GitHubPullRequestTarget
 }): Promise<GitHubWebhookIssueApplyOutcome> {
   const { tx, binding, target } = args
+  const signal = target.removedIssueNumbers.includes(binding.issueNumber)
+    ? 'closed_unmerged'
+    : target.signal
   const [bindingRow] = await tx
     .select({ metadata: schema.issueSourceBinding.metadata })
     .from(schema.issueSourceBinding)
     .where(eq(schema.issueSourceBinding.id, binding.bindingId))
   const open = new Set(openPullRequests(bindingRow?.metadata))
-  if (target.signal === 'merged' || target.signal === 'closed_unmerged') {
+  if (signal === 'merged' || signal === 'closed_unmerged') {
     open.delete(target.number)
   } else {
     open.add(target.number)
@@ -252,7 +293,7 @@ export async function applyGitHubPullRequestUpdate(args: {
   const current = (existing.status ?? 'todo') as IssueStatus
   const next = nextPullRequestStatus({
     current,
-    signal: target.signal,
+    signal,
     otherOpenPullRequests,
   })
   if (!next || next === current) return { kind: 'skipped', reason: 'noop' }
@@ -300,7 +341,7 @@ export async function applyGitHubPullRequestUpdate(args: {
 export async function resolveGitHubPullRequestBindings(args: {
   db: Db
   target: GitHubPullRequestTarget
-}): Promise<GitHubWebhookBindingMatch[]> {
+}): Promise<GitHubPullRequestBindingMatch[]> {
   const { target } = args
   const links = await resolveTeamRepositoryLinks({
     db: args.db,
@@ -310,7 +351,7 @@ export async function resolveGitHubPullRequestBindings(args: {
   const workspaces = new Set(links.map((link) => link.workspaceId))
   if (workspaces.size === 0) return []
   const [owner = '', repo = ''] = target.fullName.split('/')
-  const matches: GitHubWebhookBindingMatch[] = []
+  const matches: GitHubPullRequestBindingMatch[] = []
   for (const issueNumber of target.linkedIssueNumbers) {
     const bindings = await resolveGitHubWebhookBindings({
       db: args.db,
@@ -324,7 +365,9 @@ export async function resolveGitHubPullRequestBindings(args: {
       },
     })
     matches.push(
-      ...bindings.filter((binding) => workspaces.has(binding.workspaceId)),
+      ...bindings
+        .filter((binding) => workspaces.has(binding.workspaceId))
+        .map((binding) => ({ ...binding, issueNumber })),
     )
   }
   return matches

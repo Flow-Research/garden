@@ -512,7 +512,7 @@ export function BrainFilesPage() {
 
   if (activeFolderId !== null) {
     return (
-      <main className="h-full bg-background">
+      <main className="h-full">
         <BrainFolderDetail
           folderId={activeFolderId}
           uploading={uploadMutation.isPending}
@@ -569,7 +569,7 @@ export function BrainFilesPage() {
 
   if (allFilesOpen) {
     return (
-      <main className="h-full bg-background">
+      <main className="h-full">
         <BrainAllFilesView
           files={files}
           folders={folders}
@@ -629,7 +629,7 @@ export function BrainFilesPage() {
   }
 
   return (
-    <main className="h-full overflow-y-auto bg-background">
+    <main className="h-full overflow-y-auto">
       {/* Header band (design: white strip, 24px title + 16px subtitle) */}
       <header className="bg-background-main-default px-6 pt-12 pb-3">
         <div className="mx-auto w-full max-w-[80rem]">
