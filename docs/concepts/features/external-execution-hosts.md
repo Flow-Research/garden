@@ -20,7 +20,7 @@ Garden checks the signature, current enrollment, operator membership and a durab
 A nonce is a request identity that prevents replay.
 The host checks Garden's HTTPS origin and current grant before it acts.
 
-An authorized member selects an approved task and host.
+The pilot operator submits a launch for an approved task and host. The receiver verifies the workspace and the submitted digests. WorkStream owns independent task approval. A Garden grant expires within 24 hours, the maximum allowed by the Harnessy approval command.
 Garden binds the launch to the workspace, member, host, task content, source revision and evaluator.
 The host reserves the stable launch identity before it creates any execution resource.
 A lost response does not authorize another launch identity.

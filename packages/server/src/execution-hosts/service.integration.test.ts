@@ -146,6 +146,24 @@ describe('external host receiver with actual PostgreSQL', () => {
     }
   }
 
+  it('enforces the same 24-hour grant ceiling as the host approval command', async () => {
+    const state = await fixture()
+    const host = await state.addHost()
+    const original = await host.launch()
+    const { requestDigest: _digest, ...binding } = original
+    const grant = {
+      ...original.grant,
+      expiresAt: original.grant.issuedAt + 24 * 60 * 60_000 + 1,
+    }
+    const unsigned = { ...binding, launchId: randomUUID(), grant }
+    const denied = await state.receiver.launch(
+      state.userId,
+      { ...unsigned, requestDigest: await executionControlDigest(unsigned) },
+      state.now(),
+    )
+    expect(denied.isErr() && denied.error.status).toBe(400)
+  })
+
   it('retains one launch after a lost acknowledgment and rejects changed input or replay', async () => {
     const fixtureState = await fixture()
     const { receiver, userId } = fixtureState

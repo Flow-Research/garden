@@ -31,6 +31,11 @@ function input(
 }
 
 describe('hostFreshness', () => {
+  it('treats a newer host clock as uncertain', () => {
+    expect(
+      hostFreshness({ status: 'enrolled', lastSeenAt: NOW + 1 }, NOW),
+    ).toBe('stale')
+  })
   it('reports recent contact only inside the report window', () => {
     const enrolled = { status: 'enrolled' as const }
     expect(

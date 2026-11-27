@@ -67,6 +67,9 @@ export class ExecutionHostError extends TaggedError('ExecutionHostError')<{
   cause?: unknown
 }>() {}
 
+// Same upper bound as Harnessy engineering approve --expires-minutes.
+const MAX_GRANT_LIFETIME_MS = 24 * 60 * 60_000
+
 const refused = (message: string, status: ExecutionHostError['status'] = 403) =>
   Result.err(new ExecutionHostError({ code: 'host_refused', message, status }))
 const conflict = (message: string) =>
@@ -420,6 +423,7 @@ export class ExecutionHostReceiver {
       launch.operatorId !== this.#pilotOperatorId ||
       launch.grant.jobDigest !== jobDigest ||
       launch.requestDigest !== (await executionControlDigest(unsigned)) ||
+      launch.grant.expiresAt - launch.grant.issuedAt > MAX_GRANT_LIFETIME_MS ||
       launch.grant.issuedAt > now ||
       launch.grant.expiresAt <= now
     )
