@@ -1,6 +1,6 @@
 ---
 title: Authentication and server-function dependency security
-description: Patched dependency family, callback preservation, and required compatibility evidence.
+description: Patched dependency families, callback preservation, and required compatibility evidence.
 status: proposal
 owner: "@Umoren"
 last_reviewed: 2026-11-21
@@ -55,6 +55,48 @@ The URI fixture checks normalization and refuses a port that is not a number.
 The TLS fixture requires OpenSSL and creates a temporary self-signed certificate for the local listener.
 Cleanup removes its temporary files and closes its owned connections.
 These tests cover local Node owners. Deployed Worker behavior retains its separate requirements.
+
+## Build tools and same-branch packages
+
+The third dependency unit keeps each package in the version branch that its parent declares.
+An override is a root `package.json` rule that makes pnpm install an exact version.
+
+| Dependency                 | Selected version | Parent that installs it                         |
+| -------------------------- | ---------------- | ----------------------------------------------- |
+| `brace-expansion` major 1  | `1.1.22`         | ExcelJS archive tooling through `minimatch@3`   |
+| `brace-expansion` major 2  | `2.1.8`          | TypeORM and archive tooling through `minimatch` |
+| `brace-expansion` major 5  | `5.0.13`         | just-bash through `minimatch@10`                |
+| `isomorphic-git`           | `1.38.6`         | `@cloudflare/shell`                             |
+| `browserslist`             | `4.28.7`         | Babel                                           |
+| `nanoid` major 3           | `3.3.18`         | PostCSS                                         |
+| `source-map-js`            | `1.2.2`          | PostCSS                                         |
+| `postcss`                  | `8.5.26`         | Vite                                            |
+| `vite`                     | `8.2.4`          | `@garden/web` and Vitest                        |
+| `launch-editor`            | `2.14.2`         | TanStack devtools                               |
+| `sharp`                    | `0.35.5`         | Miniflare, the embedding library, root scripts  |
+
+The `brace-expansion` versions are the newest release of each branch.
+The first patched releases still have an open moderate advisory.
+All workspace packages now use one Vite version. The web build moved from Vite `8.0.16` to `8.2.4`, which uses Rolldown `1.2`.
+Vite `8.2.4` declares `postcss@^8.5.26`, so the PostCSS override moved from `8.5.23` to `8.5.26`.
+Vite `8.2.4` reads path aliases only from the TypeScript project that includes the importing file.
+The root `apps/web/tsconfig.json` now references `apps/web/tsconfig.test.json`, so web test files keep the `@/` aliases. The typecheck commands are unchanged.
+One Sharp version replaces the two earlier versions. Both Miniflare versions declare Sharp `0.35.2`, so `0.35.5` is in their branch.
+The embedding library `@xenova/transformers` declares Sharp `^0.32.0`. Sharp was already outside that range. A test reads and resizes an image through that library.
+The Vite and `launch-editor` advisory applies to Windows only. The local checks are the production build and the Vitest suites, not an exploit test.
+
+The compatibility tests use the installed owners.
+Each `minimatch` owner expands valid brace sets and returns from the nested brace inputs in the advisories.
+The `@cloudflare/shell` Git commands run on its in-memory file system.
+A checkout must refuse to write a file below a directory symlink that leaves the working tree. A symlink is a file that points to another path.
+Babel resolves browser targets. Browserslist reads custom usage statistics that contain inherited key names such as `__proto__`.
+The PostCSS identifier generator ends when the size is zero. That check runs in a child process.
+PostCSS retains a previous source map and refuses an indexed source map with an extreme section offset.
+`scripts/screenshot-webp.mjs` converts generated PNG and SVG inputs in a temporary directory and refuses a truncated PNG.
+
+GraphQL Tools, protobufjs, Tiptap and ProseMirror View retain their high audit findings.
+The patched GraphQL Tools and protobufjs releases are in a later major version than their parents declare.
+Tiptap and ProseMirror View need a separate rich-text unit with editor tests.
 
 ## Server functions
 
