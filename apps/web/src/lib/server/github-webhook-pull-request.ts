@@ -35,9 +35,11 @@ export const githubPullRequestWebhookSchema = z.object({
       .string()
       .refine((value) => Number.isFinite(Date.parse(value))),
   }),
-  changes: z.object({
-    body: z.object({ from: z.string().nullable() }).optional(),
-  }).optional(),
+  changes: z
+    .object({
+      body: z.object({ from: z.string().nullable() }).optional(),
+    })
+    .optional(),
   sender: z.object({ login: z.string() }).nullable().optional(),
 })
 
@@ -136,18 +138,25 @@ export function parseGitHubPullRequestTarget(
     pr.pull_request.body,
     pr.repository.full_name,
   )
-  const previousIssueNumbers = pr.action === 'edited'
-    ? closingIssueNumbers(pr.changes?.body?.from ?? null, pr.repository.full_name)
-    : []
+  const previousIssueNumbers =
+    pr.action === 'edited'
+      ? closingIssueNumbers(
+          pr.changes?.body?.from ?? null,
+          pr.repository.full_name,
+        )
+      : []
   const removedIssueNumbers = previousIssueNumbers.filter(
     (number) => !currentIssueNumbers.includes(number),
   )
-  const linkedIssueNumbers = pr.action === 'edited'
-    ? [
-        ...currentIssueNumbers.filter((number) => !previousIssueNumbers.includes(number)),
-        ...removedIssueNumbers,
-      ]
-    : currentIssueNumbers
+  const linkedIssueNumbers =
+    pr.action === 'edited'
+      ? [
+          ...currentIssueNumbers.filter(
+            (number) => !previousIssueNumbers.includes(number),
+          ),
+          ...removedIssueNumbers,
+        ]
+      : currentIssueNumbers
   if (linkedIssueNumbers.length === 0) return Result.ok(null)
   return Result.ok({
     installationId: String(pr.installation.id),

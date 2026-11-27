@@ -1517,9 +1517,7 @@ export class RuntimeMcpController {
         request.context ===
           permissionRequestContext(
             `${args.connectorId}.${args.toolName}`,
-            teamApproval
-              ? [teamApproval.team, ...teamApproval.otherTeams]
-              : [],
+            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
           ) &&
         Date.now() - request.resolvedAt.getTime() <=
           PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
@@ -1540,9 +1538,7 @@ export class RuntimeMcpController {
           runId: identityResult.value.runId ?? null,
           context: permissionRequestContext(
             `${args.connectorId}.${args.toolName}`,
-            teamApproval
-              ? [teamApproval.team, ...teamApproval.otherTeams]
-              : [],
+            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
           ),
           teamId: teamApproval?.otherTeams.length
             ? null
