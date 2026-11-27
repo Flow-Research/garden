@@ -144,7 +144,6 @@ function IssueTitleField({
       placeholder="Issue title"
       rows={1}
       className="block field-sizing-content w-full min-w-0 resize-none border-0 bg-transparent p-0 text-lg font-bold leading-snug tracking-tight outline-none [overflow-wrap:anywhere] placeholder:text-muted-foreground"
-      onFocus={() => setDraft((current) => current ?? title)}
       onChange={(event) => setDraft(event.currentTarget.value)}
       onBlur={() => {
         const trimmed = (draft ?? title).trim()

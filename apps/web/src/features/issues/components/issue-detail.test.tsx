@@ -476,6 +476,7 @@ describe('IssueDetail (shared)', () => {
     const { queryClient } = renderIssueDetail()
     const title = await screen.findByRole('textbox', { name: 'Issue title' })
     await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    fireEvent.focus(title)
     // React Query notifies observers on a later tick; flush it inside act.
     await act(async () => {
       queryClient.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
@@ -485,7 +486,6 @@ describe('IssueDetail (shared)', () => {
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     expect(title).toHaveValue('Renamed by someone else')
-    fireEvent.focus(title)
     fireEvent.blur(title)
     expect(mockApiObj.updateIssue).not.toHaveBeenCalled()
   })
