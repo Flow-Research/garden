@@ -27,6 +27,7 @@ refs/
 /tmp/hyperdrive-*.md
 /artifacts/fixtures/agent-runtime/*.jsonl
 /artifacts/roadmap/*internal*
+/.artifacts/
 /.claude/settings.local.json
 /task_plan.md
 /progress.md

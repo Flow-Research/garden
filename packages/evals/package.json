@@ -1,0 +1,34 @@
+{
+  "name": "@garden/evals",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "eval:issue-run": "node --experimental-strip-types src/cli.ts",
+    "eval:promptfoo": "node scripts/eval-promptfoo.mjs",
+    "test": "node --experimental-strip-types --test src/graders/*.test.ts src/runner/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives ."
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "agents": "catalog:",
+    "better-result": "^2.9.2",
+    "exceljs": "catalog:",
+    "ws": "8.21.0",
+    "zod": "4.6.6"
+  },
+  "devDependencies": {
+    "@garden/tsconfig": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/ws": "8.18.1",
+    "@typescript/native": "catalog:",
+    "promptfoo": "0.125.1"
+  }
+}
