@@ -1,5 +1,6 @@
 import { DateTime, Effect, Layer, Result as EffectResult } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
+import { and, eq } from 'drizzle-orm'
 import {
   buildContentDisposition,
   normalizeDownloadFilename,
@@ -14,6 +15,7 @@ import {
   makeBrainFileIngestionLayer,
 } from '@/lib/server/brain-file-ingestion'
 import type { AppEnv } from '@/lib/server/env'
+import { getDb, schema } from '@/lib/server/db'
 
 const brainFileUploadLogger = createGardenLogger({
   service: 'garden-staging',
@@ -153,6 +155,35 @@ export async function overwriteBrainFile(args: {
   }
   const item = readResult.success
   if (item === null || item.r2Key === undefined) return Result.ok(null)
+  if (
+    item.origin.actor._tag !== 'Human' ||
+    item.origin.actor.userId !== args.ownerUserId ||
+    (item.scope?.kind === 'user' && item.scope.userId !== args.ownerUserId)
+  ) {
+    return Result.ok(null)
+  }
+  if (item.scope?.kind === 'team') {
+    const teamId = item.scope.teamId
+    const membership = await Result.tryPromise({
+      try: async () => {
+        const db = await getDb(args.env)
+        return db
+          .select({ teamId: schema.teamMember.teamId })
+          .from(schema.teamMember)
+          .where(
+            and(
+              eq(schema.teamMember.workspaceId, args.workspaceId),
+              eq(schema.teamMember.teamId, teamId),
+              eq(schema.teamMember.userId, args.ownerUserId),
+            ),
+          )
+          .limit(1)
+      },
+      catch: failed,
+    })
+    if (membership.isErr()) return Result.err(membership.error)
+    if (membership.value.length === 0) return Result.ok(null)
+  }
 
   const r2Key = item.r2Key
   const bytes = new TextEncoder().encode(args.body)
