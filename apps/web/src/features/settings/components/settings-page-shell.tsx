@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
 import {
   CircleUserRound,
+  Server,
   Settings,
   SlidersHorizontal,
   UsersRound,
@@ -20,6 +21,11 @@ const sections = [
     icon: SlidersHorizontal,
   },
   { to: '/settings/general', label: 'General', icon: Settings },
+  {
+    to: '/settings/execution-hosts',
+    label: 'Execution hosts',
+    icon: Server,
+  },
 ] as const
 
 /** Shared frame for routed settings while section content is redesigned. */

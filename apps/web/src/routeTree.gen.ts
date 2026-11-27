@@ -99,6 +99,7 @@ import { Route as AuthenticatedAppAgentsAgentIdRouteImport } from './routes/_aut
 import { Route as AuthenticatedAppChatsIndexRouteImport } from './routes/_authenticated/_app/chats.index'
 import { Route as AuthenticatedAppChatsThreadIdRouteImport } from './routes/_authenticated/_app/chats.$threadId'
 import { Route as AuthenticatedAppSettingsIndexRouteImport } from './routes/_authenticated/_app/settings/index'
+import { Route as AuthenticatedAppSettingsExecutionHostsRouteImport } from './routes/_authenticated/_app/settings/execution-hosts'
 import { Route as AuthenticatedAppSettingsGeneralRouteImport } from './routes/_authenticated/_app/settings/general'
 import { Route as AuthenticatedAppSettingsPreferencesRouteImport } from './routes/_authenticated/_app/settings/preferences'
 import { Route as AuthenticatedAppSettingsProfileRouteImport } from './routes/_authenticated/_app/settings/profile'
@@ -648,6 +649,12 @@ const AuthenticatedAppSettingsIndexRoute =
     path: '/',
     getParentRoute: () => AuthenticatedAppSettingsRoute,
   } as any)
+const AuthenticatedAppSettingsExecutionHostsRoute =
+  AuthenticatedAppSettingsExecutionHostsRouteImport.update({
+    id: '/execution-hosts',
+    path: '/execution-hosts',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
 const AuthenticatedAppSettingsGeneralRoute =
   AuthenticatedAppSettingsGeneralRouteImport.update({
     id: '/general',
@@ -1187,6 +1194,7 @@ export interface FileRoutesByFullPath {
   '/api/execution-hosts/': typeof ApiExecutionHostsIndexRoute
   '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/settings/execution-hosts': typeof AuthenticatedAppSettingsExecutionHostsRoute
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
@@ -1353,6 +1361,7 @@ export interface FileRoutesByTo {
   '/api/execution-hosts': typeof ApiExecutionHostsIndexRoute
   '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/settings/execution-hosts': typeof AuthenticatedAppSettingsExecutionHostsRoute
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
@@ -1528,6 +1537,7 @@ export interface FileRoutesById {
   '/api/execution-hosts/': typeof ApiExecutionHostsIndexRoute
   '/_authenticated/_app/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/_authenticated/_app/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/_authenticated/_app/settings/execution-hosts': typeof AuthenticatedAppSettingsExecutionHostsRoute
   '/_authenticated/_app/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/_authenticated/_app/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/_authenticated/_app/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
@@ -1702,6 +1712,7 @@ export interface FileRouteTypes {
     | '/api/execution-hosts/'
     | '/agents/$agentId'
     | '/chats/$threadId'
+    | '/settings/execution-hosts'
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
@@ -1868,6 +1879,7 @@ export interface FileRouteTypes {
     | '/api/execution-hosts'
     | '/agents/$agentId'
     | '/chats/$threadId'
+    | '/settings/execution-hosts'
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
@@ -2042,6 +2054,7 @@ export interface FileRouteTypes {
     | '/api/execution-hosts/'
     | '/_authenticated/_app/agents/$agentId'
     | '/_authenticated/_app/chats/$threadId'
+    | '/_authenticated/_app/settings/execution-hosts'
     | '/_authenticated/_app/settings/general'
     | '/_authenticated/_app/settings/preferences'
     | '/_authenticated/_app/settings/profile'
@@ -2833,6 +2846,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppSettingsIndexRouteImport
       parentRoute: typeof AuthenticatedAppSettingsRoute
     }
+    '/_authenticated/_app/settings/execution-hosts': {
+      id: '/_authenticated/_app/settings/execution-hosts'
+      path: '/execution-hosts'
+      fullPath: '/settings/execution-hosts'
+      preLoaderRoute: typeof AuthenticatedAppSettingsExecutionHostsRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
     '/_authenticated/_app/settings/general': {
       id: '/_authenticated/_app/settings/general'
       path: '/general'
@@ -3442,6 +3462,7 @@ const AuthenticatedAppChatsRouteWithChildren =
   )
 
 interface AuthenticatedAppSettingsRouteChildren {
+  AuthenticatedAppSettingsExecutionHostsRoute: typeof AuthenticatedAppSettingsExecutionHostsRoute
   AuthenticatedAppSettingsGeneralRoute: typeof AuthenticatedAppSettingsGeneralRoute
   AuthenticatedAppSettingsPreferencesRoute: typeof AuthenticatedAppSettingsPreferencesRoute
   AuthenticatedAppSettingsProfileRoute: typeof AuthenticatedAppSettingsProfileRoute
@@ -3451,6 +3472,8 @@ interface AuthenticatedAppSettingsRouteChildren {
 
 const AuthenticatedAppSettingsRouteChildren: AuthenticatedAppSettingsRouteChildren =
   {
+    AuthenticatedAppSettingsExecutionHostsRoute:
+      AuthenticatedAppSettingsExecutionHostsRoute,
     AuthenticatedAppSettingsGeneralRoute: AuthenticatedAppSettingsGeneralRoute,
     AuthenticatedAppSettingsPreferencesRoute:
       AuthenticatedAppSettingsPreferencesRoute,

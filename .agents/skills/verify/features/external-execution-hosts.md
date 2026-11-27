@@ -1,7 +1,8 @@
 # External execution-host controls
 
 This scenario covers the pilot receiver and its member and signed-host boundaries.
-It does not qualify an installed host, a browser screen or a native device.
+It also covers the read-only status page at `/settings/execution-hosts`.
+It does not qualify an installed host, a deployed browser screen or a native device.
 The pilot remains disabled unless its existing Garden operator ID is explicitly configured.
 
 ## Automated proof
@@ -40,6 +41,41 @@ The migration fixture isolates migration 0069 and retains its original populated
 The current database fixtures also apply the later checked-in migrations.
 The contract check makes sure that copied Harnessy bytes match their recorded source hashes.
 A hash identifies bytes. It does not establish runtime qualification.
+
+## Status page proof
+
+Run this command from the repository root:
+
+```sh
+pnpm --filter @garden/web exec vitest run src/features/execution-hosts
+```
+
+Required observations include these results:
+
+- Each read sends the current workspace ID, and the client refuses an answer for another workspace.
+- The page shows the disabled, signed-out, refused, empty and failed-load states as separate states.
+- A refused refresh removes host data from the page.
+- A stale, revoked or never-reported host does not show "Reported recently".
+- A run on a stale host shows "Stale", and a failed refresh shows "Unknown". Neither shows "Running".
+- "Cancellation requested" stays separate from termination that the host confirmed.
+- "Load more events" sends the returned cursor and shows events beyond the first 200.
+- The page has only the "Refresh", "Show run", "Load more events" and "Load more hosts" controls.
+
+The HTTP suite in the first section proves the server refusals with actual sessions.
+It includes the exact 503 message that selects the disabled state.
+
+For a local preview, use a separate local database and synthetic data:
+
+1. Apply the migrations to an empty local PostgreSQL database with `pnpm --filter @garden/db db:migrate`.
+2. Start `pnpm --filter @garden/web dev:offline` and open `/settings/execution-hosts`. Expect the disabled state.
+3. Set `ENGINEERING_PILOT_OPERATOR_ID` in the local root `.env` to the ID of the local owner, then start the server again.
+4. Open the page in a workspace without a host. Expect the empty state.
+5. Enroll a synthetic host key, launch one run and send signed events through the real routes.
+6. Open the page with the `launch` search parameter. Expect the run state and the ordered events.
+7. Stop host requests for more than 120 seconds. Expect "Stale" for the host and the run.
+8. Request cancellation, then send the confirmed terminal event. Expect the two separate states.
+
+Record `INCONCLUSIVE` for a deployed environment. No deployed check of the status page exists.
 
 ## App and host release proof
 
