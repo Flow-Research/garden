@@ -177,12 +177,12 @@ function latestEventSummary(events: IssueRunEvent[]) {
 }
 
 function OutputSection({ children }: { children: ReactNode }) {
-  return <section className="mt-8 space-y-2">{children}</section>
+  return <section className="space-y-2">{children}</section>
 }
 
 export function IssueOutputSurfaceFallback() {
   return (
-    <section className="mt-8">
+    <section>
       <div className="rounded-lg border bg-card p-3">
         <Skeleton className="h-4 w-44" />
         <Skeleton className="mt-3 h-3 w-full" />
@@ -224,6 +224,11 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
     <OutputSection>
       <WorkProductList
         workProducts={workProducts}
+        onRetryFiles={
+          issue.team_id === null
+            ? (id) => reviewMutation.mutate({ id, action: 'retry_files' })
+            : undefined
+        }
         connectorId={issue.source_summary?.connector_id ?? null}
         pulseId={pulseWorkProductId}
         pending={reviewMutation.isPending ? reviewMutation.variables : null}
@@ -237,9 +242,6 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
         onApply={(id) => reviewMutation.mutateAsync({ id, action: 'apply' })}
         onApplyPr={(id) =>
           reviewMutation.mutateAsync({ id, action: 'apply_pr' })
-        }
-        onSaveToFiles={(id, folderId) =>
-          reviewMutation.mutateAsync({ id, action: 'save_to_files', folderId })
         }
       />
     </OutputSection>
@@ -327,7 +329,7 @@ export function IssueRunSurface({
       run.status === 'blocked')
 
   return (
-    <div className="space-y-3">
+    <div className="mt-6 space-y-3 empty:hidden">
       {showActive && run && (
         <ActiveRunPanel
           agent={{ name: 'Garden' }}

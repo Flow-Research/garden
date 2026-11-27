@@ -1,3 +1,4 @@
+import type { AgentModelEnv } from '@garden/agent-runtime/src/model'
 import { parseServerEnv } from '@garden/env'
 import {
   createGardenLogger,
@@ -12,7 +13,7 @@ const logger = createGardenLogger({
 
 type RequiredEnvBinding<Key extends keyof Env> = NonNullable<Env[Key]>
 
-export type AppEnv = {
+export type AppEnv = AgentModelEnv & {
   DATABASE_URL: RequiredEnvBinding<'DATABASE_URL'>
   HYPERDRIVE: RequiredEnvBinding<'HYPERDRIVE'>
   BETTER_AUTH_SECRET: RequiredEnvBinding<'BETTER_AUTH_SECRET'>
@@ -57,6 +58,7 @@ export type AppEnv = {
   DISCORD_PUBLIC_KEY?: string
   DISCORD_BOT_PERMISSIONS?: string
   RESEND_API_KEY?: string
+  GARDEN_ALERT_EMAIL?: string
   VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   VITE_PUBLIC_POSTHOG_HOST?: string
   EXA_API_KEY?: string

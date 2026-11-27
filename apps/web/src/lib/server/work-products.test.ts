@@ -24,7 +24,7 @@ const workProductRow = () => ({
   issueId,
   runId,
   agentId: null,
-  type: 'brief',
+  type: 'brief' as string,
   status: 'review',
   reviewState: 'pending',
   isPrimary: false,
@@ -40,6 +40,7 @@ const workProductRow = () => ({
 
 type InsertRow = {
   eventType?: string
+  level?: string
   message?: string
   payload?: unknown
 }
@@ -76,7 +77,8 @@ function makeDb(args: { issueUpdateReturns: Array<{ id: string }> }) {
           where: () => ({
             limit: async () => [
               {
-                workProduct: workProductRow(),
+                // Not a document type, so approval does not save to Files.
+                workProduct: { ...workProductRow(), type: 'connector_reply' },
                 issue: { id: issueId, status: 'in_review' },
               },
             ],
@@ -258,6 +260,8 @@ function queryRows(rows: unknown[]) {
 async function makeApplyDb(args: {
   linkedRepos: Array<{ fullName: string }>
   workProduct: Record<string, unknown>
+  issueTeamId?: string | null
+  savedFileHistoryId?: string
 }) {
   const { schema } = await import('./db')
   const sets: Array<Record<string, unknown>> = []
@@ -265,8 +269,11 @@ async function makeApplyDb(args: {
   const tx = {
     update: () => ({
       set: (values: Record<string, unknown>) => ({
-        where: async () => {
+        where: () => {
           sets.push(values)
+          return Object.assign(Promise.resolve(), {
+            returning: async () => [],
+          })
         },
       }),
     }),
@@ -288,7 +295,8 @@ async function makeApplyDb(args: {
               issue: {
                 id: issueId,
                 status: 'in_progress',
-                teamId,
+                teamId:
+                  args.issueTeamId === undefined ? teamId : args.issueTeamId,
                 assigneeId: agentId,
                 assigneeType: 'agent',
                 workspaceId,
@@ -296,7 +304,17 @@ async function makeApplyDb(args: {
             },
           ])
         }
+        if (table === schema.issueRunEvent)
+          return queryRows(
+            args.savedFileHistoryId
+              ? [{ fileId: args.savedFileHistoryId }]
+              : [],
+          )
         if (table === schema.teamRepository) return queryRows(args.linkedRepos)
+        if (table === schema.team) return queryRows([{ name: 'Research' }])
+        if (table === schema.organization) {
+          return queryRows([{ name: 'Flow Research' }])
+        }
         if (table === schema.issueSourceBinding) {
           return queryRows([
             {
@@ -534,13 +552,17 @@ describe('reviewWorkProduct apply_pr', () => {
   })
 })
 
-const folderId = '00000000-0000-4000-8000-000000000009'
 const savedFileId = '00000000-0000-4000-8000-00000000000a'
 const actorUserId = '00000000-0000-4000-8000-000000000005'
 
-/** Files & Folders stubs: the folder lookup and the shared upload path. */
+/** Files & Folders stubs: folder list/create and the shared upload path. */
 const filesState = vi.hoisted(() => ({
-  folders: [] as Array<{ id: string; workspaceId: string; name: string }>,
+  folders: [] as Array<{
+    id: string
+    workspaceId: string
+    name: string
+    privacy?: string
+  }>,
   uploads: [] as Array<{
     name: string
     text: string
@@ -551,14 +573,29 @@ const filesState = vi.hoisted(() => ({
   /** Files that still exist in Brain; overwrite returns null for others. */
   existingFiles: [] as string[],
   overwrites: [] as Array<{ fileId: string; text: string }>,
+  /** When set, the upload path fails with this message. */
+  uploadFailure: null as string | null,
 }))
 
 vi.mock('./brain-folders', () => ({
-  getBrainFolder: async (args: { folderId: string; workspaceId: string }) =>
-    filesState.folders.find(
+  getOrCreateApprovedFolder: async (_db: unknown, workspaceId: string) => {
+    const name = 'Flow Research'
+    const existing = filesState.folders.find(
       (folder) =>
-        folder.id === args.folderId && folder.workspaceId === args.workspaceId,
-    ) ?? null,
+        folder.workspaceId === workspaceId &&
+        folder.name === name &&
+        folder.privacy === 'shared',
+    )
+    if (existing) return existing
+    const folder = {
+      id: `created-${filesState.folders.length}`,
+      workspaceId,
+      name,
+      privacy: 'shared',
+    }
+    filesState.folders.push(folder)
+    return folder
+  },
   addBrainFolderFile: async (args: { folderId: string; fileId: string }) => {
     filesState.memberships.push({
       folderId: args.folderId,
@@ -576,6 +613,12 @@ vi.mock('./brain-file-upload', async () => {
       ownerUserId: string
       workspaceId: string
     }) => {
+      if (filesState.uploadFailure) {
+        return Result.err({
+          code: 'upload_failed' as const,
+          message: filesState.uploadFailure,
+        })
+      }
       filesState.uploads.push({
         name: args.file.name,
         text: await args.file.text(),
@@ -594,140 +637,299 @@ vi.mock('./brain-file-upload', async () => {
   }
 })
 
-const saveToFiles = () =>
+/**
+ * The `saved_file` JSON bound into the jsonb_set payload update, read from
+ * the drizzle SQL chunk that carries it.
+ */
+function savedFilePayload(sets: Array<Record<string, unknown>>) {
+  const update = sets.find(
+    (values) => 'payload' in values && !('status' in values),
+  )
+  const chunks = (update?.payload as { queryChunks?: unknown[] } | undefined)
+    ?.queryChunks
+  const bound = chunks?.find(
+    (chunk): chunk is string =>
+      typeof chunk === 'string' && chunk.includes('"file_id"'),
+  )
+  return bound ? JSON.parse(bound) : null
+}
+
+const teamFolderId = '00000000-0000-4000-8000-000000000009'
+
+const approve = (closeIssue: boolean) =>
   reviewWorkProduct({
     actorUserId,
     env: {} as never,
-    input: { action: 'save_to_files', folder_id: folderId },
+    input: { action: 'approve', close_issue: closeIssue },
     workProductId,
     workspaceId,
   })
 
-describe('reviewWorkProduct save_to_files', () => {
+const inReview = (overrides: Record<string, unknown>) => ({
+  ...approvedWorkProduct({}),
+  status: 'review',
+  reviewState: 'pending',
+  ...overrides,
+})
+
+describe('approve saves the work product to Files', () => {
   beforeEach(() => {
-    filesState.folders = [{ id: folderId, workspaceId, name: 'Guides' }]
+    filesState.folders = [
+      {
+        id: teamFolderId,
+        workspaceId,
+        name: 'Flow Research',
+        privacy: 'shared',
+      },
+      { id: 'other-folder', workspaceId, name: 'Guides' },
+    ]
     filesState.uploads = []
     filesState.memberships = []
     filesState.existingFiles = []
     filesState.overwrites = []
+    filesState.uploadFailure = null
   })
 
-  it('saves the approved body as Markdown in the folder through the upload path and records the link', async () => {
-    const { db, inserts, sets } = await makeApplyDb({
-      linkedRepos: [],
-      workProduct: approvedWorkProduct({}),
-    })
-    state.db = db
+  it.each([
+    ['Approve', false],
+    ['Approve and close', true],
+  ])(
+    '%s on a brief saves the body as Markdown in the folder named after the workspace',
+    async (_label, closeIssue) => {
+      const { db, inserts, sets } = await makeApplyDb({
+        linkedRepos: [],
+        issueTeamId: null,
+        workProduct: inReview({}),
+      })
+      state.db = db
 
-    const result = await saveToFiles()
+      const result = await approve(closeIssue)
 
-    expect(result.isOk()).toBe(true)
-    expect(filesState.uploads).toEqual([
-      {
-        name: 'workstream-task-guide.md',
-        text: '# Workstream task guide\n\nApproved text.',
-        ownerUserId: actorUserId,
-        workspaceId,
-      },
-    ])
-    expect(filesState.memberships).toEqual([{ folderId, fileId: savedFileId }])
-    const fileUrl = `/api/brain/files/${savedFileId}/content`
-    expect(result.isOk() && result.value).toMatchObject({
-      action: 'save_to_files',
-      externalId: savedFileId,
-      externalUrl: fileUrl,
-    })
-    // Saving is not an apply: status stays approved so Apply / Apply as PR
-    // remain available, and the link lives in payload.saved_file.
-    const update = sets.find((values) => 'payload' in values)
-    expect(update?.status).toBeUndefined()
-    expect(update?.appliedExternalUrl).toBeUndefined()
-    expect(update?.payload).toMatchObject({
-      saved_file: {
+      const fileUrl = `/api/brain/files/${savedFileId}/content`
+      expect(result.isOk() && result.value).toEqual({
+        action: 'approve',
+        workProductId,
+        files: {
+          status: 'saved',
+          fileId: savedFileId,
+          fileName: 'workstream-task-guide.md',
+          folderId: teamFolderId,
+          folderName: 'Flow Research',
+          url: fileUrl,
+          overwritten: false,
+        },
+      })
+      expect(filesState.uploads).toEqual([
+        {
+          name: 'workstream-task-guide.md',
+          text: '# Workstream task guide\n\nApproved text.',
+          ownerUserId: actorUserId,
+          workspaceId,
+        },
+      ])
+      expect(filesState.memberships).toEqual([
+        { folderId: teamFolderId, fileId: savedFileId },
+      ])
+      expect(savedFilePayload(sets)).toMatchObject({
         file_id: savedFileId,
-        folder_id: folderId,
+        folder_id: teamFolderId,
         url: fileUrl,
         saved_by: actorUserId,
-      },
-    })
-    const event = inserts.find(
-      (row) => row.eventType === 'issue_run:work_product_saved_to_files',
-    )
-    expect(event?.payload).toMatchObject({
-      work_product_id: workProductId,
-      file_id: savedFileId,
-      folder_id: folderId,
-      external_url: fileUrl,
-      actor_user_id: actorUserId,
-    })
-  })
+      })
+      expect(
+        inserts.find(
+          (row) => row.eventType === 'issue_run:work_product_saved_to_files',
+        )?.payload,
+      ).toMatchObject({
+        file_id: savedFileId,
+        folder_id: teamFolderId,
+        overwritten: false,
+      })
+    },
+  )
 
-  it('rejects a work product that is not approved without saving anything', async () => {
-    const { db, inserts } = await makeApplyDb({
+  it('saves the edited body when the reviewer edits on approve', async () => {
+    const { db } = await makeApplyDb({
       linkedRepos: [],
-      workProduct: { ...approvedWorkProduct({}), status: 'review' },
+      issueTeamId: null,
+      workProduct: inReview({}),
     })
     state.db = db
 
-    const result = await saveToFiles()
-
-    expect(result.isErr() && result.error).toMatchObject({
-      message: 'Only approved work products can be saved to Files',
+    await reviewWorkProduct({
+      actorUserId,
+      env: {} as never,
+      input: { action: 'approve', close_issue: false, edited_body: '# Edited' },
+      workProductId,
+      workspaceId,
     })
-    expect(filesState.uploads).toEqual([])
-    expect(inserts).toEqual([])
+
+    expect(filesState.uploads.map((upload) => upload.text)).toEqual([
+      '# Edited',
+    ])
   })
 
-  it('rejects a folder that is missing or in another workspace', async () => {
-    filesState.folders = [
+  it('creates a shared folder named after the workspace when none exists', async () => {
+    filesState.folders = []
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      issueTeamId: null,
+      workProduct: inReview({}),
+    })
+    state.db = db
+
+    const result = await approve(false)
+
+    expect(filesState.folders).toEqual([
       {
-        id: folderId,
-        workspaceId: '00000000-0000-4000-8000-0000000000ff',
-        name: 'Elsewhere',
+        id: 'created-0',
+        workspaceId,
+        name: 'Flow Research',
+        privacy: 'shared',
       },
-    ]
+    ])
+    expect(filesState.memberships).toEqual([
+      { folderId: 'created-0', fileId: savedFileId },
+    ])
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'saved', folderId: 'created-0' },
+    })
+  })
+
+  it('saves a workspace issue with no Team to the folder named after the workspace', async () => {
+    filesState.folders = []
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      issueTeamId: null,
+      workProduct: inReview({}),
+    })
+    state.db = db
+
+    const result = await approve(false)
+
+    expect(filesState.folders.map((folder) => folder.name)).toEqual([
+      'Flow Research',
+    ])
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'saved', folderName: 'Flow Research' },
+    })
+  })
+
+  it('keeps a Team issue document out of workspace Files', async () => {
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: inReview({}),
+      issueTeamId: teamId,
+    })
+    state.db = db
+    const result = await approve(false)
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'skipped' },
+    })
+    expect(filesState.uploads).toHaveLength(0)
+    expect(filesState.overwrites).toHaveLength(0)
+  })
+
+  it('retries a workspace document without writing another approval event', async () => {
     const { db, inserts } = await makeApplyDb({
       linkedRepos: [],
       workProduct: approvedWorkProduct({}),
+      issueTeamId: null,
     })
     state.db = db
-
-    const result = await saveToFiles()
-
-    expect(result.isErr() && result.error).toMatchObject({ status: 404 })
-    expect(result.isErr() && result.error).toMatchObject({
-      message: 'Folder not found',
+    const result = await reviewWorkProduct({
+      actorUserId,
+      env: {} as never,
+      input: { action: 'retry_files' },
+      workProductId,
+      workspaceId,
     })
-    expect(filesState.uploads).toEqual([])
-    expect(inserts).toEqual([])
+    expect(result.isOk() && result.value).toMatchObject({
+      action: 'retry_files',
+      files: { status: 'saved' },
+    })
+    expect(
+      inserts.some(
+        (row) => row.eventType === 'issue_run:work_product_approved',
+      ),
+    ).toBe(false)
   })
 
   const previousFileId = '00000000-0000-4000-8000-00000000000b'
-  const previouslySaved = () =>
-    approvedWorkProduct({
-      saved_file: {
-        file_id: previousFileId,
-        file_name: 'workstream-task-guide.md',
-        folder_id: folderId,
-        url: `/api/brain/files/${previousFileId}/content`,
-        saved_by: actorUserId,
-        saved_at: '2026-11-01T00:00:00.000Z',
-      },
-    })
 
-  it('re-saving a revised, re-approved work product overwrites the same file', async () => {
+  it('retries the latest approved body even when an older revision has a saved file', async () => {
     filesState.existingFiles = [previousFileId]
-    const { db, inserts, sets } = await makeApplyDb({
+    const { db } = await makeApplyDb({
       linkedRepos: [],
-      workProduct: previouslySaved(),
+      savedFileHistoryId: previousFileId,
+      issueTeamId: null,
+      workProduct: { ...approvedWorkProduct({}), body: 'Revised text' },
+    })
+    state.db = db
+    const result = await reviewWorkProduct({
+      actorUserId,
+      env: {} as never,
+      input: { action: 'retry_files' },
+      workProductId,
+      workspaceId,
+    })
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'saved', fileId: previousFileId, overwritten: true },
+    })
+    expect(filesState.overwrites).toEqual([
+      { fileId: previousFileId, text: 'Revised text' },
+    ])
+  })
+
+  it('does not authorize overwriting another file from the work product payload', async () => {
+    filesState.existingFiles = [previousFileId]
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      issueTeamId: null,
+      workProduct: inReview({
+        payload: {
+          saved_file: {
+            file_id: previousFileId,
+            file_name: 'private.md',
+            folder_id: teamFolderId,
+            url: `/api/brain/files/${previousFileId}/content`,
+            saved_by: actorUserId,
+            saved_at: '2026-11-01T00:00:00.000Z',
+          },
+        },
+      }),
+    })
+    state.db = db
+    const result = await approve(false)
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'saved', overwritten: false },
+    })
+    expect(filesState.overwrites).toEqual([])
+  })
+
+  it('re-approving a revised work product overwrites the same file', async () => {
+    filesState.existingFiles = [previousFileId]
+    const { db, inserts } = await makeApplyDb({
+      linkedRepos: [],
+      savedFileHistoryId: previousFileId,
+      issueTeamId: null,
+      workProduct: inReview({
+        payload: {
+          saved_file: {
+            file_id: previousFileId,
+            file_name: 'workstream-task-guide.md',
+            folder_id: teamFolderId,
+            url: `/api/brain/files/${previousFileId}/content`,
+            saved_by: actorUserId,
+            saved_at: '2026-11-01T00:00:00.000Z',
+          },
+        },
+      }),
     })
     state.db = db
 
-    const result = await saveToFiles()
+    const result = await approve(false)
 
-    expect(result.isOk() && result.value).toMatchObject({
-      externalId: previousFileId,
-    })
     expect(filesState.uploads).toEqual([])
     expect(filesState.overwrites).toEqual([
       {
@@ -735,8 +937,8 @@ describe('reviewWorkProduct save_to_files', () => {
         text: '# Workstream task guide\n\nApproved text.',
       },
     ])
-    expect(sets.find((values) => 'payload' in values)?.payload).toMatchObject({
-      saved_file: { file_id: previousFileId },
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'saved', fileId: previousFileId, overwritten: true },
     })
     expect(
       inserts.find(
@@ -745,21 +947,71 @@ describe('reviewWorkProduct save_to_files', () => {
     ).toMatchObject({ file_id: previousFileId, overwritten: true })
   })
 
-  it('creates and records a new file when the previously saved one was deleted', async () => {
-    const { db, sets } = await makeApplyDb({
+  it.each(['pull_request', 'connector_reply'])(
+    'approving a %s does not save anything to Files',
+    async (type) => {
+      const { db, inserts } = await makeApplyDb({
+        linkedRepos: [],
+        issueTeamId: null,
+        workProduct: inReview({ type }),
+      })
+      state.db = db
+
+      const result = await approve(true)
+
+      expect(result.isOk() && result.value).toEqual({
+        action: 'approve',
+        workProductId,
+        files: { status: 'skipped' },
+      })
+      expect(filesState.uploads).toEqual([])
+      expect(filesState.folders).toHaveLength(2)
+      expect(
+        inserts.some((row) =>
+          String(row.eventType).startsWith('issue_run:work_product_save'),
+        ),
+      ).toBe(false)
+    },
+  )
+
+  it('keeps the approval and reports the failure when saving fails', async () => {
+    filesState.uploadFailure = 'R2 unavailable'
+    const { db, inserts } = await makeApplyDb({
       linkedRepos: [],
-      workProduct: previouslySaved(),
+      issueTeamId: null,
+      workProduct: inReview({}),
     })
     state.db = db
 
-    const result = await saveToFiles()
+    const result = await approve(false)
 
-    expect(result.isOk() && result.value).toMatchObject({
-      externalId: savedFileId,
+    expect(result.isOk() && result.value).toEqual({
+      action: 'approve',
+      workProductId,
+      files: { status: 'failed', message: 'R2 unavailable' },
     })
-    expect(filesState.uploads).toHaveLength(1)
-    expect(sets.find((values) => 'payload' in values)?.payload).toMatchObject({
-      saved_file: { file_id: savedFileId },
+    expect(
+      inserts.some(
+        (row) => row.eventType === 'issue_run:work_product_approved',
+      ),
+    ).toBe(true)
+    const failure = inserts.find(
+      (row) => row.eventType === 'issue_run:work_product_save_failed',
+    )
+    expect(failure).toMatchObject({
+      level: 'error',
+      payload: { work_product_id: workProductId, error: 'R2 unavailable' },
     })
+  })
+})
+
+describe('save_to_files is gone', () => {
+  it('rejects the removed save_to_files review action', () => {
+    expect(
+      workProductReviewBodySchema.safeParse({
+        action: 'save_to_files',
+        folder_id: teamFolderId,
+      }).success,
+    ).toBe(false)
   })
 })
