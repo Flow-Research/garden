@@ -81,7 +81,7 @@ Missing evidence pauses execution.
 
 The settings section at `/settings/execution-hosts` shows the status of the hosts of the current workspace.
 `ExecutionHostsPage` in `apps/web/src/features/execution-hosts/components/execution-hosts-page.tsx` owns this page.
-The page is read-only. It has no launch, cancellation, approval or intervention control.
+The Run needs attention list opens a run with a pending question. The authorized operator can record Resume or Stop. Garden shows the recorded choice and the latest host evidence separately. Resume releases the hold for permission and allowance checks. Stop requests cancellation. The host confirms when the worker has stopped.
 
 The page reads two existing member routes: `GET /api/execution-hosts/` and `GET /api/execution-hosts/runs/$launchId/`.
 Each request sends the current workspace in the `X-Workspace-ID` header.

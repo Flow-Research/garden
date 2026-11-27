@@ -1,3 +1,4 @@
+import { AttentionRuns, InterventionDecisions } from './intervention-decisions'
 import { useState, type ReactNode } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { z } from 'zod'
@@ -269,6 +270,7 @@ function RunDetail({ wsId, launchId }: { wsId: string; launchId: string }) {
   )
   return (
     <div className="space-y-6">
+      <InterventionDecisions workspace={wsId} launch={launchId} />
       <SyncLine
         receivedAt={latest.receivedAt}
         refreshFailed={failure !== null}
@@ -491,8 +493,8 @@ export function ExecutionHostsPage({
     <div>
       <h2 className="text-lg font-semibold tracking-tight">Execution hosts</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Enrolled machines that run approved coding work for this workspace. This
-        page is read-only.
+        Review host status and answer questions about paused runs in this
+        workspace.
       </p>
       <section aria-labelledby="execution-host-list-heading" className="mt-6">
         <h3 id="execution-host-list-heading" className="sr-only">
@@ -548,12 +550,15 @@ export function ExecutionHostsPage({
         )}
       </section>
       {refused || !latest ? null : (
-        <RunSection
-          key={`${wsId}:${launchId ?? ''}`}
-          wsId={wsId}
-          launchId={launchId}
-          onOpenRun={onOpenRun}
-        />
+        <>
+          <AttentionRuns workspace={wsId} open={onOpenRun} />
+          <RunSection
+            key={`${wsId}:${launchId ?? ''}`}
+            wsId={wsId}
+            launchId={launchId}
+            onOpenRun={onOpenRun}
+          />
+        </>
       )}
     </div>
   )

@@ -1042,6 +1042,22 @@ describe('execution-host HTTP discovery', () => {
     )
     expect(first.status).toBe(200)
     expect(first.headers.get('cache-control')).toBe('no-store')
+    const directory = state.directoryRequest()
+    const attention = new Request(directory.url + '?view=attention', {
+      headers: directory.headers,
+    })
+    const pending = await handleExecutionHostDirectory(
+      context(attention, state.operatorId),
+    )
+    expect(pending.status).toBe(200)
+    expect(await pending.json()).toEqual({
+      workspaceId: state.workspaceId,
+      runs: [],
+    })
+    const denied = await handleExecutionHostDirectory(
+      context(attention, randomUUID()),
+    )
+    expect(denied.ok).toBe(false)
     const firstBody = hostDirectorySchema.parse(await first.json())
     expect(firstBody.workspaceId).toBe(state.workspaceId)
     expect(firstBody.hosts.map((host) => host.hostId)).toEqual([

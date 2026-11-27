@@ -1,4 +1,13 @@
 import {
+  attentionSchema,
+  interventionListSchema,
+  type InterventionList,
+} from '@garden/core/execution-host/interventions'
+export {
+  interventionListSchema,
+  type InterventionList,
+} from '@garden/core/execution-host/interventions'
+import {
   and,
   asc,
   eq,
@@ -93,25 +102,6 @@ export const interventionAnswerInputSchema = z.strictObject({
 })
 
 /** The operator view of the interventions of one run. Garden derives status; the host owns the run state. */
-export const interventionListSchema = z.strictObject({
-  kind: z.literal('interventions'),
-  workspaceId: z.string().uuid(),
-  launchId: z.string().uuid(),
-  observedAt: z.number().int().nonnegative().safe(),
-  interventions: z
-    .array(
-      z.strictObject({
-        intervention: hostInterventionSchema,
-        digest: z.string().regex(/^[a-f0-9]{64}$/),
-        status: z.enum(['open', 'answered', 'expired', 'closed']),
-        receivedAt: z.number().int().nonnegative().safe(),
-        answer: hostInterventionAnswerSchema.nullable(),
-      }),
-    )
-    .max(100),
-})
-
-export type InterventionList = z.infer<typeof interventionListSchema>
 export type InterventionAnswerReceipt = {
   kind: 'intervention_answered'
   answer: HostInterventionAnswer
@@ -958,6 +948,32 @@ export class ExecutionHostReceiver {
     return concurrent[0]?.digest === digest
       ? Result.ok(receipt)
       : conflict('Intervention identity was reused')
+  }
+
+  async attention(actorId: string, workspaceId: string, now: number) {
+    return this.#memberTransaction(actorId, workspaceId, async (tx) => {
+      const authorized = await this.#memberAuthorized(tx, actorId, workspaceId)
+      if (authorized.isErr()) return authorized
+      const runs = await tx
+        .selectDistinct({ launchId: executionHostLaunch.launchId })
+        .from(executionHostIntervention)
+        .innerJoin(
+          executionHostLaunch,
+          eq(executionHostLaunch.id, executionHostIntervention.launchRecordId),
+        )
+        .where(
+          and(
+            eq(executionHostLaunch.workspaceId, workspaceId),
+            isNull(executionHostIntervention.answerId),
+            gt(executionHostIntervention.expiresAt, new Date(now)),
+            ne(executionHostLaunch.status, 'revoked'),
+            isNull(executionHostLaunch.terminalAt),
+          ),
+        )
+        .orderBy(asc(executionHostLaunch.launchId))
+        .limit(100)
+      return Result.ok(attentionSchema.parse({ workspaceId, runs }))
+    })
   }
 
   /** Lists the retained interventions of one run for the current pilot operator. */

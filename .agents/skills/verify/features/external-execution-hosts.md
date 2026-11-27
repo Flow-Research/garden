@@ -1,7 +1,7 @@
 # External execution-host controls
 
 This scenario covers the pilot receiver and its member and signed-host boundaries.
-It also covers the read-only status page at `/settings/execution-hosts`.
+It also covers operator decisions and host status at `/settings/execution-hosts`.
 It does not qualify an installed host, a deployed browser screen or a native device.
 The pilot remains disabled unless its existing Garden operator ID is explicitly configured.
 
