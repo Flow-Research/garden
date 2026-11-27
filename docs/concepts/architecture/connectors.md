@@ -44,7 +44,21 @@ Unknown tools fail closed. A tool with no risk class defaults to `ask`. Unclassi
 
 The `capability` table has one row per connector and tool name across all workspaces. Executor lists tools for one workspace and member at a time. Sync adds those tools, but a partial Executor list cannot remove shared rows or lower their stored risk. If two lists give different risks for one name, sync keeps the stricter risk. It seeds grants only for tools in the current list. The Garden native registry defines its full tool list, so native sync can update definitions and remove names that the registry no longer defines.
 
-For an upgrade from older sync behavior, resync each existing org connection from its workspace before no-member runs need it. An admin can use the connection resync action. Review shared capability risks and grants if older tenant syncs might have lowered a risk or removed another workspace's tool. Resync a workspace that exposes the stricter tool to raise the shared risk. Review existing `auto` grants separately because a risk change does not replace a saved grant. A resync cannot restore deleted audit records; recovery requires a database backup. Waiting agent or system runs created before `connectorIdentity` existed need review and cancellation before a new run can start. These steps require live workspace data and are not part of this code change.
+### Check existing connections and waiting runs before rollout
+
+A run without a member can use an organization tool that already has a correct capability row. It cannot discover a missing capability or record a grant on behalf of an administrator. Before using an existing organization connection, compare its current tools and approval requirements with the stored catalog. If entries are missing or risks are stale, an administrator must resync that connection. Check existing automatic grants if an older sync lowered a risk. Resync cannot restore deleted audit records.
+
+Use this read-only query to identify waiting runs with an old snapshot. It returns run IDs and the recorded actor type. It does not read prompts, credentials or tool output.
+
+```sql
+SELECT id, workspace_id, context_snapshot->'actor'->>'type' AS recorded_actor
+FROM issue_run
+WHERE status = 'waiting_for_input'
+  AND NOT (COALESCE(context_snapshot, '{}'::jsonb) ? 'connectorIdentity')
+ORDER BY workspace_id, id;
+```
+
+If the snapshot records the original member, that member can answer. The run continues without personal connector access. An old agent or system snapshot does not identify a delegating member. Review those runs before cancelling and restarting them. A comment, the current agent owner and an existing tool grant cannot establish the missing identity. This query selects old snapshots only. A malformed identity in a newer snapshot also prevents a resume.
 
 ## Each runtime gets its own Executor MCP session
 
