@@ -1,3 +1,4 @@
+import { thinkTurnTelemetry } from './think-telemetry'
 import {
   BrainRunAuthorityError,
   resolveBrainRuntimeAgentId,
@@ -2358,12 +2359,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         gatewayId: this.env.AI_GATEWAY_ID,
         tracing: this.aiObservation.modelTracing(),
       }),
-      experimental_telemetry: {
+      experimental_telemetry: thinkTurnTelemetry({
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
-        isEnabled: true,
-        recordInputs: false,
-        recordOutputs: false,
-      },
+        metadata: {
+          agentClass: 'ChatSubAgent',
+          hasDocumentContext: Boolean(documentContext),
+          hasIntegrationRoute: routeDecision.status === 'selected',
+          selectedIntegration: routeDecision.routes[0]?.slug ?? '',
+        },
+      }),
       maxRetries: THINK_TURN_MAX_RETRIES,
       sendReasoning: true,
       ...(systemAdditions
@@ -2716,14 +2720,19 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       mimeType: '',
       updatedAt: entry.mtime,
     }))
-    const samplePaths: WorkspaceEntry[] = found.slice(0, 50).map((entry) => ({
-      path: entry.path,
-      name: entry.path.split('/').pop() ?? entry.path,
-      type: entry.type === 'dir' ? 'directory' : 'file',
-      size: 0,
-      mimeType: '',
-      updatedAt: 0,
-    }))
+    const samplePaths = await Promise.all(
+      found.slice(0, 50).map(async (entry) => {
+        const stat = await this.workspace.fs.lstat(entry.path)
+        return {
+          path: entry.path,
+          name: stat.name,
+          type: stat.isDirectory ? ('directory' as const) : ('file' as const),
+          size: stat.size,
+          mimeType: '',
+          updatedAt: stat.mtime,
+        }
+      }),
+    )
     return {
       rootEntries,
       samplePaths,

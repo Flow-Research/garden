@@ -61,7 +61,8 @@ export function filterBuiltinSkillSource(
           skills: listed.value.skills.filter((entry) =>
             allowedName(entry.skill.name),
           ),
-          invalid: listed.value.invalid,
+          // An invalid manifest has no verified skill identity.
+          invalid: [],
         },
       }
     },

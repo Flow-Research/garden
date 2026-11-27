@@ -490,7 +490,8 @@ function EntryList({ entries }: { entries: WorkspaceStateEntry[] }) {
               {entry.path}
             </div>
             <div className="text-[10px] text-muted-foreground">
-              {entry.type} · {formatBytes(entry.size)} · {entry.mimeType}
+              {entry.type} · {formatBytes(entry.size)}
+              {entry.mimeType && ` · ${entry.mimeType}`}
             </div>
           </div>
         </li>

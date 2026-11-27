@@ -12,7 +12,7 @@ type ThinkTelemetry = NonNullable<TurnConfig['experimental_telemetry']>
  */
 export function thinkTurnTelemetry(input: {
   functionId: string
-  metadata?: Record<string, string>
+  metadata?: Record<string, string | boolean>
 }): ThinkTelemetry {
   const telemetry = {
     functionId: input.functionId,
