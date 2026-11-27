@@ -8,12 +8,20 @@ import {
   Embeddings,
   embeddingsLayerFor,
   resolveEmbeddingsProvider,
+  makeWorkersAiEmbeddings,
 } from '../src/services/Embeddings.ts'
 
 const vector = (seed: number) =>
   Array.from({ length: EMBEDDING_DIM }, (_, index) => (seed + index) / 1000)
 
 describe('resolveEmbeddingsProvider', () => {
+  it('keeps the existing batch size for Workers AI', () => {
+    const provider = makeWorkersAiEmbeddings({
+      run: async () => ({ data: [] }),
+    })
+    expect(provider.maxBatchSize).toBeUndefined()
+  })
+
   it('keeps Workers AI when offline mode is unset', () => {
     expect(resolveEmbeddingsProvider()).toBe('workers-ai')
     expect(resolveEmbeddingsProvider({})).toBe('workers-ai')
@@ -85,6 +93,7 @@ it.effect('embeds through the OpenAI-compatible endpoint when offline', () => {
 
   return Effect.gen(function* () {
     const embeddings = yield* Embeddings
+    expect(embeddings.maxBatchSize).toBe(16)
     const rows = yield* embeddings.embed(['second', 'first'])
     expect(aiCalled).toBe(false)
     expect(requestedUrl).toBe('http://embeddings.test/gateway/v1/embeddings')

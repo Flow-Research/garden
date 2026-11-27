@@ -62,6 +62,7 @@ const OpenAiEmbeddingResponseSchema = Schema.Struct({
 })
 
 export type EmbeddingsShape = {
+  readonly maxBatchSize?: number
   readonly embed: (
     texts: readonly string[],
   ) => Effect.Effect<number[][], EmbedError>
@@ -227,24 +228,9 @@ const embedWithOpenAi = (
     const response = yield* http
       .execute(HttpClientRequest.post(url, { body, headers }))
       .pipe(
-        Effect.timeout(
-          `${config.timeoutSeconds ?? DEFAULT_EMBEDDING_TIMEOUT_SECONDS} seconds`,
+        Effect.mapError(() =>
+          embeddingFailure('could not reach embedding endpoint'),
         ),
-        Effect.mapError((cause) => {
-          if (cause instanceof EmbedError) return cause
-          if (
-            typeof cause === 'object' &&
-            cause !== null &&
-            '_tag' in cause &&
-            cause._tag === 'TimeoutError'
-          ) {
-            return embeddingFailure(
-              `embedding request timed out after ${config.timeoutSeconds ?? DEFAULT_EMBEDDING_TIMEOUT_SECONDS} seconds`,
-              cause,
-            )
-          }
-          return embeddingFailure('could not reach embedding endpoint')
-        }),
       )
     if (response.status < 200 || response.status >= 300) {
       const hint =
@@ -310,7 +296,24 @@ const makeOpenAiCompatibleEmbeddings = (config: OpenAiEmbeddingsConfig) =>
     const http = yield* HttpClient.HttpClient
     return Embeddings.of({
       dim: EMBEDDING_DIM,
-      embed: embedWithOpenAi(http, config),
+      maxBatchSize: 16,
+      embed: (texts) =>
+        embedWithOpenAi(
+          http,
+          config,
+        )(texts).pipe(
+          Effect.timeout(
+            `${config.timeoutSeconds ?? DEFAULT_EMBEDDING_TIMEOUT_SECONDS} seconds`,
+          ),
+          Effect.mapError((cause) =>
+            cause instanceof EmbedError
+              ? cause
+              : embeddingFailure(
+                  `embedding request timed out after ${config.timeoutSeconds ?? DEFAULT_EMBEDDING_TIMEOUT_SECONDS} seconds`,
+                  cause,
+                ),
+          ),
+        ),
     })
   })
 
