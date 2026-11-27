@@ -129,7 +129,7 @@ export const resolveBrainProposal = async ({
       Effect.result(
         Effect.flatMap(Brain, (brain) =>
           brain.addText({
-            tenantId: WorkspaceId.make(workspaceContext.workspaceId),
+            tenantId: WorkspaceId.make(row.workspaceId),
             label: row.claim.slice(0, 80),
             body: row.claim,
             kind: Kind.make(row.kind),
@@ -137,7 +137,7 @@ export const resolveBrainProposal = async ({
             canonical: {
               type: 'brain-write-back-claim',
               value: brainWriteBackCanonicalKey(
-                workspaceContext.workspaceId,
+                row.workspaceId,
                 row.claimHash,
               ),
             },

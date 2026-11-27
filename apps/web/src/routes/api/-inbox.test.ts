@@ -60,6 +60,7 @@ describe('GET /api/inbox brain proposals', () => {
       workspaceId,
       runId: 'run-1',
       claimHash: 'hash-1',
+      operationKey: 'run-1:hash-1',
       claim: 'Alice prefers short replies.',
       kind: 'preference',
       confidence: 0.9,

@@ -101,6 +101,7 @@ describe('inbox recipient scoping (integration)', () => {
       workspaceId,
       runId: `brain-write-back:issue:${runId}`,
       claimHash: 'hash-1',
+      operationKey: `brain-write-back:issue:${runId}:hash-1`,
       claim: 'Refund replies lead with the decision.',
       kind: 'rule',
       confidence: 0.6,

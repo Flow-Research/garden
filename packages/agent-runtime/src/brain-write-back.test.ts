@@ -153,6 +153,47 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     expect(mockGetPooledDb).not.toHaveBeenCalled()
   })
 
+  it('uses one canonical key for direct writes from separate runs', async () => {
+    const { Effect } = await import('effect')
+    mockAddText.mockReturnValue(Effect.succeed({ id: 'item-1' }))
+    const makeTools = (runId: string) =>
+      createBrainWriteBackTools({
+        env: { HELIX_URL: 'http://localhost:6968' },
+        ai: { run: async () => ({ data: [] }) },
+        files: { get: async () => null },
+        databaseUrl: 'postgres://test:test@localhost:5432/test',
+        getContext: () => ({
+          workspaceId: 'workspace-1',
+          agentId: 'agent-1',
+          runId,
+        }),
+      })
+    const input = {
+      claim: 'Use D1 for durable workflow state.',
+      kind: 'decision',
+      confidence: 0.9,
+      sensitive: false,
+      scope: 'org' as const,
+    }
+
+    expect(await execute(makeTools('run-1').propose_brain_item, input)).toEqual({
+      ok: true,
+      action: 'written',
+    })
+    expect(await execute(makeTools('run-2').propose_brain_item, input)).toEqual({
+      ok: true,
+      action: 'written',
+    })
+    const [first, second] = mockAddText.mock.calls.map(([value]) => value)
+    expect(first.canonical).toEqual(second.canonical)
+    expect(first.canonical).toMatchObject({
+      type: 'brain-write-back-claim',
+      value: expect.stringMatching(/^workspace-1:/),
+    })
+    expect(first.actor.runId).toBe('run-1')
+    expect(second.actor.runId).toBe('run-2')
+  })
+
   it('uses one semantic identity across runs', async () => {
     const returning = vi
       .fn()
