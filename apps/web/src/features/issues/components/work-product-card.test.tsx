@@ -105,7 +105,8 @@ describe('WorkProductCard', () => {
     },
   )
 
-  it('shows the saved file on an approved brief with no manual save control', () => {
+  it('keeps recovery available when an older revision already has a file', () => {
+    const retry = vi.fn()
     render(
       <WorkProductCard
         workProduct={workProduct({
@@ -121,12 +122,16 @@ describe('WorkProductCard', () => {
             },
           },
         })}
+        onRetryFiles={retry}
         onApprove={vi.fn()}
         onRequestChanges={vi.fn()}
       />,
     )
 
-    expect(screen.queryByRole('button', { name: /save/i })).toBeNull()
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry saving to Files' }),
+    )
+    expect(retry).toHaveBeenCalledOnce()
     expect(
       screen.getByRole('link', { name: /research-brief\.md/ }),
     ).toHaveAttribute('href', '/api/brain/files/file-1/content')

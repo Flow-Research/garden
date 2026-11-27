@@ -371,7 +371,6 @@ export function WorkProductCard({
       )}
 
       {onRetryFiles &&
-        !savedFile &&
         (workProduct.status === 'approved' ||
           workProduct.status === 'applied') &&
         workProduct.review_state === 'approved' &&

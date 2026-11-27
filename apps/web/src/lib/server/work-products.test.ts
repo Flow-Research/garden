@@ -857,6 +857,30 @@ describe('approve saves the work product to Files', () => {
 
   const previousFileId = '00000000-0000-4000-8000-00000000000b'
 
+  it('retries the latest approved body even when an older revision has a saved file', async () => {
+    filesState.existingFiles = [previousFileId]
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      savedFileHistoryId: previousFileId,
+      issueTeamId: null,
+      workProduct: { ...approvedWorkProduct({}), body: 'Revised text' },
+    })
+    state.db = db
+    const result = await reviewWorkProduct({
+      actorUserId,
+      env: {} as never,
+      input: { action: 'retry_files' },
+      workProductId,
+      workspaceId,
+    })
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'saved', fileId: previousFileId, overwritten: true },
+    })
+    expect(filesState.overwrites).toEqual([
+      { fileId: previousFileId, text: 'Revised text' },
+    ])
+  })
+
   it('does not authorize overwriting another file from the work product payload', async () => {
     filesState.existingFiles = [previousFileId]
     const { db } = await makeApplyDb({

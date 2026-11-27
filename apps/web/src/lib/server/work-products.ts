@@ -1766,19 +1766,6 @@ export async function reviewWorkProduct(args: {
           ),
         )
       }
-      const previous = await approvedFileId({
-        ...args,
-        runId: workProduct.runId,
-        workProduct,
-      })
-      if (previous.isErr()) return Result.err(previous.error)
-      if (previous.value) {
-        return Result.ok({
-          action: 'retry_files',
-          workProductId: workProduct.id,
-          files: { status: 'skipped' },
-        })
-      }
       const files = await saveApprovalToFiles({
         ...args,
         body: (workProduct.body ?? '').trim(),
