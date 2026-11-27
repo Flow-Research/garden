@@ -32,8 +32,10 @@ vi.mock('@cloudflare/think', () => ({
   defaultContextOverflowClassifier: () => false,
 }))
 vi.mock('@cloudflare/think/tools/execute', () => ({}))
-vi.mock('@cloudflare/think/tools/workspace', () => ({}))
-vi.mock('@cloudflare/shell', () => ({ Workspace: class {} }))
+vi.mock('@cloudflare/computer', () => ({ Workspace: class {} }))
+vi.mock('@cloudflare/computer/tools/ai-sdk', () => ({
+  createAITools: () => ({}),
+}))
 vi.mock('@cloudflare/sandbox', () => ({ getSandbox: vi.fn() }))
 vi.mock('agents', () => ({
   Agent: class {},
@@ -46,8 +48,8 @@ vi.mock('agents/mcp/client', () => ({}))
 vi.mock('agents/skills', () => ({}))
 vi.mock('agents/workflows', () => ({ AgentWorkflow: class {} }))
 vi.mock('agents/browser/ai', () => ({}))
-vi.mock('agents/experimental/memory/session', () => ({}))
-vi.mock('agents/experimental/memory/utils', () => ({}))
+vi.mock('agents/sessions', () => ({ createCompactFunction: () => () => ({}) }))
+vi.mock('agents/context', () => ({ ContextBlocks: class {} }))
 vi.mock('@garden/server/connectors/availability', () => ({
   listAvailableConnectorBindings: vi.fn(),
 }))
@@ -157,7 +159,14 @@ function createRunFacet(owner: { current: unknown } = { current: null }) {
 }
 
 const executeTool = async (tools: ToolSet, key: string) =>
-  await tools[key]?.execute?.({}, { toolCallId: 'call', messages: [] })
+  await tools[key]?.execute?.(
+    {},
+    {
+      toolCallId: 'call',
+      messages: [],
+      context: {},
+    },
+  )
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
@@ -248,7 +257,7 @@ describe('run facet GitHub tools', () => {
     })
     const { turnTools } = createRunFacet()
     const { tools } = await turnTools()
-    const options = { toolCallId: 'call', messages: [] }
+    const options = { toolCallId: 'call', messages: [], context: {} }
     const needsApproval = async (key: string) => {
       const check = tools[key]?.needsApproval
       return typeof check === 'function' ? await check({}, options) : check

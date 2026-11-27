@@ -1,8 +1,7 @@
-import {
-  createWorkspaceStateBackend,
-  type WorkspaceFsLike,
-} from '@cloudflare/shell'
 import { Buffer } from 'node:buffer'
+import { Workspace } from '@cloudflare/computer'
+import { createChatReadTool } from './legacy-chat-media'
+import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { createExecuteTool } from '@cloudflare/think/tools/execute'
 import type { Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { Result, type Result as ResultValue } from 'better-result'
@@ -76,11 +75,12 @@ const chatToolsLogger = createGardenLogger({
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState
+  documentFiles: DocumentToolContext['workspace']
   documentArtifacts?: DocumentArtifactToolAuthority
   exaApiKey?: string
   databaseUrl?: string
   threadId?: string
-  workspace: WorkspaceFsLike
+  workspace: Workspace
   loader: WorkerLoader
   loadExecutorCatalog?: (input: {
     workspaceId: string
@@ -452,8 +452,8 @@ type ChatIssueToolContext = {
 
 const COMPACT_EXECUTE_DESCRIPTION =
   'Run JavaScript in the sandbox for multi-step filesystem work. ' +
-  'Use state.readFile(path), state.writeFile(path, content), state.glob(pattern), state.readDir(path), state.mkdir(path), state.rm(path), state.cp(from, to), and state.mv(from, to). ' +
-  'Only state.* is available; this sandbox has no integrations or tools namespace. ' +
+  'Use tools.read, tools.ls, tools.find, tools.grep, tools.write, tools.edit, and tools.delete from the Computer workspace surface. ' +
+  'Those tools.* calls are the workspace filesystem; this sandbox has no connector or MCP integrations inside execute. ' +
   'Use the Executor MCP tools for connected services instead. ' +
   'Input is an async arrow function body as JavaScript, not TypeScript. Return the useful result.'
 
@@ -1951,6 +1951,7 @@ async function postIssueCommentFromChat(
 export function createChatSubAgentTools({
   ctx,
   documentArtifacts,
+  documentFiles,
   exaApiKey,
   databaseUrl,
   threadId,
@@ -1968,7 +1969,7 @@ export function createChatSubAgentTools({
       ? {
           databaseUrl,
           ...(documentArtifacts ? { documentArtifacts } : {}),
-          workspace,
+          workspace: documentFiles,
           threadId,
         }
       : null
@@ -1987,11 +1988,13 @@ export function createChatSubAgentTools({
         }
       : null
 
+  const workspaceTools = createAITools({ workspace })
+  const read = createChatReadTool(workspaceTools, documentFiles)
   return {
+    read,
     execute: createExecuteTool({
       ctx,
-      tools: {},
-      state: createWorkspaceStateBackend(workspace),
+      tools: { ...workspaceTools, read },
       loader,
       description: COMPACT_EXECUTE_DESCRIPTION,
     }),
@@ -2242,10 +2245,9 @@ export function createChatSubAgentTools({
       },
     }),
 
-    readDocument: tool<
-      { documentId: string },
-      Awaited<ReturnType<typeof readDocument>>
-    >({
+    // AI SDK 7 `tool` takes <INPUT, OUTPUT, CONTEXT>; omit type args so
+    // inference keeps OUTPUT (a two-arg form would treat OUTPUT as CONTEXT).
+    readDocument: tool({
       description:
         "Read the full content of a product attachment/document. Text documents return text. Images are lazily loaded into the model, using the same private image-data tool-result pattern as Think's workspace read tool. Always call this before answering questions about, summarizing, citing, editing, or visually inspecting an uploaded attachment. When text cannot be extracted, the error explains why and how to recover.",
       inputSchema: z.object({

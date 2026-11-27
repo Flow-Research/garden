@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { Effect, Schema } from 'effect'
-import { parseSkillMarkdown } from 'agents/skills'
+import { parseSkill } from 'agents/skills'
 import issueInteractionSkillMarkdown from '@garden/agent-runtime/src/skills/issue-interaction/SKILL.md?raw'
 import { SkillMetadata, workspaceChatSkillTarget } from '@garden/core/skills'
 import { schema, type Db } from './db'
@@ -109,19 +109,26 @@ export function seedBuiltinSkills(
         const target = workspaceChatSkillTarget(workspaceId)
 
         if (!existing[0]) {
-          const parsed = parseSkillMarkdown(seed.content)
-          if (!parsed) {
+          const parsed = parseSkill(seed.content)
+          if (!parsed.ok) {
             return yield* Effect.fail(
               new Error(`Invalid built-in skill document: ${seed.slug}`),
             )
           }
+          const skill = parsed.value
           const metadata = yield* Schema.decodeUnknownEffect(SkillMetadata)({
-            name: parsed.name,
-            description: parsed.description,
-            compatibility: parsed.compatibility,
-            license: parsed.license,
-            'allowed-tools': parsed.allowedTools,
-            metadata: parsed.metadata,
+            name: skill.name,
+            description: skill.description,
+            ...(skill.compatibility === undefined
+              ? {}
+              : { compatibility: skill.compatibility }),
+            ...(skill.license === undefined ? {} : { license: skill.license }),
+            ...(skill.allowedTools.length > 0
+              ? { 'allowed-tools': skill.allowedTools.join(' ') }
+              : {}),
+            ...(Object.keys(skill.metadata).length > 0
+              ? { metadata: skill.metadata }
+              : {}),
           })
           const bundleHash = yield* digest(
             [
@@ -164,9 +171,9 @@ export function seedBuiltinSkills(
               await tx.insert(schema.skill).values({
                 id: skillId,
                 workspaceId,
-                name: parsed.name,
+                name: skill.name,
                 slug: seed.slug,
-                description: parsed.description,
+                description: skill.description,
                 frontmatter: JSON.stringify(metadata),
                 body: seed.content,
                 sourceType: 'builtin',

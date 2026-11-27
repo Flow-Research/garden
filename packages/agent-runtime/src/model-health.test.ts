@@ -87,7 +87,7 @@ describe('probeAgentModel', () => {
     const report = await probe(ai)
 
     expect(report.status).toBe('provider_error')
-    expect(report.detail).toBe('Model request failed.')
+    expect(report.detail).toBe('Model request failed (HTTP 429).')
     expect(binding.run).toHaveBeenCalledOnce()
   })
 

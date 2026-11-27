@@ -1,5 +1,11 @@
 import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
-import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
+import {
+  jsonSchema,
+  tool,
+  type ModelMessage,
+  type Tool,
+  type ToolSet,
+} from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
@@ -251,7 +257,7 @@ export type ThreadRuntimeIdentity = {
  *
  * Before this scope was explicit, every runtime used `rpc:executor`. Agents
  * maps that name to one Durable Object, so the first initialized Executor
- * runtime could serve later workspaces or users. The installed agents@0.17.3
+ * runtime could serve later workspaces or users. The installed agents@0.34.0
  * `addMcpServer()` and PartyServer `getServerByName()` implementations use the
  * remote name for Durable Object addressing. This name therefore includes the
  * opaque Garden workspace, member, agent, thread, and run identifiers.
@@ -317,8 +323,12 @@ export type McpToolRecord = {
 }
 
 type McpCallToolParams = Parameters<MCPClientManager['callTool']>[0]
-type McpCallToolResultSchema = Parameters<MCPClientManager['callTool']>[1]
-type McpCallToolOptions = Parameters<MCPClientManager['callTool']>[2]
+type McpCallToolOptions = {
+  readonly timeout?: number
+  readonly maxTotalTimeout?: number
+  readonly resetTimeoutOnProgress?: boolean
+  readonly signal?: AbortSignal
+}
 
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
 
@@ -334,7 +344,6 @@ export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet
   callTool: (
     params: McpCallToolParams,
-    resultSchema?: McpCallToolResultSchema,
     options?: McpCallToolOptions,
   ) => Promise<unknown>
   listTools: (filter?: MCPServerFilter) => McpToolRecord[]
@@ -554,7 +563,9 @@ export class RuntimeMcpController {
 
         if (!connectorId) {
           const baseExecute = rawTool.execute
-          acc[rawToolKey] = {
+          // Provider-defined MCP tools pin `description` to `undefined` in
+          // the Tool union; rebuild as a plain function tool after wrapping.
+          const executorTool = {
             ...rawTool,
             ...(baseExecute
               ? {
@@ -608,7 +619,6 @@ export class RuntimeMcpController {
                               ? {}
                               : { _meta: gardenMeta }),
                           },
-                          undefined,
                           {
                             timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
                             maxTotalTimeout:
@@ -686,7 +696,7 @@ export class RuntimeMcpController {
               options: {
                 toolCallId: string
                 messages: ModelMessage[]
-                experimental_context?: unknown
+                context: unknown
               },
             ) =>
               this.ensureExecutorToolNeedsApproval({
@@ -694,7 +704,8 @@ export class RuntimeMcpController {
                 toolArgs: input,
                 shouldAutoApprove: wrapOptions?.shouldAutoApprove,
               }),
-          }
+          } as Tool
+          acc[rawToolKey] = executorTool
           return acc
         }
 
@@ -702,7 +713,9 @@ export class RuntimeMcpController {
 
         const baseNeedsApproval = rawTool.needsApproval
         const baseExecute = rawTool.execute
-        acc[toolKey] = {
+        // Provider-defined MCP tools pin `description` to `undefined` in
+        // the Tool union; rebuild as a plain function tool after wrapping.
+        const wrappedTool = {
           ...rawTool,
           ...(baseExecute
             ? {
@@ -744,7 +757,7 @@ export class RuntimeMcpController {
             options: {
               toolCallId: string
               messages: ModelMessage[]
-              experimental_context?: unknown
+              context: unknown
             },
           ) => {
             const baseApproval =
@@ -769,7 +782,8 @@ export class RuntimeMcpController {
 
             return approvalResult.value
           },
-        }
+        } as Tool
+        acc[toolKey] = wrappedTool
         return acc
       }, {})
 

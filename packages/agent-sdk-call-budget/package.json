@@ -16,7 +16,7 @@
     "@garden/tsconfig": "workspace:*",
     "@typescript/native": "catalog:",
     "agents": "catalog:",
-    "ai": "6.0.208",
+    "ai": "7.0.181",
     "vitest": "catalog:"
   }
 }

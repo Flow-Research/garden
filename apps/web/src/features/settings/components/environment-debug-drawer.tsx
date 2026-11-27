@@ -202,7 +202,7 @@ const GROUP_LABEL: Record<ToolGroup, string> = {
 
 const GROUP_DESC: Record<ToolGroup, string> = {
   workspace:
-    'createWorkspaceTools(workspace): read/write/edit/list/find/grep/delete',
+    'createAITools({ workspace }): read/write/edit/list/find/grep/delete',
   custom: 'Agent getTools()',
   session: 'session.tools(): set_context / load_context',
   extension: 'Loaded sandboxed extension workers',
@@ -490,7 +490,8 @@ function EntryList({ entries }: { entries: WorkspaceStateEntry[] }) {
               {entry.path}
             </div>
             <div className="text-[10px] text-muted-foreground">
-              {entry.type} · {formatBytes(entry.size)} · {entry.mimeType}
+              {entry.type} · {formatBytes(entry.size)}
+              {entry.mimeType && ` · ${entry.mimeType}`}
             </div>
           </div>
         </li>
@@ -810,25 +811,6 @@ function PromptPanel({
                   </li>
                 ))}
               </ul>
-            </div>
-          ) : null}
-
-          {prompt.loadedSkillKeys.length > 0 ? (
-            <div>
-              <div className="mb-1 text-[11px] font-medium text-muted-foreground">
-                Loaded skills ({prompt.loadedSkillKeys.length})
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {prompt.loadedSkillKeys.map((key) => (
-                  <Badge
-                    key={key}
-                    variant="secondary"
-                    className="font-mono text-[10px]"
-                  >
-                    {key}
-                  </Badge>
-                ))}
-              </div>
             </div>
           ) : null}
 

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AppEnv } from '@/lib/server/env'
 import type * as IssueRunReconciler from '@/lib/server/issue-run-reconciler'
 import type * as ModelHealthCheck from '@/lib/server/model-health-check'
-import { agentsSdk } from '@/test/agents-sdk-fixture'
+import { agentsSdk, createAgentTestContext } from '@/test/agents-sdk-fixture'
 
 const harness = vi.hoisted(() => ({
   session: vi.fn(),
@@ -164,15 +164,10 @@ function sdkHandshake() {
       return false
     }
   }
-  const context = {
+  const context = createAgentTestContext({
     id: { name: hostName },
     exports: { ChatSubAgent: class {} },
-    storage: {
-      sql: { exec: () => Object.assign([], { toArray: () => [] }) },
-      get: async () => undefined,
-    },
-    getWebSockets: () => [],
-  }
+  })
   const parent = Reflect.construct(Parent, [context, {}]) as InstanceType<
     typeof Parent
   >
@@ -180,17 +175,29 @@ function sdkHandshake() {
     .spyOn(parent, 'onBeforeSubAgent')
     .mockResolvedValue(undefined)
   const forwarded = vi.fn(async () => undefined)
-  const resolveChild = vi.fn(async () => ({
+  const resolveChild = vi.fn(async (_className: string, _name: string) => ({
     _cf_handleSubAgentWebSocketConnect: forwarded,
   }))
-  Object.defineProperty(parent, '_cf_resolveSubAgent', { value: resolveChild })
-  const received: Request[] = []
-  const platform = Object.getPrototypeOf(agentsSdk.Agent.prototype) as {
-    fetch: (request: Request) => Promise<Response>
+  // Agents 0.34 wakes facets through DynamicAgents.resolve, not the old
+  // `_cf_resolveSubAgent` leaf the fixture used to replace. Private field —
+  // reach it via Reflect so the test stays typed without casting through Agent.
+  const dynamicAgents = Reflect.get(parent, '_dynamicAgents') as {
+    resolve: (...args: unknown[]) => Promise<unknown>
   }
-  // The SDK still owns fetch routing, its guard, generated metadata and onConnect.
-  // Replace only PartyServer's platform socket acceptance (Node has no 101 pair).
-  vi.spyOn(platform, 'fetch').mockImplementation(async (incoming) => {
+  vi.spyOn(dynamicAgents, 'resolve').mockImplementation(
+    async (...args: unknown[]) => {
+      const [className, name] = args
+      if (typeof className !== 'string' || typeof name !== 'string') {
+        throw new Error('DynamicAgents.resolve expected className and name')
+      }
+      return resolveChild(className, name)
+    },
+  )
+  const received: Request[] = []
+  // Agents 0.34: Agent.fetch falls through to lifecycle.fetch (no PartyServer
+  // base). Stub that leaf so Node can simulate socket acceptance without a
+  // 101 upgrade pair.
+  vi.spyOn(parent.lifecycle, 'fetch').mockImplementation(async (incoming) => {
     received.push(incoming)
     if (incoming.headers.get('upgrade')?.toLowerCase() === 'websocket') {
       const connection = {
