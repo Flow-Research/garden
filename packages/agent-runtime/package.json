@@ -10,6 +10,7 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "measure:tools": "node ../../scripts/run-with-root-env.mjs node --experimental-strip-types scripts/measure-agent-tools.ts",
+    "measure:step-output": "node ../../scripts/run-with-root-env.mjs node scripts/run-vite-module.mjs scripts/measure-step-output.ts",
     "fixture:live-chat": "bash fixtures/run-live-chat-agent.sh",
     "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."

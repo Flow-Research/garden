@@ -6,6 +6,11 @@ import type {
   TimelineEntry,
 } from '@garden/core/types'
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '@garden/core/issues/config'
+import {
+  formatRunFailure,
+  parseRunFailure,
+  runFailure,
+} from '@garden/core/runs/failure'
 import { formatShortDate, timeAgo } from '@garden/core/format'
 import {
   Tooltip,
@@ -73,12 +78,13 @@ function formatActivity(
     case 'issue_run:queued':
       return 'queued an agent run'
     case 'issue_run:failed': {
-      const error =
-        detailString('error') ??
-        detailString('message') ??
-        entry.event?.message ??
-        'Agent run failed'
-      return `agent run failed: ${error}`
+      const failure = parseRunFailure(
+        details.failure ?? entry.event?.payload ?? details,
+      ).match({
+        ok: (value) => value,
+        err: () => runFailure('unknown'),
+      })
+      return `agent run stopped: ${formatRunFailure(failure)}`
     }
     default:
       return entry.event?.message ?? entry.action ?? ''

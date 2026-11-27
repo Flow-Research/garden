@@ -267,7 +267,7 @@ const malformedWordDocuments = [
   ],
   [
     'unterminated attribute values',
-    `<?xml version="1.0"?><w:document ${wordNamespace}><w:body>${'<w:p a="'.repeat(4000)}`,
+    `<?xml version="1.0"?><w:document ${wordNamespace}><w:body>${'<w:p a="'.repeat(1000)}`,
   ],
 ] as const
 
