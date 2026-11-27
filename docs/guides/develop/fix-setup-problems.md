@@ -38,7 +38,7 @@ If `qwen3:8b` is missing, pull it. To use a different model or a hosted OpenAI-c
 
 ## Use Workers AI instead of a local model
 
-Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare. You need a Cloudflare account on the Workers paid plan. The default model, `@cf/zai-org/glm-5.3`, is not available on the free plan. Usage can create charges.
+Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare. You need a Cloudflare account on the Workers paid plan. The default model, `@cf/deepseek-ai/deepseek-v4.1-flash-1017`, is not available on the free plan. Usage can create charges.
 
 1. Sign in and print your account id:
 

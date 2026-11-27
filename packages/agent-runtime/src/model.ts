@@ -81,6 +81,8 @@ export type AgentModelProfile = {
     input: number
     output: number
   }
+  /** Workers AI `reasoning_effort`; omitted for providers that do not take it. */
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 export type AgentModelTracing = {
@@ -118,26 +120,29 @@ const createPiStyleCompactionPolicy = (
 
 /**
  * Single source of truth for model IDs, compaction, and point-in-time pricing.
- * Prices are USD per token for Cloudflare Workers AI GLM-5.3 as of
- * 2026-11-22: $1.40/M input, $4.40/M output, $0.26/M cached input.
+ * Prices are USD per token for Cloudflare Workers AI DeepSeek V4.1 Flash as of
+ * 2026-11-25: $0.30/M input, $1.20/M output, $0.006/M cached input.
+ * https://developers.cloudflare.com/workers-ai/models/deepseek-v4.1-flash-1017/
  */
 export const agentModelProfiles = {
-  glm53WorkersAi: {
+  deepseekV41FlashWorkersAi: {
     contextWindowTokens: 1_048_576,
-    docs: 'Cloudflare Workers AI model docs: @cf/zai-org/glm-5.3 context window is 1,048,576 tokens.',
-    id: '@cf/zai-org/glm-5.3',
+    docs: 'Cloudflare Workers AI model docs: @cf/deepseek-ai/deepseek-v4.1-flash-1017 context window is 1,048,576 tokens.',
+    id: '@cf/deepseek-ai/deepseek-v4.1-flash-1017',
     maxOutputTokens: 16_000,
     provider: 'workers-ai',
     compaction: createPiStyleCompactionPolicy(1_048_576),
     pricePerToken: {
-      input: 0.0000014,
-      output: 0.0000044,
-      cacheReadInput: 0.00000026,
+      input: 0.0000003,
+      output: 0.0000012,
+      cacheReadInput: 0.000000006,
     },
+    reasoningEffort: 'high',
   },
 } as const satisfies Record<string, AgentModelProfile>
 
-export const DEFAULT_AGENT_MODEL_PROFILE = agentModelProfiles.glm53WorkersAi
+export const DEFAULT_AGENT_MODEL_PROFILE =
+  agentModelProfiles.deepseekV41FlashWorkersAi
 
 export function getDefaultAgentModelProfile(): AgentModelProfile {
   return DEFAULT_AGENT_MODEL_PROFILE
@@ -304,11 +309,7 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
   })
 }
 
-/**
- * Workers AI factory — the pre-offline-mode behavior, extracted verbatim so
- * the default path stays byte-equivalent while `createAgentModel` branches
- * on provider.
- */
+/** Workers AI factory for profiles served through the `AI` binding. */
 function createWorkersAiAgentModel(
   profile: AgentModelProfile,
   config: AgentModelConfig,
@@ -318,7 +319,9 @@ function createWorkersAiAgentModel(
     binding: config.ai,
     ...(gatewayId ? { gateway: { id: gatewayId } } : {}),
   })
-  const model = workersai(profile.id)
+  const model = workersai(profile.id, {
+    reasoning_effort: profile.reasoningEffort,
+  })
   return config.onModelRetired
     ? observeRetiredAgentModel(model, config.onModelRetired)
     : model
