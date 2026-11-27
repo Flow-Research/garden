@@ -72,6 +72,7 @@ export type AgentModelProfile = {
   contextWindowTokens: number
   docs: string
   id: string
+  maxOutputTokens: number
   provider: AgentModelProvider
   compaction: AgentModelCompactionPolicy
   pricePerToken: {
@@ -127,6 +128,7 @@ export const agentModelProfiles = {
     contextWindowTokens: 1_048_576,
     docs: 'Cloudflare Workers AI model docs: @cf/deepseek-ai/deepseek-v4.1-flash-1017 context window is 1,048,576 tokens.',
     id: '@cf/deepseek-ai/deepseek-v4.1-flash-1017',
+    maxOutputTokens: 16_000,
     provider: 'workers-ai',
     compaction: createPiStyleCompactionPolicy(1_048_576),
     pricePerToken: {
@@ -198,6 +200,7 @@ export function resolveAgentModelProfile(
     contextWindowTokens,
     docs: 'Local/OpenAI-compatible model configured via GARDEN_MODEL_* env; context window from GARDEN_MODEL_CONTEXT_WINDOW_TOKENS.',
     id: env?.GARDEN_MODEL_ID?.trim() || OPENAI_COMPATIBLE_DEFAULT_MODEL_ID,
+    maxOutputTokens: DEFAULT_AGENT_MODEL_PROFILE.maxOutputTokens,
     provider: 'openai-compatible',
     compaction: {
       responseReserveTokens,
