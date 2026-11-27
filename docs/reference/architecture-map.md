@@ -174,7 +174,7 @@ See [Brain](../concepts/architecture/brain.md).
 | Sidebar and top bar | `AppSidebar` and `AppTopBar` from `packages/ui/components/shell/` |
 | Authenticated workspace route | `apps/web/src/routes/_authenticated/workspace.tsx` |
 
-Settings menu entries open a dialog. A separate authenticated `/settings` page reuses existing section components for the staged redesign. See [Settings page rollout](../concepts/features/settings.md).
+The account menu opens `/settings`. The workspace menu opens the Settings dialog. The authenticated page reuses existing section components. See [Settings page rollout](../concepts/features/settings.md).
 
 ## CI
 
