@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { diagramFailures } from './diagram-contract.mjs'
 import { evidenceFailures } from './pr-evidence.mjs'
 
 const REQUIRED_HEADINGS = [
@@ -73,10 +74,12 @@ function hasCheckedItem(body, item) {
 /**
  * Read changed paths from the checked-out base and head commits.
  */
-function changedFiles(baseSha, headSha) {
+function changedFiles(baseSha, headSha, { includeRemoved = false } = {}) {
   const result = spawnSync(
     'git',
-    ['diff', '--name-only', '--diff-filter=ACMRT', baseSha, headSha],
+    includeRemoved
+      ? ['diff', '--name-only', '-z', '--no-renames', baseSha + '...' + headSha]
+      : ['diff', '--name-only', '-z', '--diff-filter=ACMRT', baseSha, headSha],
     { encoding: 'utf8' },
   )
 
@@ -88,8 +91,7 @@ function changedFiles(baseSha, headSha) {
     return []
   }
 
-  const output = result.stdout.trim()
-  return output ? output.split('\n') : []
+  return result.stdout.split('\0').filter(Boolean)
 }
 
 /**
@@ -246,6 +248,21 @@ function main() {
         body,
         prNumber: pullRequest.number,
         verification,
+      }),
+    )
+
+    failures.push(
+      ...diagramFailures({
+        files: changedFiles(pullRequest.base.sha, pullRequest.head.sha, {
+          includeRemoved: true,
+        }),
+        body,
+        manifest: JSON.parse(
+          readFileSync(
+            new URL('../docs/diagrams/manifest.json', import.meta.url),
+            'utf8',
+          ),
+        ),
       }),
     )
   }
