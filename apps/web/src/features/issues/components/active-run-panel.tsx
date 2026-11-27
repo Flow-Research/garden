@@ -12,6 +12,8 @@ import {
 import type { StructuredQuestion } from '@garden/app-state/chat'
 import { cn } from '@garden/ui/lib/utils'
 import { formatCompactNumber } from '@garden/core/format'
+import { formatRunFailure, runFailure } from '@garden/core/runs/failure'
+import type { PublicRunFailure } from '@garden/core/runs/failure'
 import { Alert, AlertDescription } from '@garden/ui/components/ui/alert'
 import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
@@ -39,8 +41,8 @@ export interface ActiveRunPanelProps {
     status: ActiveRunStatus
     started_at: string | null
     finished_at: string | null
-    error: string | null
-    error_detail?: string | null
+    failure: PublicRunFailure | null
+    blocked_reason: string | null
     usage: {
       total_tokens: number
       model: string
@@ -150,16 +152,14 @@ function buildDebugErrorDetail({
   tokens: string | null
   cost: string | null
 }): string {
-  const detail = run.error_detail?.trim()
   const duration = formatRunDuration(run.started_at, run.finished_at)
   const lines = [
-    detail,
     `run_id: ${run.id}`,
     `status: ${run.status}`,
     `started_at: ${run.started_at ?? 'null'}`,
     `finished_at: ${run.finished_at ?? 'null'}`,
     duration ? `duration: ${duration}` : null,
-    run.error ? `error: ${run.error}` : 'error: null',
+    run.failure ? `failure: ${run.failure.cause}` : 'failure: null',
     lastEventSummary ? `last_event: ${lastEventSummary}` : null,
     run.usage?.step_count != null
       ? `step_count: ${run.usage.step_count}`
@@ -298,7 +298,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
   const hasBody = Boolean(
     (run.status === 'waiting_for_input' && structuredQuestion) ||
     (run.status === 'waiting_for_approval' && pendingApprovalPreview) ||
-    (run.status === 'blocked' && run.error) ||
+    (run.status === 'blocked' && run.blocked_reason) ||
     run.status === 'failed',
   )
   // The user's expand/collapse choice is remembered for the status it was
@@ -455,14 +455,14 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
             />
           )}
 
-          {run.status === 'blocked' && run.error && (
+          {run.status === 'blocked' && run.blocked_reason && (
             <Alert
               variant="destructive"
               className="rounded-none border-0 border-t border-destructive/15 bg-transparent px-3 py-2.5"
             >
               <AlertCircle />
               <AlertDescription className="text-xs leading-relaxed text-foreground/90">
-                {run.error}
+                {run.blocked_reason}
               </AlertDescription>
             </Alert>
           )}
@@ -475,7 +475,7 @@ export function ActiveRunPanel(props: ActiveRunPanelProps) {
               <XCircle />
               <AlertDescription className="space-y-2">
                 <div className="break-words font-mono text-xs leading-relaxed">
-                  {run.error ?? 'Run failed without an error message.'}
+                  {formatRunFailure(run.failure ?? runFailure('unknown'))}
                 </div>
                 {debugMode && (
                   <div className="rounded-md border border-destructive/20 bg-background/60 p-2">
