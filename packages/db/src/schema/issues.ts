@@ -9,6 +9,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -145,6 +146,28 @@ export const issue = pgTable(
       sql`${table.assigneeType} is null or ${table.assigneeType} in (${sqlValueList(issueDbAssigneeTypeValues)})`,
     ),
   ],
+)
+
+/**
+ * Generation of one agent's issue-run context facet on one issue. Each
+ * `AgentDO` holds its own facets, so the generation is per (issue, agent): one
+ * agent moving to a fresh context leaves other agents' contexts in place. A
+ * missing row means generation 0. A run that finds history it cannot verify
+ * under current Brain permissions moves to the next generation; the earlier
+ * facet stays retained, never rewritten.
+ */
+export const issueAgentContext = pgTable(
+  'issue_agent_context',
+  {
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issue.id, { onDelete: 'cascade' }),
+    agentId: uuid('agent_id')
+      .notNull()
+      .references(() => agent.id, { onDelete: 'cascade' }),
+    generation: integer('generation').notNull().default(0),
+  },
+  (table) => [primaryKey({ columns: [table.issueId, table.agentId] })],
 )
 
 /**

@@ -3,7 +3,7 @@ title: Garden has three kinds of artifact and no unified model yet
 description: How document artifacts, issue work products, and sandbox previews differ, how live document editing reaches parity with Cloudflare Workspace Docs, and where each kind stops.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-16
 ---
 
 Agents produce three kinds of output that people review: document artifacts, issue work products, and sandbox files with previews. Each has its own storage and its own limits. They are not one artifact system.
@@ -17,6 +17,8 @@ A document artifact is a file, such as a DOCX or PDF, that a chat agent generate
 - Routes under `/api/documents/:id/` serve display, DOCX, metadata, versions, and the live artifact.
 - `GardenArtifact` and `DocumentArtifact` in `apps/web/src/features/artifacts` render them.
 - Chat agents use the `listDocuments`, `readDocument`, `findInDocument`, `generateDocx`, and `editDocument` tools from `packages/agent-runtime/src/documents/document-tools.ts`.
+
+`readDocument` returns text for PDF, DOCX, XLSX, and plain-text files, and image data for images. PDFs are parsed with `unpdf`, the serverless pdfjs build that runs in workerd; plain `pdfjs-dist` needs browser globals such as `DOMMatrix` and fails in the agent Worker. PDF text keeps `[Page N]` markers so `findInDocument` can cite pages. When extraction fails, the tool returns a `reason` of `unreadable` (encrypted or damaged), `no_text` (scanned, no text layer), or `unsupported` (for example legacy `.doc`), with a message that tells the agent to ask the user to paste the text or upload a text-based copy. The parser detail is logged as `[documents] text extraction failed`, not shown to the model. OCR for scanned PDFs is not built.
 
 Document artifacts are owned by one chat thread. `workspace_id` controls access but does not make a document a shared workspace file. The data model is specific to documents, so it does not fit generated web apps, images, or code bundles.
 

@@ -3,7 +3,7 @@ title: Connectors run through Executor inside the Garden Worker
 description: How Garden installs external integrations, gates their tools, and exposes them to agents through scoped Executor MCP sessions and the direct Decide path.
 status: current
 owner: '@Flow-Research/security'
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-27
 ---
 
 Garden has one application Worker. Executor v1.5.40 (`@executor-js/sdk` and its plugins in `apps/web/package.json`) runs inside that Worker. Executor handles the connector catalog, installation, OAuth, connections, execution, and hibernating MCP sessions. Garden API routes call the Executor SDK directly. The Worker also exports Executor's MCP session and execution-owner Durable Objects, bound as `EXECUTOR_MCP_SESSION` and `EXECUTOR_MCP_EXECUTION_OWNER` in `apps/web/wrangler.jsonc`.
@@ -26,7 +26,7 @@ The work splits between the two like this:
 | Remote MCP, OpenAPI, and GraphQL execution  | Executor                                              |
 | MCP session warm state                      | A scoped `ExecutorMcpSession` Durable Object          |
 
-The registered connectors are `discord`, `github`, `gmail`, `google-drive`, and `slack`. GitHub and Discord are Garden-native: their tools run through typed Effect services in Garden. The other integrations run through Executor. Executor's `github-rest` and `github-graphql` presets stay disabled, so GitHub runs only through the Garden GitHub App installation (native tools and the Garden-hosted MCP server), never through sandbox HTTP or personal access token presets.
+The native connector registry contains `discord`, `github`, `gmail`, `google-drive`, and `slack`. The curated Executor MCP catalogue also includes Workstream. GitHub and Discord are Garden-native: their tools run through typed Effect services in Garden. The other integrations run through Executor. Executor's `github-rest` and `github-graphql` presets stay disabled, so GitHub runs only through the Garden GitHub App installation (native tools and the Garden-hosted MCP server), never through sandbox HTTP or personal access token presets.
 
 ## State lives in three places
 
@@ -80,7 +80,7 @@ Garden decides which member is behind an issue run as follows.
 - **Delegating member.** An agent actor uses the member it was acting for. A chat delegation (`assign_issue` or a status change to `in_progress`) acts for the chat owner. A child issue from `create_child_issue` acts for the parent run's member.
 - **No member.** System actors (GitHub webhook, automation triggers) and agent work with no member upstream get no user connections. They still get org connections. When a service has only user connections, the run reports it as unavailable instead of borrowing anyone's account.
 
-The run records its choice as `connectorIdentity` on `issue_run.context_snapshot` and as `connector_identity` on the `issue_run:queued` event, so a person can see which member's accounts a run used. A run that resumes after a question keeps the member it was queued with, even when someone else answers. A run without a recorded identity resolves to no member.
+The run records its choice as `connectorIdentity` on `issue_run.context_snapshot` and as `connector_identity` on the `issue_run:queued` event. This identity stays fixed for the run. A waiting run with personal access resumes only when that same member comments. Another member's comment remains in the issue thread but does not resume that run. Garden returns `already_running` for that start request. A run without a recorded identity gets no personal connections. An older run with a recorded initiating member but no connector identity can resume when that member comments; it still gets no personal connections. Missing or invalid member evidence does not authorize a resume.
 
 `ThreadRuntimeIdentity.connectorUserId` carries the member into the runtime, and `userId` keeps naming the agent owner. Each consumer reads one of them:
 
@@ -94,6 +94,12 @@ The run records its choice as `connectorIdentity` on `issue_run.context_snapshot
 | Brain write credit, logs                                        | `userId` (owner)                                                  | Attribution, not access. Issue runs still read org Brain only.                                                                                                   |
 
 Automation runs still use the agent owner for both fields. Whether an automation should act as its creator is a separate decision.
+
+## Workstream uses a personal Flow Identity authorization
+
+[Workstream](../features/workstream.md) uses the existing Executor remote MCP flow at `https://workstream.flowresearch.tech/mcp`. Garden supplies a deployment-owned public application registration from `WORKSTREAM_MCP_CLIENT_ID`; Executor owns S256 PKCE, callback state, encrypted per-connection credentials, and refresh. Only Personal connections are permitted, while the public app registration is organization-owned. The exact resource, issuer endpoints, and configured client ID bind client reuse. Workstream uses no dynamic client registration.
+
+Garden sign-in is unchanged. The invited Flow Identity account supplies an MCP audience credential. Workstream exchanges it server-side and retains all task and outcome authority. Chat and direct member calls are the first qualification surface. Issue runs use the recorded connector member under the same resume rule as other personal connections. Deployment browser, refresh, and member-isolation proof remains pending in [known gaps](../../reference/known-gaps.md).
 
 ## Decide takes a direct path
 

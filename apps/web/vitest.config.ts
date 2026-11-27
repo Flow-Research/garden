@@ -11,6 +11,28 @@ export default defineConfig({
     tsconfigPaths: true,
     alias: [
       {
+        find: 'tanstack-start-manifest:v',
+        replacement: fileURLToPath(
+          new URL('./src/test/start-security/manifest.ts', import.meta.url),
+        ),
+      },
+      {
+        find: '#tanstack-router-entry',
+        replacement: fileURLToPath(
+          new URL('./src/test/start-security/router.ts', import.meta.url),
+        ),
+      },
+      {
+        find: '#tanstack-start-entry',
+        replacement: fileURLToPath(new URL('./src/start.ts', import.meta.url)),
+      },
+      {
+        find: '#tanstack-start-server-fn-resolver',
+        replacement: fileURLToPath(
+          new URL('./src/test/start-security/resolver.ts', import.meta.url),
+        ),
+      },
+      {
         find: 'cloudflare:workers',
         replacement: fileURLToPath(
           new URL('./src/test/cloudflare-workers-mock.ts', import.meta.url),
@@ -29,6 +51,9 @@ export default defineConfig({
   },
   plugins: [viteReact()],
   test: {
+    server: {
+      deps: { inline: [/@tanstack\/(react-start|start-server-core)/] },
+    },
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],

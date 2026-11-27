@@ -9,10 +9,15 @@ import { z } from 'zod'
  *   with no member upstream). Such runs get no user connections; Executor
  *   org connections stay visible to them.
  */
-export const RunConnectorIdentitySchema = z.object({
-  userId: z.string().min(1).nullable(),
-  basis: z.enum(['triggering_member', 'delegating_member', 'no_member']),
-})
+export const RunConnectorIdentitySchema = z
+  .object({
+    userId: z.string().min(1).nullable(),
+    basis: z.enum(['triggering_member', 'delegating_member', 'no_member']),
+  })
+  .refine(
+    (identity) =>
+      (identity.basis === 'no_member') === (identity.userId === null),
+  )
 
 export type RunConnectorIdentity = z.infer<typeof RunConnectorIdentitySchema>
 
@@ -51,4 +56,48 @@ export function readRunConnectorIdentity(
     .object({ connectorIdentity: RunConnectorIdentitySchema })
     .safeParse(contextSnapshot)
   return parsed.success ? parsed.data.connectorIdentity : NO_MEMBER
+}
+
+/** Allows a comment to resume only the member who supplied a run's personal identity. */
+export function canCommentResumeRun(
+  contextSnapshot: unknown,
+  actor: { type: 'member' | 'agent' | 'system'; id: string },
+): boolean {
+  const snapshot = z
+    .object({
+      connectorIdentity: RunConnectorIdentitySchema.optional(),
+      actor: z
+        .object({
+          type: z.enum(['member', 'agent', 'system']),
+          id: z.string().min(1),
+        })
+        .optional(),
+    })
+    .safeParse(contextSnapshot)
+  if (!snapshot.success || actor.type !== 'member' || !actor.id) return false
+
+  const identity = snapshot.data.connectorIdentity
+  if (identity) {
+    if (identity.basis === 'no_member') {
+      return (
+        snapshot.data.actor?.type === 'agent' ||
+        snapshot.data.actor?.type === 'system'
+      )
+    }
+    if (identity.basis === 'triggering_member') {
+      return (
+        snapshot.data.actor?.type === 'member' &&
+        snapshot.data.actor.id === identity.userId &&
+        identity.userId === actor.id
+      )
+    }
+    return snapshot.data.actor?.type === 'agent' && identity.userId === actor.id
+  }
+
+  // Older runs have no personal connector subject. Their original member can
+  // still answer, while readRunConnectorIdentity keeps personal access off.
+  return (
+    snapshot.data.actor?.type === 'member' &&
+    snapshot.data.actor.id === actor.id
+  )
 }

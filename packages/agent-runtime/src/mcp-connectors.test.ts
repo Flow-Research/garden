@@ -19,6 +19,10 @@ import {
   type McpHost,
 } from './runtime-mcp-controller'
 
+const hyperdriveStub: Pick<Hyperdrive, 'connectionString'> = {
+  connectionString: 'postgres://garden.test/db',
+}
+
 function createSqlStorageStub(initialRows: StoredConnectorServerRow[] = []) {
   const rows = new Map<string, Record<string, unknown>>()
 
@@ -638,9 +642,7 @@ describe('RuntimeMcpController Executor session subject (#383)', () => {
         env: {
           BETTER_AUTH_SECRET: 'secret',
           BETTER_AUTH_URL: 'https://garden.test',
-          HYPERDRIVE: {
-            connectionString: 'postgres://garden.test/db',
-          } as unknown as Hyperdrive,
+          HYPERDRIVE: hyperdriveStub,
         },
         ctx: { storage: { sql: createSqlStorageStub() } },
         mcp: {
@@ -668,11 +670,9 @@ describe('RuntimeMcpController Executor session subject (#383)', () => {
           }),
       }
       const controller = new RuntimeMcpController(host)
-      ;(
-        controller as unknown as {
-          listActiveConnectorBindings: () => Promise<Result<[], never>>
-        }
-      ).listActiveConnectorBindings = async () => Result.ok([])
+      Reflect.set(controller, 'listActiveConnectorBindings', async () =>
+        Result.ok([]),
+      )
 
       const ready = await controller.ensureProxyMcpConnections()
       expect(ready.isOk()).toBe(true)

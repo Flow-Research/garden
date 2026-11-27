@@ -6,6 +6,7 @@ import { startTestDb, type TestDb } from '@garden/db/testing'
 import { listAvailableConnectorBindings } from '../connectors/availability'
 import { readRunConnectorIdentity } from './run-connector-identity'
 import { startIssueRun, type IssueRunEnv } from './run-service'
+import { postIssueComment } from './server'
 
 const testDbRef = vi.hoisted(() => ({ url: '', db: undefined as unknown }))
 
@@ -43,6 +44,7 @@ describe('issue run connector identity (integration)', () => {
     const workspaceId = randomUUID()
     const ownerId = randomUUID()
     const memberId = randomUUID()
+    const otherMemberId = randomUUID()
     const agentId = randomUUID()
     const issueId = randomUUID()
     await testDb.db.insert(schema.organization).values({
@@ -53,6 +55,15 @@ describe('issue run connector identity (integration)', () => {
     await testDb.db.insert(schema.user).values([
       { id: ownerId, email: `${ownerId}@example.com`, name: 'Konan Owner' },
       { id: memberId, email: `${memberId}@example.com`, name: 'Samuel A' },
+      {
+        id: otherMemberId,
+        email: `${otherMemberId}@example.com`,
+        name: 'Other member',
+      },
+    ])
+    await testDb.db.insert(schema.member).values([
+      { organizationId: workspaceId, userId: memberId, role: 'member' },
+      { organizationId: workspaceId, userId: otherMemberId, role: 'member' },
     ])
     await testDb.db.insert(schema.account).values([
       {
@@ -91,9 +102,10 @@ describe('issue run connector identity (integration)', () => {
       title: 'Create a Google Doc',
       createdBy: memberId,
     })
-    return { workspaceId, ownerId, memberId, agentId, issueId }
+    return { workspaceId, ownerId, memberId, otherMemberId, agentId, issueId }
   }
 
+  const resumedWorkflowIds: string[] = []
   const env = (): IssueRunEnv => ({
     HYPERDRIVE: { connectionString: testDb.databaseUrl },
     AgentDO: {
@@ -102,8 +114,52 @@ describe('issue run connector identity (integration)', () => {
         startIssueRunWorkflow: async () => {},
         cancelIssueRun: async () => {},
       }),
-    } as unknown as IssueRunEnv['AgentDO'],
+    },
+    RUN_WORKFLOW: {
+      get: async (id) => ({
+        sendEvent: async () => {
+          resumedWorkflowIds.push(id)
+        },
+        status: async () => ({ status: 'running' }),
+      }),
+    },
   })
+
+  async function waitingRun(
+    seeded: Awaited<ReturnType<typeof seed>>,
+    contextSnapshot?: unknown,
+  ) {
+    const result = (
+      await startIssueRun(env(), {
+        workspaceId: seeded.workspaceId,
+        issueId: seeded.issueId,
+        agentId: seeded.agentId,
+        source: 'manual',
+        actor: { type: 'member', id: seeded.memberId },
+      })
+    ).unwrap()
+    if (result.kind !== 'started') throw new Error(result.kind)
+    await testDb.db
+      .update(schema.issueRun)
+      .set({
+        status: 'waiting_for_input',
+        ...(contextSnapshot === undefined ? {} : { contextSnapshot }),
+      })
+      .where(eq(schema.issueRun.id, result.runId))
+    return result.runId
+  }
+
+  async function insertReply(issueId: string, authorId: string) {
+    const id = randomUUID()
+    await testDb.db.insert(schema.issueComment).values({
+      id,
+      issueId,
+      authorType: 'user',
+      authorId,
+      body: 'Answer',
+    })
+    return id
+  }
 
   async function runBindings(
     seeded: Awaited<ReturnType<typeof seed>>,
@@ -192,5 +248,124 @@ describe('issue run connector identity (integration)', () => {
         basis: 'triggering_member',
       },
     })
+  })
+
+  it('keeps another member comment without resuming a member-bound run', async () => {
+    const seeded = await seed()
+    const runId = await waitingRun(seeded)
+    const resumedBefore = resumedWorkflowIds.length
+    const posted = (
+      await postIssueComment({
+        databaseUrl: testDb.databaseUrl,
+        issueRunEnv: env(),
+        workspaceId: seeded.workspaceId,
+        issueIdOrIdentifier: seeded.issueId,
+        authorUserId: seeded.otherMemberId,
+        body: 'I have another thought.',
+      })
+    ).unwrap()
+    const [comment] = await testDb.db
+      .select()
+      .from(schema.issueComment)
+      .where(eq(schema.issueComment.id, posted.comment_id))
+    const [run] = await testDb.db
+      .select()
+      .from(schema.issueRun)
+      .where(eq(schema.issueRun.id, runId))
+    expect(comment?.authorId).toBe(seeded.otherMemberId)
+    expect(run?.status).toBe('waiting_for_input')
+    expect(readRunConnectorIdentity(run?.contextSnapshot).userId).toBe(
+      seeded.memberId,
+    )
+    expect(resumedWorkflowIds).toHaveLength(resumedBefore)
+  })
+
+  it('resumes when the original member comments and keeps the queued identity', async () => {
+    const seeded = await seed()
+    const runId = await waitingRun(seeded)
+    const resumedBefore = resumedWorkflowIds.length
+    const posted = await postIssueComment({
+      databaseUrl: testDb.databaseUrl,
+      issueRunEnv: env(),
+      workspaceId: seeded.workspaceId,
+      issueIdOrIdentifier: seeded.issueId,
+      authorUserId: seeded.memberId,
+      body: 'Yes, use my Drive.',
+    })
+    expect(posted.isOk()).toBe(true)
+    const [run] = await testDb.db
+      .select()
+      .from(schema.issueRun)
+      .where(eq(schema.issueRun.id, runId))
+    expect(resumedWorkflowIds.slice(resumedBefore)).toEqual([runId])
+    expect(readRunConnectorIdentity(run?.contextSnapshot)).toEqual({
+      userId: seeded.memberId,
+      basis: 'triggering_member',
+    })
+  })
+
+  it('allows an older member run to resume without granting personal connections', async () => {
+    const seeded = await seed()
+    const runId = await waitingRun(seeded, {
+      actor: { type: 'member', id: seeded.memberId },
+      source: 'manual',
+    })
+    const commentId = await insertReply(seeded.issueId, seeded.memberId)
+    const resumedBefore = resumedWorkflowIds.length
+    const result = (
+      await startIssueRun(env(), {
+        workspaceId: seeded.workspaceId,
+        issueId: seeded.issueId,
+        agentId: seeded.agentId,
+        source: 'comment',
+        trigger: { commentId },
+        actor: { type: 'member', id: seeded.memberId },
+      })
+    ).unwrap()
+    expect(result).toEqual({ kind: 'resumed', runId })
+    expect(resumedWorkflowIds.slice(resumedBefore)).toEqual([runId])
+    const [run] = await testDb.db
+      .select()
+      .from(schema.issueRun)
+      .where(eq(schema.issueRun.id, runId))
+    expect(readRunConnectorIdentity(run?.contextSnapshot).userId).toBeNull()
+  })
+
+  it('refuses a waiting run with missing identity evidence', async () => {
+    const seeded = await seed()
+    const runId = await waitingRun(seeded, {})
+    const commentId = await insertReply(seeded.issueId, seeded.memberId)
+    const resumedBefore = resumedWorkflowIds.length
+    const result = (
+      await startIssueRun(env(), {
+        workspaceId: seeded.workspaceId,
+        issueId: seeded.issueId,
+        agentId: seeded.agentId,
+        source: 'comment',
+        trigger: { commentId },
+        actor: { type: 'member', id: seeded.memberId },
+      })
+    ).unwrap()
+    expect(result).toEqual({ kind: 'already_running', runId })
+    expect(resumedWorkflowIds).toHaveLength(resumedBefore)
+  })
+
+  it('refuses a forged comment author even when the claimed actor matches', async () => {
+    const seeded = await seed()
+    const runId = await waitingRun(seeded)
+    const commentId = await insertReply(seeded.issueId, seeded.otherMemberId)
+    const resumedBefore = resumedWorkflowIds.length
+    const result = (
+      await startIssueRun(env(), {
+        workspaceId: seeded.workspaceId,
+        issueId: seeded.issueId,
+        agentId: seeded.agentId,
+        source: 'comment',
+        trigger: { commentId },
+        actor: { type: 'member', id: seeded.memberId },
+      })
+    ).unwrap()
+    expect(result).toEqual({ kind: 'already_running', runId })
+    expect(resumedWorkflowIds).toHaveLength(resumedBefore)
   })
 })

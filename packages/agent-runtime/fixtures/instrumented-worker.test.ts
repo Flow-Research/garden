@@ -43,4 +43,53 @@ describe('native coverage receipt integrity', () => {
     ]
     expect(missingNativeBoundaries(retry, expected)).toEqual([expected[1]])
   })
+  it('requires every explicit repeated writeback, without counting duplicate delivery', () => {
+    const boundary = {
+      role: 'BrainWriteBackSubAgent.runWriteBack',
+      runId: 'same-run',
+      invocation: 'runWriteBack',
+      count: 2,
+    }
+    const first = { ...boundary, isolate: 'one', sequence: 1 }
+    expect(missingNativeBoundaries([first, first], [boundary])).toEqual([
+      boundary,
+    ])
+    expect(
+      missingNativeBoundaries([first, { ...first, sequence: 2 }], [boundary]),
+    ).toEqual([])
+  })
+  it('requires automation resume independently from its start or issue completion', () => {
+    const boundary = {
+      role: 'AutomationRunSubAgent.executeWorkflowTurn',
+      runId: 'automation',
+      invocation: '1:resume',
+      count: 1,
+    }
+    const start = {
+      ...boundary,
+      invocation: '0:start',
+      isolate: 'one',
+      sequence: 1,
+    }
+    expect(
+      missingNativeBoundaries(
+        [
+          start,
+          {
+            ...start,
+            role: 'IssueRunSubAgent.executeWorkflowTurn',
+            invocation: '1:resume',
+            sequence: 2,
+          },
+        ],
+        [boundary],
+      ),
+    ).toEqual([boundary])
+    expect(
+      missingNativeBoundaries(
+        [{ ...start, invocation: '1:resume' }],
+        [boundary],
+      ),
+    ).toEqual([])
+  })
 })

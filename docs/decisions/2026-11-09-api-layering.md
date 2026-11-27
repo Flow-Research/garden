@@ -3,11 +3,11 @@ title: Keep TanStack API routes thin with Zod, queries, and Result services
 description: Decision record for layering Garden's TanStack Start `/api` routes as Zod validation, Drizzle queries, better-result services, and thin route handlers — without adding Hono.
 status: decision
 owner: "@Umoren"
-last_reviewed: 2026-11-11
+last_reviewed: 2026-11-18
 
 ---
 
-**Date:** 2026-11-09. **Outcome:** accepted; migration on `refactor/api-layering`. Decision doc, warn-level lint, `/api/issues` reference, and the issues-children batch (issue `$id` routes, search, child-progress, comments) are in. Next domain batches remain. Not fully shipped yet.
+**Date:** 2026-11-09. **Outcome:** accepted; migration on `refactor/api-layering` (issues), `refactor/api-layering-workspaces` (workspaces/members), and `refactor/api-layering-agents` (agents CRUD). Decision doc, warn-level lint, `/api/issues` reference, issues-children, workspaces/members, and agents (`/api/agents`, `$id`, archive/restore/activity/access) are in. Later domain batches remain. Not fully shipped yet.
 
 ## Context
 
@@ -43,7 +43,7 @@ Locked rules:
 | Validation | `apps/web/src/lib/server/validation/` | Request/search/body Zod schemas shared by routes. |
 | Queries | `apps/web/src/lib/server/queries/{domain}/` | Pure Drizzle reads/writes and optional transactions. No HTTP types. |
 | Services | Prefer `packages/server/src/{domain}/`; web-boundary helpers in `apps/web/src/lib/server/{domain}/` | Domain orchestration and product outcomes as `Result.ok` / `Result.err`. Group by domain folder; leave shared infra flat (`db.ts`, `context.ts`, `control-plane.ts`, …). |
-| Side effects | Called from the route after success | Realtime publish, email, analytics, `waitUntil` run starts. |
+| Side effects | Called from the route after success | Effects whose failure does not undo the write: realtime publish, notification email, analytics, `waitUntil` run starts. An effect that decides whether the write stands (for example, the invitation email that rolls back the invitation when it fails) is part of the operation and belongs to the service. |
 
 Additional locks:
 
@@ -57,7 +57,7 @@ Additional locks:
 
 ## Consequences
 
-New and migrated TanStack API code follows the table above. `GET /api/issues` is the reference: `listWorkspaceIssues` in `apps/web/src/lib/server/issues/list-service.ts` over `queries/issues`, mapped with `.match()`. `POST /api/issues` calls `createIssue` / `authorizeTeamIssueCreate` in `@garden/server`. `PUT /api/issues/$id` uses `isTeamAssigneeMember` from `queries/issues` when changing a Team assignee. Issue child routes under `routes/api/issues/` and `routes/api/comments/` follow the same pattern (no `drizzle-orm` / `@/lib/server/db` / `@garden/db` imports). Other flat `issue-*.ts` / domain files under `lib/server/` move into `{domain}/` folders gradually; do not mass-move them in one PR.
+New and migrated TanStack API code follows the table above. `GET /api/issues` is the reference: `listWorkspaceIssues` in `apps/web/src/lib/server/issues/list-service.ts` over `queries/issues`, mapped with `.match()`. `POST /api/issues` calls `createIssue` / `authorizeTeamIssueCreate` in `@garden/server`. `PUT /api/issues/$id` uses `isTeamAssigneeMember` from `queries/issues` when changing a Team assignee. Issue child routes under `routes/api/issues/` and `routes/api/comments/` follow the same pattern (no `drizzle-orm` / `@/lib/server/db` / `@garden/db` imports). Workspaces/members routes under `routes/api/workspaces` use `lib/server/workspaces` services and `queries/workspaces` the same way. Better Auth boundary for that batch: routes keep session bootstrap, Zod, permission checks, and simple list calls (`listOrganizations`, `listMembers`); when a Better Auth write must compose with Garden domain steps (issue prefix / default agent, invitation Teams, invitation email + rollback), the service receives `auth` and owns `createOrganization` / `createInvitation` / `cancelInvitation` — see `createWorkspaceFromOrganizationApi` and `createAndSendInvitation`. Do not put Drizzle in the route to “keep auth in the route.” Agents routes under `routes/api/agents` use `lib/server/agents` services and `queries/agents` the same way (Drizzle-only — no Better Auth org APIs). Permission stays in the route for archive/restore; PostHog and chat-thread prompt refresh stay post-success route side effects. Teams `agent-policy` stays with the teams domain. Other flat domain files under `lib/server/` move into `{domain}/` folders gradually; do not mass-move them in one PR.
 
 Warn-level lint (`.oxlintrc.api-layering.json`) flags remaining Drizzle / db imports in `routes/api/` until each domain batch moves them. Root lint still errors on Neon and Phosphor/Tabler imports in those same routes. Promoting the layering rule to error is a later phase after the backlog is gone or allowlisted down to empty.
 
@@ -68,7 +68,7 @@ Contributors should not add new inline Drizzle in route handlers. If a route nee
 1. This decision document.
 2. Lint warn for `drizzle-orm` / db imports under `routes/api/` via `.oxlintrc.api-layering.json` (separate from root Neon/icon error bans).
 3. `/api/issues` as the reference (queries + thin route; reuse `@garden/server` where it already owns writes).
-4. Domain batches: issues children → workspaces/members → agents → connections → documents → github/webhooks/misc.
+4. Domain batches: issues children → workspaces/members (in) → agents (in) → connections → documents → github/webhooks/misc.
 5. Lint error once the route tree is clean.
 6. Handbook / architecture cross-links when the reference pattern is live.
 

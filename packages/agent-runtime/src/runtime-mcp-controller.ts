@@ -308,7 +308,7 @@ type StoredConnectorServerRowRecord = {
 export type McpHostEnv = {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
-  HYPERDRIVE: Hyperdrive
+  HYPERDRIVE: Pick<Hyperdrive, 'connectionString'>
   DISCORD_BOT_TOKEN?: string
   GITHUB_APP_ID?: string
   GITHUB_CLIENT_ID?: string
@@ -419,11 +419,11 @@ export type McpHost = {
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >
   /**
-   * The Decide owner this host's `decide_analyze` calls belong to. Omitted
-   * means a chat facet, whose name is the thread key. Run facets supply it
-   * so an automation's analysis is owned by its run, never by a chat.
+   * The Decide owner this host's `decide_analyze` calls belong to, read per
+   * call. Omitted or null means the facet name is the chat thread key. Run
+   * facets supply it so an automation's analysis is owned by its run.
    */
-  decideAnalysisOwner?: () => DecideAnalysisOwner
+  decideAnalysisOwner?: () => DecideAnalysisOwner | null
 }
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
@@ -1350,7 +1350,12 @@ export class RuntimeMcpController {
 
     const capability = capabilityResult.value[0]
     if (!capability) {
-      return Result.ok(false)
+      return Result.err(
+        new RuntimeMcpError({
+          code: 'permission_denied',
+          message: `Capability ${args.connectorId}.${args.toolName} is unavailable.`,
+        }),
+      )
     }
 
     // Team policy can only add approvals, so it is read before any rule that
@@ -1394,6 +1399,7 @@ export class RuntimeMcpController {
           .select({
             argsJson: schema.permissionRequest.argsJson,
             status: schema.permissionRequest.status,
+            runId: schema.permissionRequest.runId,
           })
           .from(schema.permissionRequest)
           .where(
@@ -1420,7 +1426,9 @@ export class RuntimeMcpController {
     if (existingRequestResult.isErr()) return existingRequestResult
 
     const existingRequest = existingRequestResult.value.find(
-      (request) => canonicalJsonString(request.argsJson) === toolArgsSignature,
+      (request) =>
+        request.runId === (identityResult.value.runId ?? null) &&
+        canonicalJsonString(request.argsJson) === toolArgsSignature,
     )
     if (existingRequest?.status === 'pending') {
       return Result.ok(true)
@@ -1534,11 +1542,7 @@ export class RuntimeMcpController {
       if (request.status !== 'approved' || !request.resolvedAt) {
         return false
       }
-      // An issue run acts on its own member's accounts (#383), so an approval
-      // from another run may cover a different person's account. Reuse only
-      // approvals granted inside the same run.
-      const runId = identityResult.value.runId
-      if (runId !== undefined && request.runId !== runId) return false
+      if (request.runId !== (identityResult.value.runId ?? null)) return false
 
       return (
         Date.now() - request.resolvedAt.getTime() <=

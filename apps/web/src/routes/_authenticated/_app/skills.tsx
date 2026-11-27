@@ -17,6 +17,7 @@ export const Route = createFileRoute('/_authenticated/_app/skills')({
   component: SkillsRoute,
 })
 
+/** Clearing focus returns mobile detail to the library using the same typed search contract. */
 function SkillsRoute() {
   const { focus } = Route.useSearch()
   const navigate = Route.useNavigate()
@@ -24,7 +25,10 @@ function SkillsRoute() {
     <SkillsPage
       focusedSkillId={focus}
       onSelectSkill={(skillId) =>
-        void navigate({ search: { focus: skillId }, replace: true })
+        void navigate({
+          search: skillId ? { focus: skillId } : {},
+          replace: true,
+        })
       }
     />
   )

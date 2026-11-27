@@ -162,7 +162,7 @@ describe('GoogleAccountConnection', () => {
 
     await waitFor(() => {
       expect(mockUnlinkAccount).toHaveBeenCalledWith({
-        providerId: 'google',
+        accountId: 'google-account',
       })
       expect(mockToastSuccess).toHaveBeenCalledWith('Google unlinked')
     })

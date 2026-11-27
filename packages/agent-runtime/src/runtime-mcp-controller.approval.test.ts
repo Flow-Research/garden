@@ -85,7 +85,12 @@ async function seedBase(): Promise<Seeded> {
   return { ownerId, workspaceId, agentId, capabilityId }
 }
 
-function makeController(seeded: Seeded, agentId: string = seeded.agentId) {
+function makeController(
+  seeded: Seeded,
+  agentId: string = seeded.agentId,
+  runId?: string,
+  toolName: string = TOOL_NAME,
+) {
   const memberUserId = randomUUID()
   const identity: ThreadRuntimeIdentity = {
     threadId: randomUUID(),
@@ -93,6 +98,7 @@ function makeController(seeded: Seeded, agentId: string = seeded.agentId) {
     userId: memberUserId,
     connectorUserId: memberUserId,
     agentId,
+    runId,
   }
 
   const host = {
@@ -109,7 +115,7 @@ function makeController(seeded: Seeded, agentId: string = seeded.agentId) {
       getAITools: () => ({}) as ToolSet,
       listTools: () => [
         {
-          name: TOOL_NAME,
+          name: toolName,
           serverId: CONNECTOR_ID,
           description: 'Add a comment to a GitHub issue or pull request.',
           inputSchema: {},
@@ -130,6 +136,7 @@ async function insertPermissionRequest(input: {
   agentId?: string
   toolCallId: string
   status: 'pending' | 'approved' | 'denied'
+  runId?: string
 }) {
   await testDb.db.insert(schema.permissionRequest).values({
     id: randomUUID(),
@@ -140,24 +147,26 @@ async function insertPermissionRequest(input: {
     toolCallId: input.toolCallId,
     status: input.status,
     resolvedAt: input.status === 'pending' ? null : new Date(),
+    runId: input.runId ?? null,
   })
 }
 
 async function needsApprovalFor(
   controller: RuntimeMcpController,
   toolCallId: string,
+  toolName: string = TOOL_NAME,
 ): Promise<boolean> {
-  const rawToolKey = buildMcpAiToolKey(CONNECTOR_ID, TOOL_NAME)
+  const rawToolKey = buildMcpAiToolKey(CONNECTOR_ID, toolName)
   const rawTools = {
     [rawToolKey]: {
-      name: TOOL_NAME,
+      name: toolName,
       description: 'probe tool',
       inputSchema: {},
     },
   } as unknown as ToolSet
 
   const wrapped = controller.wrapGetAITools(() => rawTools, undefined)
-  const wrappedKey = buildMcpAiToolKey(CONNECTOR_ID, TOOL_NAME)
+  const wrappedKey = buildMcpAiToolKey(CONNECTOR_ID, toolName)
   const tool = wrapped[wrappedKey] as unknown as {
     needsApproval?: (
       input: unknown,
@@ -227,6 +236,76 @@ describe('connector tool approval gate (integration)', () => {
     await expect(needsApprovalFor(controller, toolCallId)).rejects.toThrow(
       /denied/i,
     )
+  })
+
+  it('does not reuse an approval from another run', async () => {
+    const issueId = randomUUID()
+    const firstRunId = randomUUID()
+    const secondRunId = randomUUID()
+    await testDb.db.insert(schema.issue).values({
+      id: issueId,
+      workspaceId: seeded.workspaceId,
+      number: 1,
+      title: 'Approval scope',
+      createdBy: seeded.ownerId,
+    })
+    await testDb.db.insert(schema.issueRun).values([
+      {
+        id: firstRunId,
+        workspaceId: seeded.workspaceId,
+        issueId,
+        agentId: seeded.agentId,
+        hostName: seeded.agentId,
+        status: 'waiting_for_approval',
+        triggerSource: 'manual',
+      },
+      {
+        id: secondRunId,
+        workspaceId: seeded.workspaceId,
+        issueId,
+        agentId: seeded.agentId,
+        hostName: seeded.agentId,
+        status: 'waiting_for_approval',
+        triggerSource: 'manual',
+      },
+    ])
+    const approvalCallId = `approved-in-first-${randomUUID()}`
+    await insertPermissionRequest({
+      seeded,
+      toolCallId: approvalCallId,
+      status: 'approved',
+      runId: firstRunId,
+    })
+
+    await expect(
+      needsApprovalFor(
+        makeController(seeded, seeded.agentId, firstRunId),
+        `first-${randomUUID()}`,
+      ),
+    ).resolves.toBe(false)
+    await expect(
+      needsApprovalFor(
+        makeController(seeded, seeded.agentId, secondRunId),
+        `second-${randomUUID()}`,
+      ),
+    ).resolves.toBe(true)
+    await expect(
+      needsApprovalFor(
+        makeController(seeded, seeded.agentId, secondRunId),
+        approvalCallId,
+      ),
+    ).resolves.toBe(true)
+  })
+
+  it('denies a tool when its capability row is missing', async () => {
+    const missingTool = `missing_${randomUUID().replaceAll('-', '')}`
+    await expect(
+      needsApprovalFor(
+        makeController(seeded, seeded.agentId, undefined, missingTool),
+        `missing-${randomUUID()}`,
+        missingTool,
+      ),
+    ).rejects.toThrow(/Capability .* is unavailable/)
   })
 
   describe('connection grant fallback', () => {
