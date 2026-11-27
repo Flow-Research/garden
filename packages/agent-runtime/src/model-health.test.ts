@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_AGENT_MODEL_PROFILE } from './model'
-import { probeAgentModel } from './model-health'
+import { probeAgentModel, settleBefore } from './model-health'
 
 // The Workers AI binding is the provider boundary: `createAgentModel` builds
 // the real workers-ai-provider model around it, so these tests exercise the
@@ -15,6 +15,14 @@ const probe = (ai: Ai, overrides: { timeoutMs?: number } = {}) =>
 
 afterEach(() => {
   vi.unstubAllGlobals()
+})
+
+it('consumes a provider failure when the timeout signal already fired', async () => {
+  const reason = new Error('deadline')
+  const work = Promise.reject(new Error('provider closed'))
+  const observe = vi.spyOn(work, 'then')
+  await expect(settleBefore(AbortSignal.abort(reason), work)).rejects.toBe(reason)
+  expect(observe).toHaveBeenCalledWith(expect.any(Function), expect.any(Function))
 })
 
 describe('probeAgentModel', () => {

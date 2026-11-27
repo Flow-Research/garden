@@ -145,6 +145,7 @@ export async function probeAgentModel(
  */
 export function settleBefore<T>(signal: AbortSignal, work: Promise<T>) {
   return new Promise<T>((resolve, reject) => {
+    work.then(resolve, reject)
     if (signal.aborted) {
       reject(signal.reason)
       return
@@ -152,7 +153,6 @@ export function settleBefore<T>(signal: AbortSignal, work: Promise<T>) {
     signal.addEventListener('abort', () => reject(signal.reason), {
       once: true,
     })
-    work.then(resolve, reject)
   })
 }
 
