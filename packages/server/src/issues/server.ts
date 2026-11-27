@@ -49,7 +49,7 @@ import {
 import { startIssueRun, type IssueRunEnv } from './run-service'
 
 const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
-const MENTION_LINK_PATTERN = /\(mention:\/\/(member|user|agent)\/([^)\s]+)\)/g
+const MENTION_LINK_PATTERN = /(?:\[[^\]\n]*\])?\(mention:\/\/(member|user|agent)\/([^)\s]+)\)/g
 
 export class IssueServiceError extends TaggedError('IssueServiceError')<{
   code:
