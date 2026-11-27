@@ -13,6 +13,7 @@
     "settings",
     "permissions",
     "handbook",
-    "database-load-testing"
+    "database-load-testing",
+    "model-health-check"
   ]
 }
