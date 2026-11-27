@@ -6,7 +6,7 @@ owner: '@Umoren'
 last_reviewed: 2026-11-23
 ---
 
-Settings has an authenticated page at `/settings` for direct-link review during the staging rollout. Existing account and workspace menu entries still open the Settings modal. The page is not linked from application navigation yet.
+Select **Settings** in the account menu to open the authenticated `/settings` page. The workspace menu opens the Settings modal.
 
 ## Page shell
 
@@ -70,7 +70,7 @@ The modal keeps its separate Appearance and Developer tabs, which read the same 
 
 Design elements without backend support are not shown: Agent preferences (communication style, proactivity, decision autonomy), Language and time, and Privacy (cookie settings, view history). Garden has no setting, schema or API for them. Notifications is also left out, as above.
 
-Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
+Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and routing the workspace Settings entry to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
 
 ## General
 
