@@ -180,6 +180,10 @@ A policy is a ceiling. It can switch tools off and add approvals. It never grant
 
 The Team detail page's ⋯ menu has **Team settings** for workspace managers, and each member row has **Agent settings**. It opens a **Team settings** side sheet with the three tabs, **Cancel**, and **Save Changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
 
+On narrow screens, Team settings fills the viewport, restriction tiles stack, and approval selects sit below their labels. The tabs stay on one row and scroll horizontally when they exceed the width of the sheet. The active panel scrolls between the tabs and the footer so **Cancel** and **Save Changes** stay visible.
+
+**Connector Grants** shows each registered provider's logo, a summary of its agent tools, and its workspace setup status. The switch controls whether Team policy allows the connector. The connection's permissions and approval rules still apply. For example, the Gmail MCP tools let agents read, draft, and label email. Sending requires a connection with Gmail API send access.
+
 Design controls with no backing in Garden still render, disabled, with a **Coming soon** badge: the Chats and Home areas; the Delete projects, Manage billing, and Read locked files restrictions; the Deploy changes and Create documents approval rows; the per-member Team Role select; and the Admin Policy tab. They store nothing, and the schema rejects them if a client sends them.
 
 ### How the runtime applies it
@@ -188,13 +192,13 @@ Design controls with no backing in Garden still render, disabled, with a **Comin
 
 - **Tool existence.** `evaluateRuntimeToolPermission` in `packages/agent-runtime/src/chat-permissions.ts` checks the Team ceiling first, then the agent's permissions. A blocked tool is left out of the chat or run tool list and refused if called. Each native tool's area comes from `AGENT_TOOL_AREAS` in the same file. Connector and Executor tools are in Connections, and a connector tool's risk class comes from the connector registry. A tool with no area tag is always allowed by area rules.
 - **Executor calls.** The Executor tool is one entry point for many connectors. Its call is refused before it runs when its code names a blocked connector or a tool of a blocked risk class.
-- **Approvals.** In `runtime-mcp-controller.ts`, a connector call waits for approval when trust resolution says `ask` or any of the user's Teams marks its risk class **Approval required**. The Team rule also overrides the agent's `approval_overrides`. The request records `permission_request.team_id`, naming the first Team by name, and lists other Teams with the same rule in its context.
+- **Approvals.** In `runtime-mcp-controller.ts`, a connector call waits for approval when trust resolution says `ask` or any of the user's Teams marks its risk class **Approval required**. The Team rule also overrides the agent's `approval_overrides`. A request held by one Team records its id in `permission_request.team_id`. A request held by several Teams leaves that id empty and names every Team in its context. Only a workspace member with `permissionManage` can decide it. A prior approval is reused only when the Team scope and context still match.
 
 ### The Team owner approves
 
-An approval a Team rule held goes to the Team owner's Inbox. If the owner has left the workspace, it goes to workspace owners and admins instead. `teamPolicyApproverIds` in `packages/db/src/inbox.ts` routes it.
+An approval held by one Team goes to the Team owner's Inbox. If the owner has left the workspace, it goes to workspace owners and admins instead. An approval held by several Teams goes to workspace owners and admins. `teamPolicyApproverIds` in `packages/db/src/inbox.ts` routes it.
 
-`POST /api/permission-requests/:id/resolve` and `POST /api/chat/threads/:id/tool-approval` accept a decision from anyone with `permissionManage`, as before, or from the current owner of the request's Team. The routes read `team.owner_user_id` when the decision arrives, so after an ownership transfer the new owner can decide open requests and the previous owner gets 403. A Team owner's decision is scoped to their Team's requests. Another Team's owner gets 403.
+`POST /api/permission-requests/:id/resolve` and `POST /api/chat/threads/:id/tool-approval` accept a decision from anyone with `permissionManage`, as before, or from the current owner of the request's Team. The routes read `team.owner_user_id` when the decision arrives, so after an ownership transfer the new owner can decide open requests and the previous owner gets 403. For connector approvals with no request Team, the inbox sends the card to workspace owners and admins. This also applies when the issue belongs to a Team. The issue creator or assignee can decide only if they have workspace approval permission. A Team owner's decision is scoped to their Team's requests. Another Team's owner gets 403.
 
 ### API and events
 

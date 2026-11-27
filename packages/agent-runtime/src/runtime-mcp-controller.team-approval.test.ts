@@ -197,9 +197,9 @@ describe('Team policy approvals (integration)', () => {
     expect(inbox.map((item) => item.recipientId)).toContain(seeded.teamOwnerId)
   })
 
-  it('names the first Team by name and lists the others in context', async () => {
+  it('requires workspace approval when more than one Team holds a call', async () => {
     const seeded = await seed()
-    const finance = await seedTeam(seeded, 'Finance', {
+    await seedTeam(seeded, 'Finance', {
       approval_required: ['write'],
     })
     await seedTeam(seeded, 'Technical', { approval_required: ['write'] })
@@ -208,8 +208,14 @@ describe('Team policy approvals (integration)', () => {
       needsApproval(seeded, seeded.actingUserId, toolCallId),
     ).resolves.toBe(true)
     const request = await requestFor(toolCallId)
-    expect(request?.teamId).toBe(finance)
+    expect(request?.teamId).toBeNull()
+    expect(request?.context).toContain('Finance')
     expect(request?.context).toContain('Technical')
+    const inbox = await testDb.db
+      .select({ recipientId: schema.inboxItem.recipientId })
+      .from(schema.inboxItem)
+      .where(eq(schema.inboxItem.itemKey, `approval:${request?.id}`))
+    expect(inbox.map((item) => item.recipientId)).toEqual([seeded.adminId])
   })
 
   it('does not hold classes the Team leaves on agent settings', async () => {
