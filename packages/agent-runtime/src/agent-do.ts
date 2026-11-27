@@ -2213,7 +2213,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   /**
-   * Resumes the thread after its owner decided an agent proposal. The browser
+   * Resumes the owned thread after Garden records the proposal decision. The browser
    * supplies identifiers only. `beforeChatAction` matches them to the recorded
    * decision and to the calling connection before the turn persists a message.
    */
@@ -2229,14 +2229,14 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     const result = await this.saveMessages(
       [
         {
-          id: crypto.randomUUID(),
+          id: reference,
           role: 'user',
           parts: [
             {
               type: 'text',
               text: input.approved
-                ? `The user approved the agent proposal ${input.permissionRequestId}. The pending agent (${input.pendingAgentId}) is now active. Continue from the approval and confirm the hire.`
-                : `The user denied the agent proposal ${input.permissionRequestId}. Continue from the denial and adapt without hiring that agent.`,
+                ? `Garden recorded approval for agent proposal ${input.permissionRequestId}. The pending agent (${input.pendingAgentId}) is now active. Continue from the approval and confirm the hire.`
+                : `Garden recorded denial for agent proposal ${input.permissionRequestId}. Continue from the denial and adapt without hiring that agent.`,
             },
           ],
         },

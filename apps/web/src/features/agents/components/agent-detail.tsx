@@ -81,7 +81,7 @@ export function AgentDetail({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-start gap-4 border-b px-6 py-5">
         <Avatar size="lg">
           {agent.avatar_url ? <AvatarImage src={agent.avatar_url} /> : null}
@@ -210,7 +210,7 @@ function PlaceholderPane({ title }: { title: string }) {
 
 function AgentDetailSkeleton() {
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col">
       <div className="flex shrink-0 items-start gap-4 border-b px-6 py-5">
         <Skeleton className="size-10 rounded-full" />
         <div className="flex-1 space-y-2">

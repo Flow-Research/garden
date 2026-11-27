@@ -235,6 +235,15 @@ describe('chat request authority against actual PostgreSQL', () => {
       resolvedBy: actor.principal.userId,
       resolvedAt: new Date(),
     })
+    const approverId = randomUUID()
+    await database.db
+      .insert(schema.user)
+      .values({ id: approverId, email: `${approverId}@example.test` })
+    await database.db.insert(schema.member).values({
+      organizationId: actor.principal.workspaceId,
+      userId: approverId,
+      role: 'admin',
+    })
     const source = actor.request.source
     if (source.kind !== 'connection')
       throw new Error('Expected a connection source')
@@ -253,7 +262,21 @@ describe('chat request authority against actual PostgreSQL', () => {
     expect((await actor.admit({ request })).isOk()).toBe(true)
     await database.db
       .update(schema.agentProposalRequest)
-      .set({ status: 'denied' })
+      .set({ resolvedBy: approverId })
+      .where(eq(schema.agentProposalRequest.id, permissionRequestId))
+    expect((await actor.admit({ request })).isOk()).toBe(true)
+    await database.db
+      .delete(schema.member)
+      .where(
+        and(
+          eq(schema.member.organizationId, actor.principal.workspaceId),
+          eq(schema.member.userId, approverId),
+        ),
+      )
+    expect((await actor.admit({ request })).isErr()).toBe(true)
+    await database.db
+      .update(schema.agentProposalRequest)
+      .set({ status: 'denied', resolvedBy: actor.principal.userId })
       .where(eq(schema.agentProposalRequest.id, permissionRequestId))
     expect((await actor.admit({ request })).isErr()).toBe(true)
   })

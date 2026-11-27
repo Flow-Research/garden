@@ -57,6 +57,8 @@ Automatic compaction retains request context through `AsyncLocalStorage` and gua
 This storage keeps each asynchronous invocation separate.
 
 A tool decision requires the current Garden permission rows of that tool call and the matching retained SDK decision.
+An owner can resume a private chat after a workspace approver decides an agent proposal in the Inbox. Garden checks the recorded outcome, thread, agent, proposed agent and the resolver's current workspace membership. The owner's browser sends the recorded decision once. A continuation message retains the proposal ID so the client can recognize it after a reconnect.
+
 The runtime records the chat thread on each connector approval row that a chat turn raises.
 The approval routes decide who can resolve a row: a workspace approver or the owner of the Team whose policy held the call.
 The thread owner resolves in the chat only with one of those two authorities.
@@ -112,9 +114,9 @@ Separate outer-boundary tests cover actual Better Auth cookies.
 
 The proposal continuation has three local proofs: browser dispatch to the production method, the SDK path with the same options, and the Garden policy.
 The gated Brain suite runs the production chat facet in a Worker for one native handoff turn with a controlled model.
-No test sends a browser socket turn to the production facet in a Worker.
+A local Chromium run sent a private chat request through the production Worker and received the final response from a controlled model.
 The SDK facet bridge passes its local source-retention test.
-Full Garden facet startup and all deferred product interactions remain required before merge readiness.
+The local browser run covers facet startup and one text turn. The deferred product interactions still require proof before merge.
 Server warmup does not acquire authority from cached thread lookups.
 Without an actual connection or explicit current handoff, private chat operations refuse access.
 
@@ -138,8 +140,7 @@ Garden has no caller for those methods today.
 A chat decision applies to one thread and agent. Different threads can receive the same provider tool call ID. The chat route, Inbox batch, approval reuse and action check all retain the thread scope. A competing decision cannot change a terminal row or append a second audit record.
 
 A connector approval row from before this change has no thread, so its decision is refused.
-The chat card resolves the rows of one capability for each call.
-An Executor call that names two connectors therefore needs a second decision in the Inbox before its effect.
+For a tool call with multiple connector requests, the operator records each decision in the Inbox. The chat card stays available. After the decisions are complete, select the recorded outcome on the card to continue the call.
 A recovery snapshot from before this change has no request source.
 At deployment, the recovery of such an in-flight turn ends in a terminal refusal or `recovery_error`. The turn does not resume.
 

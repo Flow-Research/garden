@@ -1,5 +1,5 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { canonicalJsonString } from '@garden/connectors/capabilities'
 import { schema, type Db } from './db'
 
@@ -56,6 +56,48 @@ export type ResolveConnectorWritePermissionOutcome = {
     toolCallId: string
   }>
   toolCallIds: string[]
+}
+
+/** Read terminal connector decisions for this thread before forwarding them to the SDK. */
+export async function readChatToolDecisions(input: {
+  db: ServerDb
+  workspaceId: string
+  agentId: string
+  threadId: string
+  toolCallIds: string[]
+}) {
+  return Result.tryPromise({
+    try: async () => {
+      const currentResolver = sql`(${schema.permissionRequest.expiresAt} is null or ${schema.permissionRequest.expiresAt} > clock_timestamp())
+        and exists (select 1 from ${schema.member} where ${schema.member.userId} = ${schema.permissionRequest.resolvedBy}
+          and ${schema.member.organizationId} = ${input.workspaceId})`
+      const rows = await input.db
+        .select({
+          call: schema.permissionRequest.toolCallId,
+          count: sql<number>`count(*)::int`,
+          approved: sql<boolean>`bool_and(${schema.permissionRequest.status} = 'approved' and ${currentResolver})`,
+          denied: sql<boolean>`bool_or(${schema.permissionRequest.status} = 'denied' and ${currentResolver})`,
+        })
+        .from(schema.permissionRequest)
+        .where(
+          and(
+            eq(schema.permissionRequest.threadId, input.threadId),
+            eq(schema.permissionRequest.agentId, input.agentId),
+            eq(schema.permissionRequest.kind, 'connector_write'),
+            inArray(schema.permissionRequest.toolCallId, input.toolCallIds),
+          ),
+        )
+        .groupBy(schema.permissionRequest.toolCallId)
+      return new Map(rows.map((row) => [row.call, row]))
+    },
+    catch: (cause) =>
+      new PermissionRequestServiceError({
+        code: 'database_failed',
+        status: 500,
+        message: 'Failed to read the tool call decisions',
+        cause,
+      }),
+  })
 }
 
 async function hashToolArgs(value: unknown) {

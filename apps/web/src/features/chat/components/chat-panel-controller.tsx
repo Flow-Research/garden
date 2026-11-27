@@ -276,6 +276,8 @@ export function ConnectedChatPanelInteraction({
   const {
     approvalError,
     canRetryApprovalContinuation,
+    recordedContinuations,
+    resumeRecordedProposal,
     isContinuingApproval,
     retryApprovalContinuation,
     resolvingToolCallIds,
@@ -779,6 +781,26 @@ export function ConnectedChatPanelInteraction({
     >
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
+          {recordedContinuations.map((decision) => (
+            <div
+              key={decision.permissionRequestId}
+              className="flex items-center justify-between gap-3 border-b px-5 py-3"
+            >
+              <span>
+                {decision.approved
+                  ? 'Garden approved the agent proposal.'
+                  : 'Garden denied the agent proposal.'}
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isContinuingApproval}
+                onClick={() => void resumeRecordedProposal(decision)}
+              >
+                Resume chat
+              </Button>
+            </div>
+          ))}
           {approvalError ? (
             <div className="shrink-0 border-b px-5 py-3">
               <Alert variant="destructive">
@@ -976,7 +998,7 @@ function ShellFrame({
   const debugMode = useDevSettingsStore((s) => s.debugMode)
 
   return (
-    <section className={cn('flex h-full min-h-0 bg-background', className)}>
+    <section className={cn('flex h-full min-h-0', className)}>
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex shrink-0 items-center justify-between gap-2 px-4 py-2">
           <div className="flex min-w-0 items-center gap-2">

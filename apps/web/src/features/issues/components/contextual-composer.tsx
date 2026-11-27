@@ -4,7 +4,7 @@ import { Button } from '@garden/ui/components/ui/button'
 import { CommentInput } from './comment-input'
 import { issueActiveRunOptions } from '@/lib/issues/queries'
 
-type ComposerMode = 'answer' | 'note' | 'redirect'
+type ComposerMode = 'comment' | 'answer' | 'note' | 'redirect'
 
 function modeForRunStatus(status: string | null | undefined): ComposerMode {
   if (status === 'waiting_for_input') return 'answer'
@@ -25,6 +25,11 @@ const MODE_COPY: Record<
     Icon: React.ComponentType<{ className?: string }>
   }
 > = {
+  comment: {
+    placeholder: 'Write your comment here...',
+    caption: '',
+    Icon: MessageSquare,
+  },
   answer: {
     placeholder: '',
     caption: 'Garden is waiting on you. Use the question card above.',
@@ -55,7 +60,8 @@ export function ContextualComposer({
   openChatPending?: boolean
 }) {
   const { data } = useQuery(issueActiveRunOptions(issueId))
-  const mode = modeForRunStatus(data?.run?.status ?? null)
+  const runMode = modeForRunStatus(data?.run?.status)
+  const mode = runMode === 'redirect' && !onOpenChat ? 'comment' : runMode
   const { placeholder, caption, Icon } = MODE_COPY[mode]
 
   if (mode === 'answer') {
@@ -70,29 +76,30 @@ export function ContextualComposer({
   return (
     <div className="space-y-1.5">
       <CommentInput
-        key={mode}
         issueId={issueId}
         onSubmit={onSubmit}
         placeholder={placeholder}
         accent={mode === 'redirect' ? 'redirect' : 'default'}
       />
-      <div className="flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
-        <Icon className="size-3" />
-        <span>{caption}</span>
-        {onOpenChat ? (
-          <Button
-            type="button"
-            size="xs"
-            variant="ghost"
-            onClick={onOpenChat}
-            disabled={openChatPending}
-            className="ml-auto h-5 gap-1 px-1.5 text-[11px] text-info hover:bg-info/10 hover:text-info"
-          >
-            <MessageSquare className="size-3" />
-            {openChatPending ? 'Opening…' : 'Open in chat'}
-          </Button>
-        ) : null}
-      </div>
+      {caption && (
+        <div className="flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
+          <Icon className="size-3" />
+          <span>{caption}</span>
+          {onOpenChat ? (
+            <Button
+              type="button"
+              size="xs"
+              variant="ghost"
+              onClick={onOpenChat}
+              disabled={openChatPending}
+              className="ml-auto h-5 gap-1 px-1.5 text-[11px] text-info hover:bg-info/10 hover:text-info"
+            >
+              <MessageSquare className="size-3" />
+              {openChatPending ? 'Opening…' : 'Open in chat'}
+            </Button>
+          ) : null}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import { ArrowUp, Loader2 } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { cn } from '@garden/ui/lib/utils'
 import {
   ContentEditor,
   type ContentEditorRef,
@@ -76,11 +77,15 @@ function CommentInput({
   return (
     <div
       {...dropZoneProps}
-      className={
-        accent === 'redirect'
-          ? 'relative flex max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-brand/40'
-          : 'relative flex max-h-56 flex-col rounded-lg bg-card pb-8 ring-1 ring-border'
-      }
+      className={cn(
+        'relative flex max-h-56 flex-col rounded-lg bg-card ring-1',
+        accent === 'redirect' ? 'ring-brand/40' : 'ring-border',
+        // One line while idle so the sticky composer covers little of the
+        // thread; grows to full height on focus or once it holds a draft.
+        isEmpty
+          ? 'min-h-10 pr-16 focus-within:min-h-20 focus-within:pr-0 focus-within:pb-8'
+          : 'min-h-20 pb-8',
+      )}
     >
       <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
         <ContentEditor
@@ -100,7 +105,8 @@ function CommentInput({
         />
         <Button
           aria-label={submitting ? 'Submitting comment' : 'Submit comment'}
-          size="icon-sm"
+          size="icon-xs"
+          className="rounded-full"
           disabled={isEmpty || submitting}
           onClick={handleSubmit}
         >

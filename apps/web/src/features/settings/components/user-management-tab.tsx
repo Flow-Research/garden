@@ -1,9 +1,10 @@
 import { Suspense, type ReactNode } from 'react'
-import { Link, Navigate } from '@tanstack/react-router'
+import { Link, Navigate, useNavigate } from '@tanstack/react-router'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { TeamDetailCard } from '@/features/teams/components/team-detail'
 import {
   TEAM_GRID_CLASS,
   TeamManagementPanel,
@@ -11,7 +12,6 @@ import {
 import { teamDetailOptions, teamListOptions } from '@/features/teams/queries'
 import { memberListOptions } from '@/lib/workspace/queries'
 import { MembersTab } from './members-tab'
-import { SettingsPanel } from './settings-page-shell'
 
 const PILL_CLASS =
   'inline-flex h-7 items-center rounded-full border border-border-default bg-background-main-default px-4 text-sm text-text-default transition-colors hover:bg-background-main-default-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring aria-[current=page]:border-border-brand-default aria-[current=page]:bg-background-brand-tertiary aria-[current=page]:text-text-brand-default'
@@ -67,12 +67,7 @@ function TeamManagerOnly({
 export function UserManagementMembers() {
   const canManageTeams = useCanManageTeams()
   return (
-    <div className="flex flex-col gap-8">
-      {canManageTeams ? <UserManagementPills /> : null}
-      <SettingsPanel>
-        <MembersTab />
-      </SettingsPanel>
-    </div>
+    <MembersTab toolbar={canManageTeams ? <UserManagementPills /> : null} />
   )
 }
 
@@ -119,38 +114,70 @@ export function UserManagementTeams() {
   )
 }
 
-function TeamSummaryHeader({ teamId }: { teamId: string }) {
+function TeamBreadcrumb({ teamId }: { teamId: string }) {
   const wsId = useWorkspaceId()
-  const { data: team, isPending } = useQuery(teamDetailOptions(wsId, teamId))
-  if (isPending) return <Skeleton className="h-6 w-40" />
-  if (!team) {
-    return (
-      <p className="text-sm text-text-secondary">Could not load this team.</p>
-    )
-  }
+  const { data: team } = useSuspenseQuery(teamDetailOptions(wsId, teamId))
   return (
-    <header>
-      <h2 className="text-base font-semibold">{team.name}</h2>
-      {team.description ? (
-        <p className="text-sm text-text-secondary">{team.description}</p>
-      ) : null}
-    </header>
+    <nav aria-label="Breadcrumb" className="flex items-center gap-4 text-sm">
+      <Link
+        to="/settings/user-management/teams"
+        className="text-text-secondary hover:underline"
+      >
+        Teams
+      </Link>
+      <span aria-hidden className="text-text-tertiary">
+        /
+      </span>
+      <span aria-current="page" className="truncate text-text-default">
+        {team.name}
+      </span>
+    </nav>
+  )
+}
+
+function TeamDetailSkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-8"
+      aria-busy="true"
+      aria-label="Loading team"
+    >
+      <Skeleton className="h-5 w-40" />
+      <Skeleton className="h-96 w-full rounded-xl" />
+    </div>
   )
 }
 
 /**
- * Settings › User Management › Team detail. The Team cards link here; its
- * content is still to be designed, so it shows the Team's name only.
+ * Settings › User Management › Team detail: a Teams breadcrumb over the same
+ * Team detail card as `/teams/$teamId`, showing its Members view only. "See
+ * issues" opens the Team's Issues tab in the Teams area.
  */
 export function UserManagementTeamDetail({ teamId }: { teamId: string }) {
+  const navigate = useNavigate()
   return (
-    <TeamManagerOnly loading={<Skeleton className="h-7 w-40 rounded-full" />}>
-      <div className="flex flex-col gap-8">
-        <UserManagementPills />
-        <SettingsPanel>
-          <TeamSummaryHeader teamId={teamId} />
-        </SettingsPanel>
-      </div>
+    <TeamManagerOnly loading={<TeamDetailSkeleton />}>
+      <Suspense fallback={<TeamDetailSkeleton />}>
+        <div className="flex flex-col gap-8">
+          <TeamBreadcrumb teamId={teamId} />
+          <TeamDetailCard
+            teamId={teamId}
+            tab="members"
+            showTabs={false}
+            onTabChange={(tab) =>
+              void navigate({
+                to: '/teams/$teamId',
+                params: { teamId },
+                search: { tab },
+              })
+            }
+            onDeleted={() =>
+              void navigate({ to: '/settings/user-management/teams' })
+            }
+            className="border lg:border-0"
+          />
+        </div>
+      </Suspense>
     </TeamManagerOnly>
   )
 }
