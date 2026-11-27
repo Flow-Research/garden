@@ -124,16 +124,32 @@ layer(BrainTestLive, { excludeTestServices: true })('brain', (it) => {
             runId: 'test-run',
           },
         }
-        const [first, retry] = yield* Effect.all(
-          [brain.addText(input), brain.addText(input)],
-          { concurrency: 'unbounded' },
-        )
-
-        expect(retry.id).toBe(first.id)
-        const otherTenant = WorkspaceId.make(`ws-other-${crypto.randomUUID()}`)
-        const other = yield* brain.addText({ ...input, tenantId: otherTenant })
-        expect(other.tenantId).toBe(otherTenant)
-        expect(other.id).not.toBe(first.id)
+        for (let round = 0; round < 3; round++) {
+          const candidate = {
+            ...input,
+            canonical: {
+              ...input.canonical,
+              value: `${input.canonical.value}-${round}`,
+            },
+          }
+          const writes = yield* Effect.all(
+            Array.from({ length: 8 }, () => brain.addText(candidate)),
+            { concurrency: 'unbounded' },
+          )
+          const ids = new Set(writes.map((item) => item.id))
+          expect(ids.size).toBe(1)
+          const otherTenant = WorkspaceId.make(
+            `ws-other-${crypto.randomUUID()}`,
+          )
+          const other = yield* brain.addText({
+            ...candidate,
+            tenantId: otherTenant,
+          })
+          expect(other.tenantId).toBe(otherTenant)
+          expect(ids.has(other.id)).toBe(false)
+          const original = yield* brain.addText(candidate)
+          expect(ids.has(original.id)).toBe(true)
+        }
       }),
   )
 

@@ -252,9 +252,13 @@ describe('createBrainWriteBackTools user scope without user context', () => {
     expect(onConflictDoNothing).toHaveBeenCalledTimes(2)
   })
 
-  it.each([false, true])(
-    'identifies a same-run retry when Brain search sees the approved claim: %s',
-    async (found) => {
+  it.each([
+    [false, true],
+    [true, true],
+    [true, false],
+  ])(
+    'classifies a repeat when search finds the claim %s and the same run owns it %s',
+    async (found, sameRun) => {
       const { Effect } = await import('effect')
       mockSearch.mockReturnValue(
         Effect.succeed(
@@ -280,7 +284,9 @@ describe('createBrainWriteBackTools user scope without user context', () => {
         insert: vi.fn().mockReturnValue({ values }),
         query: {
           brainWriteProposal: {
-            findFirst: vi.fn().mockResolvedValue({ id: 'proposal-1' }),
+            findFirst: vi
+              .fn()
+              .mockResolvedValue(sameRun ? { id: 'proposal-1' } : undefined),
           },
         },
       })
@@ -304,10 +310,11 @@ describe('createBrainWriteBackTools user scope without user context', () => {
         scope: 'org',
       })
 
+      expect(values).toHaveBeenCalledTimes(found ? 0 : 1)
       expect(result).toEqual({
         ok: true,
         action: 'skipped',
-        reason: 'retry',
+        reason: sameRun ? 'retry' : 'duplicate',
       })
     },
   )
