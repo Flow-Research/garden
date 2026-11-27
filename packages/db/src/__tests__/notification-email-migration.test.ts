@@ -15,7 +15,7 @@ describe('notification email migration', () => {
   })
 
   it('skips historical items while queueing new items after migration', async () => {
-    testDb = await startTestDb({ migrationsUpTo: 69 })
+    testDb = await startTestDb({ migrationsUpTo: 70 })
     const workspaceId = randomUUID()
     const recipientId = randomUUID()
     await testDb.db

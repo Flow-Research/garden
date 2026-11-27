@@ -685,6 +685,45 @@ describe('teams UI', () => {
     expect(screen.queryByRole('menuitem', { name: 'Edit Team' })).toBeNull()
   })
 
+  it('waits for the selected Team members before opening Add team member', async () => {
+    apiMocks.listTeams.mockResolvedValue({
+      teams: [
+        makeTeam({ id: 'team-1', name: 'Engineering' }),
+        makeTeam({ id: 'team-2', name: 'Finance' }),
+      ],
+      total: 2,
+      unique_member_count: 2,
+    })
+    apiMocks.listTeamMembers.mockImplementation((teamId: string) =>
+      teamId === 'team-1'
+        ? Promise.resolve({ members: [makeMember()], total: 1 })
+        : new Promise(() => {}),
+    )
+
+    renderWithQuery(<TeamOverview />)
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Engineering actions' }),
+    )
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Add team member' }),
+    )
+    expect(await screen.findByText('Add a team member')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    await waitFor(() =>
+      expect(screen.queryByText('Add a team member')).toBeNull(),
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Finance actions' }))
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Add team member' }),
+    )
+    await waitFor(() =>
+      expect(apiMocks.listTeamMembers).toHaveBeenCalledWith('team-2'),
+    )
+    expect(screen.queryByText('Add a team member')).toBeNull()
+  })
+
   it('renders the Teams dropdown child and toggles it', () => {
     const onSelect = vi.fn()
     const onToggleExpand = vi.fn()

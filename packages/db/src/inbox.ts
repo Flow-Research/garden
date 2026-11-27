@@ -52,6 +52,7 @@ type InboxWrite = {
   actorId?: string | null
   details?: Record<string, string>
   activityAt?: Date
+  preserveOnConflict?: boolean
 }
 
 const TRUNCATE_BODY = 200
@@ -110,9 +111,15 @@ async function upsertInboxItem(db: GardenDb, item: InboxWrite): Promise<void> {
         title: sql`excluded.title`,
         body: sql`excluded.body`,
         details: sql`excluded.details`,
-        read: sql`case when excluded.activity_at > ${schema.inboxItem.activityAt} then false else ${schema.inboxItem.read} end`,
-        archived: sql`case when excluded.activity_at > ${schema.inboxItem.activityAt} then false else ${schema.inboxItem.archived} end`,
-        activityAt: sql`greatest(${schema.inboxItem.activityAt}, excluded.activity_at)`,
+        read: item.preserveOnConflict
+          ? sql`${schema.inboxItem.read}`
+          : sql`case when excluded.activity_at > ${schema.inboxItem.activityAt} then false else ${schema.inboxItem.read} end`,
+        archived: item.preserveOnConflict
+          ? sql`${schema.inboxItem.archived}`
+          : sql`case when excluded.activity_at > ${schema.inboxItem.activityAt} then false else ${schema.inboxItem.archived} end`,
+        activityAt: item.preserveOnConflict
+          ? sql`${schema.inboxItem.activityAt}`
+          : sql`greatest(${schema.inboxItem.activityAt}, excluded.activity_at)`,
         updatedAt: now,
       },
     })
@@ -404,6 +411,7 @@ export async function upsertIssueMentionInbox(args: {
       body: truncate(args.content),
       actorType: args.actorType,
       actorId: args.actorId,
+      preserveOnConflict: true,
       details: {
         ...issueDetails(issue),
         ...(args.commentId ? { comment_id: args.commentId } : {}),
@@ -440,6 +448,7 @@ export async function upsertChatMentionInbox(args: {
       title: 'You were mentioned in a private chat',
       actorType: 'member',
       actorId: args.actorId,
+      preserveOnConflict: true,
     })
   }
 }

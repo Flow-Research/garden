@@ -360,9 +360,9 @@ export default {
     if (controller.cron === '* * * * *') {
       const dispatched = await Result.tryPromise(async () => {
         const client = await createRuntimeDbClient(env.HYPERDRIVE)
-        const result = await dispatchNotificationEmails({ db: client.db, env })
-        await client.close()
-        return result
+        return dispatchNotificationEmails({ db: client.db, env }).finally(() =>
+          client.close(),
+        )
       })
       dispatched.match({
         ok: (result) =>

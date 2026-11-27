@@ -217,9 +217,31 @@ describe('workspace notification email delivery', () => {
     })
     await dispatch()
     expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0]?.[0].text).toContain('@Person')
+    expect(send.mock.calls[0]?.[0].text).not.toContain('mention://member/')
   })
 
-  it('refreshes edited member mentions without losing stored agent metadata', async () => {
+  it('keeps user links and typed aliases in stored comment mentions', async () => {
+    const result = await postIssueComment({
+      databaseUrl: testDb.databaseUrl,
+      workspaceId,
+      issueIdOrIdentifier: issueId,
+      authorUserId: authorId,
+      body: `[@Person](mention://user/${recipientId}) @Author`,
+      issueRunEnv: { HYPERDRIVE: { connectionString: testDb.databaseUrl } },
+    })
+    expect(result.isOk()).toBe(true)
+    const [comment] = await testDb.db
+      .select()
+      .from(schema.issueComment)
+      .where(eq(schema.issueComment.issueId, issueId))
+    expect(comment?.mentions?.agents).toEqual([])
+    expect(new Set(comment?.mentions?.users)).toEqual(
+      new Set([authorId, recipientId]),
+    )
+  })
+
+  it('recomputes member and agent mentions after a comment edit', async () => {
     const commentId = randomUUID()
     const previousMentions = { users: [authorId], agents: [agentId] }
     await testDb.db.insert(schema.issueComment).values({
@@ -232,19 +254,17 @@ describe('workspace notification email delivery', () => {
     })
     const updated = await updateIssueCommentBody(testDb.db, {
       commentId,
-      body: `${mention(recipientId)} ${mention(recipientId)} @Author`,
-      previousMentions,
+      body: `${mention(recipientId)} ${mention(recipientId)} @Author [@Agent](mention://agent/${agentId})`,
     })
-    expect(updated?.mentions).toEqual({
-      users: [recipientId],
-      agents: [agentId],
-    })
+    expect(updated?.mentions?.agents).toEqual([agentId])
+    expect(new Set(updated?.mentions?.users)).toEqual(
+      new Set([authorId, recipientId]),
+    )
     const cleared = await updateIssueCommentBody(testDb.db, {
       commentId,
       body: 'No member mentions',
-      previousMentions: updated?.mentions ?? null,
     })
-    expect(cleared?.mentions).toEqual({ users: [], agents: [agentId] })
+    expect(cleared?.mentions).toEqual({ users: [], agents: [] })
   })
 
   it('sends input and approval items created by their shared writers', async () => {
@@ -405,6 +425,10 @@ describe('workspace notification email delivery', () => {
     }
     await upsertIssueMentionInbox({ ...args, content: mention(recipientId) })
     await dispatch()
+    await testDb.db
+      .update(schema.inboxItem)
+      .set({ read: true, archived: true })
+      .where(eq(schema.inboxItem.recipientId, recipientId))
     await upsertIssueMentionInbox({
       ...args,
       content: `${mention(recipientId)} ${mention(thirdId)}`,
@@ -414,6 +438,12 @@ describe('workspace notification email delivery', () => {
     expect(new Set(send.mock.calls.map(([payload]) => payload.to))).toEqual(
       new Set([`${recipientId}@example.com`, `${thirdId}@example.com`]),
     )
+    expect(
+      (await items()).find((item) => item.recipientId === recipientId),
+    ).toMatchObject({
+      read: true,
+      archived: true,
+    })
   })
 
   it('preserves a single immutable request across overlapping dispatchers', async () => {
@@ -450,6 +480,27 @@ describe('workspace notification email delivery', () => {
     )
     expect(await dispatch()).toMatchObject({
       value: { sent: 1, failed: 1, retryPending: 0 },
+    })
+    expect(send).toHaveBeenCalledTimes(2)
+  })
+
+  it('continues past one retryable item and sends the next item', async () => {
+    await assignment()
+    await upsertIssueMentionInbox({
+      db: testDb.db,
+      workspaceId,
+      issueId,
+      actorType: 'member',
+      actorId: authorId,
+      content: mention(recipientId),
+    })
+    send.mockResolvedValueOnce(
+      Result.err(
+        new NotificationEmailError({ message: 'network', retryable: true }),
+      ),
+    )
+    expect(await dispatch()).toMatchObject({
+      value: { sent: 1, retryPending: 1 },
     })
     expect(send).toHaveBeenCalledTimes(2)
   })
@@ -496,6 +547,14 @@ describe('workspace notification email delivery', () => {
 
   it.each([
     { status: 429, name: 'rate_limit_exceeded', expected: 'sending' },
+    { status: 401, name: 'unauthorized', expected: 'pending' },
+    { status: 403, name: 'forbidden', expected: 'pending' },
+    {
+      status: 409,
+      name: 'concurrent_idempotent_requests',
+      expected: 'sending',
+    },
+    { status: 409, name: 'invalid_idempotent_request', expected: 'failed' },
     { status: 422, name: 'validation_error', expected: 'failed' },
   ])(
     'classifies Resend HTTP $status without failing the original write',

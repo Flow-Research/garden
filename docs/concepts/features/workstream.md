@@ -1,9 +1,9 @@
 ---
 title: Connect a personal Workstream account
-description: Connect Workstream MCP through an invite-only Flow Identity account while keeping Garden sign-in and Workstream authorization separate.
+description: Connect Workstream MCP through a Flow Identity account while keeping Garden sign-in and Workstream authorization separate.
 status: current
 owner: '@Flow-Research/security'
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-18
 ---
 
 ## Outcome and boundary
@@ -21,6 +21,29 @@ The hosted MCP resource is `https://workstream.flowresearch.tech/mcp`. Its Flow 
 For the exact Workstream resource, the installed SDK patch keeps code exchange and the saved refresh token endpoint on the configured issuer. Untrusted callback `domain` or `site` parameters cannot rebind them to a sibling host. Other providers retain their existing regional callback behavior. See the [Executor seams](../../../third_party/executor/PATCHES.md).
 
 Executor discovers the requested scopes from Workstream's protected-resource metadata: `workstream:access workstream-mcp-audience`. These are access-token scopes; no OpenID identity token is requested. The audience scope binds this credential to MCP. Workstream exchanges it for its internal API credential and enforces existing product authorization. Garden never receives the MCP server's exchange secret and never forwards its primary sign-in credential to Workstream.
+
+## Renewal and reconnection
+
+A saved connection is not proof that its authorization can still renew. Garden
+must show a rejected refresh grant as needing reconnection and offer the existing
+Personal OAuth action, even while retaining the connection record. A mere access
+token expiry is not a reconnect condition: Executor first renews it silently.
+For Workstream, the dedicated Garden authorization requests a bounded offline
+grant: 30 days idle and 90 days absolute maximum, enforced by Flow Identity.
+Revocation remains authoritative. This does not change Garden sign-in or grant
+any additional Workstream permissions.
+
+Revocation uses manual redirect handling supported by Cloudflare Workers. A
+redirect or issuer failure leaves the local connection available for retry; the
+refresh credential is never forwarded to a redirect destination.
+
+Disconnect revokes the saved authorization at Flow Identity. If the issuer is
+unavailable, Garden retains the connection and permits another attempt. If a
+reconnect replaces the grant during disconnect, the new authorization stays connected.
+Garden saves connection and encrypted credential changes in one database batch.
+A database rollback keeps the previous local records available for retry. Flow Identity
+may already have exchanged a code, rotated a token, or revoked authorization by
+that point.
 
 ## What the member sees
 
@@ -44,11 +67,19 @@ The deployment binding is optional, so an environment without a registered clien
 
 ## Implementation and proof
 
+The connections HTTP route uses `runExecutor` in `executor-runtime.ts`. Its
+request-scoped Executor supplies guarded fetch to plugins, while core revocation
+uses global fetch. The MCP execution stack in `executor-engine/mcp.ts` supplies
+guarded fetch to both plugins and core. Revocation therefore requires manual
+redirect handling on both paths. The SQLite lifecycle regression exercises
+disconnect through the production request-scoped constructor; separate guard
+tests cover redirect options on both `Request` and request initialization.
+
 The existing owners are `apps/web/src/lib/server/executor-engine/presets.ts`, `auth-contract.ts`, `install.ts`, and `apps/web/src/routes/api/executor/oauth/start.ts`. The SDK discovery patch uses the OpenID Connect issuer-path convention while preserving the RFC 8414 OAuth metadata convention. The installation regression runs the actual catalogue-to-probe-to-registration path, including discovery failure. No schema or storage migration is required. See [connector architecture](../architecture/connectors.md).
 
 Acceptance covers catalogue installation through real SDK discovery, strict public-client registration and reuse, refusal of foreign resources or issuers, missing configuration, and refusal of Workspace ownership before client writes or authorization. Workstream discovery failure must leave no new integration or credential and must not offer a manual token form. Focused registration, catalogue, installation, and route tests cover these boundaries. Deployment and code-policy checks cover binding propagation. Security review focuses on resource binding, callback/PKCE ownership, and personal credential isolation.
 
-Chat's existing integration router keeps at most eight tools in the selected integration's scope. Explicitly requested discovered tool names must rank ahead of generic provider-prefix matches; other tools rank by relevant name and description matches. The selected-integration boundary, permission checks, and caller-owned connection remain in force. Router regression proof uses a large Workstream catalogue, including the own-profile and administrative-read tools, and checks the cap, unavailable names, and another provider.
+Chat's integration router suggests at most eight relevant tools, but that shortlist is not an execution permission boundary. The agent can search for and call other tools already discovered for the selected, connected integration. Exact discovered tool names select their owning integration ahead of generic capability or provider-term scores. Exact tools belonging to different integrations leave selection unresolved rather than silently choosing one owner. Unknown tools, disconnected integrations and tools from another selected provider remain refused by this route guard. Executor's caller-owned connections, team policy, approval requirements and Workstream's own authorization still govern actual execution. Regression proof covers a profile tool outside the shortlist, unknown names, another provider and disconnected accounts.
 
 Private chat HTTP and WebSocket handshakes require the current Garden member to own the requested thread, with matching parent agent and workspace. These checks query current membership and ownership even when parent-agent access was cached. Unsupported nested chat routing is refused. Browser warm-up uses the owned chat facet; parent thread methods remain available to trusted server RPC callers through existing owner-checked APIs and are not browser-callable. This handshake boundary does not claim to refresh membership on every message of an already-open socket.
 

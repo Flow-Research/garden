@@ -474,9 +474,14 @@ async function resolveMentions(args: {
   const explicitIds = new Set(explicitMemberMentionIds(args.content))
   return {
     agents: mentions.agents,
-    users: memberRows
-      .filter((member) => explicitIds.has(member.id))
-      .map((member) => member.id),
+    users: [
+      ...new Set([
+        ...mentions.users,
+        ...memberRows
+          .filter((member) => explicitIds.has(member.id))
+          .map((member) => member.id),
+      ]),
+    ],
   }
 }
 
@@ -1378,14 +1383,22 @@ export async function postIssueComment(
         })
       }
       const comment = insertedComment
-      await upsertIssueMentionInbox({
-        db,
-        workspaceId: issue.workspaceId,
-        issueId: issue.id,
-        content: comment.body,
-        commentId: comment.id,
-        actorType: 'member',
-        actorId: parsed.data.authorUserId,
+      const mentionInboxResult = await Result.tryPromise({
+        try: () =>
+          upsertIssueMentionInbox({
+            db,
+            workspaceId: issue.workspaceId,
+            issueId: issue.id,
+            content: comment.body,
+            commentId: comment.id,
+            actorType: 'member',
+            actorId: parsed.data.authorUserId,
+          }),
+        catch: (cause) => cause,
+      })
+      mentionInboxResult.match({
+        ok: () => undefined,
+        err: (error) => logger.error('mention inbox upsert failed', error),
       })
       await linkIssueAttachments({
         db,

@@ -1,5 +1,5 @@
 {
-  "id": "d4cfc1a1-3671-44bb-8e6a-9d05ec0a4d96",
+  "id": "ed65c7f0-c829-4852-b159-9f4ca4417ec2",
   "prevId": "88887cc3-3d01-4456-afbb-51688153ff00",
   "version": "7",
   "dialect": "postgresql",
@@ -3505,13 +3505,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "email_delivery": {
-          "name": "email_delivery",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{\"kind\":\"pending\"}'::jsonb"
-        },
         "details": {
           "name": "details",
           "type": "jsonb",
@@ -3555,22 +3548,6 @@
         }
       },
       "indexes": {
-        "inbox_item_pending_email_idx": {
-          "name": "inbox_item_pending_email_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"inbox_item\".\"email_delivery\"->>'kind' in ('pending', 'sending')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "inbox_item_issue_id_idx": {
           "name": "inbox_item_issue_id_idx",
           "columns": [
@@ -4130,6 +4107,73 @@
           "value": "\"issue\".\"assignee_type\" is null or \"issue\".\"assignee_type\" in ('user', 'agent')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.issue_agent_context": {
+      "name": "issue_agent_context",
+      "schema": "",
+      "columns": {
+        "issue_id": {
+          "name": "issue_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "generation": {
+          "name": "generation",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "issue_agent_context_issue_id_issue_id_fk": {
+          "name": "issue_agent_context_issue_id_issue_id_fk",
+          "tableFrom": "issue_agent_context",
+          "tableTo": "issue",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "issue_agent_context_agent_id_agent_id_fk": {
+          "name": "issue_agent_context_agent_id_agent_id_fk",
+          "tableFrom": "issue_agent_context",
+          "tableTo": "agent",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "issue_agent_context_issue_id_agent_id_pk": {
+          "name": "issue_agent_context_issue_id_agent_id_pk",
+          "columns": [
+            "issue_id",
+            "agent_id"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.issue_attachment": {

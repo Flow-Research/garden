@@ -16,6 +16,8 @@ export class NotificationEmailError extends TaggedError(
 )<{
   message: string
   retryable: boolean
+  pauseQueue?: boolean
+  resetPending?: boolean
   cause?: unknown
 }>() {}
 
@@ -49,6 +51,13 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
+function readableMentionText(value: string): string {
+  return value.replace(
+    /\[(@(?:\\.|[^\]\\])*)\]\(mention:\/\/(?:member|user|agent)\/[^)\s]+\)/g,
+    '$1',
+  )
+}
+
 /**
  * Create both email formats from the inbox record. Previously assignments had
  * a separate sender; now every item uses its own title and workspace-scoped CTA.
@@ -65,7 +74,7 @@ export function buildNotificationEmail(args: {
         `/inbox?workspace_id=${encodeURIComponent(args.item.workspaceId)}`,
         args.baseURL,
       ).href
-  const body = args.item.body ?? ''
+  const body = readableMentionText(args.item.body ?? '')
   return {
     to: args.email,
     subject: `${args.item.title} · ${args.workspaceName}`,
@@ -114,10 +123,22 @@ function resendSender(apiKey: string): NotificationEmailSender {
           new NotificationEmailError({
             message: `Resend rejected notification: ${response.error.name}`,
             retryable:
-              !response.error.statusCode ||
-              response.error.statusCode >= 500 ||
+              response.error.statusCode === 401 ||
+              response.error.statusCode === 403 ||
               response.error.statusCode === 429 ||
-              response.error.statusCode === 409,
+              response.error.statusCode >= 500 ||
+              (response.error.statusCode === 409 &&
+                response.error.name === 'concurrent_idempotent_requests') ||
+              !response.error.statusCode,
+            pauseQueue:
+              response.error.statusCode === 401 ||
+              response.error.statusCode === 403 ||
+              response.error.statusCode === 429 ||
+              response.error.statusCode >= 500 ||
+              !response.error.statusCode,
+            resetPending:
+              response.error.statusCode === 401 ||
+              response.error.statusCode === 403,
           }),
         )
       return Result.ok(response.data)
@@ -158,7 +179,10 @@ export async function dispatchNotificationEmails(args: {
         .where(
           sql`${schema.inboxItem.emailDelivery}->>'kind' in ('pending', 'sending')`,
         )
-        .orderBy(asc(schema.inboxItem.createdAt))
+        .orderBy(
+          asc(schema.inboxItem.updatedAt),
+          asc(schema.inboxItem.createdAt),
+        )
         .limit(50)
       for (const item of rows) {
         const [recipient] = await args.db
@@ -217,6 +241,7 @@ export async function dispatchNotificationEmails(args: {
           continue
         }
         let delivery = item.emailDelivery
+        let claimedNow = false
         if (delivery.kind === 'pending') {
           const snapshot = {
             kind: 'sending',
@@ -240,6 +265,7 @@ export async function dispatchNotificationEmails(args: {
             .returning({ id: schema.inboxItem.id })
           if (!claimed) continue
           delivery = snapshot
+          claimedNow = true
         }
         if (delivery.kind !== 'sending') continue
         if (delivery.payload.to !== recipient.email) {
@@ -304,8 +330,22 @@ export async function dispatchNotificationEmails(args: {
               message: error.message,
             })
             if (error.retryable) {
+              await args.db
+                .update(schema.inboxItem)
+                .set({
+                  updatedAt: new Date(),
+                  ...(error.resetPending && claimedNow
+                    ? { emailDelivery: { kind: 'pending' as const } }
+                    : {}),
+                })
+                .where(
+                  and(
+                    eq(schema.inboxItem.id, item.id),
+                    sql`${schema.inboxItem.emailDelivery}->>'kind' = 'sending'`,
+                  ),
+                )
               report.retryPending++
-              return 'retry_later'
+              return error.pauseQueue ? 'pause_queue' : 'continue'
             }
             await args.db
               .update(schema.inboxItem)
@@ -320,8 +360,7 @@ export async function dispatchNotificationEmails(args: {
             return 'continue'
           },
         })
-        // A rate limit or outage applies to this sender too; retry next tick.
-        if (nextAction === 'retry_later') break
+        if (nextAction === 'pause_queue') break
       }
       return report
     },

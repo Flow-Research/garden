@@ -24,6 +24,7 @@ import {
   parseQaSweepRunPayload,
   type QaSweepClosureAction,
 } from '@garden/core/automations/templates'
+import { runFailure, type RunFailure } from '@garden/core/runs/failure'
 import {
   createGardenLogger,
   errorFields,
@@ -395,7 +396,12 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     )
     if (read.isErr()) return Result.ok(undefined)
     const exposed = await this.ensureBrainGrantHistory(origin, 'brain_search')
-    if (exposed.isErr()) return exposed
+    // A grant revoked after the check above only withholds injection; the
+    // retained history stays verified and the run keeps its context.
+    if (exposed.isErr())
+      return exposed.error.code === 'history_unverified'
+        ? exposed
+        : Result.ok(undefined)
     this.brainInjectionAllowed = true
     return Result.ok(undefined)
   }
@@ -776,7 +782,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     if (outputAuthority.isErr()) {
       const closed = await this.forceCloseFailed(
         runId,
-        'brain_output_authority_denied',
+        runFailure('brain_output_authority_denied'),
       )
       if (closed.isErr())
         this.logRunWarning('close_failed', {
@@ -814,10 +820,10 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       .filter(Boolean)
       .join('\n\n')
     if (!output) {
-      const failedResult = await this.forceCloseFailed(
-        runId,
-        'automation_completed_without_output',
-      )
+      const failedResult = await this.forceCloseFailed(runId, {
+        ...runFailure('no_output'),
+        diagnostic: 'automation_completed_without_output',
+      })
       if (failedResult.isErr()) {
         this.logRunWarning('close_failed', {
           runId,
@@ -1103,7 +1109,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ).mapError(
       (error) =>
         new AutomationRunSubAgentError({
-          code: 'runtime_failed',
+          code: error.code ?? 'runtime_failed',
           message: error.message,
           cause: error,
         }),
@@ -1567,15 +1573,20 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
 
   protected async forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
     loaded?: LoadedAutomationRunContext,
   ): Promise<ResultValue<void, RunSubAgentError>> {
     const db = this.getDb()
     const now = new Date()
+    this.logRunWarning('failed', {
+      runId,
+      cause: failure.cause,
+      ...(failure.diagnostic ? { diagnostic: failure.diagnostic } : {}),
+    })
     await this.recordTrace(runId, {
       ts: now.toISOString(),
       kind: 'run_failed',
-      error: reason,
+      error: failure.cause,
     })
     const writeResult = await Result.tryPromise({
       try: async () =>
@@ -1584,15 +1595,15 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
             .update(schema.automationRun)
             .set({
               status: 'failed',
-              error: reason,
+              error: failure.cause,
               resultJson: sql`coalesce(${schema.automationRun.resultJson}, '{}'::jsonb) || ${JSON.stringify(
                 {
                   resolution: 'failed',
-                  reason,
+                  reason: failure.cause,
                 },
               )}::jsonb`,
               completedAt: now,
-              failureReason: reason,
+              failureReason: failure.cause,
               updatedAt: now,
             })
             .where(
@@ -1622,7 +1633,10 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     })
     if (writeResult.isErr()) return Result.err(writeResult.error)
     if (writeResult.value) {
-      const properties = { reason, completed_at: now.toISOString() }
+      const properties = {
+        cause: failure.cause,
+        completed_at: now.toISOString(),
+      }
       if (loaded) {
         this.captureRunProduct(
           loaded,

@@ -290,20 +290,44 @@ export const Route = createFileRoute('/api/issues/$id')({
           (existingIssue.assigneeType !== issue.assigneeType ||
             existingIssue.assigneeId !== issue.assigneeId)
         ) {
-          await upsertIssueAssignmentInboxItem(db, {
-            workspaceId: existingIssue.workspaceId,
-            issueId: issue.id,
-            actorType: 'member',
-            actorId: session.user.id,
+          const assignmentResult = await Result.tryPromise({
+            try: () =>
+              upsertIssueAssignmentInboxItem(db, {
+                workspaceId: existingIssue.workspaceId,
+                issueId: issue.id,
+                actorType: 'member',
+                actorId: session.user.id,
+              }),
+            catch: (cause) => cause,
+          })
+          assignmentResult.match({
+            ok: () => undefined,
+            err: (error) =>
+              logger.error(
+                'issue.assignment_inbox_upsert_failed',
+                errorFields(error),
+              ),
           })
         }
         if (issue.description !== existingIssue.description) {
-          await upsertIssueMentionInboxItem(db, {
-            workspaceId: issue.workspaceId,
-            issueId: issue.id,
-            content: issue.description ?? '',
-            actorType: 'member',
-            actorId: session.user.id,
+          const mentionResult = await Result.tryPromise({
+            try: () =>
+              upsertIssueMentionInboxItem(db, {
+                workspaceId: issue.workspaceId,
+                issueId: issue.id,
+                content: issue.description ?? '',
+                actorType: 'member',
+                actorId: session.user.id,
+              }),
+            catch: (cause) => cause,
+          })
+          mentionResult.match({
+            ok: () => undefined,
+            err: (error) =>
+              logger.error(
+                'issue.mention_inbox_upsert_failed',
+                errorFields(error),
+              ),
           })
         }
         const updatedIssue = await applyIssueMutationSideEffects({

@@ -1,6 +1,5 @@
-import { explicitMemberMentionIds } from '@garden/db/inbox'
-import { issueCommentMentionsSchema } from '@garden/db/validation'
-import { asc, eq, inArray } from 'drizzle-orm'
+import { matchMentions } from '@garden/server/issues/server'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
 /**
@@ -44,26 +43,47 @@ export async function getCommentIssueId(db: Db, commentId: string) {
   return comment?.issueId ?? null
 }
 
-/** Updates comment text and member mentions while preserving agent metadata. */
+/** Updates comment text and resolves current workspace mentions. */
 export async function updateIssueCommentBody(
   db: Db,
   input: {
     commentId: string
     body: string
-    previousMentions: typeof schema.issueComment.$inferSelect.mentions
   },
 ) {
-  const previousMentions = issueCommentMentionsSchema.safeParse(
-    input.previousMentions,
-  )
+  const [comment] = await db
+    .select({ workspaceId: schema.issue.workspaceId })
+    .from(schema.issueComment)
+    .innerJoin(schema.issue, eq(schema.issue.id, schema.issueComment.issueId))
+    .where(eq(schema.issueComment.id, input.commentId))
+    .limit(1)
+  if (!comment) return null
+  const [agents, members] = await Promise.all([
+    db
+      .select({ id: schema.agent.id, name: schema.agent.name })
+      .from(schema.agent)
+      .where(
+        and(
+          eq(schema.agent.workspaceId, comment.workspaceId),
+          inArray(schema.agent.status, ['active', 'pending_approval']),
+        ),
+      ),
+    db
+      .select({
+        id: schema.member.userId,
+        name: schema.user.name,
+        email: schema.user.email,
+      })
+      .from(schema.member)
+      .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+      .where(eq(schema.member.organizationId, comment.workspaceId)),
+  ])
+  const mentions = matchMentions(input.body, { agents, members })
   const [updated] = await db
     .update(schema.issueComment)
     .set({
       body: input.body,
-      mentions: {
-        users: explicitMemberMentionIds(input.body),
-        agents: previousMentions.success ? previousMentions.data.agents : [],
-      },
+      mentions,
     })
     .where(eq(schema.issueComment.id, input.commentId))
     .returning()

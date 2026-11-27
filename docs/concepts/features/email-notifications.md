@@ -3,7 +3,7 @@ title: Email notifications
 description: How mentions and new inbox items reach workspace members through Resend.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-27
 ---
 
 Related issue: [#335](https://github.com/Flow-Research/garden/issues/335).
@@ -36,6 +36,12 @@ to avoid duplicate mail after an ambiguous send. Delivery state records sent,
 skipped, and failed outcomes. Existing inbox records are skipped by the migration
 so enabling delivery does not email historical notifications. Updating an inbox
 row does not create another email.
+
+Temporary failures keep the item queued. The dispatcher continues to later
+items after one message fails. It pauses the batch for rate limits, provider
+outages, and credential errors. A credential rejection on the first attempt
+returns the item to pending. Permanent message rejections record `failed`.
+Email bodies show mention labels without editor link markup.
 
 Delivery rechecks workspace membership and Team issue visibility. Removed members,
 self notifications, and inaccessible issues are skipped. A private chat notice
