@@ -1,16 +1,8 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
 import { requireIssueAccess } from '@/lib/server/issue-access'
-
-function numericUsage(usage: Record<string, unknown>, keys: string[]) {
-  for (const key of keys) {
-    const value = usage[key]
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-  }
-  return 0
-}
+import { getIssueUsageTotals } from '@/lib/server/issues/usage-service'
+import { serviceErrorResponse } from '@/lib/server/service-error-response'
 
 export const Route = createFileRoute('/api/issues/$id/usage')({
   server: {
@@ -19,47 +11,11 @@ export const Route = createFileRoute('/api/issues/$id/usage')({
         const appContext = requireAppRequestContext(context)
         const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
-        const db = access.db
 
-        const runs = await db
-          .select({ usageJson: schema.issueRun.usageJson })
-          .from(schema.issueRun)
-          .where(eq(schema.issueRun.issueId, params.id))
-
-        let totalInputTokens = 0
-        let totalOutputTokens = 0
-        let totalCacheReadTokens = 0
-        let totalCacheWriteTokens = 0
-        let taskCount = 0
-
-        for (const run of runs) {
-          const usage =
-            run.usageJson &&
-            typeof run.usageJson === 'object' &&
-            !Array.isArray(run.usageJson)
-              ? (run.usageJson as Record<string, unknown>)
-              : null
-          if (!usage) continue
-
-          taskCount += 1
-          totalInputTokens += numericUsage(usage, ['input_tokens'])
-          totalOutputTokens += numericUsage(usage, ['output_tokens'])
-          totalCacheReadTokens += numericUsage(usage, [
-            'cached_input_tokens',
-            'cache_read_tokens',
-          ])
-          totalCacheWriteTokens += numericUsage(usage, [
-            'cache_write_tokens',
-            'cache_creation_input_tokens',
-          ])
-        }
-
-        return Response.json({
-          total_input_tokens: totalInputTokens,
-          total_output_tokens: totalOutputTokens,
-          total_cache_read_tokens: totalCacheReadTokens,
-          total_cache_write_tokens: totalCacheWriteTokens,
-          task_count: taskCount,
+        const usageResult = await getIssueUsageTotals(access.db, params.id)
+        return usageResult.match({
+          ok: (usage) => Response.json(usage),
+          err: (error) => serviceErrorResponse(error),
         })
       },
     },

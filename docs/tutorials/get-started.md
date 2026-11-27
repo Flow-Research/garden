@@ -14,7 +14,7 @@ You need basic TypeScript knowledge. You do not need a Cloudflare account. The l
 
 Install these tools:
 
-- Node.js 22.12 or newer
+- Node.js 22.19 or newer
 - Docker Desktop or another Docker engine
 - Corepack, which ships with Node.js
 

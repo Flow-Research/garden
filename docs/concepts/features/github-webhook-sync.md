@@ -70,11 +70,13 @@ Out of scope:
 
 ## Data and permissions
 
+The GitHub App must subscribe to the Issues, Issue comment, Pull request, and Repository events, with Issues and Pull requests read access. A human sets these in the App's settings on GitHub.
+
 The route needs no Garden session. The GitHub signature is the only credential, and an empty `GITHUB_WEBHOOK_SECRET` never authorizes a delivery. The installation id selects the workspaces through `github_app_installation`, and a disconnected installation is ignored. The route writes only the linked issue's title, description, and status, the issue's connector comments, the binding's `last_synced_at`, and ledger rows. Ledger rows are deleted when their binding is deleted.
 
 ## How to verify it
 
-- `pnpm --filter @garden/web exec vitest run src/routes/api/github/-webhook.integration.test.ts` runs the route against a real Postgres container. It covers lifecycle effects on close, a replayed delivery id, a stale delivery, a redelivery after a failed apply, comment events after commit, comment delete ordering, bot senders other than the Garden App, a missing `updated_at`, effects that throw after commit, unsupported actions, and fan-out to two workspaces on one installation.
+- `pnpm --filter @garden/web exec vitest run src/routes/api/github/-webhook.integration.test.ts` runs the route against a real Postgres container. It covers lifecycle effects on close, a replayed delivery id, a stale delivery, a redelivery after a failed apply, comment events after commit, comment delete ordering, bot senders other than the Garden App, a missing `updated_at`, `pull_request` card moves (see [GitHub issue sync](github-issue-sync.md#pull-requests)), effects that throw after commit, unsupported actions, and fan-out to two workspaces on one installation.
 - For a manual check, link a staging issue to a GitHub issue, close it on GitHub, and confirm that the Team board moves the card without a refresh. Then use **Redeliver** in the GitHub App's advanced settings and confirm that the response body says `duplicate`.
 
 ## Gaps and follow-up

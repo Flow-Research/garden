@@ -1,4 +1,12 @@
+import {
+  verifyBrainRunBinding,
+  authorizeBrainRunTool,
+  ensureBrainRunHistory,
+  loadBrainRunAuthority,
+  type BrainRunOrigin,
+} from './brain-run-authority'
 import { ensureIssueBrainAudience } from './issue-brain-audience'
+import { issueIdFromFacetName } from './issue-agent-context'
 import type {
   ChatResponseResult,
   ToolCallContext,
@@ -8,6 +16,12 @@ import { hasToolCall, type ToolSet, type UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
+import {
+  runFailure,
+  runFailureEventPayloadSchema,
+  toPublicRunFailure,
+  type RunFailure,
+} from '@garden/core/runs/failure'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import {
   GARDEN_ANALYTICS_EVENTS,
@@ -56,6 +70,7 @@ import {
   type ThreadRuntimeIdentity,
 } from './runtime-mcp-controller'
 import { createChatSubAgentTools } from './chat-sub-agent-tools'
+import { renderCommentTriggerReason } from './issue-run-trigger'
 import { objectOrNull } from './runtime-utils'
 import {
   RunSubAgentBase,
@@ -172,6 +187,95 @@ export class IssueRunSubAgent extends RunSubAgentBase<
   private currentTriggerReason = ''
   private resolutionActions = new Set<IssueRunResolutionAction>()
 
+  private brainInjectionAllowed = false
+
+  protected override runObjectId() {
+    return issueIdFromFacetName(this.name)
+  }
+
+  protected override async verifyRunEntry(runId: string) {
+    return (
+      await verifyBrainRunBinding(this.env.HYPERDRIVE.connectionString, {
+        runKind: 'issue',
+        runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.runObjectId(),
+      })
+    )
+      .map(() => undefined)
+      .mapError((cause) =>
+        this.runError({
+          code: 'runtime_failed',
+          message: cause.message,
+        }),
+      )
+  }
+
+  /** Revalidates the origin's durable exposure before a separate model sees its summary. */
+  async validateBrainSummaryAccess(runId: string): Promise<void> {
+    const validated = await Result.tryPromise({
+      try: async () => {
+        const runtimeName = this.parentPath.at(-1)?.name ?? ''
+        const binding = await verifyBrainRunBinding(
+          this.env.HYPERDRIVE.connectionString,
+          {
+            runKind: 'issue',
+            runId,
+            runtimeName,
+            objectId: this.runObjectId(),
+          },
+        )
+        if (binding.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: binding.error.message,
+          })
+        const access = await this.ensureBrainGrantHistory({
+          runKind: 'issue',
+          runId,
+          runtimeName,
+          objectId: this.runObjectId(),
+          workspaceId: binding.value.context.workspaceId,
+          agentId: binding.value.context.agentId,
+          ownerUserId: binding.value.context.userId ?? null,
+        })
+        if (access.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: access.error.message,
+          })
+      },
+      catch: (cause) =>
+        cause instanceof IssueRunSubAgentError && cause.cause === undefined
+          ? cause
+          : this.runError({
+              code: 'runtime_failed',
+              message: 'Brain summary authority is unavailable.',
+            }),
+    })
+    if (validated.isErr()) throw validated.error
+  }
+
+  /** Checks retained context before any outward dispatch, trace or final output. */
+  private async ensureBrainOutputAuthority(runId: string) {
+    return (
+      await Result.tryPromise({
+        try: () => this.validateBrainSummaryAccess(runId),
+        catch: () =>
+          this.runError({
+            code: 'runtime_failed',
+            message: 'Brain output authority is unavailable.',
+          }),
+      })
+    ).tapError(() => {
+      console.info('agent_runtime.brain_output_denied', { runId })
+    })
+  }
+
+  protected override async authorizeFinalObservation(runId: string) {
+    return this.ensureBrainOutputAuthority(runId)
+  }
+
   protected runConfig() {
     return ISSUE_RUN_CONFIG
   }
@@ -226,7 +330,13 @@ export class IssueRunSubAgent extends RunSubAgentBase<
    * injection reads org-scoped Brain context only. Before this change the
    * owner's private memory could surface in shared run output (garden#143).
    */
-  protected brainInjectionIdentity(loaded: LoadedTurnContext) {
+  protected async brainInjectionIdentity(loaded: LoadedTurnContext) {
+    if (!this.brainInjectionAllowed) return null
+    // MCP preparation can overlap revocation; injection requires fresh authority.
+    const authority = await this.ensureBrainOutputAuthority(
+      loaded.runState.runId,
+    )
+    if (authority.isErr()) return null
     return {
       workspaceId: loaded.runState.workspaceId,
       userId: undefined,
@@ -242,21 +352,52 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     loaded: LoadedTurnContext,
     initializeEmpty: boolean,
   ): Promise<ResultValue<void, RunSubAgentError>> {
-    return (
-      await ensureIssueBrainAudience({
-        workspaceId: loaded.runState.workspaceId,
-        initializeEmpty,
-        config: this.getConfig<{ brainAudience?: unknown }>(),
-        readDurableHistory: () => this.session.getHistory(),
-        persistAudience: (brainAudience) => this.configure({ brainAudience }),
-      })
-    ).mapError((error) =>
-      this.runError({
-        code: error.code,
-        message: error.message,
-        cause: error.cause,
-      }),
+    this.brainInjectionAllowed = false
+    const audience = await ensureIssueBrainAudience({
+      workspaceId: loaded.runState.workspaceId,
+      initializeEmpty,
+      config: this.getConfig<{ brainAudience?: unknown }>(),
+      readDurableHistory: () => this.session.getHistory(),
+      persistAudience: (brainAudience) =>
+        this.configure({
+          ...this.getConfig<Record<string, unknown>>(),
+          brainAudience,
+        }),
+    })
+    if (audience.isErr())
+      return Result.err(
+        this.runError({
+          code: audience.error.code,
+          message: audience.error.message,
+          cause: audience.error.cause,
+        }),
+      )
+    const origin: BrainRunOrigin = {
+      runKind: 'issue',
+      runId: loaded.runState.runId,
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.runObjectId(),
+      workspaceId: loaded.runState.workspaceId,
+      agentId: loaded.runState.agentId,
+      ownerUserId: loaded.runState.agentOwnerUserId,
+    }
+    const history = await this.ensureBrainGrantHistory(origin)
+    if (history.isErr()) return history
+    const read = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      origin,
+      'brain_search',
     )
+    if (read.isErr()) return Result.ok(undefined)
+    const exposed = await this.ensureBrainGrantHistory(origin, 'brain_search')
+    // A grant revoked after the check above only withholds injection; the
+    // retained history stays verified and the run keeps its context.
+    if (exposed.isErr())
+      return exposed.error.code === 'history_unverified'
+        ? exposed
+        : Result.ok(undefined)
+    this.brainInjectionAllowed = true
+    return Result.ok(undefined)
   }
 
   /**
@@ -269,6 +410,17 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     ownerUserId: string | null
     summary: string
   }> {
+    const grant = await Result.tryPromise({
+      try: () => this.validateBrainSummaryAccess(runId),
+      catch: (cause) => cause,
+    })
+    if (grant.isErr()) {
+      console.info('agent_runtime.brain_summary_denied', {
+        runId,
+        reason: 'brain_summary_authority_unavailable',
+      })
+      return { workspaceId: null, ownerUserId: null, summary: '' }
+    }
     const result = await Result.tryPromise({
       try: async () => {
         const db = this.getDb()
@@ -339,7 +491,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
   }
 
   protected override telemetryMetadata(runId: string) {
-    return { ...super.telemetryMetadata(runId), issueId: this.name }
+    return { ...super.telemetryMetadata(runId), issueId: this.runObjectId() }
   }
 
   protected turnStopConditions() {
@@ -394,6 +546,17 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         loader: this.env.LOADER,
         getSandbox: () => this.getAgentSandbox(),
         issueRunEnv: this.env,
+        // Facet is named by run, not chat thread; resolve tools from the run (#376).
+        getRunIdentity: () => {
+          const run = this.currentRunState
+          return run === null
+            ? null
+            : {
+                workspaceId: run.workspaceId,
+                agentId: run.agentId,
+                ownerUserId: run.agentOwnerUserId,
+              }
+        },
         brain: {
           ...(this.env.HELIX_URL === undefined
             ? {}
@@ -403,17 +566,26 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             : { helixApiKey: this.env.HELIX_API_KEY }),
           ai: this.env.AI,
           files: this.env.BRAIN_FILES,
-          getContext: () => {
+          getContext: async (toolName) => {
             const run = this.currentRunState
             if (run === null) return null
-            return {
+            const origin: BrainRunOrigin = {
+              runKind: 'issue',
+              runtimeName: this.parentPath.at(-1)?.name ?? '',
+              objectId: this.runObjectId(),
+              runId: run.runId,
               workspaceId: run.workspaceId,
               agentId: run.agentId,
-              runId: run.runId,
-              // Shared issue output reads only org knowledge; userId still credits writes.
-              userId: run.agentOwnerUserId,
-              readAudience: 'org' as const,
+              ownerUserId: run.agentOwnerUserId,
             }
+            const allowed = await authorizeBrainRunTool(
+              this.env.HYPERDRIVE.connectionString,
+              origin,
+              toolName,
+            )
+            if (allowed.isErr()) return null
+            const history = await this.ensureBrainGrantHistory(origin, toolName)
+            return history.isOk() ? allowed.value : null
           },
         },
       }),
@@ -433,7 +605,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   override async beforeToolCall(ctx: ToolCallContext) {
     const run = this.currentRunState
-    if (!run) return undefined
+    if (!run)
+      throw this.runError({
+        code: 'invalid_state',
+        message: 'No active issue run.',
+      })
 
     if (this.hasTerminalResolutionAction()) {
       return {
@@ -450,7 +626,10 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     const activeResult = await this.assertRunActiveForTool(run.runId)
     if (activeResult.isErr()) throw activeResult.error
 
-    const gateResult = this.assertToolAllowed(ctx.toolName)
+    const outputAuthority = await this.ensureBrainOutputAuthority(run.runId)
+    if (outputAuthority.isErr()) throw outputAuthority.error
+
+    const gateResult = this.assertToolAllowed(ctx.toolName, ctx.input)
     if (gateResult.isErr()) throw gateResult.error
 
     this.aiObservation.beforeToolCall(ctx)
@@ -494,6 +673,10 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     const run = this.currentRunState
     if (!run) return
 
+    const outputAuthority = await this.ensureBrainOutputAuthority(run.runId)
+    if (outputAuthority.isErr()) return
+    this.aiObservation.afterToolCall(ctx)
+
     const output = ctx.success ? objectOrNull(ctx.output) : null
     const ok = ctx.success && output?.ok !== false
     issueRunLogger[ok ? 'info' : 'warn']('issue_run.tool.finished', {
@@ -536,7 +719,6 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         ...errorFields(eventResult.error),
       })
     }
-    this.aiObservation.afterToolCall(ctx)
   }
 
   /**
@@ -547,6 +729,20 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     runId: string,
     _result: ChatResponseResult,
   ) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) {
+      const closed = await this.forceCloseFailed(
+        runId,
+        runFailure('brain_output_authority_denied'),
+      )
+      if (closed.isErr())
+        this.logRunWarning('close_failed', {
+          runId,
+          ...errorFields(closed.error),
+        })
+      return
+    }
+
     const guardResult = await this.enforceResolutionGuard(runId)
     if (guardResult.isErr()) {
       this.logRunWarning('resolution_guard_failed', {
@@ -711,6 +907,23 @@ export class IssueRunSubAgent extends RunSubAgentBase<
   protected async loadTurnContext(
     runId: string,
   ): Promise<ResultValue<LoadedTurnContext, RunSubAgentError>> {
+    const binding = await verifyBrainRunBinding(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'issue',
+        runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.runObjectId(),
+      },
+    )
+    if (binding.isErr())
+      return Result.err(
+        this.runError({
+          code: 'runtime_failed',
+          message: binding.error.message,
+          cause: binding.error,
+        }),
+      )
     const db = this.getDb()
     const result = await Result.tryPromise({
       try: async () => {
@@ -885,6 +1098,53 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     })
   }
 
+  /** Rejects revoked retained context before submission and before model use. */
+  private async ensureBrainGrantHistory(
+    origin: BrainRunOrigin,
+    exposeTool?: string,
+  ) {
+    const authority = await loadBrainRunAuthority(
+      this.env.HYPERDRIVE.connectionString,
+      origin,
+    )
+    if (authority.isErr())
+      return Result.err(
+        new IssueRunSubAgentError({
+          code: 'runtime_failed',
+          message: authority.error.message,
+          cause: authority.error,
+        }),
+      )
+    return (
+      await ensureBrainRunHistory({
+        identity: `${origin.runKind}:${origin.workspaceId}:${origin.agentId}:${origin.ownerUserId}`,
+        permissions: authority.value.permissions,
+        exposeTool,
+        marker: this.getConfig<{ brainGrantHistory?: unknown }>()
+          ?.brainGrantHistory,
+        readDurableHistory: () => this.session.getHistory(),
+        persist: (brainGrantHistory) => {
+          const config = this.getConfig<Record<string, unknown>>()
+          // Preparation owns the first audience stamp. Early output checks
+          // must not create a provenance-only configuration on an empty facet.
+          if (
+            exposeTool === undefined &&
+            config?.brainAudience !== `org-v1:${origin.workspaceId}`
+          )
+            return
+          this.configure({ ...config, brainGrantHistory })
+        },
+      })
+    ).mapError(
+      (error) =>
+        new IssueRunSubAgentError({
+          code: error.code ?? 'runtime_failed',
+          message: error.message,
+          cause: error,
+        }),
+    )
+  }
+
   private renderTriggerReason(input: {
     source: string
     contextSnapshot: unknown
@@ -916,13 +1176,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         users: input.users,
         agents: input.agents,
       })
-      const body =
-        comment.body.length > 500
-          ? `${comment.body.slice(0, 500).trimEnd()}...`
-          : comment.body
-      return input.source === 'mention'
-        ? `${authorName} mentioned you in a comment: "${body}"`
-        : `${authorName} replied: "${body}"`
+      return renderCommentTriggerReason({
+        source: input.source,
+        authorName,
+        body: comment.body,
+      })
     }
 
     return `This run was triggered by ${input.source}.`
@@ -1272,7 +1530,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       return Result.ok()
     }
 
-    return await this.forceCloseFailed(runId, 'no_resolution')
+    return await this.forceCloseFailed(runId, runFailure('no_resolution'))
   }
 
   private hasTerminalResolutionAction() {
@@ -1537,8 +1795,13 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   protected async forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
   ): Promise<ResultValue<void, RunSubAgentError>> {
+    this.logRunWarning('failed', {
+      runId,
+      cause: failure.cause,
+      ...(failure.diagnostic ? { diagnostic: failure.diagnostic } : {}),
+    })
     const runStateResult = await this.loadRunState(runId)
     if (runStateResult.isErr()) return Result.err(runStateResult.error)
 
@@ -1553,8 +1816,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             .update(schema.issueRun)
             .set({
               status: 'failed',
-              error: reason,
-              resultJson: { resolution: 'failed', reason },
+              error: failure.cause,
+              resultJson: {
+                resolution: 'failed',
+                failure: toPublicRunFailure(failure),
+              },
               finishedAt: now,
               updatedAt: now,
             })
@@ -1591,9 +1857,9 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       stream: 'system',
       level: 'error',
       message: 'Run failed',
-      payload: {
-        reason,
-      },
+      payload: runFailureEventPayloadSchema.parse({
+        failure: toPublicRunFailure(failure),
+      }),
     })
     if (eventResult.isErr()) {
       return Result.err(
@@ -1606,7 +1872,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     }
 
     this.captureRunProduct(run, GARDEN_ANALYTICS_EVENTS.issueRunFailed, {
-      reason,
+      cause: failure.cause,
     })
     return Result.ok()
   }

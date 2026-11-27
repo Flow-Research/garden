@@ -1,4 +1,8 @@
 import type {
+  TeamAgentPolicy,
+  TeamAgentPolicyResponse,
+} from '@garden/core/teams/agent-policy'
+import type {
   AddTeamMemberRequest,
   CreateTeamRequest,
   LinkTeamRepositoryRequest,
@@ -78,6 +82,24 @@ export function transferTeamOwner(
   return getApiTransport().request(`/api/teams/${teamId}/owner`, {
     method: 'PUT',
     body: JSON.stringify(data),
+  })
+}
+
+/** Reads a Team's agent policy, or the no-limits default when none is saved. */
+export function getTeamAgentPolicy(
+  teamId: string,
+): Promise<TeamAgentPolicyResponse> {
+  return getApiTransport().request(`/api/teams/${teamId}/agent-policy`)
+}
+
+/** Replaces a Team's agent policy. Workspace owners and admins only. */
+export function updateTeamAgentPolicy(
+  teamId: string,
+  policy: TeamAgentPolicy,
+): Promise<TeamAgentPolicyResponse> {
+  return getApiTransport().request(`/api/teams/${teamId}/agent-policy`, {
+    method: 'PUT',
+    body: JSON.stringify(policy),
   })
 }
 

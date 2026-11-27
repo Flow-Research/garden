@@ -4,9 +4,21 @@
  * the sandbox id scheme and terminal-status set cannot drift between agents.
  */
 
-/** Message text for any thrown value. */
-export function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
+/**
+ * Message text for any thrown value, followed by its `cause` chain.
+ *
+ * Drizzle wraps driver failures in `DrizzleQueryError`, whose message is only
+ * "Failed query: <sql> params: ..."; the Postgres reason (for example "could
+ * not determine data type of parameter $7") lives on `error.cause`. Before,
+ * tool errors showed only the SQL, so FLO-150's revise_work_product failure
+ * was undiagnosable from the run log. Now each cause message is appended.
+ */
+export function errorMessage(error: unknown): string {
+  if (!(error instanceof Error)) return String(error)
+  const cause = error.cause
+  return cause === undefined || cause === error
+    ? error.message
+    : `${error.message} (cause: ${errorMessage(cause)})`
 }
 
 /**
@@ -34,6 +46,36 @@ export const TERMINAL_SUBMISSION_STATUSES: ReadonlySet<string> = new Set([
 
 export function isTerminalSubmissionStatus(status: string) {
   return TERMINAL_SUBMISSION_STATUSES.has(status)
+}
+
+/** Run statuses that mean the agent loop still owes the run an outcome. */
+const UNRESOLVED_RUN_STATUSES: ReadonlySet<string> = new Set([
+  'queued',
+  'running',
+])
+
+/**
+ * Why a run must be failed after its Think turn completed, or null when the
+ * turn left the run in a state the Workflow can act on.
+ *
+ * Before: a turn that ended without a resolution tool (FLO-150:
+ * `revise_work_product` failed, which also stops the turn) relied on the
+ * in-memory `onChatResponse` finish policy to close the run. When that hook
+ * did not run in the same isolate, `completeWorkflowTurn` returned `running`
+ * and `RunWorkflow` completed with the run row still `running` and no event.
+ * After: a completed turn whose run is still queued/running and is not
+ * waiting on anything (Decide analysis) is named here so the caller fails it
+ * with a visible `issue_run:failed` event.
+ */
+export function unresolvedSettledTurnReason(input: {
+  submissionStatus: string
+  runStatus: string
+  waiting: boolean
+}) {
+  if (input.submissionStatus !== 'completed' || input.waiting) return null
+  return UNRESOLVED_RUN_STATUSES.has(input.runStatus)
+    ? 'turn_ended_without_resolution'
+    : null
 }
 
 const MAX_SANDBOX_ID_LENGTH = 63

@@ -24,13 +24,21 @@ import {
   applyGitHubWebhookIssueUpdate,
   isSupportedGitHubCommentAction,
   planGitHubWebhookIssueApply,
-  type IssuePatch,
+  type GitHubWebhookIssueApplyOutcome,
 } from '@/lib/server/github-webhook-apply'
+import {
+  applyGitHubPullRequestUpdate,
+  parseGitHubPullRequestTarget,
+  resolveGitHubPullRequestBindings,
+} from '@/lib/server/github-webhook-pull-request'
 import {
   githubWebhookCommentOrderScope,
   githubWebhookIssueOrderScope,
+  githubWebhookPullRequestOrderScope,
   processGitHubWebhookDelivery,
   type GitHubWebhookDelivery,
+  type GitHubWebhookOrder,
+  type GitHubWebhookTx,
   GitHubWebhookDeliveryError,
 } from '@/lib/server/github-webhook-delivery'
 import {
@@ -110,8 +118,8 @@ async function deliverComment(
 }
 
 /**
- * Records and applies one `issues` delivery for one linked issue, then runs
- * the issue lifecycle effects after commit.
+ * Records and applies one delivery that changes a linked issue (`issues` or
+ * `pull_request`), then runs the issue lifecycle effects after commit.
  *
  * Why effects failures are logged, not thrown: the earlier version awaited
  * them bare, so a throw after commit made the route 500. GitHub's redelivery
@@ -119,28 +127,18 @@ async function deliverComment(
  * committed by this point, so the delivery is acknowledged and the failure is
  * logged for an operator.
  */
-async function deliverIssue(
+async function deliverIssueChange(
   ctx: DeliveryContext,
   binding: GitHubWebhookBindingMatch,
-  target: GitHubWebhookIssueTarget,
-  plan: IssuePatch,
+  order: GitHubWebhookOrder,
+  apply: (tx: GitHubWebhookTx) => Promise<GitHubWebhookIssueApplyOutcome>,
 ): Promise<BindingResult> {
   const processed = await processGitHubWebhookDelivery({
     db: ctx.db,
     bindingId: binding.bindingId,
     delivery: ctx.delivery,
-    order: {
-      scope: githubWebhookIssueOrderScope(binding.bindingId),
-      marker: target.updatedAtMs,
-    },
-    apply: (tx) =>
-      applyGitHubWebhookIssueUpdate({
-        tx,
-        binding,
-        target,
-        plan,
-        appSlug: ctx.appSlug,
-      }),
+    order,
+    apply,
   })
   if (processed.isErr()) return Result.err(processed.error)
   const outcome = processed.value
@@ -241,7 +239,9 @@ async function deliverToBindings(
 /**
  * GitHub App webhook ingress (#161).
  *
- * Verify signature. A `repository.renamed` or `repository.transferred`
+ * Verify signature. A `pull_request` delivery moves the cards of the
+ * linked issues its body closes (`applyGitHubPullRequestUpdate`). A
+ * `repository.renamed` or `repository.transferred`
  * delivery rewrites links and bindings to the new name
  * (`applyGitHubRepositoryMove`) and stops there. Otherwise parse `issues.*` or
  * `issue_comment.*`, drop actions Garden does not apply, create the Garden
@@ -309,6 +309,32 @@ export const Route = createFileRoute('/api/github/webhook')({
           return json({ ok: true, status: 'applied', ...moved.value }, 200)
         }
 
+        if (event === 'pull_request') {
+          const parsed = parseGitHubPullRequestTarget(payload.value)
+          if (parsed.isErr()) return badRequest(parsed.error.message)
+          if (parsed.value === null) {
+            return json({ ok: true, status: 'ignored' }, 200)
+          }
+          const target = parsed.value
+          const delivery = { deliveryId, event, action: target.signal }
+          return deliverToBindings(
+            await resolveGitHubPullRequestBindings({ db: ctx.db, target }),
+            (binding) =>
+              deliverIssueChange(
+                { ...ctx, delivery },
+                binding,
+                {
+                  scope: githubWebhookPullRequestOrderScope(
+                    binding.bindingId,
+                    target.number,
+                  ),
+                  marker: target.updatedAtMs,
+                },
+                (tx) => applyGitHubPullRequestUpdate({ tx, binding, target }),
+              ),
+          )
+        }
+
         const commentTarget = parseGitHubWebhookCommentTarget(payload.value)
         if (commentTarget.isErr()) {
           return badRequest(commentTarget.error.message)
@@ -341,7 +367,22 @@ export const Route = createFileRoute('/api/github/webhook')({
         return deliverToBindings(
           await resolveGitHubWebhookBindings({ db: ctx.db, target }),
           (binding) =>
-            deliverIssue({ ...ctx, delivery }, binding, target, plan),
+            deliverIssueChange(
+              { ...ctx, delivery },
+              binding,
+              {
+                scope: githubWebhookIssueOrderScope(binding.bindingId),
+                marker: target.updatedAtMs,
+              },
+              (tx) =>
+                applyGitHubWebhookIssueUpdate({
+                  tx,
+                  binding,
+                  target,
+                  plan,
+                  appSlug: ctx.appSlug,
+                }),
+            ),
         )
       },
     },

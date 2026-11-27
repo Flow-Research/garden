@@ -1,5 +1,8 @@
+import { and, eq } from 'drizzle-orm'
 import { Result, TaggedError } from 'better-result'
 import { createAuth } from '@/lib/auth'
+import { workspaceRoleHasPermission } from '@/lib/auth/instance'
+import { schema } from './db'
 import { appEnv } from '@/lib/server/env'
 import type { AppRequestContext } from '@/lib/server/context'
 import {
@@ -92,4 +95,33 @@ export async function requireWorkspacePermission(args: {
   }
 
   return allowedResult.value ? null : forbidden()
+}
+
+/**
+ * Rechecks authority for an actor and workspace from verified signed state.
+ * The caller must verify the state before calling this guard. This does not
+ * use a browser session or workspace header to choose the actor or workspace.
+ */
+export async function requireVerifiedWorkspaceActorPermission(args: {
+  appContext: AppRequestContext
+  userId: string
+  workspaceId: string
+  permissions: WorkspacePermission
+}) {
+  const db = await args.appContext.db()
+  const [membership] = await db
+    .select({ role: schema.member.role })
+    .from(schema.member)
+    .where(
+      and(
+        eq(schema.member.organizationId, args.workspaceId),
+        eq(schema.member.userId, args.userId),
+      ),
+    )
+    .limit(1)
+  if (!membership) return unauthorized()
+
+  return workspaceRoleHasPermission(membership.role, args.permissions)
+    ? null
+    : forbidden()
 }

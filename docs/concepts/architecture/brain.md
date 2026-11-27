@@ -2,8 +2,8 @@
 title: Brain keeps HelixDB private behind a gateway and Garden's server
 description: How Garden's Brain reaches HelixDB through an authenticated Caddy gateway, and why workspace isolation lives in Garden's server code rather than the gateway.
 status: current
-owner: "@Flow-Research/security"
-last_reviewed: 2026-11-03
+owner: '@Flow-Research/security'
+last_reviewed: 2026-11-10
 ---
 
 Brain is Garden's graph and vector memory. It stores workspace knowledge in HelixDB. HelixDB accepts query payloads that the caller builds, so whoever can reach it can read or write any record. The whole design follows from that fact: HelixDB is never public, and only Garden's server builds queries.
@@ -58,3 +58,23 @@ The rules this layer follows:
 ## Storage in the production stack
 
 `compose.brain.yaml` selects R2 with `S3_BUCKET`. The local development stack still uses a Docker volume through `HELIX_DATA_DIR`. HelixDB cannot use both storage modes at once. Switching the production stack does not copy data from the old `helix-data` volume. The [deploy Brain guide](../../guides/operate/deploy-brain.md) records the cutover requirements.
+
+## Run authority and repeated write-back
+
+`brain-run-authority.ts` validates the originating issue or automation run and reads its current permissions. The shared run lifecycle remains in `RunSubAgentBase`. Automatic injection checks current retained-origin grants again after MCP preparation. Tool-completion observation captures content immediately after its authority check, before further I/O. The base checks originating identity before execution, completion, failure and cancellation RPCs can change a run. Each run facet supplies that identity check and checks Brain access through preparation and summary hooks. The parent passes the exact origin object to a separate write-back facet. That facet checks the origin again before it uses the summary. Each later write-back tool-context check also validates the origin's retained provenance. The existing context checks run before deduplication and before persistence. A grant removal between those operations therefore blocks both the review proposal and direct-write paths.
+
+An output-authority check before issue preparation must not create configuration that contains only grant provenance. Preparation owns the first organization-audience stamp. A failure before preparation leaves the empty facet available for a later run.
+
+Write-back uses a stable operation key and a scope-aware claim hash. Database indexes prevent duplicate operations and duplicate claims within a workspace. A repeated delivery can return the existing result. Brain node creation also uses a stable canonical identity, so a repeated request does not create another node after an uncertain response.
+
+Claim hashes and duplicate checks remove surrounding whitespace only. They preserve case and internal spacing because a path, identifier or literal can depend on them.
+
+Semantic duplicate checks compare the stored body when it exists. They use the summary, then the label, only when the body is absent. A matching label or summary cannot override different body content.
+
+The migration preserves existing proposal rows and review fields. It stops when legacy hashes are ambiguous. An operator must review those rows before the migration can continue. Migration completion is not evidence of a live deployment.
+
+The operation-key migration is `0069_brain_write_operation_identity`, after the invitation-Team and Team-agent-policy migrations. Its snapshot is generated from the current schema. The retained-data guard and backfill preserve the earlier proposal migration's behavior; applied migrations are unchanged. Existing writers that omit `operation_key` cannot run after this migration. A deployment needs a retained-target preflight and a compatible application/schema rollback plan.
+
+The run facets enforce current retained-context authority before outward tools, step and tool observations, and final product output. The shared base owns the final observation gate and state discard. Other base consumers retain the default observation behavior. The model tracing adapter uses content privacy for issue and automation runs; chat keeps its existing behavior. An in-flight provider request cannot be recalled by a later grant removal.
+
+The base checks failure authority before it copies SDK errors into product records, Workflow events or RPC errors. The generation client applies a fixed metadata list through PostHog's supported `before_send` option and disables exception autocapture. The SDK privacy flag alone does not remove error text. Write-back failure messages also omit raw model error text.

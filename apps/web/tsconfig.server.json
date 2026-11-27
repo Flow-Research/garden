@@ -5,6 +5,8 @@
     "src/lib/server/**/*.tsx",
     "src/lib/auth/index.ts",
     "src/lib/auth/instance.ts",
+    "src/lib/auth/connector-callback-request.ts",
+    "src/lib/auth/connector-account-adapter.ts",
     "src/lib/auth/server.ts",
     "src/lib/posthog-server.ts",
     "src/lib/inbox/threads.ts",
@@ -12,12 +14,17 @@
     "src/github-repo-import-workflow.ts",
     "src/features/dashboard/dashboard.queries.ts",
     "src/features/dashboard/dashboard.server.ts",
+    "src/features/dashboard/dashboard-summary.ts",
     "worker-configuration.d.ts"
   ],
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "node_modules", "dist"],
   "references": [
-    { "path": "./tsconfig.shared.json" },
-    { "path": "./tsconfig.executor.json" }
+    {
+      "path": "./tsconfig.shared.json"
+    },
+    {
+      "path": "./tsconfig.executor.json"
+    }
   ],
   "compilerOptions": {
     "composite": true,
