@@ -1754,7 +1754,8 @@ export async function reviewWorkProduct(args: {
       const { issue, workProduct } = context.value
       if (
         issue.teamId !== null ||
-        workProduct.status !== 'approved' ||
+        (workProduct.status !== 'approved' &&
+          workProduct.status !== 'applied') ||
         workProduct.reviewState !== 'approved' ||
         !workProduct.runId ||
         !documentWorkProductTypes.has(workProduct.type)
