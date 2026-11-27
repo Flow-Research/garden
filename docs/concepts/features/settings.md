@@ -19,9 +19,9 @@ The page follows the supplied All settings design: heading and description, hori
 | Profile         | `/settings/profile`                                                    | Redesigned; see [Profile](#profile)                                      |
 | User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins |
 | Preferences     | `/settings/preferences`                                                | Redesigned; see [Preferences](#preferences)                              |
-| General         | `/settings/general`                                                    | Workspace settings                                                       |
+| General         | `/settings/general`                                                    | Redesigned; see [General](#general)                                      |
 
-User Management and General reuse the same components, queries and mutations as the modal and the Teams page. Notifications has no tab or route until its behavior is implemented. Settings adds no new account operations, APIs or permissions.
+User Management uses the workspace and Team components. Preferences and General use the same stores and mutations as their modal controls. Notifications has no tab or route. Settings adds no new account operations, APIs or permissions.
 
 ## Profile
 
@@ -63,6 +63,15 @@ The modal keeps its separate Appearance and Developer tabs, which read the same 
 Design elements without backend support are not shown: Agent preferences (communication style, proactivity, decision autonomy), Language and time, and Privacy (cookie settings, view history). Garden has no setting, schema or API for them. Notifications is also left out, as above.
 
 Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
+
+## General
+
+The General section restyles the workspace settings and keeps every control the modal offers. It has two cards:
+
+- **General.** Name, Description and Context fields, with a hint that agents read Context as background. The slug is a read-only row. Save and Reset appear only after a field changes, ignoring leading and trailing spaces. Save is disabled while the name is empty, and it sends trimmed values. A successful save updates the workspace store and the cached workspace list. Unsaved edits are tied to the workspace they were typed in, so switching workspaces discards them. Members who are not admins or owners see the fields disabled, with a note at the top of the card.
+- **Danger zone.** Leave workspace, with the existing confirmation. The dialog stays open if leaving fails, so the action can be retried.
+
+The modal still renders the earlier `WorkspaceTab`. Both use `api.updateWorkspace` and `useLeaveWorkspace`.
 
 ## Verification
 
