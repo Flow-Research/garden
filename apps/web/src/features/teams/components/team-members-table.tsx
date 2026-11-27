@@ -22,7 +22,8 @@ export function memberRoleLabel(
  * per-row Agent settings button, which opens the Team agent policy sheet.
  * Remove is absent from the design but must stay reachable, so removable rows
  * keep a ghost trash action after View all. The Activity column gets a fixed
- * width so all three actions fit inside the cell. View all stays disabled
+ * width so all three actions fit inside the cell; below a 40rem minimum the
+ * frame scrolls sideways instead of crushing the other columns. View all stays disabled
  * (no activity history surface exists yet) and says so via its wrapper title.
  */
 export function TeamMembersTable({
@@ -43,21 +44,21 @@ export function TeamMembersTable({
   return (
     <div
       id="team-members-table"
-      className="overflow-hidden rounded-2xl border border-border-default"
+      className="overflow-x-auto rounded-2xl border border-border-default"
     >
-      <table className="w-full table-fixed text-sm">
+      <table className="w-full min-w-[40rem] table-fixed text-sm">
         <thead>
           <tr className="bg-background-main-secondary">
             <th className="px-6 py-4 text-center font-semibold text-text-default">
               User
             </th>
-            <th className="px-6 py-4 text-center font-semibold text-text-default">
+            <th className="border-l border-border-default px-6 py-4 text-center font-semibold text-text-default">
               Role
             </th>
-            <th className="px-6 py-4 text-center font-semibold text-text-default">
+            <th className="border-l border-border-default px-6 py-4 text-center font-semibold text-text-default">
               Assigned Tasks
             </th>
-            <th className="w-[18rem] px-4 py-4 text-center font-semibold text-text-default">
+            <th className="w-[18rem] border-l border-border-default px-4 py-4 text-center font-semibold text-text-default">
               Activity
             </th>
           </tr>
