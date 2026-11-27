@@ -31,7 +31,7 @@ const menuItemClass =
  * Sidebar header menu — the workspace menu from the design's Enterprise flyout
  * (Penpot "Admin Profile" page): the Garden brand (wave mark + wordmark, per
  * the design — never the workspace name) up top, then Invite
- * members / Workspace settings / Team members live, with Analytics, Billing,
+ * members (owners and admins) / Workspace settings / Team members live, with Analytics, Billing,
  * and Learn more rendered disabled until those surfaces exist.
  *
  * Workspace switching/creation deliberately lives elsewhere: the account
@@ -45,7 +45,8 @@ export function WorkspaceMenu({
   onOpenMembers,
 }: {
   collapsed?: boolean
-  onInviteMembers: () => void
+  /** Omitted for roles that cannot invite, which hides the item. */
+  onInviteMembers?: () => void
   onOpenSettings: () => void
   onOpenMembers: () => void
 }) {
@@ -83,11 +84,18 @@ export function WorkspaceMenu({
           </span>
         </div>
         <DropdownMenuGroup className="py-1">
-          <DropdownMenuItem className={menuItemClass} onClick={onInviteMembers}>
-            <Send />
-            Invite members
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
+          {onInviteMembers ? (
+            <>
+              <DropdownMenuItem
+                className={menuItemClass}
+                onClick={onInviteMembers}
+              >
+                <Send />
+                Invite members
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           <DropdownMenuItem className={menuItemClass} onClick={onOpenSettings}>
             <Settings />
             Workspace settings
