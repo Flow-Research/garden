@@ -14,7 +14,6 @@ import {
 } from '@garden/ui/components/ui/field'
 import { Input } from '@garden/ui/components/ui/input'
 import { Spinner } from '@garden/ui/components/ui/spinner'
-import { LoginFoliage } from '@/components/login-foliage'
 import { authClient } from '@/lib/auth/client'
 
 class PasswordRecoveryError extends TaggedError('PasswordRecoveryError')<{
@@ -294,7 +293,6 @@ function RecoveryShell({
 }) {
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden px-6 py-10">
-      <LoginFoliage className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto h-[clamp(180px,34vh,330px)] w-full max-w-6xl text-brand" />
       <div className="login-panel-enter vellum-heavy relative z-10 w-full max-w-sm rounded-t-[7rem] rounded-b-2xl px-7 pt-14 pb-8 sm:px-9">
         <div className="flex flex-col items-center gap-3 text-center">
           <span className="inline-flex size-12 items-center justify-center rounded-full bg-brand/10 text-brand">

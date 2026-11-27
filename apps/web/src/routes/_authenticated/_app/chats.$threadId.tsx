@@ -19,9 +19,6 @@ export const Route = createFileRoute('/_authenticated/_app/chats/$threadId')({
 function ChatThreadRoute() {
   const { threadId } = Route.useParams()
   return (
-    <AgentInteractionScreen
-      className="min-h-0 flex-1 bg-background"
-      sessionId={threadId}
-    />
+    <AgentInteractionScreen className="min-h-0 flex-1" sessionId={threadId} />
   )
 }

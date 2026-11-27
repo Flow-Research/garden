@@ -16,6 +16,16 @@ The 2026-09 redesign, drawn in the Penpot "Garden" file, replaced all of that. T
 
 If an older doc or screenshot shows parchment, grain, or Fraunces, it describes the retired direction.
 
+## The foliage bed is the one shared decoration
+
+Every screen shows the same bed of hand-drawn stems along the bottom of the viewport. `GardenBackdrop` in `apps/web/src/components/garden-foliage.tsx` draws it. The root layout (`apps/web/src/routes/__root.tsx`) mounts it one time, so it does not mount again when you go to a different screen in the app. The stems grow one time on each full page load. After that, they do not move. When the user sets `prefers-reduced-motion`, the stems show at full size with no animation. The CSS for the growth is in `apps/web/src/custom.css`.
+
+The backdrop is `fixed`, `-z-10`, `aria-hidden`, and `pointer-events-none`. It is behind all content and does not receive clicks. It shows only where no element paints a fill. Obey these rules when you make a screen:
+
+- Do not put a full-page fill on a page root or a shell wrapper. The body already paints `--background-main-default`. A second fill of the same color hides the foliage and gives no visual change.
+- Give a card or a panel that holds text a solid fill. If you want a tint, put it on top of `bg-background`. The Home dashboard cards use `bg-background bg-linear-to-b from-muted/25 to-muted/25` for this reason.
+- Keep solid fills on surfaces that cover other content, for example sidebars, side panels, dialogs, popovers, and sticky headers.
+
 ## Tokens are generated so the design file stays canonical
 
 `packages/ui/tokens/tokens.json` is a Tokens Studio export. `pnpm --filter @garden/ui tokens:build` turns it into `packages/ui/styles/tokens.css`, which is marked as generated. A design change becomes a re-export and one command, not a manual merge of CSS.

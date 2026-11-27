@@ -28,6 +28,7 @@ export class BrainFileIngestionError extends Schema.TaggedError<BrainFileIngesti
 export interface BrainFileIngestionService {
   readonly stage: (input: {
     file: File
+    workProductId?: string
     itemId: string
     ownerUserId: string
     r2Key: string
@@ -124,6 +125,7 @@ export const makeBrainFileIngestionLayer = (
 
       const stage = Effect.fn('BrainFileIngestion.stage')(function* (input: {
         file: File
+        workProductId?: string
         itemId: string
         ownerUserId: string
         r2Key: string
@@ -153,7 +155,9 @@ export const makeBrainFileIngestionLayer = (
             sizeBytes: input.file.size,
             canonical: {
               type: 'file',
-              value: `brain:${input.workspaceId}:${normalizeDownloadFilename(input.file.name)}`,
+              value: input.workProductId
+                ? `work-product:${input.workspaceId}:${input.workProductId}`
+                : `brain:${input.workspaceId}:${normalizeDownloadFilename(input.file.name)}`,
             },
             indexStatus: 'processing',
             origin: {
