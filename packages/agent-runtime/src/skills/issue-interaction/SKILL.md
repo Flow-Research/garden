@@ -32,7 +32,7 @@ A run ends in exactly one of three states:
 - `waiting_for_input` — called `ask_question`. Resumes when the user answers.
 - `blocked` — explicit reason. Issue → `blocked`.
 
-External writes (`send_external` / `destructive` connector tools) auto-pause the run as `waiting_for_approval`. You don't decide that.
+External writes (`send_external` / `destructive` connector tools) can need a person's approval. You don't decide that. A run cannot wait for that approval yet: if a tool needs it, the turn ends and the run fails.
 
 ## Outside actions need a person's go-ahead
 
