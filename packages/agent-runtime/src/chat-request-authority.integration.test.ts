@@ -239,13 +239,11 @@ describe('chat request authority against actual PostgreSQL', () => {
     await database.db
       .insert(schema.user)
       .values({ id: approverId, email: `${approverId}@example.test` })
-    await database.db
-      .insert(schema.member)
-      .values({
-        organizationId: actor.principal.workspaceId,
-        userId: approverId,
-        role: 'admin',
-      })
+    await database.db.insert(schema.member).values({
+      organizationId: actor.principal.workspaceId,
+      userId: approverId,
+      role: 'admin',
+    })
     const source = actor.request.source
     if (source.kind !== 'connection')
       throw new Error('Expected a connection source')
