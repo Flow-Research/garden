@@ -64,9 +64,11 @@ const refusals: Record<
 }
 
 function Time({ at }: { at: number }) {
+  const date = new Date(at)
+  if (!Number.isFinite(date.getTime())) return <span>Unknown time</span>
   return (
-    <time dateTime={new Date(at).toISOString()}>
-      {new Date(at).toLocaleString(undefined, {
+    <time dateTime={date.toISOString()}>
+      {date.toLocaleString(undefined, {
         dateStyle: 'medium',
         timeStyle: 'medium',
       })}
