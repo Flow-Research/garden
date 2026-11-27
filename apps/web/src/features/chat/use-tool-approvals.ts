@@ -5,7 +5,10 @@ import {
   chatKeys,
   listThreadAgentProposalRequests,
 } from '@/lib/api/chat-threads'
-import { resolveToolApproval } from './components/chat-tool-activity'
+import {
+  getAgentProposalApproval,
+  resolveToolApproval,
+} from './components/chat-tool-activity'
 import type { ApprovalGroup } from './components/chat-message-parts'
 import type { ChatRuntime, ChatUiMessage } from './chat-runtime-provider'
 
@@ -62,19 +65,22 @@ export function useToolApprovals({
   // B2: server-authoritative resolution for propose_agent approvals. Only fetch
   // when the thread actually has a proposal; refetches on reconnect/focus so a
   // card reconciles to durable status instead of a stale tool-output snapshot.
-  const hasAgentProposal = useMemo(
-    () =>
-      messages.some((message) =>
-        message.parts.some(
-          (part) => isToolUIPart(part) && getToolName(part) === 'propose_agent',
-        ),
-      ),
-    [messages],
-  )
+  const visibleProposals = useMemo(() => {
+    const ids = new Set<string>()
+    for (const message of messages) {
+      for (const part of message.parts) {
+        if (!isToolUIPart(part) || getToolName(part) !== 'propose_agent')
+          continue
+        const proposal = getAgentProposalApproval(part)
+        if (proposal) ids.add(proposal.permissionRequestId)
+      }
+    }
+    return ids
+  }, [messages])
   const agentProposalRequestsQuery = useQuery({
     queryKey: chatKeys.agentProposalRequests(sessionId),
     queryFn: () => listThreadAgentProposalRequests(sessionId),
-    enabled: hasAgentProposal,
+    enabled: visibleProposals.size > 0,
     staleTime: 30_000,
   })
   const resolvedAgentProposalRequestIds = useMemo(() => {
@@ -85,6 +91,50 @@ export function useToolApprovals({
     return ids
   }, [agentProposalRequestsQuery.data])
 
+  // Inbox can record a decision on a different session. Give the thread owner
+  // one way to deliver it without writing a second decision.
+  const recordedContinuations = useMemo(() => {
+    const result: ContinuationInput[] = []
+    for (const row of agentProposalRequestsQuery.data?.requests ?? []) {
+      if (
+        row.status === 'pending' ||
+        !row.pending_agent_id ||
+        !visibleProposals.has(row.id)
+      )
+        continue
+      if (
+        resolvedApprovalIds.includes(row.id) ||
+        messages.some(
+          (message) =>
+            message.id === `garden-proposal:${row.id}` ||
+            // Earlier versions saved the resume as text with a generated ID.
+            (message.role === 'user' &&
+              message.parts.some(
+                (part) =>
+                  part.type === 'text' &&
+                  (part.text.startsWith(
+                    `The user approved the agent proposal ${row.id}.`,
+                  ) ||
+                    part.text.startsWith(
+                      `The user denied the agent proposal ${row.id}.`,
+                    )),
+              )),
+        )
+      )
+        continue
+      result.push({
+        permissionRequestId: row.id,
+        pendingAgentId: row.pending_agent_id,
+        approved: row.status === 'approved',
+      })
+    }
+    return result
+  }, [
+    agentProposalRequestsQuery.data,
+    messages,
+    resolvedApprovalIds,
+    visibleProposals,
+  ])
   /**
    * Tells the agent to resume after a recorded approval. `agent.call` rejects
    * on a dropped socket or timeout; that used to escape as an unhandled
@@ -175,11 +225,10 @@ export function useToolApprovals({
         return
       }
 
-      setResolvedApprovalIds((current) => [
-        ...new Set([...current, ...group.approvalIds]),
-      ])
-
       if (group.permissionRequestId) {
+        setResolvedApprovalIds((current) => [
+          ...new Set([...current, ...group.approvalIds]),
+        ])
         // B1: REST recorded the approval, but the durable Think turn only
         // resumes when we tell the agent — otherwise the approved sub-agent
         // never spawns and the chat hangs "thinking".
@@ -199,14 +248,28 @@ export function useToolApprovals({
             approvalByToolCallId.set(toolCallId, approvalId)
           }
         })
-        const targetToolCallIds =
-          result.toolCallIds.length > 0 ? result.toolCallIds : group.toolCallIds
-        for (const toolCallId of targetToolCallIds) {
+        const deliveredApprovalIds: string[] = []
+        for (const toolCallId of result.toolCallIds) {
           const approvalId = approvalByToolCallId.get(toolCallId)
-          if (approvalId) {
-            addToolApprovalResponse?.({ id: approvalId, approved })
+          if (approvalId && addToolApprovalResponse) {
+            const delivered = await Promise.resolve()
+              .then(() => addToolApprovalResponse({ id: approvalId, approved }))
+              .then(
+                () => true,
+                () => false,
+              )
+            if (delivered) deliveredApprovalIds.push(approvalId)
+            else if (currentSessionRef.current === requestSessionId) {
+              setApprovalError(
+                'The decision was recorded. Reconnect and select the same decision to continue.',
+              )
+            }
           }
         }
+        if (currentSessionRef.current === requestSessionId)
+          setResolvedApprovalIds((current) => [
+            ...new Set([...current, ...deliveredApprovalIds]),
+          ])
       }
 
       releaseInFlight()
@@ -215,7 +278,28 @@ export function useToolApprovals({
     [addToolApprovalResponse, resolvedApprovalIds, runContinuation, sessionId],
   )
 
+  const resumeRecordedProposal = useCallback(
+    async (input: ContinuationInput) => {
+      const inFlight = inFlightToolCallIdsRef.current
+      const key = `garden-proposal:${input.permissionRequestId}`
+      if (inFlight.has(key)) return
+      inFlight.add(key)
+      setApprovalError(null)
+      setResolvedApprovalIds((current) => [
+        ...new Set([...current, input.permissionRequestId]),
+      ])
+      try {
+        await runContinuation(input)
+      } finally {
+        inFlight.delete(key)
+      }
+    },
+    [runContinuation],
+  )
+
   return {
+    recordedContinuations,
+    resumeRecordedProposal,
     approvalError,
     /** True when a recorded approval's agent resume failed and can be retried. */
     canRetryApprovalContinuation: failedContinuation !== null,

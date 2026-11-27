@@ -151,7 +151,7 @@ function getToolOutput(part: ChatUiMessage['parts'][number]) {
   return record.output ?? record.result
 }
 
-function getAgentProposalApproval(part: ChatUiMessage['parts'][number]) {
+export function getAgentProposalApproval(part: ChatUiMessage['parts'][number]) {
   const output = getToolOutput(part)
   if (!output || typeof output !== 'object') return null
   const record = output as Record<string, unknown>

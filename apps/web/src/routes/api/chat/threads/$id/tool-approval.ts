@@ -10,6 +10,7 @@ import {
 import { json } from '@/lib/server/control-plane'
 import { getThreadAccess } from '@/lib/server/chat-threads'
 import {
+  readChatToolDecisions,
   resolveConnectorWritePermissionRequests,
   teamOwnerApprovalScope,
 } from '@/lib/server/permission-request'
@@ -116,6 +117,37 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
           return json({ error: 'Tool call id is required' }, 400)
         }
 
+        const scope = {
+          db: access.db,
+          agentId: access.thread.agentId,
+          threadId: access.thread.id,
+          workspaceId: access.thread.workspaceId,
+        }
+        const existing = await readChatToolDecisions({
+          ...scope,
+          toolCallIds: [toolCallId],
+        })
+        if (existing.isErr())
+          return json({ error: existing.error.message }, existing.error.status)
+        const decision = existing.value.get(toolCallId)
+        if (decision?.approved || decision?.denied) {
+          if (approved !== decision.approved)
+            return json(
+              { error: 'Select the decision already recorded in the Inbox.' },
+              409,
+            )
+          return Response.json({ ok: true, toolCallIds: [toolCallId] })
+        }
+        if (decision && decision.count > 1) {
+          return json(
+            {
+              error:
+                'Review the connector requests in the Inbox. Then return here and select the recorded decision to continue.',
+            },
+            409,
+          )
+        }
+
         // Workspace approvers decide any call. A Team owner decides only calls
         // their Team's agent policy held; other Team owners get 403.
         const teamScopeResult = permission
@@ -124,6 +156,7 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
               workspaceId: access.thread.workspaceId,
               actorUserId: access.session.user.id,
               toolCallId,
+              threadId: access.thread.id,
             })
           : Result.ok(null)
         if (teamScopeResult.isErr()) {
@@ -139,6 +172,7 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
           actorUserId: access.session.user.id,
           db: access.db,
           toolCallId,
+          threadId: access.thread.id,
           ...(teamScopeResult.value ? { teamId: teamScopeResult.value } : {}),
           workspaceId: access.thread.workspaceId,
         })
@@ -177,10 +211,24 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
           })
         }
 
-        return Response.json({
-          ok: true,
+        const recorded = await readChatToolDecisions({
+          ...scope,
           toolCallIds: resolutionResult.value.toolCallIds,
         })
+        if (recorded.isErr())
+          return json({ error: recorded.error.message }, recorded.error.status)
+        const readyCalls = [...recorded.value.values()]
+          .filter((row) => (approved ? row.approved : row.denied))
+          .map((row) => row.call)
+        if (readyCalls.length === 0)
+          return json(
+            {
+              error:
+                'Review the remaining connector requests in the Inbox, then return here to continue.',
+            },
+            409,
+          )
+        return Response.json({ ok: true, toolCallIds: readyCalls })
       },
     },
   },

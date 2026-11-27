@@ -1,0 +1,5 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["chat-request-worker.ts", "chat-request-env.d.ts"],
+  "exclude": []
+}
