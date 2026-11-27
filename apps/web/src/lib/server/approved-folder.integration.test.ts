@@ -27,14 +27,12 @@ it.each(['Research', 'W'.repeat(51)])(
       .values({ id: workspaceId, name, slug: workspaceId })
     const expectedName =
       name.length <= 50 ? name : 'Approved workspace documents'
-    await db.db
-      .insert(schema.brainFolder)
-      .values({
-        workspaceId,
-        name: expectedName,
-        privacy: 'private',
-        createdBy: userId,
-      })
+    await db.db.insert(schema.brainFolder).values({
+      workspaceId,
+      name: expectedName,
+      privacy: 'private',
+      createdBy: userId,
+    })
     const saved = await Promise.all(
       Array.from({ length: 8 }, () =>
         getOrCreateApprovedFolder(db.db, workspaceId, userId),
