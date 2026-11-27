@@ -3,7 +3,7 @@ title: Known gaps
 description: The register of open Garden gaps, with the tracking issue, priority, and code evidence for each one.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-27
 ---
 
 This register lists gaps that are open in the code today. Each row names the code that shows the gap. Ideas that are not scheduled are on the [roadmap](../concepts/product/roadmap.md), not here.
@@ -14,8 +14,8 @@ FLO ids are Linear issues. The GitHub issues that tracked some of these gaps (#2
 
 | Area | Issue | Gap | Priority | Evidence | Last verified |
 | --- | --- | --- | --- | --- | --- |
-| Runtime | None | Workers AI chat requests keep only the text parts of a tool result. `workers-ai-provider` maps a `content` tool output to its text parts, so the `image-data` and `file-data` parts that `readDocument`, `read_attachment`, and `read_issue_attachment` emit reach the model on the OpenAI-compatible provider but not on the default Workers AI path. The tool metadata and note still arrive. | High | `convertToWorkersAIMessages` in `workers-ai-provider`; `documentReadModelOutput` in `packages/agent-runtime/src/chat-sub-agent-tools.ts`, `attachmentModelOutput` in `packages/agent-runtime/src/agent-tools/read-attachment.ts` | 2026-11-18 |
-| Runtime | None | Think compacts a serialized assistant message above 1,800,000 bytes, so accepted inline attachment text between that size and the 3.5 MiB cap is stored as a shortened preview. The read itself succeeds, but a follow-up turn works from the preview rather than the file. | Medium | compaction in `@cloudflare/think`; `attachmentModelOutput` in `packages/agent-runtime/src/agent-tools/read-attachment.ts` | 2026-11-18 |
+| Runtime | None | Workers AI chat requests keep only the text parts of a tool result. Garden moves authorized issue images into user image parts for the documented Kimi K2.5 vision model and returns an explicit unsupported result for other models. `readDocument` images still need this translation. PDF tool results still cannot be consumed by the Workers AI adapter; issue readers report that limit. Live model-specific proof for Kimi K2.5 is pending. | High | `convertToWorkersAIChatMessages` in `workers-ai-provider`; `withWorkersAiIssueImages` in `packages/agent-runtime/src/model.ts`; `documentReadModelOutput` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` | 2026-11-27 |
+| Runtime | None | Issue-run text attachments remain inline to preserve existing large-text reads. Think compacts a serialized assistant message above 1,800,000 bytes, so a later issue-run turn can receive a shortened preview. Chat attachment text uses a stored reference and reloads under current access checks. | Medium | compaction in `@cloudflare/think`; `attachmentModelOutput` in `packages/agent-runtime/src/agent-tools/read-attachment.ts` | 2026-11-27 |
 | Runtime | Security remediation | Qualify originating-run Brain grants and repeated write-back on the deployed runtime. Source checks and local tests do not prove deployment or recovery against retained production history. | High | `packages/agent-runtime/src/brain-run-authority.ts`, `brain-run-authorization.integration.test.ts` | 2026-11-10 |
 | Auth | Security remediation | Prove on the server that roles without permission cannot change permissions. A static test checks that every mutating route calls a permission check, but no test exercises each role against each route. Exploit details follow `SECURITY.md`. | Critical | `apps/web/src/routes/api/-authorization.test.ts` | 2026-11-03 |
 | Auth | FLO-30 | Garden checks workspace access in application code, but no test suite proves that one workspace cannot reach another through every product surface. | High | `resolveWorkspaceId` in `apps/web/src/lib/server/control-plane.ts` | 2026-11-03 |

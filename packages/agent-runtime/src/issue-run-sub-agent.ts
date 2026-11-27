@@ -6,6 +6,7 @@ import {
   type BrainRunOrigin,
 } from './brain-run-authority'
 import { ensureIssueBrainAudience } from './issue-brain-audience'
+import { issueIdFromFacetName } from './issue-agent-context'
 import type {
   ChatResponseResult,
   ToolCallContext,
@@ -15,6 +16,12 @@ import { hasToolCall, type ToolSet, type UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
+import {
+  runFailure,
+  runFailureEventPayloadSchema,
+  toPublicRunFailure,
+  type RunFailure,
+} from '@garden/core/runs/failure'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import {
   GARDEN_ANALYTICS_EVENTS,
@@ -182,13 +189,17 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   private brainInjectionAllowed = false
 
+  protected override runObjectId() {
+    return issueIdFromFacetName(this.name)
+  }
+
   protected override async verifyRunEntry(runId: string) {
     return (
       await verifyBrainRunBinding(this.env.HYPERDRIVE.connectionString, {
         runKind: 'issue',
         runId,
         runtimeName: this.parentPath.at(-1)?.name ?? '',
-        objectId: this.name,
+        objectId: this.runObjectId(),
       })
     )
       .map(() => undefined)
@@ -207,7 +218,12 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         const runtimeName = this.parentPath.at(-1)?.name ?? ''
         const binding = await verifyBrainRunBinding(
           this.env.HYPERDRIVE.connectionString,
-          { runKind: 'issue', runId, runtimeName, objectId: this.name },
+          {
+            runKind: 'issue',
+            runId,
+            runtimeName,
+            objectId: this.runObjectId(),
+          },
         )
         if (binding.isErr())
           throw this.runError({
@@ -218,7 +234,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
           runKind: 'issue',
           runId,
           runtimeName,
-          objectId: this.name,
+          objectId: this.runObjectId(),
           workspaceId: binding.value.context.workspaceId,
           agentId: binding.value.context.agentId,
           ownerUserId: binding.value.context.userId ?? null,
@@ -360,7 +376,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       runKind: 'issue',
       runId: loaded.runState.runId,
       runtimeName: this.parentPath.at(-1)?.name ?? '',
-      objectId: this.name,
+      objectId: this.runObjectId(),
       workspaceId: loaded.runState.workspaceId,
       agentId: loaded.runState.agentId,
       ownerUserId: loaded.runState.agentOwnerUserId,
@@ -374,7 +390,12 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     )
     if (read.isErr()) return Result.ok(undefined)
     const exposed = await this.ensureBrainGrantHistory(origin, 'brain_search')
-    if (exposed.isErr()) return exposed
+    // A grant revoked after the check above only withholds injection; the
+    // retained history stays verified and the run keeps its context.
+    if (exposed.isErr())
+      return exposed.error.code === 'history_unverified'
+        ? exposed
+        : Result.ok(undefined)
     this.brainInjectionAllowed = true
     return Result.ok(undefined)
   }
@@ -470,7 +491,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
   }
 
   protected override telemetryMetadata(runId: string) {
-    return { ...super.telemetryMetadata(runId), issueId: this.name }
+    return { ...super.telemetryMetadata(runId), issueId: this.runObjectId() }
   }
 
   protected turnStopConditions() {
@@ -551,7 +572,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             const origin: BrainRunOrigin = {
               runKind: 'issue',
               runtimeName: this.parentPath.at(-1)?.name ?? '',
-              objectId: this.name,
+              objectId: this.runObjectId(),
               runId: run.runId,
               workspaceId: run.workspaceId,
               agentId: run.agentId,
@@ -712,7 +733,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     if (outputAuthority.isErr()) {
       const closed = await this.forceCloseFailed(
         runId,
-        'brain_output_authority_denied',
+        runFailure('brain_output_authority_denied'),
       )
       if (closed.isErr())
         this.logRunWarning('close_failed', {
@@ -892,7 +913,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         runKind: 'issue',
         runId,
         runtimeName: this.parentPath.at(-1)?.name ?? '',
-        objectId: this.name,
+        objectId: this.runObjectId(),
       },
     )
     if (binding.isErr())
@@ -1117,7 +1138,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     ).mapError(
       (error) =>
         new IssueRunSubAgentError({
-          code: 'runtime_failed',
+          code: error.code ?? 'runtime_failed',
           message: error.message,
           cause: error,
         }),
@@ -1509,7 +1530,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       return Result.ok()
     }
 
-    return await this.forceCloseFailed(runId, 'no_resolution')
+    return await this.forceCloseFailed(runId, runFailure('no_resolution'))
   }
 
   private hasTerminalResolutionAction() {
@@ -1774,8 +1795,13 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   protected async forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
   ): Promise<ResultValue<void, RunSubAgentError>> {
+    this.logRunWarning('failed', {
+      runId,
+      cause: failure.cause,
+      ...(failure.diagnostic ? { diagnostic: failure.diagnostic } : {}),
+    })
     const runStateResult = await this.loadRunState(runId)
     if (runStateResult.isErr()) return Result.err(runStateResult.error)
 
@@ -1790,8 +1816,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             .update(schema.issueRun)
             .set({
               status: 'failed',
-              error: reason,
-              resultJson: { resolution: 'failed', reason },
+              error: failure.cause,
+              resultJson: {
+                resolution: 'failed',
+                failure: toPublicRunFailure(failure),
+              },
               finishedAt: now,
               updatedAt: now,
             })
@@ -1828,9 +1857,9 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       stream: 'system',
       level: 'error',
       message: 'Run failed',
-      payload: {
-        reason,
-      },
+      payload: runFailureEventPayloadSchema.parse({
+        failure: toPublicRunFailure(failure),
+      }),
     })
     if (eventResult.isErr()) {
       return Result.err(
@@ -1843,7 +1872,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     }
 
     this.captureRunProduct(run, GARDEN_ANALYTICS_EVENTS.issueRunFailed, {
-      reason,
+      cause: failure.cause,
     })
     return Result.ok()
   }

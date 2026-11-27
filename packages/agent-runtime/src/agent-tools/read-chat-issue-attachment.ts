@@ -9,8 +9,9 @@ import {
   attachmentKind,
   attachmentMetadata,
   attachmentModelOutput,
+  formatAttachmentSize,
   loadAttachmentBytes,
-  loadAttachmentText,
+  MAX_MODEL_ATTACHMENT_BYTES,
   type AttachmentFileStore,
   type AttachmentRow,
 } from './read-attachment'
@@ -39,7 +40,7 @@ type ReadChatIssueAttachmentContext = {
    * on a later turn without calling `execute`, so the policy decision has to be
    * asked again at the byte-read boundary instead of only when the turn starts.
    */
-  canUseTool?: (runtimeToolName: string) => boolean
+  canUseTool?: (runtimeToolName: string) => Promise<boolean> | boolean
 }
 
 type ScopedAttachment = {
@@ -48,10 +49,23 @@ type ScopedAttachment = {
 }
 
 /** Denial text for the current agent/Team policy, or null when the tool is allowed. */
-function policyDenial(context: ReadChatIssueAttachmentContext): string | null {
-  return context.canUseTool?.(CHAT_ATTACHMENT_TOOL_KEY) === false
-    ? 'Reading issue attachments is not allowed by the current agent or Team policy.'
-    : null
+async function policyDenial(
+  context: ReadChatIssueAttachmentContext,
+): Promise<string | null> {
+  if (!context.canUseTool) {
+    return 'Could not verify current attachment permissions.'
+  }
+  const decision = await Result.tryPromise({
+    try: async () => await context.canUseTool?.(CHAT_ATTACHMENT_TOOL_KEY),
+    catch: () => 'Could not verify current attachment permissions.',
+  })
+  return decision.match({
+    ok: (allowed) =>
+      allowed
+        ? null
+        : 'Reading issue attachments is not allowed by the current agent or Team policy.',
+    err: (message) => message,
+  })
 }
 
 /**
@@ -71,7 +85,7 @@ async function loadChatIssueAttachment(
     const db = getPooledDb(context.databaseUrl)
     const threadResult = Result.tryPromise({
       try: async () => {
-        const [thread] = await db
+        const threads = await db
           .select({
             workspaceId: schema.chatThread.workspaceId,
             ownerUserId: schema.chatThread.ownerUserId,
@@ -83,8 +97,8 @@ async function loadChatIssueAttachment(
               eq(schema.chatThread.runtimeKey, context.threadId),
             ),
           )
-          .limit(1)
-        return thread ?? null
+          .limit(2)
+        return threads.length === 1 ? threads[0] : null
       },
       catch: (cause) =>
         `Could not load chat workspace: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -125,24 +139,10 @@ async function loadChatIssueAttachment(
     })
     if (issueResult.isErr()) return Result.err(issueResult.error.message)
 
-    const issueCommentsResult = Result.tryPromise({
-      try: async () =>
-        await db
-          .select({ id: schema.issueComment.id })
-          .from(schema.issueComment)
-          .where(eq(schema.issueComment.issueId, issueResult.value.issue_id)),
-      catch: (cause) =>
-        `Could not load issue comments: ${cause instanceof Error ? cause.message : String(cause)}`,
-    })
-    const issueComments = yield* Result.await(issueCommentsResult)
-    const issueCommentIds = issueComments.map((comment) => comment.id)
-    const issueAttachmentScope =
-      issueCommentIds.length > 0
-        ? (or(
-            eq(schema.issueAttachment.issueId, issueResult.value.issue_id),
-            inArray(schema.issueAttachment.commentId, issueCommentIds),
-          ) ?? eq(schema.issueAttachment.issueId, issueResult.value.issue_id))
-        : eq(schema.issueAttachment.issueId, issueResult.value.issue_id)
+    const issueCommentIds = db
+      .select({ id: schema.issueComment.id })
+      .from(schema.issueComment)
+      .where(eq(schema.issueComment.issueId, issueResult.value.issue_id))
 
     const attachmentResult = Result.tryPromise({
       try: async () => {
@@ -153,7 +153,10 @@ async function loadChatIssueAttachment(
             and(
               eq(schema.issueAttachment.id, input.attachment_id),
               eq(schema.issueAttachment.workspaceId, thread.workspaceId),
-              issueAttachmentScope,
+              or(
+                eq(schema.issueAttachment.issueId, issueResult.value.issue_id),
+                inArray(schema.issueAttachment.commentId, issueCommentIds),
+              ),
             ),
           )
           .limit(1)
@@ -182,35 +185,39 @@ export function createReadChatIssueAttachmentTool(
 ) {
   return tool({
     description:
-      'Read an attachment on a Garden issue. First use read_issue, then provide its issue identifier and attachment id. Images and PDFs are passed privately to the model for inspection.',
+      'Read an attachment on a Garden issue. First use read_issue, then provide its issue identifier and attachment id. Image inspection requires a vision-capable model. If model output says inspection is unsupported, report that limit instead of describing the image. PDFs also require a model that supports file parts.',
     inputSchema: readChatIssueAttachmentInputSchema,
     execute: async (input) => {
-      const denial = policyDenial(context)
+      const denial = await policyDenial(context)
       if (denial) return { error: denial }
 
       const scopedResult = await loadChatIssueAttachment(context, input)
       if (scopedResult.isErr()) return { error: scopedResult.error }
 
       const { attachment } = scopedResult.value
-      let content: string | undefined
-      if (attachmentKind(attachment.contentType) === 'text') {
-        const textResult = await loadAttachmentText(context.files, attachment)
-        if (textResult.isErr()) return { error: textResult.error.message }
-        content = textResult.value
+      if (
+        attachmentKind(attachment.contentType) === 'text' &&
+        attachment.sizeBytes > MAX_MODEL_ATTACHMENT_BYTES
+      ) {
+        return {
+          error: `Read ${attachment.filename}, but it exceeds the ${formatAttachmentSize(MAX_MODEL_ATTACHMENT_BYTES)} inline model output limit.`,
+        }
       }
 
       return attachmentMetadata(attachment, {
         issueId: scopedResult.value.issueId,
-        ...(content === undefined ? {} : { content }),
       })
     },
-    toModelOutput: async ({ input, output }) =>
-      await attachmentModelOutput({
-        output,
+    toModelOutput: async ({ input, output }) => {
+      const denial = await policyDenial(context)
+      if (denial) return { type: 'error-text' as const, value: denial }
+      const replayOutput =
+        output && typeof output === 'object' && 'content' in output
+          ? { ...output, content: undefined }
+          : output
+      return await attachmentModelOutput({
+        output: replayOutput,
         resolveBytes: async () => {
-          const denial = policyDenial(context)
-          if (denial) return Result.err(denial)
-
           const parsedInput =
             readChatIssueAttachmentInputSchema.safeParse(input)
           if (!parsedInput.success) {
@@ -222,6 +229,8 @@ export function createReadChatIssueAttachmentTool(
           )
           if (scopedResult.isErr()) return Result.err(scopedResult.error)
           const { attachment } = scopedResult.value
+          const currentDenial = await policyDenial(context)
+          if (currentDenial) return Result.err(currentDenial)
           const bytesResult = await loadAttachmentBytes(
             context.files,
             attachment,
@@ -231,6 +240,7 @@ export function createReadChatIssueAttachmentTool(
           }
           return Result.ok({ attachment, bytes: bytesResult.value })
         },
-      }),
+      })
+    },
   })
 }

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Result } from 'better-result'
+import { sql } from 'drizzle-orm'
+import { PgDialect } from 'drizzle-orm/pg-core'
 import * as schema from '@garden/db/schema'
 
 const { getPooledDbMock, readIssueMock } = vi.hoisted(() => ({
@@ -22,12 +24,13 @@ const ownerUserId = 'member-1'
 
 function createDbMock(args: {
   thread?: { workspaceId: string; ownerUserId: string } | null
+  threads?: Array<{ workspaceId: string; ownerUserId: string }>
   membership?: { id: string } | null
   comments?: Array<{ id: string }>
   attachment?: typeof schema.issueAttachment.$inferSelect | null
 }) {
   const selectedRows = new Map<unknown, unknown>([
-    [schema.chatThread, args.thread ? [args.thread] : []],
+    [schema.chatThread, args.threads ?? (args.thread ? [args.thread] : [])],
     [
       schema.member,
       args.membership === undefined
@@ -39,7 +42,9 @@ function createDbMock(args: {
     [schema.issueComment, args.comments ?? []],
     [schema.issueAttachment, args.attachment ? [args.attachment] : []],
   ])
+  const attachmentWhere = vi.fn()
   const db = {
+    attachmentWhere,
     select: vi.fn(() => {
       let table: unknown
       const rows = () => selectedRows.get(table) ?? []
@@ -48,8 +53,12 @@ function createDbMock(args: {
           table = selectedTable
           return builder
         },
-        where: () =>
-          table === schema.issueComment ? Promise.resolve(rows()) : builder,
+        where: (condition: unknown) => {
+          if (table === schema.issueAttachment) attachmentWhere(condition)
+          return builder
+        },
+        getSQL: () =>
+          sql`select id from issue_comment where issue_id = ${issueId}`,
         limit: async () => rows(),
       }
       return builder
@@ -75,9 +84,7 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
  */
 function createFiles(bytes: Uint8Array | null) {
   const get = vi.fn(async () =>
-    bytes === null
-      ? null
-      : { arrayBuffer: async () => bytes.buffer as ArrayBuffer },
+    bytes === null ? null : { arrayBuffer: async () => bytes.slice().buffer },
   )
   return { get } satisfies AttachmentFileStore
 }
@@ -119,6 +126,7 @@ describe('chat read_issue_attachment tool', () => {
       databaseUrl: 'postgres://test',
       threadId,
       files,
+      canUseTool: () => true,
     })
 
     const execute = attachmentTool.execute
@@ -156,7 +164,7 @@ describe('chat read_issue_attachment tool', () => {
     )
   })
 
-  it('returns text attachments inline instead of a model part', async () => {
+  it('resolves text attachments from a small stored reference', async () => {
     const db = createDbMock({
       thread: { workspaceId, ownerUserId },
       comments: [],
@@ -174,6 +182,7 @@ describe('chat read_issue_attachment tool', () => {
       databaseUrl: 'postgres://test',
       threadId,
       files,
+      canUseTool: () => true,
     })
 
     const execute = attachmentTool.execute
@@ -190,14 +199,97 @@ describe('chat read_issue_attachment tool', () => {
     expect(output).toMatchObject({
       kind: 'text',
       issue_id: issueId,
-      content: 'hello',
     })
+    expect(output).not.toHaveProperty('content')
     expect(
       await toModelOutput({ input, output, toolCallId: 'tool-call-2' }),
     ).toEqual({
       type: 'text',
       value: 'hello',
     })
+  })
+
+  it('keeps the end of accepted text available after history replay', async () => {
+    const content = `${'a'.repeat(1_900_000)}END-MARKER`
+    const bytes = new TextEncoder().encode(content)
+    getPooledDbMock.mockReturnValue(
+      createDbMock({
+        thread: { workspaceId, ownerUserId },
+        attachment: {
+          ...imageAttachment,
+          issueId,
+          commentId: null,
+          contentType: 'text/plain',
+          sizeBytes: bytes.byteLength,
+        },
+      }) as never,
+    )
+    const files = createFiles(bytes)
+    const attachmentTool = createReadChatIssueAttachmentTool({
+      databaseUrl: 'postgres://test',
+      threadId,
+      files,
+      canUseTool: () => true,
+    })
+    const execute = attachmentTool.execute
+    const toModelOutput = attachmentTool.toModelOutput
+    if (!execute || !toModelOutput)
+      throw new Error('Attachment tool is incomplete.')
+    const output = await execute(input, {
+      toolCallId: 'tool-call-text',
+      messages: [],
+    })
+    if (isAsyncIterable(output))
+      throw new Error('Attachment tool streamed its output.')
+    expect(JSON.stringify(output).length).toBeLessThan(1_000)
+    const replay = await toModelOutput({
+      input,
+      output,
+      toolCallId: 'tool-call-text',
+    })
+    expect(replay).toEqual({ type: 'text', value: content })
+  })
+
+  it('re-checks issue access for older stored text results', async () => {
+    getPooledDbMock.mockReturnValue(
+      createDbMock({
+        thread: { workspaceId, ownerUserId },
+        attachment: {
+          ...imageAttachment,
+          issueId,
+          commentId: null,
+          contentType: 'text/plain',
+        },
+      }) as never,
+    )
+    const files = createFiles(Uint8Array.from([104, 101, 108, 108, 111]))
+    const attachmentTool = createReadChatIssueAttachmentTool({
+      databaseUrl: 'postgres://test',
+      threadId,
+      files,
+      canUseTool: () => true,
+    })
+    const execute = attachmentTool.execute
+    const toModelOutput = attachmentTool.toModelOutput
+    if (!execute || !toModelOutput)
+      throw new Error('Attachment tool is incomplete.')
+    const output = await execute(input, {
+      toolCallId: 'tool-call-old-text',
+      messages: [],
+    })
+    if (isAsyncIterable(output))
+      throw new Error('Attachment tool streamed its output.')
+    readIssueMock.mockResolvedValue(
+      Result.err(new Error('Issue not found.')) as never,
+    )
+    expect(
+      await toModelOutput({
+        input,
+        output: { ...output, content: 'old secret' },
+        toolCallId: 'tool-call-old-text',
+      }),
+    ).toEqual({ type: 'error-text', value: 'Issue not found.' })
+    expect(files.get).not.toHaveBeenCalled()
   })
 
   it('rejects image bytes above the shared inline model output cap', async () => {
@@ -212,6 +304,7 @@ describe('chat read_issue_attachment tool', () => {
       databaseUrl: 'postgres://test',
       threadId,
       files,
+      canUseTool: () => true,
     })
 
     const execute = attachmentTool.execute
@@ -252,6 +345,7 @@ describe('chat read_issue_attachment tool', () => {
       databaseUrl: 'postgres://test',
       threadId,
       files,
+      canUseTool: () => true,
     })
 
     const execute = attachmentTool.execute
@@ -278,6 +372,7 @@ describe('chat read_issue_attachment tool', () => {
       databaseUrl: 'postgres://test',
       threadId,
       files,
+      canUseTool: () => true,
     })
 
     const execute = attachmentTool.execute
@@ -291,6 +386,13 @@ describe('chat read_issue_attachment tool', () => {
       error: 'Attachment not found on the requested issue.',
     })
     expect(files.get).not.toHaveBeenCalled()
+    const predicate = db.attachmentWhere.mock.calls[0]?.[0]
+    expect(predicate).toBeDefined()
+    const query = new PgDialect().sqlToQuery(predicate)
+    expect(query.sql).toContain('"issue_attachment"."workspace_id"')
+    expect(query.sql).toContain('"issue_attachment"."issue_id"')
+    expect(query.sql).toContain('"issue_attachment"."comment_id"')
+    expect(query.params).toEqual([attachmentId, workspaceId, issueId, issueId])
   })
 
   it('denies the read when the chat owner no longer belongs to the workspace', async () => {
@@ -306,6 +408,7 @@ describe('chat read_issue_attachment tool', () => {
       databaseUrl: 'postgres://test',
       threadId,
       files,
+      canUseTool: () => true,
     })
 
     const execute = attachmentTool.execute
@@ -318,6 +421,32 @@ describe('chat read_issue_attachment tool', () => {
     expect(output).toEqual({
       error: 'Chat owner no longer belongs to this workspace.',
     })
+    expect(files.get).not.toHaveBeenCalled()
+  })
+
+  it('denies an ambiguous thread id or runtime key', async () => {
+    getPooledDbMock.mockReturnValue(
+      createDbMock({
+        threads: [
+          { workspaceId, ownerUserId },
+          { workspaceId: 'workspace-2', ownerUserId: 'member-2' },
+        ],
+        attachment: imageAttachment,
+      }) as never,
+    )
+    const files = createFiles(Uint8Array.from([137, 80, 78, 71]))
+    const attachmentTool = createReadChatIssueAttachmentTool({
+      databaseUrl: 'postgres://test',
+      threadId,
+      files,
+      canUseTool: () => true,
+    })
+    const execute = attachmentTool.execute
+    if (!execute) throw new Error('Attachment tool has no execute function.')
+    expect(
+      await execute(input, { toolCallId: 'tool-call-ambiguous', messages: [] }),
+    ).toEqual({ error: 'Chat thread not found.' })
+    expect(readIssueMock).not.toHaveBeenCalled()
     expect(files.get).not.toHaveBeenCalled()
   })
 
@@ -339,6 +468,7 @@ describe('chat read_issue_attachment tool', () => {
       databaseUrl: 'postgres://test',
       threadId,
       files,
+      canUseTool: () => true,
     })
 
     const execute = attachmentTool.execute
@@ -355,7 +485,7 @@ describe('chat read_issue_attachment tool', () => {
     expect(files.get).not.toHaveBeenCalled()
   })
 
-  it('re-checks the current tool policy before reloading bytes', async () => {
+  it('re-checks live policy when replaying a successful image read', async () => {
     const db = createDbMock({
       thread: { workspaceId, ownerUserId },
       comments: [{ id: commentId }],
@@ -363,7 +493,10 @@ describe('chat read_issue_attachment tool', () => {
     })
     getPooledDbMock.mockReturnValue(db as never)
     const files = createFiles(Uint8Array.from([137, 80, 78, 71]))
-    const canUseTool = vi.fn(() => false)
+    const canUseTool = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false)
     const attachmentTool = createReadChatIssueAttachmentTool({
       databaseUrl: 'postgres://test',
       threadId,
@@ -380,10 +513,7 @@ describe('chat read_issue_attachment tool', () => {
     const toModelOutput = attachmentTool.toModelOutput
     if (!toModelOutput) throw new Error('Attachment tool has no model output.')
 
-    expect(output).toEqual({
-      error:
-        'Reading issue attachments is not allowed by the current agent or Team policy.',
-    })
+    expect(output).toMatchObject({ kind: 'image' })
     if (isAsyncIterable(output))
       throw new Error('Attachment tool streamed its output.')
     expect(
@@ -395,5 +525,97 @@ describe('chat read_issue_attachment tool', () => {
     })
     expect(canUseTool).toHaveBeenCalledWith('read_issue_attachment')
     expect(files.get).not.toHaveBeenCalled()
+  })
+
+  it('denies access when no live permission checker is supplied', async () => {
+    const files = createFiles(Uint8Array.from([137, 80, 78, 71]))
+    const attachmentTool = createReadChatIssueAttachmentTool({
+      databaseUrl: 'postgres://test',
+      threadId,
+      files,
+    })
+    const execute = attachmentTool.execute
+    if (!execute) throw new Error('Attachment tool has no execute function.')
+    expect(
+      await execute(input, { toolCallId: 'tool-call-no-policy', messages: [] }),
+    ).toEqual({ error: 'Could not verify current attachment permissions.' })
+    expect(files.get).not.toHaveBeenCalled()
+  })
+
+  it('checks policy again after issue lookup and before the file read', async () => {
+    getPooledDbMock.mockReturnValue(
+      createDbMock({
+        thread: { workspaceId, ownerUserId },
+        comments: [{ id: commentId }],
+        attachment: imageAttachment,
+      }) as never,
+    )
+    const files = createFiles(Uint8Array.from([137, 80, 78, 71]))
+    const canUseTool = vi
+      .fn()
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValue(false)
+    const attachmentTool = createReadChatIssueAttachmentTool({
+      databaseUrl: 'postgres://test',
+      threadId,
+      files,
+      canUseTool,
+    })
+    const execute = attachmentTool.execute
+    const toModelOutput = attachmentTool.toModelOutput
+    if (!execute || !toModelOutput)
+      throw new Error('Attachment tool is incomplete.')
+    const output = await execute(input, {
+      toolCallId: 'tool-call-race',
+      messages: [],
+    })
+    if (isAsyncIterable(output))
+      throw new Error('Attachment tool streamed its output.')
+    expect(
+      await toModelOutput({ input, output, toolCallId: 'tool-call-race' }),
+    ).toEqual({
+      type: 'error-text',
+      value:
+        'Reading issue attachments is not allowed by the current agent or Team policy.',
+    })
+    expect(files.get).not.toHaveBeenCalled()
+  })
+
+  it('replays a successful image read while live policy allows it', async () => {
+    getPooledDbMock.mockReturnValue(
+      createDbMock({
+        thread: { workspaceId, ownerUserId },
+        comments: [{ id: commentId }],
+        attachment: imageAttachment,
+      }) as never,
+    )
+    const files = createFiles(Uint8Array.from([137, 80, 78, 71]))
+    const attachmentTool = createReadChatIssueAttachmentTool({
+      databaseUrl: 'postgres://test',
+      threadId,
+      files,
+      canUseTool: vi.fn(async () => true),
+    })
+    const execute = attachmentTool.execute
+    const toModelOutput = attachmentTool.toModelOutput
+    if (!execute || !toModelOutput)
+      throw new Error('Attachment tool is incomplete.')
+    const output = await execute(input, {
+      toolCallId: 'tool-call-8',
+      messages: [],
+    })
+    if (isAsyncIterable(output))
+      throw new Error('Attachment tool streamed its output.')
+    const modelOutput = await toModelOutput({
+      input,
+      output,
+      toolCallId: 'tool-call-8',
+    })
+    expect(modelOutput).toMatchObject({
+      type: 'content',
+      value: [{ type: 'text' }, { type: 'image-data', data: 'iVBORw==' }],
+    })
+    expect(files.get).toHaveBeenCalledWith(imageAttachment.r2Key)
   })
 })

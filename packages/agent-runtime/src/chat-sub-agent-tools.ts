@@ -97,7 +97,7 @@ type ChatSubAgentToolsInput = {
    * that load bytes from storage use it at the byte-read boundary because Think
    * can rebuild a stored result on a later turn without calling `execute`.
    */
-  canUseTool?: (runtimeToolName: string) => boolean
+  canUseTool?: (runtimeToolName: string) => Promise<boolean> | boolean
   cancelIssueRun?: (input: { issueId: string; runId: string }) => Promise<void>
   brain: {
     helixUrl?: string

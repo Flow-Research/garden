@@ -15,9 +15,8 @@ import {
 } from './issue-run-tool-context'
 
 /**
- * Shared inline model payload cap. Every attachment reader (issue runs and
- * chats) returns a tool error above this budget instead of truncating bytes, so
- * limits only ever change here.
+ * Chat attachments and issue-run image/PDF parts use this model payload cap.
+ * Issue-run text keeps its earlier unlimited behavior.
  */
 export const MAX_MODEL_ATTACHMENT_BYTES = 3.5 * 1024 * 1024
 
@@ -64,7 +63,12 @@ function isTextMediaType(mediaType: string) {
  * model-readable file type only has to be taught here.
  */
 export function attachmentKind(mediaType: string) {
-  if (mediaType.startsWith('image/')) return 'image'
+  if (
+    ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mediaType)
+  ) {
+    return 'image'
+  }
+  if (mediaType.startsWith('image/')) return 'binary'
   if (mediaType === 'application/pdf') return 'file'
   if (isTextMediaType(mediaType)) return 'text'
   return 'binary'
@@ -125,13 +129,11 @@ async function loadIssueAttachment(args: {
 export async function loadAttachmentBytes(
   files: AttachmentFileStore,
   attachment: AttachmentRow,
+  maxBytes = MAX_MODEL_ATTACHMENT_BYTES,
 ): Promise<Result<Uint8Array, IssueRunToolError>> {
   return await Result.gen(async function* () {
-    // Reject on the stored size first: uploads accept far more than the inline
-    // cap, so reading the object would buffer megabytes in Worker memory only to
-    // return the same error. The post-read byte check stays, because the stored
-    // size and the object bytes can diverge.
-    if (attachment.sizeBytes > MAX_MODEL_ATTACHMENT_BYTES) {
+    // Reject on the stored size before reading an object that has a finite cap.
+    if (attachment.sizeBytes > maxBytes) {
       return Result.err(
         new IssueRunToolError({
           code: 'invalid_input',
@@ -176,20 +178,18 @@ export async function loadAttachmentBytes(
 }
 
 /**
- * Loads a text attachment and enforces the inline cap *before* decoding. Without
- * this the text path returned a whole oversized file: `attachmentModelOutput`
- * short-circuits on `content`, so the image/PDF cap never applied. Both the
- * issue-run and chat readers use this, so small and exactly-at-cap files still
- * work and only larger ones become a tool error.
+ * Loads text under the caller's size limit before decoding it. Issue runs pass
+ * Infinity to retain their existing large-text reads.
  */
 export async function loadAttachmentText(
   files: AttachmentFileStore,
   attachment: AttachmentRow,
+  maxBytes = MAX_MODEL_ATTACHMENT_BYTES,
 ): Promise<Result<string, IssueRunToolError>> {
-  const bytesResult = await loadAttachmentBytes(files, attachment)
+  const bytesResult = await loadAttachmentBytes(files, attachment, maxBytes)
   if (bytesResult.isErr()) return Result.err(bytesResult.error)
   const bytes = bytesResult.value
-  if (bytes.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
+  if (bytes.byteLength > maxBytes) {
     return Result.err(
       new IssueRunToolError({
         code: 'invalid_input',
@@ -231,7 +231,7 @@ export function attachmentMetadata(
 }
 
 /**
- * Converts successful image/PDF metadata into AI SDK private content parts.
+ * Converts attachment metadata into model text or private image/PDF parts.
  * `resolveBytes` re-resolves and loads the bytes under the calling tool's own
  * access scope, so issue-run and chat readers share the cap, note text, and
  * part shape without sharing a scope.
@@ -250,17 +250,13 @@ export async function attachmentModelOutput(args: {
     return { type: 'error-text' as const, value: output.error }
   }
   if (typeof output.content === 'string') {
-    if (
-      Buffer.byteLength(output.content, 'utf8') > MAX_MODEL_ATTACHMENT_BYTES
-    ) {
-      return {
-        type: 'error-text' as const,
-        value: `Attachment text exceeds the ${formatAttachmentSize(MAX_MODEL_ATTACHMENT_BYTES)} inline model output limit.`,
-      }
-    }
     return { type: 'text' as const, value: output.content }
   }
-  if (output.kind !== 'image' && output.kind !== 'file') {
+  if (
+    output.kind !== 'image' &&
+    output.kind !== 'file' &&
+    output.kind !== 'text'
+  ) {
     return { type: 'json' as const, value: output as never }
   }
 
@@ -269,10 +265,23 @@ export async function attachmentModelOutput(args: {
     return { type: 'error-text' as const, value: resolution.error }
   }
   const { attachment, bytes } = resolution.value
+  if (attachmentKind(attachment.contentType) !== output.kind) {
+    return {
+      type: 'error-text' as const,
+      value: `Attachment type ${attachment.contentType} is not supported for this model output.`,
+    }
+  }
   if (bytes.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
     return {
       type: 'error-text' as const,
       value: `Read ${attachment.filename}, but it exceeds the ${formatAttachmentSize(MAX_MODEL_ATTACHMENT_BYTES)} inline model output limit.`,
+    }
+  }
+
+  if (output.kind === 'text') {
+    return {
+      type: 'text' as const,
+      value: Buffer.from(bytes).toString('utf8'),
     }
   }
 
@@ -352,7 +361,7 @@ async function issueAttachmentModelOutput(args: {
 export function createReadAttachmentTool(context: IssueRunToolContext) {
   return tool({
     description:
-      'Read an attachment on the current issue. Use this after the issue body or comments mention an attachment id, especially for screenshots/images. Images and PDFs are lazily loaded into the model with private image-data/file-data parts.',
+      'Read an attachment on the current issue. Use this after the issue body or comments mention an attachment id, especially for screenshots/images. Image inspection requires a vision-capable model. If model output says inspection is unsupported, report that limit instead of describing the image. PDFs also require a model that supports file parts.',
     inputSchema: readAttachmentInputSchema,
     execute: async ({ attachment_id }) => {
       const attachmentResult = await loadIssueAttachment({
@@ -367,6 +376,7 @@ export function createReadAttachmentTool(context: IssueRunToolContext) {
         const textResult = await loadAttachmentText(
           context.env.FILES,
           attachment,
+          Number.POSITIVE_INFINITY,
         )
         if (textResult.isErr()) return toolErrorResult(textResult.error)
         return toolOkResult(

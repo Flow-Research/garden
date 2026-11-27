@@ -14,14 +14,23 @@ import {
 import { extractExecutorToolRefsFromInput } from './executor-codemode'
 import { EXECUTOR_TOOL_KEY_PREFIX } from './runtime-mcp-controller'
 
+const GITHUB_HOSTED_TOOL_PREFIX = 'tool_githubmcp_'
+
 /**
  * Splits a runtime tool name such as `tool_github_add_issue_comment` into its
- * connector and bare tool name. Returns null for non-connector tools.
+ * connector and bare tool name. Returns null for non-connector tools. Hosted
+ * GitHub MCP tools have no registry entry and are governed as `github`.
  */
 export function connectorToolForName(runtimeToolName: string): {
   connectorId: string
   toolName: string
 } | null {
+  if (runtimeToolName.startsWith(GITHUB_HOSTED_TOOL_PREFIX)) {
+    return {
+      connectorId: 'github',
+      toolName: runtimeToolName.slice(GITHUB_HOSTED_TOOL_PREFIX.length),
+    }
+  }
   for (const connector of connectorRegistry) {
     const prefix = `tool_${connector.id.replace(/-/g, '')}_`
     if (runtimeToolName.startsWith(prefix)) {

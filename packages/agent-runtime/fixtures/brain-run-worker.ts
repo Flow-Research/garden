@@ -6,6 +6,7 @@ import { RunWorkflow } from '../src/run-workflow'
 import { RunSubAgentBase } from '../src/run-sub-agent-base'
 import { Effect } from 'effect'
 import { Result } from 'better-result'
+import { runFailure, type RunFailure } from '@garden/core/runs/failure'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { Brain } from '@garden/brain/services/brain'
@@ -134,6 +135,20 @@ for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
   })
 }
 
+// A loopback barrier inside preparation can revoke a retained grant after the
+// first history check and before the exposure check.
+for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
+  const ensure = Reflect.get(facet.prototype, 'ensureBrainGrantHistory')
+  Reflect.set(facet.prototype, 'ensureBrainGrantHistory', async function (this: object, origin: unknown, exposeTool?: string) {
+    if (exposeTool === 'brain_search') {
+      const env = fixtureEnvironment(this)
+      const response = await fetch(`${env.GARDEN_MODEL_BASE_URL}/before-exposure`, { method: 'POST' })
+      if (!response.ok) throw new Error('Exposure authority barrier failed')
+    }
+    return ensure.call(this, origin, exposeTool)
+  })
+}
+
 // An actual outward tool in the native dispatch pipeline. It has no production
 // counterpart and publishes only to this suite's local synthetic endpoint.
 for (const facet of [IssueRunSubAgent, AutomationRunSubAgent]) {
@@ -229,6 +244,7 @@ export default {
         '/writeback-origin',
         '/automation-resume',
         '/history',
+        '/history-read',
         '/chat',
         '/resume',
         '/writeback',
@@ -242,7 +258,7 @@ export default {
         ? await getSubAgentByName(parent,IssueRunSubAgent,input.objectId)
         : await getSubAgentByName(parent,AutomationRunSubAgent,input.objectId)
       const result = await Result.tryPromise(() => input.method === 'fail'
-        ? facet.failWorkflowTurn({runId:input.runId,reason:'synthetic-requested-failure'})
+        ? facet.failWorkflowTurn({runId:input.runId,failure:runFailure('unknown')})
         : facet.requestCancel({runId:input.runId}))
       return Response.json({ok:result.isOk()})
     }
@@ -271,6 +287,7 @@ export default {
         configure: () => undefined,
         session: { getHistory: async () => [] },
         verifyRunEntry(runId: string) { return Reflect.get(facet.prototype, 'verifyRunEntry').call(this, runId) },
+        runObjectId() { return Reflect.get(facet.prototype, 'runObjectId').call(this) },
         runConfig() { return Reflect.get(facet.prototype, 'runConfig').call(this) },
         runError(fields: unknown) { return Reflect.get(facet.prototype, 'runError').call(this, fields) },
         loadTurnContext(runId: string) { return Reflect.get(facet.prototype, 'loadTurnContext').call(this, runId) },
@@ -434,7 +451,7 @@ export default {
         env: { RUN_WORKFLOW: { get: async () => ({ sendEvent: async (event: unknown) => { events.push(event) } }) } },
         runConfig: () => ({ kind: 'fixture', logger: {} }), runLogFields: () => null,
         authorizeFinalObservation: async () => input.mode === 'allowed' ? Result.ok(undefined) : Result.err(new Error('Denied')),
-        forceCloseFailed: async (_runId: string, reason: string) => { reasons.push(reason); return Result.ok(undefined) },
+        forceCloseFailed: async (_runId: string, failure: RunFailure) => { reasons.push(failure.cause); return Result.ok(undefined) },
         closeFailedRun(runId: string, reason: string) { return Reflect.get(base, 'closeFailedRun').call(this, runId, reason) },
         failureReasonForOutput(runId: string, reason: string) { return Reflect.get(base, 'failureReasonForOutput').call(this, runId, reason) },
         inspectSubmission: async () => {
@@ -730,6 +747,7 @@ export default {
         runKind: 'issue' | 'automation'
         runId: string
         originObjectId: string
+        originGeneration?: number
         workspaceId: string
         ownerUserId: string
       }>()
@@ -743,6 +761,7 @@ export default {
         try: () =>
           facet.runWriteBack({
             ...input,
+            originGeneration: input.originGeneration ?? 0,
             agentId: input.claimedAgentId,
             summary: 'Origin binding probe.',
           }),
@@ -796,6 +815,7 @@ export default {
           ...input,
           runKind: 'automation',
           originObjectId: input.runId,
+          originGeneration: 0,
           summary: 'Inspect G06 knowledge. No new durable claim is present.',
         }),
       )
@@ -805,13 +825,22 @@ export default {
       issueId: string
       runId: string
       threadId?: string
+      facetName?: string
     }>()
     const agent = await getAgentByName(env.AgentDO, input.agentId)
+    if (url.pathname === '/history-read') {
+      const facet = await getSubAgentByName(
+        agent,
+        IssueRunSubAgent,
+        input.facetName ?? input.issueId,
+      )
+      return Response.json({ messages: await facet.getMessages() })
+    }
     if (url.pathname === '/history') {
       const facet = await getSubAgentByName(
         agent,
         IssueRunSubAgent,
-        input.issueId,
+        input.facetName ?? input.issueId,
       )
       await facet.addMessages([
         {

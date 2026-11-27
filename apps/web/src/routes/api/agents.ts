@@ -1,25 +1,24 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { DEFAULT_AGENT_PERMISSIONS } from '@garden/core/agents/permissions'
-import { bindExistingCapabilitiesToAgent } from '@/lib/server/agent-bindings'
 import {
   createAgentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/agents'
-import { requireReturnedRow, schema } from '@/lib/server/db'
-import {
-  badRequest,
-  requireWorkspaceContext,
-  toAgent,
-} from '@/lib/server/control-plane'
+import { badRequest, requireWorkspaceContext } from '@/lib/server/control-plane'
 import {
   requireWorkspacePermission,
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
+import { createWorkspaceAgent } from '@/lib/server/agents/create-service'
+import { listWorkspaceAgents } from '@/lib/server/agents/list-service'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 
+/**
+ * `/api/agents` list/create. Auth + Zod + permission here; SQL and grant
+ * seeding live in agents services / queries (no Drizzle in this route).
+ * See `docs/decisions/2026-11-09-api-layering.md`.
+ */
 export const Route = createFileRoute('/api/agents')({
   server: {
     handlers: {
@@ -31,11 +30,8 @@ export const Route = createFileRoute('/api/agents')({
         if (workspaceContext instanceof Response) return workspaceContext
         const { workspaceId } = workspaceContext
         const db = await appContext.db()
-        const rows = await db
-          .select()
-          .from(schema.agent)
-          .where(eq(schema.agent.workspaceId, workspaceId))
-        return Response.json(rows.map(toAgent))
+        const agents = await listWorkspaceAgents(db, workspaceId)
+        return Response.json(agents)
       },
       POST: async ({ context, request }) => {
         const appContext = requireAppRequestContext(context)
@@ -58,45 +54,32 @@ export const Route = createFileRoute('/api/agents')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const agentId = crypto.randomUUID()
-        const agentValues = {
-          id: agentId,
+        const createResult = await createWorkspaceAgent({
+          db: await appContext.db(),
           workspaceId,
           ownerUserId: session.user.id,
           name: body.name,
-          roleTitle:
-            typeof body.description === 'string' ? body.description : null,
-          instructions:
-            typeof body.instructions === 'string' ? body.instructions : null,
-          persona:
-            body.runtime_config && typeof body.runtime_config === 'object'
-              ? JSON.stringify(body.runtime_config)
-              : null,
-          status: 'active',
-          hostName: agentId,
-          permissions: DEFAULT_AGENT_PERMISSIONS,
-        } as typeof schema.agent.$inferInsert
-        const db = await appContext.db()
-        const agent = requireReturnedRow(
-          await db.insert(schema.agent).values(agentValues).returning(),
-          'agent',
-        )
-        await bindExistingCapabilitiesToAgent({
-          db,
-          schema,
-          agentId: agent.id,
-          grantedBy: session.user.id,
+          description: body.description,
+          instructions: body.instructions,
+          runtimeConfig: body.runtime_config,
         })
+        if (createResult.isErr()) {
+          return Response.json(
+            { error: createResult.error.message },
+            { status: createResult.error.status },
+          )
+        }
+
         capturePostHogEvent(appContext, {
           distinctId: session.user.id,
           event: GARDEN_ANALYTICS_EVENTS.agentCreated,
           workspaceId,
           properties: {
-            agent_id: agent.id,
+            agent_id: createResult.value.id,
             agent_name: body.name,
           },
         })
-        return Response.json(toAgent(agent), { status: 201 })
+        return Response.json(createResult.value, { status: 201 })
       },
     },
   },

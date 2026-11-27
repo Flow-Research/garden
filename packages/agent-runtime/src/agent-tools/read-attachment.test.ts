@@ -27,9 +27,7 @@ const attachment = {
 function createFiles(bytes: Uint8Array | null) {
   return {
     get: vi.fn(async () =>
-      bytes === null
-        ? null
-        : { arrayBuffer: async () => bytes.buffer as ArrayBuffer },
+      bytes === null ? null : { arrayBuffer: async () => bytes.slice().buffer },
     ),
   } satisfies AttachmentFileStore
 }
@@ -37,6 +35,8 @@ function createFiles(bytes: Uint8Array | null) {
 describe('attachment helpers shared by issue runs and chats', () => {
   it('maps stored media types onto transcript kinds', () => {
     expect(attachmentKind('image/png')).toBe('image')
+    expect(attachmentKind('image/svg+xml')).toBe('binary')
+    expect(attachmentKind('image/tiff')).toBe('binary')
     expect(attachmentKind('application/pdf')).toBe('file')
     expect(attachmentKind('text/markdown')).toBe('text')
     expect(attachmentKind('application/json')).toBe('text')
@@ -94,6 +94,18 @@ describe('loadAttachmentText', () => {
     expect(files.get).not.toHaveBeenCalled()
   })
 
+  it('keeps large issue-run text reads available', async () => {
+    const bytes = new Uint8Array(MAX_MODEL_ATTACHMENT_BYTES + 1).fill(97)
+    const result = await loadAttachmentText(
+      createFiles(bytes),
+      { ...attachment, sizeBytes: bytes.byteLength },
+      Number.POSITIVE_INFINITY,
+    )
+    expect(result.isOk()).toBe(true)
+    if (result.isErr()) throw new Error(result.error.message)
+    expect(result.value).toHaveLength(bytes.byteLength)
+  })
+
   it('reports a missing stored object', async () => {
     const result = await loadAttachmentText(createFiles(null), attachment)
 
@@ -118,7 +130,7 @@ describe('attachmentModelOutput', () => {
     ).toEqual({ type: 'text', value: 'hello' })
   })
 
-  it('rejects oversized inline text instead of forwarding it', async () => {
+  it('keeps legacy large issue-run text in model output', async () => {
     expect(
       await attachmentModelOutput({
         output: {
@@ -128,8 +140,8 @@ describe('attachmentModelOutput', () => {
         resolveBytes,
       }),
     ).toEqual({
-      type: 'error-text',
-      value: 'Attachment text exceeds the 3.5 MiB inline model output limit.',
+      type: 'text',
+      value: 'a'.repeat(MAX_MODEL_ATTACHMENT_BYTES + 1),
     })
   })
 
@@ -137,14 +149,35 @@ describe('attachmentModelOutput', () => {
     expect(
       await attachmentModelOutput({
         output: { kind: 'image', note: 'Read notes.txt.' },
-        resolveBytes,
+        resolveBytes: async () =>
+          Result.ok({
+            attachment: { ...attachment, contentType: 'image/png' },
+            bytes: new Uint8Array([104, 105]),
+          }),
       }),
     ).toMatchObject({
       type: 'content',
       value: [
         { type: 'text', text: 'Read notes.txt.' },
-        { type: 'image-data', mediaType: 'text/plain', data: 'aGk=' },
+        { type: 'image-data', mediaType: 'image/png', data: 'aGk=' },
       ],
+    })
+  })
+
+  it('does not replay older unsupported image parts', async () => {
+    expect(
+      await attachmentModelOutput({
+        output: { kind: 'image' },
+        resolveBytes: async () =>
+          Result.ok({
+            attachment: { ...attachment, contentType: 'image/svg+xml' },
+            bytes: new Uint8Array([104, 105]),
+          }),
+      }),
+    ).toEqual({
+      type: 'error-text',
+      value:
+        'Attachment type image/svg+xml is not supported for this model output.',
     })
   })
 

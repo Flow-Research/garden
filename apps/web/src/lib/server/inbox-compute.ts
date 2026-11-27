@@ -20,6 +20,11 @@ import type {
   InboxSeverity,
   IssueStatus,
 } from '@garden/core/types'
+import {
+  describeRunFailure,
+  parseRunFailure,
+  runFailure,
+} from '@garden/core/runs/failure'
 
 type IssueRow = typeof schema.issue.$inferSelect
 type CommentRow = typeof schema.issueComment.$inferSelect
@@ -303,36 +308,14 @@ function payloadValue(payload: unknown, key: string): string | null {
   return null
 }
 
-function payloadError(payload: unknown): string | null {
-  return (
-    payloadValue(payload, 'error') ??
-    payloadValue(payload, 'reason') ??
-    payloadValue(payload, 'message')
-  )
-}
-
 function failedRunBody(run: RunRow, info: FailedRunEventInfo | undefined) {
-  const latestTool = info?.latestToolStarted
-    ? payloadValue(info.latestToolStarted.payload, 'tool')
-    : null
-  const eventError =
-    payloadError(info?.failedEvent?.payload) ??
-    payloadError(info?.latestEvent?.payload) ??
-    info?.failedEvent?.message ??
-    info?.latestEvent?.message ??
-    null
-  const error = run.error?.trim() || eventError
-
-  if (run.error === 'tool_timeout') {
-    return truncate(
-      latestTool
-        ? `Tool timed out: ${latestTool}. The run failed because that tool did not return before the recovery deadline.`
-        : 'A tool timed out before returning a result.',
-    )
-  }
-
-  if (error) return truncate(error)
-  return 'The run failed without a recorded error message.'
+  const failure = parseRunFailure(
+    info?.failedEvent?.payload ?? run.error,
+  ).match({
+    ok: (value) => value,
+    err: () => runFailure('unknown'),
+  })
+  return truncate(describeRunFailure(failure).title)
 }
 
 function buildFailedRunSource(
@@ -345,12 +328,13 @@ function buildFailedRunSource(
   const latestTool = info?.latestToolStarted
     ? payloadValue(info.latestToolStarted.payload, 'tool')
     : null
-  const eventError =
-    payloadError(info?.failedEvent?.payload) ??
-    payloadError(latestEvent?.payload) ??
-    info?.failedEvent?.message ??
-    latestEvent?.message ??
-    null
+  const failure = parseRunFailure(
+    info?.failedEvent?.payload ?? run.error,
+  ).match({
+    ok: (value) => value,
+    err: () => runFailure('unknown'),
+  })
+  const failureDescription = describeRunFailure(failure)
   return {
     key: `failed_run:${run.id}`,
     type: 'task_failed',
@@ -364,8 +348,8 @@ function buildFailedRunSource(
     details: {
       run_id: run.id,
       issue_number: String(issue.number),
-      ...(run.error ? { error: run.error } : {}),
-      ...(eventError ? { event_error: eventError } : {}),
+      failure_cause: failure.cause,
+      failure_title: failureDescription.title,
       ...(latestEvent ? { latest_event: latestEvent.eventType } : {}),
       ...(latestTool ? { latest_tool: latestTool } : {}),
     },

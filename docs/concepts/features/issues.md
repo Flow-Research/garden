@@ -3,7 +3,7 @@ title: Issues are the shared ledger of work for people and agents
 description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-27
 ---
 
 An issue is a unit of work that a person or an agent owns. The UI calls issues Tasks and shows them at `/tasks`. Assigning an issue to an agent turns it into a run: the agent works on the issue in the background, records what it did, and returns reviewable outputs to the same issue.
@@ -29,15 +29,40 @@ When you assign an issue to an agent and start it, the work passes through four 
 1. `startIssueRun` in `packages/server/src/issues/run-service.ts` writes the `issue_run` row and asks the agent's runtime to begin.
 2. `AgentDO.startIssueRunWorkflow` starts a `RunWorkflow` instance for that run.
 3. `RunWorkflow` in `packages/agent-runtime/src/run-workflow.ts` drives the turns. It owns retry, wait, resume, and cancel.
-4. Each turn runs in `IssueRunSubAgent` (`packages/agent-runtime/src/issue-run-sub-agent.ts`), a Think facet keyed by the issue ID.
+4. Each turn runs in `IssueRunSubAgent` (`packages/agent-runtime/src/issue-run-sub-agent.ts`), a Think facet inside the assigned agent's `AgentDO`, keyed by the issue ID and that agent's context generation on the issue. The generation lives in `issue_agent_context`, one row per issue and agent, and a missing row means generation 0. Generation 0 uses the bare issue ID. A later generation `n` uses `<issueId>:ctx<n>`. `issueRunFacetName` in `packages/agent-runtime/src/issue-agent-context.ts` owns this mapping.
 
 Each agent gets at most one live run per issue. `startIssueRun` takes a Postgres advisory lock on the issue ID, then checks for a live run by the same agent before it inserts. A second start for that agent, from a double click, a retry, or another actor, returns `{ kind: 'already_running', runId }` with the existing run, and no second row or Workflow is created. A waiting run is resumed instead (`resumed`). The Workflow instance ID is the run ID, so retrying the runtime start for the same run cannot create a second instance. Different agents can each run on the same issue, for example after a comment mentions them.
 
-If the runtime start fails after the row is written, `markStartFailed` marks the run `failed` with the error, clears `issue.active_run_id`, and appends `issue_run:failed` with reason `workflow_start_failed`. The issue activity timeline shows that event as "agent run failed: <error>", and the Inbox lists the failed run.
+If the runtime start fails after the row is written, `markStartFailed` marks the run `failed` with cause `workflow_start_failed`, clears `issue.active_run_id`, and appends `issue_run:failed`. The timeline, active-run panel, Inbox, and chat transcript use the same failure cause and approved copy. They do not show raw runtime errors.
+
+## Failed runs show a cause and a next step
+
+`@garden/core/runs/failure` defines each issue run failure cause, its title, and its next step. `issue_run.error` stores only the cause code. A failed event stores `{ failure: PublicRunFailure }`. The active-run API returns `failure` instead of the row's `error` text. Runtime diagnostics stay in server logs.
+
+Readers parse older rows and event payloads at the boundary. A known legacy reason maps to its cause. Other legacy text maps to `unknown` and never appears in failure copy. A blocked run returns its agent-authored `blocked_reason` separately from failure data, because `mark_blocked` is a completed resolution rather than a failed run.
+
+| Cause | Title | Next step |
+| --- | --- | --- |
+| `subrequest_limit` | The answer got too long for one run. | Try again with a narrower request, or split the task. |
+| `output_cap_reached` | The agent ran out of room before finishing its answer. | Try again with a narrower request, or split the task. |
+| `run_token_budget_exceeded` | The run hit its limit of 2 million tokens. | Split the task into smaller issues, or narrow its scope, then try again. |
+| `model_unavailable` | The AI model didn't respond. | Try again in a few minutes. |
+| `model_retired` | The AI model this agent uses was retired by its provider. | Ask a workspace admin to choose a new model. |
+| `tool_failed` | `{Connector name} failed during the run.` If no name is available: `A connected tool failed during the run.` | Auth: `Reconnect {Connector name} in Connectors.` Permission: `Check what {Connector name} is allowed to access.` Rate limit: `Wait a few minutes and try again.` Other: `Try again.` |
+| `turn_timed_out` | The run took too long and was stopped. | Try again, or split the task. |
+| `turn_ended_without_resolution`, `no_resolution` | The agent finished without completing the task or asking a question. | Add more detail to the task and run it again. |
+| `no_output` | The automation finished without producing any output. | Add more detail to the automation's instructions and run it again. |
+| `brain_output_authority_denied` | The agent wasn't allowed to save its results. | Ask a workspace admin to check the agent's permissions. |
+| `approval_stale` | The run waited too long for approval and was closed. | Start the run again when you're ready to approve. |
+| `turn_aborted`, `turn_skipped`, `workflow_ended_with_live_run`, `workflow_start_failed`, `unknown` | The run stopped for an unexpected reason. | Try again. If it keeps happening, tell your workspace admin. |
+
+The Inbox may keep the `Run failed` label. Its body uses the failure title. A timeline row uses `agent run stopped: {title} {next step}`.
 
 `cancelIssueRun` sets `issue_run.cancel_requested_at` and sends a cancel event to the run's Workflow instance, which finalizes the row. Both `POST /api/issues/:id/cancel` and an issue status or assignee change that stops live runs go through it.
 
 A run can outlive its Workflow instance: Workflows may report the instance as not found, or it may already be `complete`, `errored`, or `terminated`. No workflow step will finalize such a run, so `cancelIssueRun` does it directly. It marks the run `cancelled` with `result_json.reason` set to `workflow_instance_missing` or `workflow_instance_terminal`, clears `issue.active_run_id`, appends `issue_run:cancelled`, and returns success. Inbox items derive from live run status, so they clear too. Any other Workflow error fails the cancel and leaves the run unchanged.
+
+A run starts on a fresh agent context when the current facet holds history that Brain permissions cannot verify. The issue's generation increases by one, the old facet keeps its history for review, and the run timeline shows `issue_run:context_reset`. [Permissions](permissions.md#brain-grants-for-issue-and-automation-runs) describes when this happens.
 
 The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accumulates in `issue_run.usage_json`. The [run engine](../architecture/run-engine.md) page explains the Workflow loop in full.
 
@@ -61,9 +86,11 @@ The Markdown file is the source of truth. After a save the card links the file a
 
 ## Chat and issues link in both directions
 
-Chat agents can work with issues directly. `createChatSubAgentTools` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` gives a chat agent `create_issue`, `read_issue`, `read_issue_attachment`, `list_issues`, `post_issue_comment`, `read_run`, and `propose_agent`. `read_issue` returns attachment IDs; `read_issue_attachment` re-checks the chat owner's workspace membership and the requested issue before reading bytes from R2, and asks the current agent and Team policy again at that boundary, because Think can rebuild a stored tool result on a later turn without calling the tool. It then reuses the issue-run reader's byte, cap, media-type kind, size, and private model-output helpers from `read-attachment.ts`, so both readers share one limit and one file-type table. Both readers reject text, images, and PDFs above 3.5 MiB with a tool error instead of putting the file in the transcript. `create_issue` accepts an optional `team_id` to file the issue on a Team, and assigns either an agent (`assignee_agent_id`) or a person (`assignee_member`, resolved by name, email, or id the same way `assign_issue` resolves it), never both. The chat owner is the creator, so the issue service applies the Team create rules described in [Teams](teams.md).
+Chat agents can work with issues directly. `createChatSubAgentTools` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` gives a chat agent `create_issue`, `read_issue`, `read_issue_attachment`, `list_issues`, `post_issue_comment`, `read_run`, and `propose_agent`. `read_issue` returns attachment IDs. `read_issue_attachment` checks the chat owner's current workspace membership, issue access, agent permissions, and Team policy before it loads a file. A stored tool result contains an attachment reference. On later turns, the tool checks access again and loads text, image, or PDF content for model output. The OpenAI-compatible provider receives image and PDF parts. For Workers AI, Garden moves authorized issue image results into a user image part only for the documented vision model `@cf/moonshotai/kimi-k2.5`. The configured default `@cf/zai-org/glm-5.3` returns an explicit unsupported result instead of a note that implies visual inspection. Workers AI issue PDF reads also return an unsupported result. Chat reads have a 3.5 MiB limit. Issue runs keep their existing large-text behavior; their image and PDF reads use the 3.5 MiB limit. Only PNG, JPEG, GIF, and WebP images become model image parts. `create_issue` accepts an optional `team_id` to file the issue on a Team, and assigns either an agent (`assignee_agent_id`) or a person (`assignee_member`, resolved by name, email, or id the same way `assign_issue` resolves it), never both. The chat owner is the creator, so the issue service applies the Team create rules described in [Teams](teams.md).
 
 A chat thread can also point at one issue. `chat_thread.primary_issue_id` stores the link, `/api/chat/threads/:id/primary-issue` sets it, and the chat title bar shows the issue as a pill. From an issue's detail header you can open an agent chat about that issue. Issue mentions in chat messages render as links through `MentionAwareAnchor` in `apps/web/src/components/ai-elements/message.tsx`.
+
+For verification, read an issue image in chat with `@cf/moonshotai/kimi-k2.5`. The model request must contain an image part and an instruction to treat its content as untrusted evidence. Repeat with the default `@cf/zai-org/glm-5.3` model. The tool result must report unsupported inspection without image bytes or a claim that the image was inspected. Revoke issue access before replaying a stored read. The replay must not send image bytes to the model. Request-boundary tests cover the translation and default-model result; live Kimi K2.5 inspection remains unproved.
 
 ## The Inbox is computed, not stored
 
