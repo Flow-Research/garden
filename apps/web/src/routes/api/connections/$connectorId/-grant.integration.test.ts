@@ -1,4 +1,10 @@
-import type { AppRequestContext } from '@/lib/server/context'
+import {
+  createAppRequestContext,
+  type AppRequestContext,
+} from '@/lib/server/context'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import * as schema from '@garden/db/schema'
+import { workspaceTestEnv } from '../../-agent-recovery-fixture'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Route } from './grant'
 import { invokeRouteHandler } from '@/test/route-handler'
@@ -100,15 +106,17 @@ describe('connection grant route authorization', () => {
   it('rejects auto trust at connection scope', async () => {
     mocks.requireWorkspacePermission.mockResolvedValueOnce(null)
 
+    const request = grantRequest({
+      agentId: '00000000-0000-4000-8000-000000000001',
+      trustLevel: 'auto',
+    })
+    const context = createAppRequestContext(
+      workspaceTestEnv('postgres://localhost/unused'),
+      request,
+    )
     const response = await invokeRouteHandler(Route, 'PATCH', {
-      context: {
-        // Service rejects auto before any query; route still opens the pool.
-        db: async () => ({}),
-      } as unknown as AppRequestContext,
-      request: grantRequest({
-        agentId: '00000000-0000-4000-8000-000000000001',
-        trustLevel: 'auto',
-      }),
+      context: { ...context, db: async () => drizzle.mock({ schema }) },
+      request,
       params: { connectorId: 'github' },
     })
 
