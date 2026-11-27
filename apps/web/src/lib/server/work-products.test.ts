@@ -261,6 +261,7 @@ async function makeApplyDb(args: {
   linkedRepos: Array<{ fullName: string }>
   workProduct: Record<string, unknown>
   issueTeamId?: string | null
+  savedFileHistoryId?: string
 }) {
   const { schema } = await import('./db')
   const sets: Array<Record<string, unknown>> = []
@@ -303,6 +304,12 @@ async function makeApplyDb(args: {
             },
           ])
         }
+        if (table === schema.issueRunEvent)
+          return queryRows(
+            args.savedFileHistoryId
+              ? [{ fileId: args.savedFileHistoryId }]
+              : [],
+          )
         if (table === schema.teamRepository) return queryRows(args.linkedRepos)
         if (table === schema.team) return queryRows([{ name: 'Research' }])
         if (table === schema.organization) {
@@ -668,7 +675,12 @@ const inReview = (overrides: Record<string, unknown>) => ({
 describe('approve saves the work product to Files', () => {
   beforeEach(() => {
     filesState.folders = [
-      { id: teamFolderId, workspaceId, name: 'Research' },
+      {
+        id: teamFolderId,
+        workspaceId,
+        name: 'Flow Research',
+        privacy: 'shared',
+      },
       { id: 'other-folder', workspaceId, name: 'Guides' },
     ]
     filesState.uploads = []
@@ -682,10 +694,11 @@ describe('approve saves the work product to Files', () => {
     ['Approve', false],
     ['Approve and close', true],
   ])(
-    '%s on a brief saves the body as Markdown in the folder named after the Team',
+    '%s on a brief saves the body as Markdown in the folder named after the workspace',
     async (_label, closeIssue) => {
       const { db, inserts, sets } = await makeApplyDb({
         linkedRepos: [],
+        issueTeamId: null,
         workProduct: inReview({}),
       })
       state.db = db
@@ -701,7 +714,7 @@ describe('approve saves the work product to Files', () => {
           fileId: savedFileId,
           fileName: 'workstream-task-guide.md',
           folderId: teamFolderId,
-          folderName: 'Research',
+          folderName: 'Flow Research',
           url: fileUrl,
           overwritten: false,
         },
@@ -738,6 +751,7 @@ describe('approve saves the work product to Files', () => {
   it('saves the edited body when the reviewer edits on approve', async () => {
     const { db } = await makeApplyDb({
       linkedRepos: [],
+      issueTeamId: null,
       workProduct: inReview({}),
     })
     state.db = db
@@ -755,10 +769,11 @@ describe('approve saves the work product to Files', () => {
     ])
   })
 
-  it('creates a shared folder named after the Team when none exists', async () => {
+  it('creates a shared folder named after the workspace when none exists', async () => {
     filesState.folders = []
     const { db } = await makeApplyDb({
       linkedRepos: [],
+      issueTeamId: null,
       workProduct: inReview({}),
     })
     state.db = db
@@ -769,7 +784,7 @@ describe('approve saves the work product to Files', () => {
       {
         id: 'created-0',
         workspaceId,
-        name: 'Research',
+        name: 'Flow Research',
         privacy: 'shared',
       },
     ])
@@ -785,8 +800,8 @@ describe('approve saves the work product to Files', () => {
     filesState.folders = []
     const { db } = await makeApplyDb({
       linkedRepos: [],
-      workProduct: inReview({}),
       issueTeamId: null,
+      workProduct: inReview({}),
     })
     state.db = db
 
@@ -800,12 +815,80 @@ describe('approve saves the work product to Files', () => {
     })
   })
 
+  it('keeps a Team issue document out of workspace Files', async () => {
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: inReview({}),
+      issueTeamId: teamId,
+    })
+    state.db = db
+    const result = await approve(false)
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'skipped' },
+    })
+    expect(filesState.uploads).toHaveLength(0)
+    expect(filesState.overwrites).toHaveLength(0)
+  })
+
+  it('retries a workspace document without writing another approval event', async () => {
+    const { db, inserts } = await makeApplyDb({
+      linkedRepos: [],
+      workProduct: approvedWorkProduct({}),
+      issueTeamId: null,
+    })
+    state.db = db
+    const result = await reviewWorkProduct({
+      actorUserId,
+      env: {} as never,
+      input: { action: 'retry_files' },
+      workProductId,
+      workspaceId,
+    })
+    expect(result.isOk() && result.value).toMatchObject({
+      action: 'retry_files',
+      files: { status: 'saved' },
+    })
+    expect(
+      inserts.some(
+        (row) => row.eventType === 'issue_run:work_product_approved',
+      ),
+    ).toBe(false)
+  })
+
   const previousFileId = '00000000-0000-4000-8000-00000000000b'
+
+  it('does not authorize overwriting another file from the work product payload', async () => {
+    filesState.existingFiles = [previousFileId]
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      issueTeamId: null,
+      workProduct: inReview({
+        payload: {
+          saved_file: {
+            file_id: previousFileId,
+            file_name: 'private.md',
+            folder_id: teamFolderId,
+            url: `/api/brain/files/${previousFileId}/content`,
+            saved_by: actorUserId,
+            saved_at: '2026-11-01T00:00:00.000Z',
+          },
+        },
+      }),
+    })
+    state.db = db
+    const result = await approve(false)
+    expect(result.isOk() && result.value).toMatchObject({
+      files: { status: 'saved', overwritten: false },
+    })
+    expect(filesState.overwrites).toEqual([])
+  })
 
   it('re-approving a revised work product overwrites the same file', async () => {
     filesState.existingFiles = [previousFileId]
     const { db, inserts } = await makeApplyDb({
       linkedRepos: [],
+      savedFileHistoryId: previousFileId,
+      issueTeamId: null,
       workProduct: inReview({
         payload: {
           saved_file: {
@@ -845,6 +928,7 @@ describe('approve saves the work product to Files', () => {
     async (type) => {
       const { db, inserts } = await makeApplyDb({
         linkedRepos: [],
+        issueTeamId: null,
         workProduct: inReview({ type }),
       })
       state.db = db
@@ -870,6 +954,7 @@ describe('approve saves the work product to Files', () => {
     filesState.uploadFailure = 'R2 unavailable'
     const { db, inserts } = await makeApplyDb({
       linkedRepos: [],
+      issueTeamId: null,
       workProduct: inReview({}),
     })
     state.db = db

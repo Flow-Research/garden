@@ -88,6 +88,20 @@ describe('WorkProductCard', () => {
     expect(onApproveAndClose).toHaveBeenCalledTimes(1)
   })
 
+  it('offers a retry on an unsaved approved workspace document', () => {
+    const retry = vi.fn()
+    render(
+      <WorkProductCard
+        workProduct={workProduct({ type: 'brief' })}
+        onRetryFiles={retry}
+      />,
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retry saving to Files' }),
+    )
+    expect(retry).toHaveBeenCalledOnce()
+  })
+
   it('shows the saved file on an approved brief with no manual save control', () => {
     render(
       <WorkProductCard

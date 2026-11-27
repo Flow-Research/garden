@@ -86,6 +86,7 @@ export interface WorkProductCardProps {
   onApply?: () => Promise<unknown>
   /** Opens a PR writing the body to `payload.pr_target`; confirmed first. */
   onApplyPr?: () => Promise<unknown>
+  onRetryFiles?: () => void
   onShowDiff?: () => void
 }
 
@@ -164,6 +165,7 @@ export function WorkProductCard({
   onRequestChanges,
   onApply,
   onApplyPr,
+  onRetryFiles,
   onShowDiff,
 }: WorkProductCardProps) {
   const [expanded, setExpanded] = useState(false)
@@ -368,6 +370,20 @@ export function WorkProductCard({
         </div>
       )}
 
+      {onRetryFiles &&
+        !savedFile &&
+        workProduct.status === 'approved' &&
+        workProduct.review_state === 'approved' &&
+        ['brief', 'report', 'plan', 'checklist'].includes(workProduct.type) && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={onRetryFiles}
+          >
+            Retry saving to Files
+          </Button>
+        )}
       {savedFile && (
         <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
           <a
@@ -420,6 +436,7 @@ interface WorkProductListProps {
   onApproveAndClose?: (id: string) => void
   onRequestChanges?: (id: string) => void
   onApply?: (id: string) => Promise<unknown>
+  onRetryFiles?: (id: string) => void
   onApplyPr?: (id: string) => Promise<unknown>
 }
 
@@ -433,6 +450,7 @@ export function WorkProductList({
   onRequestChanges,
   onApply,
   onApplyPr,
+  onRetryFiles,
 }: WorkProductListProps) {
   if (workProducts.length === 0) return null
 
@@ -445,6 +463,7 @@ export function WorkProductList({
           connectorId={connectorId}
           pulseOnMount={pulseId === wp.id}
           pendingAction={pending?.id === wp.id ? pending.action : null}
+          onRetryFiles={onRetryFiles ? () => onRetryFiles(wp.id) : undefined}
           onApprove={() => onApprove?.(wp.id)}
           onApproveAndClose={() => onApproveAndClose?.(wp.id)}
           onRequestChanges={() => onRequestChanges?.(wp.id)}

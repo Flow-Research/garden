@@ -9,10 +9,7 @@ import {
   type ConnectorError,
 } from '@garden/core/connectors/errors'
 import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
-import {
-  parseWorkProductSavedFile,
-  type WorkProductSavedFile,
-} from '@garden/core/issues/work-product-saved-file'
+import { type WorkProductSavedFile } from '@garden/core/issues/work-product-saved-file'
 import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
 import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
@@ -69,6 +66,7 @@ export const workProductReviewBodySchema = z.discriminatedUnion('action', [
     .strict(),
   z.object({ action: z.literal('apply') }).strict(),
   z.object({ action: z.literal('apply_pr') }).strict(),
+  z.object({ action: z.literal('retry_files') }).strict(),
 ])
 
 export type WorkProductReviewInput = z.infer<typeof workProductReviewBodySchema>
@@ -147,7 +145,7 @@ export type WorkProductFilesSave =
 
 export type WorkProductReviewOutcome =
   | {
-      action: 'approve'
+      action: 'approve' | 'retry_files'
       files: WorkProductFilesSave
       workProductId: string
     }
@@ -1425,50 +1423,31 @@ function saveFailed(message: string, cause?: unknown) {
   })
 }
 
-/**
- * The folder an approved document lands in: the one named after the issue's
- * Team, or after the workspace for a workspace issue (no Team), which every
- * member can see just as every member sees the Team-less issue. Matched by
- * name among the folders the approver can see; created as a shared folder
- * when none matches.
- */
+/** The shared folder for workspace-wide approved documents. */
 async function resolveDestinationFolder(args: {
   actorUserId: string
   env: AppEnv
-  teamId: string | null
   workspaceId: string
 }): Promise<ResultValue<{ id: string; name: string }, WorkProductReviewError>> {
-  const teamId = args.teamId
   return Result.gen(async function* () {
     const db = await getDb(args.env)
     const [named] = yield* Result.await(
       Result.tryPromise({
         try: () =>
-          teamId
-            ? db
-                .select({ name: schema.team.name })
-                .from(schema.team)
-                .where(
-                  and(
-                    eq(schema.team.id, teamId),
-                    eq(schema.team.workspaceId, args.workspaceId),
-                  ),
-                )
-                .limit(1)
-            : db
-                .select({ name: schema.organization.name })
-                .from(schema.organization)
-                .where(eq(schema.organization.id, args.workspaceId))
-                .limit(1),
-        catch: (cause) => saveFailed('Failed to load the folder name', cause),
+          db
+            .select({ name: schema.organization.name })
+            .from(schema.organization)
+            .where(eq(schema.organization.id, args.workspaceId))
+            .limit(1),
+        catch: (cause) =>
+          saveFailed('Failed to load the workspace name', cause),
       }),
     )
-    if (!named) {
-      return Result.err(
-        saveFailed(teamId ? 'Team not found' : 'Workspace not found'),
-      )
-    }
-    const name = named.name
+    if (!named) return Result.err(saveFailed('Workspace not found'))
+    const name =
+      Array.from(named.name).length <= 50
+        ? named.name
+        : 'Approved workspace documents'
     return Result.tryPromise({
       try: async () => {
         const folders = await listBrainFolders({
@@ -1476,7 +1455,9 @@ async function resolveDestinationFolder(args: {
           workspaceId: args.workspaceId,
           userId: args.actorUserId,
         })
-        const existing = folders.find((folder) => folder.name === name)
+        const existing = folders.find(
+          (folder) => folder.name === name && folder.privacy === 'shared',
+        )
         if (existing) return { id: existing.id, name }
         const created = await createBrainFolder({
           env: args.env,
@@ -1489,6 +1470,39 @@ async function resolveDestinationFolder(args: {
       },
       catch: (cause) => saveFailed(`Failed to open the ${name} folder`, cause),
     })
+  })
+}
+
+/** Look up a previous file link in the server's own save history. */
+async function approvedFileId(args: {
+  env: AppEnv
+  runId: string
+  workProduct: WorkProductRow
+  workspaceId: string
+}) {
+  const events = schema.issueRunEvent
+  const db = await getDb(args.env)
+  return Result.tryPromise({
+    try: async () => {
+      const [event] = await db
+        .select({ fileId: sql<string>`${events.payload}->>'file_id'` })
+        .from(events)
+        .where(
+          and(
+            eq(events.workspaceId, args.workspaceId),
+            eq(events.runId, args.runId),
+            eq(events.issueId, args.workProduct.issueId),
+            eq(events.stream, 'system'),
+            eq(events.eventType, 'issue_run:work_product_saved_to_files'),
+            sql`${events.payload}->>'work_product_id' = ${args.workProduct.id}`,
+          ),
+        )
+        .orderBy(desc(events.seq))
+        .limit(1)
+      return event?.fileId
+    },
+    catch: (cause) =>
+      saveFailed('Failed to read the work product save history', cause),
   })
 }
 
@@ -1518,12 +1532,12 @@ async function saveApprovedWorkProductToFiles(args: {
   }
   return Result.gen(async function* () {
     const folder = yield* Result.await(resolveDestinationFolder(args))
-    const previous = parseWorkProductSavedFile(args.workProduct.payload)
+    const previous = yield* Result.await(approvedFileId(args))
     const overwritten = previous
       ? yield* Result.await(
           overwriteBrainFile({
             env: args.env,
-            fileId: previous.file_id,
+            fileId: previous,
             body: args.body,
             ownerUserId: args.actorUserId,
             waitUntil: args.waitUntil,
@@ -1537,6 +1551,7 @@ async function saveApprovedWorkProductToFiles(args: {
       overwritten ??
       (yield* Result.await(
         saveBrainFileUpload({
+          workProductId: args.workProduct.id,
           env: args.env,
           file: new File([args.body], savedFileName(args.workProduct), {
             type: 'text/markdown',
@@ -1679,7 +1694,11 @@ async function saveApprovalToFiles(args: {
   workProduct: WorkProductRow
   workspaceId: string
 }): Promise<WorkProductFilesSave> {
-  if (!documentWorkProductTypes.has(args.workProduct.type)) {
+  // Brain list, search and download currently grant workspace-wide access.
+  if (
+    args.teamId !== null ||
+    !documentWorkProductTypes.has(args.workProduct.type)
+  ) {
     return { status: 'skipped' }
   }
   const saved = await saveApprovedWorkProductToFiles(args)
@@ -1729,6 +1748,49 @@ export async function reviewWorkProduct(args: {
         workProductId: args.workProductId,
         workspaceId: args.workspaceId,
       })
+    case 'retry_files': {
+      const context = await loadWorkProductContext(args)
+      if (context.isErr()) return Result.err(context.error)
+      const { issue, workProduct } = context.value
+      if (
+        issue.teamId !== null ||
+        workProduct.status !== 'approved' ||
+        workProduct.reviewState !== 'approved' ||
+        !workProduct.runId ||
+        !documentWorkProductTypes.has(workProduct.type)
+      ) {
+        return Result.err(
+          invalidState(
+            'Only approved workspace documents can be saved to Files',
+          ),
+        )
+      }
+      const previous = await approvedFileId({
+        ...args,
+        runId: workProduct.runId,
+        workProduct,
+      })
+      if (previous.isErr()) return Result.err(previous.error)
+      if (previous.value) {
+        return Result.ok({
+          action: 'retry_files',
+          workProductId: workProduct.id,
+          files: { status: 'skipped' },
+        })
+      }
+      const files = await saveApprovalToFiles({
+        ...args,
+        body: (workProduct.body ?? '').trim(),
+        runId: workProduct.runId,
+        teamId: issue.teamId,
+        workProduct,
+      })
+      return Result.ok({
+        action: 'retry_files',
+        workProductId: workProduct.id,
+        files,
+      })
+    }
     case 'request_changes':
       return requestWorkProductChanges({
         actorUserId: args.actorUserId,

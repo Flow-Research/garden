@@ -288,7 +288,9 @@ function WorkProductInboxAction({
   workProduct,
   connectorId,
   reviewMutation,
+  canSaveFiles,
 }: {
+  canSaveFiles: boolean
   workProduct: IssueWorkProduct
   connectorId?: string | null
   reviewMutation: ReturnType<typeof useReviewWorkProduct>
@@ -303,6 +305,7 @@ function WorkProductInboxAction({
   return (
     <WorkProductCard
       workProduct={workProduct}
+      onRetryFiles={canSaveFiles ? () => review('retry_files') : undefined}
       connectorId={connectorId}
       pendingAction={pending}
       onApprove={() => review('approve')}
@@ -421,6 +424,7 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
       {item.type === 'wp_review' && selectedWorkProduct && (
         <WorkProductInboxAction
           workProduct={selectedWorkProduct}
+          canSaveFiles={issue?.team_id === null}
           connectorId={connectorId}
           reviewMutation={reviewMutation}
         />
@@ -460,6 +464,11 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
           </h3>
           <WorkProductList
             workProducts={remainingWorkProducts}
+            onRetryFiles={
+              issue?.team_id === null
+                ? (id) => reviewMutation.mutate({ id, action: 'retry_files' })
+                : undefined
+            }
             connectorId={connectorId}
             pending={reviewMutation.isPending ? reviewMutation.variables : null}
             onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}

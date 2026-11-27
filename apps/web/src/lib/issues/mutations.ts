@@ -767,6 +767,7 @@ export type WorkProductReviewAction =
   | 'request_changes'
   | 'apply'
   | 'apply_pr'
+  | 'retry_files'
 
 /** Maps a UI review action to the review endpoint's request body. */
 function reviewRequestBody(
@@ -781,6 +782,8 @@ function reviewRequestBody(
       return { action: 'request_changes' }
     case 'apply':
       return { action: 'apply' }
+    case 'retry_files':
+      return { action: 'retry_files' }
     case 'apply_pr':
       return { action: 'apply_pr' }
   }
@@ -795,7 +798,8 @@ export function useReviewWorkProduct(issueId: string | null) {
       api.reviewWorkProduct(vars.id, reviewRequestBody(vars.action)),
     onSuccess: (outcome) => {
       invalidate()
-      if (outcome.action !== 'approve') return
+      if (outcome.action !== 'approve' && outcome.action !== 'retry_files')
+        return
       // Approval saves documents to Files; a failed save keeps the approval.
       if (outcome.files.status === 'failed') {
         toast.error(

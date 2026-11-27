@@ -224,6 +224,11 @@ export function IssueOutputSurface({ issue }: { issue: Issue }) {
     <OutputSection>
       <WorkProductList
         workProducts={workProducts}
+        onRetryFiles={
+          issue.team_id === null
+            ? (id) => reviewMutation.mutate({ id, action: 'retry_files' })
+            : undefined
+        }
         connectorId={issue.source_summary?.connector_id ?? null}
         pulseId={pulseWorkProductId}
         pending={reviewMutation.isPending ? reviewMutation.variables : null}

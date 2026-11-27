@@ -49,6 +49,7 @@ function brainStorageKey(input: {
 export async function saveBrainFileUpload(args: {
   env: AppEnv
   file: File
+  workProductId?: string
   ownerUserId: string
   waitUntil?: (promise: Promise<unknown>) => void
   workspaceId: string
@@ -68,6 +69,7 @@ export async function saveBrainFileUpload(args: {
       Effect.flatMap(BrainFileIngestion, (ingestion) =>
         ingestion.stage({
           file: args.file,
+          workProductId: args.workProductId,
           itemId,
           ownerUserId: args.ownerUserId,
           r2Key,
