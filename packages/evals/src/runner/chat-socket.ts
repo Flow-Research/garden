@@ -94,6 +94,20 @@ export function sendGardenChatTurn(
     const finish = (result: Result<{ text: string }, GardenEvalError>) => {
       if (settled) return
       settled = true
+      if (
+        result.isErr() &&
+        requestSent &&
+        client.readyState === WebSocket.OPEN
+      ) {
+        Result.try(() =>
+          client.send(
+            JSON.stringify({
+              id: requestId,
+              type: 'cf_agent_chat_request_cancel',
+            }),
+          ),
+        )
+      }
       cleanup()
       resolve(result)
     }

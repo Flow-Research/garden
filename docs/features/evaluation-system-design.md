@@ -242,8 +242,7 @@ record the cookie or raw API responses.
 The deadline is the total trial budget. Each API request uses the remaining
 budget. A live run at the deadline is invalid. The runner requests cancellation
 through the public API and keeps the run ID for follow-up. The cancellation
-request uses one poll interval as its own budget. Cancellation is not proof
-that the run stopped.
+request for an issue uses one poll interval. After a chat trial fails, the runner checks the trial thread for active Decide analyses. It requests cancellation for each active analysis it finds. It allows five seconds for the check and five seconds for the requests. If Garden cannot confirm cleanup, the report records that error. Check the thread for work that started after the last check. A cancellation request does not establish that the run stopped.
 
 The first evidence adapter stores the run ID, issue ID, workspace ID, status,
 timestamps, and safe usage fields. Garden returns events and work products
@@ -462,14 +461,14 @@ OAuth token.
 
 ### What each source can prove
 
-| Source                                 | What it can prove                                                          | Limit                                                                  |
-| -------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `issue_run`                            | The run's stored status and result fields.                                  | It cannot prove every tool call or external side effect.               |
-| `issue_run_event`                      | Which ordered events Garden stored for this run.                            | A missing event is inconclusive because event writes can fail.         |
-| `chat_thread` and `decide_analysis`    | A Decide run and its status belong to one specific chat thread.              | It proves the Decide path ran, not every tool call in that thread.     |
-| `decide_workbook`                      | The generated workbook opens and matches the synthetic fixture checks.       | It does not prove that a workbook was downloaded or used by the user.  |
-| `tool_call_audit` and `invocation_log` | That a diagnostic row exists.                                                | The row cannot be assigned safely to one issue run.                    |
-| Trial-scoped simulator receipt         | Whether a simulated external action happened and how many times.            | It proves only actions sent through that simulator.                    |
+| Source                                 | What it can prove                                                      | Limit                                                                 |
+| -------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `issue_run`                            | The run's stored status and result fields.                             | It cannot prove every tool call or external side effect.              |
+| `issue_run_event`                      | Which ordered events Garden stored for this run.                       | A missing event is inconclusive because event writes can fail.        |
+| `chat_thread` and `decide_analysis`    | A Decide run and its status belong to one specific chat thread.        | It proves the Decide path ran, not every tool call in that thread.    |
+| `decide_workbook`                      | The generated workbook opens and matches the synthetic fixture checks. | It does not prove that a workbook was downloaded or used by the user. |
+| `tool_call_audit` and `invocation_log` | That a diagnostic row exists.                                          | The row cannot be assigned safely to one issue run.                   |
+| Trial-scoped simulator receipt         | Whether a simulated external action happened and how many times.       | It proves only actions sent through that simulator.                   |
 
 `issue_work_product.run_id` is nullable. The evidence adapter must exclude a
 work product with no run ID from a run-scoped bundle. If a task needs that

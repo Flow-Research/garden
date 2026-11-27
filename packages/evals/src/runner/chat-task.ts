@@ -16,6 +16,12 @@ import {
   inspectDecideWorkbook,
   type DecideWorkbookInspection,
 } from '../graders/decide-workbook.ts'
+import {
+  cancelTrialAnalyses,
+  hasLiveDecideRuns,
+  recordDecideRuns,
+  type ObservedDecideRuns,
+} from './decide-cleanup.ts'
 import { GardenEvalError } from './errors.ts'
 import {
   createGardenApiClient,
@@ -104,7 +110,9 @@ export async function runChatTask(input: {
     fetch: input.config.fetch,
   })
 
-  return Result.gen(async function* () {
+  const observedRuns: ObservedDecideRuns = new Map()
+  let trialThread: string | undefined
+  const result = await Result.gen(async function* () {
     yield* Result.await(
       api.verifyEvalTarget({
         workspaceId: configuration.workspaceId,
@@ -151,6 +159,7 @@ export async function runChatTask(input: {
       'The user uploaded this workspace document for the current turn. Use the internal document handle only in document tool calls. Do not mention its handle or ID.',
       `- handle: ${uploaded.document_id}; filename: ${uploaded.filename} (V${uploaded.version_number})`,
     ].join('\n')
+    trialThread = thread.id
     const turn = yield* Result.await(
       sendGardenChatTurn({
         baseUrl: configuration.baseUrl,
@@ -174,6 +183,7 @@ export async function runChatTask(input: {
         pollIntervalMs: configuration.pollIntervalMs,
         waitForTerminal: expectsDecide,
         downloadWorkbook: expectsDecide,
+        observedRuns,
       }),
     )
 
@@ -217,6 +227,27 @@ export async function runChatTask(input: {
 
     return Result.ok({ report: report.data, response: turn.text })
   })
+  if (trialThread && (result.isErr() || hasLiveDecideRuns(observedRuns))) {
+    const cleanup = await cancelTrialAnalyses(api, trialThread, observedRuns)
+    if (cleanup.isErr()) return cleanup
+    if (result.isErr()) {
+      const error = result.error
+      const [knownRunId] = observedRuns.keys()
+      const runId =
+        error.runId ?? (observedRuns.size === 1 ? knownRunId : undefined)
+      return Result.err(
+        new GardenEvalError({
+          stage: error.stage,
+          code: error.code,
+          message: error.message,
+          invalidReason: error.invalidReason,
+          threadId: trialThread,
+          ...(runId ? { runId } : {}),
+        }),
+      )
+    }
+  }
+  return result
 }
 
 /** Builds an invalid report when setup, execution, or evidence fails. */
@@ -235,6 +266,7 @@ export function createInvalidChatTrialReport(input: {
       version: input.task.definition.version,
     },
     ...(input.error.threadId ? { threadId: input.error.threadId } : {}),
+    ...(input.error.runId ? { runId: input.error.runId } : {}),
     recordedAt: new Date().toISOString(),
     outcome: 'invalid',
     checks: [],
@@ -255,6 +287,7 @@ function collectDecideEvidence(input: {
   pollIntervalMs: number
   waitForTerminal: boolean
   downloadWorkbook: boolean
+  observedRuns: ObservedDecideRuns
 }): Promise<Result<ChatTaskEvidence['decideAnalysis'], GardenEvalError>> {
   return Result.gen(async function* () {
     let latest: GardenDecideAnalysesResponse = yield* Result.await(
@@ -263,6 +296,7 @@ function collectDecideEvidence(input: {
         deadlineAt: input.deadlineAt,
       }),
     )
+    recordDecideRuns(input.observedRuns, latest)
     let observedAbsent = false
     let absenceConfirmed = false
     while (Date.now() < input.deadlineAt) {
@@ -291,6 +325,7 @@ function collectDecideEvidence(input: {
           deadlineAt: input.deadlineAt,
         }),
       )
+      recordDecideRuns(input.observedRuns, latest)
       absenceConfirmed = observedAbsent && latest.runs.length === 0
     }
 
@@ -301,12 +336,6 @@ function collectDecideEvidence(input: {
         !['completed', 'failed', 'cancelled'].includes(liveRun.status)) &&
       Date.now() >= input.deadlineAt
     ) {
-      if (liveRun && liveRun.status !== 'cancel_requested') {
-        await input.api.cancelDecideAnalysis({
-          runId: liveRun.runId,
-          deadlineAt: Date.now() + input.pollIntervalMs,
-        })
-      }
       return Result.err(
         new GardenEvalError({
           stage: 'evidence_collection',

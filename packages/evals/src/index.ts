@@ -552,6 +552,7 @@ export const chatTrialReportSchema = z
     chatTrialReportBaseSchema
       .extend({
         outcome: z.literal('invalid'),
+        runId: z.string().uuid().optional(),
         checks: z.array(trialCheckSchema),
         invalidReason: trialInvalidReasonSchema,
         diagnostic: z

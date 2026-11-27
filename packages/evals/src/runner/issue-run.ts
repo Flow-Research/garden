@@ -267,17 +267,28 @@ export async function runIssueRunTask(input: {
       deadlineAt,
       pollIntervalMs: input.config.pollIntervalMs,
     })
-    await observedResult.match({
-      ok: async () => undefined,
-      err: async (error) => {
-        if (error.code === 'deadline_reached') {
-          await api.cancelIssueRun({
+    if (
+      observedResult.isErr() &&
+      observedResult.error.code === 'deadline_reached'
+    ) {
+      const cancelled = await api.cancelIssueRun({
+        issueId: issue.id,
+        deadlineAt: Date.now() + safeConfiguration.pollIntervalMs,
+      })
+      if (cancelled.isErr()) {
+        return Result.err(
+          new GardenEvalError({
+            stage: 'garden_execution',
+            code: 'trial_cleanup_unconfirmed',
+            message:
+              'The issue trial reached its deadline. Garden did not confirm its cancellation request.',
+            invalidReason: 'garden_execution_failed',
             issueId: issue.id,
-            deadlineAt: Date.now() + safeConfiguration.pollIntervalMs,
-          })
-        }
-      },
-    })
+            runId: start.runId,
+          }),
+        )
+      }
+    }
     const observed = yield* observedResult
     const evidence = createIssueRunEvidence({
       identity: input.identity,
