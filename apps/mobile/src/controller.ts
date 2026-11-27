@@ -1030,13 +1030,13 @@ export function createMobileController(ports: MobilePorts) {
     createChat,
     authorizeChat,
     chatPolicyRefusal: (thread: ChatThreadTarget) => {
-      const turn = generation
+      const chatAuth = auth
       return () => {
         if (
-          turn === generation &&
+          auth === chatAuth &&
+          state.selectedThread === thread &&
           state.accountId === thread.ownerUserId &&
-          state.workspaceId === thread.workspaceId &&
-          state.selectedThread?.id === thread.id
+          state.workspaceId === thread.workspaceId
         ) {
           loseAuthority(
             'Garden refused this chat connection. Refresh workspace access.',

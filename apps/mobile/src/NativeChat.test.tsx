@@ -148,10 +148,12 @@ async function fixture() {
   await controller.connect('https://garden.test')
   await controller.selectWorkspace('workspace')
   await controller.selectThread(thread.id)
+  const selected = controller.getSnapshot().selectedThread
+  if (!selected) throw new Error('No selected thread in fixture')
   render(
     <NativeChat
       controller={controller}
-      thread={thread}
+      thread={selected}
       origin="https://garden.test"
     />,
   )
@@ -180,6 +182,7 @@ describe('native chat through the actual Cloudflare SDK', () => {
   it('hides private chat and clears the active workspace after an explicit policy close', async () => {
     const app = await fixture()
     connectHistory()
+    await act(async () => app.controller.refresh())
     act(() => socket.close(1008))
     await waitFor(() =>
       expect(app.controller.getSnapshot().phase).toBe('blocked'),
