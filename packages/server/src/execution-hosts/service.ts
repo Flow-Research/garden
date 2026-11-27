@@ -533,7 +533,7 @@ export class ExecutionHostReceiver {
         workspaceId,
       )
       if (authorization.isErr()) return authorization
-      await tx
+      const revoked = await tx
         .update(executionHost)
         .set({ status: 'revoked', revokedAt: new Date(now) })
         .where(
@@ -542,6 +542,15 @@ export class ExecutionHostReceiver {
             eq(executionHost.workspaceId, workspaceId),
             eq(executionHost.operatorId, actorId),
           ),
+        )
+        .returning({ id: executionHost.id })
+      if (revoked.length === 0)
+        return Result.err(
+          new ExecutionHostError({
+            code: 'host_not_found',
+            status: 404,
+            message: 'Host not found',
+          }),
         )
       await tx
         .update(executionHostLaunch)
@@ -1270,6 +1279,16 @@ export class ExecutionHostReceiver {
         )
           continue
         const launch = hostLaunchSchema.parse(row.launch)
+        // The original pull reply may have been lost before the host retained the offer.
+        // Supply its exact binding before cancellation so the host can sign a pre-start decline.
+        if (
+          row.hostRunId === null &&
+          reserved === row.id &&
+          launch.grant.expiresAt > now &&
+          launch.capabilityDigest === enrollment.capabilityDigest &&
+          enrollment.repositories.includes(launch.job.repository)
+        )
+          commands.push({ kind: 'launch', launch })
         commands.push({
           kind: 'cancel',
           command: hostCancelSchema.parse({

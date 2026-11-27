@@ -146,6 +146,50 @@ describe('external host receiver with actual PostgreSQL', () => {
     }
   }
 
+  it('redelivers the immutable offer before cancellation when the first pull reply was lost', async () => {
+    const state = await fixture()
+    const host = await state.addHost()
+    const launch = await host.launch()
+    const pull = { operation: 'pull' as const, afterSequence: 0 }
+    expect((await host.send(pull)).unwrap()).toMatchObject({
+      commands: [{ kind: 'launch' }],
+    })
+    await state.receiver.cancel(
+      state.userId,
+      state.workspaceId,
+      launch.launchId,
+      randomUUID(),
+      state.now(),
+    )
+    expect((await host.send(pull)).unwrap()).toMatchObject({
+      commands: [{ kind: 'launch', launch }, { kind: 'cancel' }],
+    })
+    expect(
+      (
+        await host.send({
+          operation: 'authority',
+          launchId: launch.launchId,
+          grantId: launch.grant.id,
+        })
+      ).unwrap(),
+    ).toMatchObject({ kind: 'authority_refused' })
+    expect(
+      (
+        await host.send({
+          operation: 'decline',
+          launchId: launch.launchId,
+          requestDigest: launch.requestDigest,
+          declineId: randomUUID(),
+          reason: 'operator_cancelled',
+        })
+      ).unwrap(),
+    ).toMatchObject({ kind: 'declined' })
+    const next = await host.launch()
+    expect((await host.send(pull)).unwrap()).toMatchObject({
+      commands: [{ kind: 'launch', launch: next }],
+    })
+  })
+
   it('enforces the same 24-hour grant ceiling as the host approval command', async () => {
     const state = await fixture()
     const host = await state.addHost()
