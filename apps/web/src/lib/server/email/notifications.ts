@@ -118,29 +118,23 @@ function resendSender(apiKey: string): NotificationEmailSender {
             }),
         }),
       )
-      if (response.error)
+      if (response.error) {
+        const status = response.error.statusCode
+        const resetPending = status === 401 || status === 403
+        const pauseQueue =
+          !status || resetPending || status === 429 || status >= 500
         return Result.err(
           new NotificationEmailError({
             message: `Resend rejected notification: ${response.error.name}`,
             retryable:
-              response.error.statusCode === 401 ||
-              response.error.statusCode === 403 ||
-              response.error.statusCode === 429 ||
-              response.error.statusCode >= 500 ||
-              (response.error.statusCode === 409 &&
-                response.error.name === 'concurrent_idempotent_requests') ||
-              !response.error.statusCode,
-            pauseQueue:
-              response.error.statusCode === 401 ||
-              response.error.statusCode === 403 ||
-              response.error.statusCode === 429 ||
-              response.error.statusCode >= 500 ||
-              !response.error.statusCode,
-            resetPending:
-              response.error.statusCode === 401 ||
-              response.error.statusCode === 403,
+              pauseQueue ||
+              (status === 409 &&
+                response.error.name === 'concurrent_idempotent_requests'),
+            pauseQueue,
+            resetPending,
           }),
         )
+      }
       return Result.ok(response.data)
     })
 }
