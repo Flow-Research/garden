@@ -1,9 +1,9 @@
 ---
 title: Connect a personal Workstream account
-description: Connect Workstream MCP through an invite-only Flow Identity account while keeping Garden sign-in and Workstream authorization separate.
+description: Connect Workstream MCP through a Flow Identity account while keeping Garden sign-in and Workstream authorization separate.
 status: current
 owner: '@Flow-Research/security'
-last_reviewed: 2026-11-17
+last_reviewed: 2026-11-18
 ---
 
 ## Outcome and boundary
@@ -21,6 +21,29 @@ The hosted MCP resource is `https://workstream.flowresearch.tech/mcp`. Its Flow 
 For the exact Workstream resource, the installed SDK patch keeps code exchange and the saved refresh token endpoint on the configured issuer. Untrusted callback `domain` or `site` parameters cannot rebind them to a sibling host. Other providers retain their existing regional callback behavior. See the [Executor seams](../../../third_party/executor/PATCHES.md).
 
 Executor discovers the requested scopes from Workstream's protected-resource metadata: `workstream:access workstream-mcp-audience`. These are access-token scopes; no OpenID identity token is requested. The audience scope binds this credential to MCP. Workstream exchanges it for its internal API credential and enforces existing product authorization. Garden never receives the MCP server's exchange secret and never forwards its primary sign-in credential to Workstream.
+
+## Renewal and reconnection
+
+A saved connection is not proof that its authorization can still renew. Garden
+must show a rejected refresh grant as needing reconnection and offer the existing
+Personal OAuth action, even while retaining the connection record. A mere access
+token expiry is not a reconnect condition: Executor first renews it silently.
+For Workstream, the dedicated Garden authorization requests a bounded offline
+grant: 30 days idle and 90 days absolute maximum, enforced by Flow Identity.
+Revocation remains authoritative. This does not change Garden sign-in or grant
+any additional Workstream permissions.
+
+Revocation uses manual redirect handling supported by Cloudflare Workers. A
+redirect or issuer failure leaves the local connection available for retry; the
+refresh credential is never forwarded to a redirect destination.
+
+Disconnect revokes the saved authorization at Flow Identity. If the issuer is
+unavailable, Garden retains the connection and permits another attempt. If a
+reconnect replaces the grant during disconnect, the new authorization stays connected.
+Garden saves connection and encrypted credential changes in one database batch.
+A database rollback keeps the previous local records available for retry. Flow Identity
+may already have exchanged a code, rotated a token, or revoked authorization by
+that point.
 
 ## What the member sees
 
@@ -43,6 +66,14 @@ The Workstream MCP audience client scope must have **Include in token scope** en
 The deployment binding is optional, so an environment without a registered client can still run other connectors. Register and bind an appropriate client before enabling Workstream there. Merging into `dev` deploys `garden-dev`; staging promotion remains a separate maintainer action. See [deploy targets](../../reference/deploy-targets.md) and [environment and bindings](../../reference/environment-and-bindings.md).
 
 ## Implementation and proof
+
+The connections HTTP route uses `runExecutor` in `executor-runtime.ts`. Its
+request-scoped Executor supplies guarded fetch to plugins, while core revocation
+uses global fetch. The MCP execution stack in `executor-engine/mcp.ts` supplies
+guarded fetch to both plugins and core. Revocation therefore requires manual
+redirect handling on both paths. The SQLite lifecycle regression exercises
+disconnect through the production request-scoped constructor; separate guard
+tests cover redirect options on both `Request` and request initialization.
 
 The existing owners are `apps/web/src/lib/server/executor-engine/presets.ts`, `auth-contract.ts`, `install.ts`, and `apps/web/src/routes/api/executor/oauth/start.ts`. The SDK discovery patch uses the OpenID Connect issuer-path convention while preserving the RFC 8414 OAuth metadata convention. The installation regression runs the actual catalogue-to-probe-to-registration path, including discovery failure. No schema or storage migration is required. See [connector architecture](../architecture/connectors.md).
 
