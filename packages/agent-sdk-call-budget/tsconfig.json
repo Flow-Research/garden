@@ -1,0 +1,7 @@
+{
+  "extends": "@garden/tsconfig/base.json",
+  "compilerOptions": {
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": ["src/**/*.ts", "vitest.config.ts"]
+}

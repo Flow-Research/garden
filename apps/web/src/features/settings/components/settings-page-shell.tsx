@@ -1,5 +1,6 @@
-import type { ReactNode } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import { Link } from '@tanstack/react-router'
+import { cn } from '@garden/ui/lib/utils'
 import {
   CircleUserRound,
   Server,
@@ -58,12 +59,24 @@ export function SettingsPageShell({ children }: { children: ReactNode }) {
             ))}
           </div>
         </nav>
-        <div className="mt-10 min-w-0 rounded-2xl bg-background-main-secondary p-4 sm:p-6 lg:p-10">
-          <div className="min-w-0 rounded-2xl bg-background p-4 sm:p-6">
-            {children}
-          </div>
+        <div className="mt-6 min-w-0 sm:mt-10 lg:rounded-xl lg:bg-background-main-secondary lg:p-10">
+          {children}
         </div>
       </div>
     </div>
+  )
+}
+
+/** White content card that sits on the settings container background. */
+export function SettingsPanel({ className, ...props }: ComponentProps<'div'>) {
+  return (
+    <div
+      className={cn(
+        // Below lg there is no grey container, so cards need their own edge.
+        'min-w-0 rounded-lg border bg-background p-4 sm:p-6 lg:border-0',
+        className,
+      )}
+      {...props}
+    />
   )
 }

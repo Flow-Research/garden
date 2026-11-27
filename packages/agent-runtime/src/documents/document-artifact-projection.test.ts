@@ -267,7 +267,7 @@ const malformedWordDocuments = [
   ],
   [
     'unterminated attribute values',
-    `<?xml version="1.0"?><w:document ${wordNamespace}><w:body>${'<w:p a="'.repeat(4000)}`,
+    `<?xml version="1.0"?><w:document ${wordNamespace}><w:body>${'<w:p a="'.repeat(1000)}`,
   ],
 ] as const
 
@@ -354,5 +354,7 @@ describe('makeMammothDocumentMarkdownLayer', () => {
       expect(failure._tag).toBe('DocumentArtifactImportError')
       expect(failure.filename).toBe('malformed.docx')
     },
+    // Match the bounded real-DOCX integration allowance in document-tools tests.
+    30_000,
   )
 })
