@@ -108,7 +108,7 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
       <DialogContent
         size="md"
         showCloseButton={false}
-        className="gap-0 rounded-2xl p-8"
+        className="gap-0 rounded-2xl p-5 sm:p-8"
       >
         <div className="flex items-center justify-between">
           <Button
@@ -128,16 +128,16 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
             <X className="size-4" />
           </Button>
         </div>
-        <DialogTitle className="mt-1 text-center text-xl leading-tight font-semibold">
+        <DialogTitle className="mt-1 text-center text-lg leading-tight font-semibold sm:text-xl">
           Create New Team
         </DialogTitle>
-        <DialogDescription className="mt-2 text-center text-sm text-text-secondary">
+        <DialogDescription className="mt-2 text-center text-sm text-balance text-text-secondary">
           Setup and add team members to your team
         </DialogDescription>
 
         <label
           htmlFor="create-team-name"
-          className="mt-12 flex flex-col gap-2 text-sm"
+          className="mt-8 flex flex-col gap-2 text-sm sm:mt-12"
         >
           <span>
             Team name <span className="text-text-danger-default">*</span>
@@ -153,7 +153,7 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
         </label>
         <label
           htmlFor="create-team-description"
-          className="mt-6 flex flex-col gap-2 text-sm"
+          className="mt-5 flex flex-col gap-2 text-sm sm:mt-6"
         >
           <span>Description</span>
           <Textarea
@@ -188,15 +188,19 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
           <ul className="mt-3 flex max-h-56 flex-col overflow-y-auto">
             {entries.map((entry) => (
               <li key={entry.key}>
-                <label className="grid cursor-pointer grid-cols-[1fr_1.2fr_auto] items-center gap-4 py-2 text-sm">
-                  <span className="truncate">{entry.name}</span>
-                  <span className="truncate text-center text-text-secondary">
-                    {entry.email ?? 'Agent'}
+                {/* Phones stack name over email; `sm:contents` lifts both
+                    into the three-column desktop grid. */}
+                <label className="grid cursor-pointer grid-cols-[1fr_auto] items-center gap-4 py-2 text-sm sm:grid-cols-[1fr_1.2fr_auto]">
+                  <span className="flex min-w-0 flex-col gap-0.5 sm:contents">
+                    <span className="truncate">{entry.name}</span>
+                    <span className="truncate text-xs text-text-secondary sm:text-center sm:text-sm">
+                      {entry.email ?? 'Agent'}
+                    </span>
                   </span>
                   <input
                     aria-label={entry.name}
                     checked={selected.has(entry.key)}
-                    className="size-3.5 accent-primary"
+                    className="size-4 accent-primary sm:size-3.5"
                     onChange={() => toggle(entry.key)}
                     type="checkbox"
                   />

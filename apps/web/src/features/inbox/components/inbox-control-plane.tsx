@@ -8,6 +8,7 @@ import type {
   IssueRunEvent,
   IssueWorkProduct,
 } from '@garden/core/types'
+import { describeRunFailure } from '@garden/core/runs/failure'
 import { getConnectorById } from '@garden/connectors'
 import { api } from '@/lib/api'
 import { executorOAuthStartUrl } from '@/lib/api/executor'
@@ -450,9 +451,10 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
                 usage: run.usage ?? null,
               }}
             />
-            {run.error && (
-              <p className="mt-2 break-words font-mono text-xs text-destructive">
-                {run.error}
+            {run.failure && (
+              <p className="mt-2 break-words text-xs text-destructive">
+                {describeRunFailure(run.failure).title}{' '}
+                {describeRunFailure(run.failure).nextStep}
               </p>
             )}
           </div>

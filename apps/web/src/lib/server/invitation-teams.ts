@@ -95,10 +95,9 @@ export async function updateWorkspaceTeamSettings(args: {
  * Decides which Teams a new invite joins. Before this, an invite carried no
  * Teams, so accepted members landed on an empty board. Only workspace owners
  * and admins create invites, and they may attach any Team in the workspace.
- * With no Teams named, the workspace default applies. Unknown or
- * other-workspace Team ids return 404 before any invite exists. Team-owner
- * invites are a follow-up that will grant the permission through Better Auth
- * access control.
+ * With no Teams named, the invite joins none. Unknown or other-workspace Team
+ * ids return 404 before any invite exists. Team-owner invites are a follow-up
+ * that will grant the permission through Better Auth access control.
  */
 export async function planInvitationTeams(args: {
   db: Db
@@ -106,9 +105,6 @@ export async function planInvitationTeams(args: {
   inviterId: string
   requestedTeamIds: string[] | undefined
 }): Promise<Result<string[], InvitationTeamError>> {
-  const settings = await readWorkspaceTeamSettings(args.db, args.workspaceId)
-  if (!settings) return Result.err(teamNotFound())
-
   const [membership] = await args.db
     .select({ role: schema.member.role })
     .from(schema.member)
@@ -130,9 +126,7 @@ export async function planInvitationTeams(args: {
   }
 
   const teamIds = [...new Set(args.requestedTeamIds ?? [])]
-  if (!teamIds.length) {
-    return Result.ok(settings.default_team_id ? [settings.default_team_id] : [])
-  }
+  if (!teamIds.length) return Result.ok([])
   const teams = await args.db
     .select({ id: schema.team.id })
     .from(schema.team)

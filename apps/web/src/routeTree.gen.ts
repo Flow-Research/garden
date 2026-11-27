@@ -103,7 +103,10 @@ import { Route as AuthenticatedAppSettingsExecutionHostsRouteImport } from './ro
 import { Route as AuthenticatedAppSettingsGeneralRouteImport } from './routes/_authenticated/_app/settings/general'
 import { Route as AuthenticatedAppSettingsPreferencesRouteImport } from './routes/_authenticated/_app/settings/preferences'
 import { Route as AuthenticatedAppSettingsProfileRouteImport } from './routes/_authenticated/_app/settings/profile'
-import { Route as AuthenticatedAppSettingsUserManagementRouteImport } from './routes/_authenticated/_app/settings/user-management'
+import { Route as AuthenticatedAppSettingsUserManagementIndexRouteImport } from './routes/_authenticated/_app/settings/user-management/index'
+import { Route as AuthenticatedAppSettingsUserManagementMembersRouteImport } from './routes/_authenticated/_app/settings/user-management/members'
+import { Route as AuthenticatedAppSettingsUserManagementTeamsIndexRouteImport } from './routes/_authenticated/_app/settings/user-management/teams/index'
+import { Route as AuthenticatedAppSettingsUserManagementTeamsTeamIdRouteImport } from './routes/_authenticated/_app/settings/user-management/teams/$teamId'
 import { Route as AuthenticatedAppTasksIndexRouteImport } from './routes/_authenticated/_app/tasks.index'
 import { Route as AuthenticatedAppTasksIssueIdRouteImport } from './routes/_authenticated/_app/tasks.$issueId'
 import { Route as AuthenticatedAppTeamsIndexRouteImport } from './routes/_authenticated/_app/teams.index'
@@ -672,10 +675,28 @@ const AuthenticatedAppSettingsProfileRoute =
     path: '/profile',
     getParentRoute: () => AuthenticatedAppSettingsRoute,
   } as any)
-const AuthenticatedAppSettingsUserManagementRoute =
-  AuthenticatedAppSettingsUserManagementRouteImport.update({
-    id: '/user-management',
-    path: '/user-management',
+const AuthenticatedAppSettingsUserManagementIndexRoute =
+  AuthenticatedAppSettingsUserManagementIndexRouteImport.update({
+    id: '/user-management/',
+    path: '/user-management/',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsUserManagementMembersRoute =
+  AuthenticatedAppSettingsUserManagementMembersRouteImport.update({
+    id: '/user-management/members',
+    path: '/user-management/members',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsUserManagementTeamsIndexRoute =
+  AuthenticatedAppSettingsUserManagementTeamsIndexRouteImport.update({
+    id: '/user-management/teams/',
+    path: '/user-management/teams/',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute =
+  AuthenticatedAppSettingsUserManagementTeamsTeamIdRouteImport.update({
+    id: '/user-management/teams/$teamId',
+    path: '/user-management/teams/$teamId',
     getParentRoute: () => AuthenticatedAppSettingsRoute,
   } as any)
 const AuthenticatedAppTasksIndexRoute =
@@ -1191,7 +1212,10 @@ export interface FileRoutesByFullPath {
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
-  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
+  '/settings/user-management/members': typeof AuthenticatedAppSettingsUserManagementMembersRoute
+  '/settings/user-management/': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
+  '/settings/user-management/teams/': typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1357,7 +1381,10 @@ export interface FileRoutesByTo {
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
-  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
+  '/settings/user-management/members': typeof AuthenticatedAppSettingsUserManagementMembersRoute
+  '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
+  '/settings/user-management/teams': typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
   '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1532,7 +1559,10 @@ export interface FileRoutesById {
   '/_authenticated/_app/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/_authenticated/_app/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/_authenticated/_app/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
-  '/_authenticated/_app/settings/user-management': typeof AuthenticatedAppSettingsUserManagementRoute
+  '/_authenticated/_app/settings/user-management/members': typeof AuthenticatedAppSettingsUserManagementMembersRoute
+  '/_authenticated/_app/settings/user-management/': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/_authenticated/_app/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
+  '/_authenticated/_app/settings/user-management/teams/': typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
   '/_authenticated/_app/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
   '/_authenticated/_app/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
   '/_authenticated/_app/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
@@ -1706,7 +1736,10 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
-    | '/settings/user-management'
+    | '/settings/user-management/members'
+    | '/settings/user-management/'
+    | '/settings/user-management/teams/$teamId'
+    | '/settings/user-management/teams/'
     | '/tasks/$issueId'
     | '/teams/$teamId'
     | '/teams/issues'
@@ -1872,7 +1905,10 @@ export interface FileRouteTypes {
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
+    | '/settings/user-management/members'
     | '/settings/user-management'
+    | '/settings/user-management/teams/$teamId'
+    | '/settings/user-management/teams'
     | '/tasks/$issueId'
     | '/teams/$teamId'
     | '/teams/issues'
@@ -2046,7 +2082,10 @@ export interface FileRouteTypes {
     | '/_authenticated/_app/settings/general'
     | '/_authenticated/_app/settings/preferences'
     | '/_authenticated/_app/settings/profile'
-    | '/_authenticated/_app/settings/user-management'
+    | '/_authenticated/_app/settings/user-management/members'
+    | '/_authenticated/_app/settings/user-management/'
+    | '/_authenticated/_app/settings/user-management/teams/$teamId'
+    | '/_authenticated/_app/settings/user-management/teams/'
     | '/_authenticated/_app/tasks/$issueId'
     | '/_authenticated/_app/teams/$teamId'
     | '/_authenticated/_app/teams/issues'
@@ -2860,11 +2899,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedAppSettingsProfileRouteImport
       parentRoute: typeof AuthenticatedAppSettingsRoute
     }
-    '/_authenticated/_app/settings/user-management': {
-      id: '/_authenticated/_app/settings/user-management'
+    '/_authenticated/_app/settings/user-management/': {
+      id: '/_authenticated/_app/settings/user-management/'
       path: '/user-management'
-      fullPath: '/settings/user-management'
-      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementRouteImport
+      fullPath: '/settings/user-management/'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementIndexRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/user-management/members': {
+      id: '/_authenticated/_app/settings/user-management/members'
+      path: '/user-management/members'
+      fullPath: '/settings/user-management/members'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementMembersRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/user-management/teams/': {
+      id: '/_authenticated/_app/settings/user-management/teams/'
+      path: '/user-management/teams'
+      fullPath: '/settings/user-management/teams/'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementTeamsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/user-management/teams/$teamId': {
+      id: '/_authenticated/_app/settings/user-management/teams/$teamId'
+      path: '/user-management/teams/$teamId'
+      fullPath: '/settings/user-management/teams/$teamId'
+      preLoaderRoute: typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRouteImport
       parentRoute: typeof AuthenticatedAppSettingsRoute
     }
     '/_authenticated/_app/tasks/': {
@@ -3445,7 +3505,18 @@ interface AuthenticatedAppSettingsRouteChildren {
   AuthenticatedAppSettingsGeneralRoute: typeof AuthenticatedAppSettingsGeneralRoute
   AuthenticatedAppSettingsPreferencesRoute: typeof AuthenticatedAppSettingsPreferencesRoute
   AuthenticatedAppSettingsProfileRoute: typeof AuthenticatedAppSettingsProfileRoute
-  AuthenticatedAppSettingsUserManagementRoute: typeof AuthenticatedAppSettingsUserManagementRoute
+  AuthenticatedAppSettingsUserManagementMembersRoute: typeof AuthenticatedAppSettingsUserManagementMembersRoute
+  AuthenticatedAppSettingsUserManagementIndexRoute: typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute: typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
+  AuthenticatedAppSettingsUserManagementTeamsIndexRoute: typeof AuthenticatedAppSettingsUserManagementTeamsIndexRoute
+    AuthenticatedAppSettingsUserManagementMembersRoute:
+      AuthenticatedAppSettingsUserManagementMembersRoute,
+    AuthenticatedAppSettingsUserManagementIndexRoute:
+      AuthenticatedAppSettingsUserManagementIndexRoute,
+    AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute:
+      AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute,
+    AuthenticatedAppSettingsUserManagementTeamsIndexRoute:
+      AuthenticatedAppSettingsUserManagementTeamsIndexRoute,
   AuthenticatedAppSettingsIndexRoute: typeof AuthenticatedAppSettingsIndexRoute
 }
 
@@ -3457,8 +3528,6 @@ const AuthenticatedAppSettingsRouteChildren: AuthenticatedAppSettingsRouteChildr
     AuthenticatedAppSettingsPreferencesRoute:
       AuthenticatedAppSettingsPreferencesRoute,
     AuthenticatedAppSettingsProfileRoute: AuthenticatedAppSettingsProfileRoute,
-    AuthenticatedAppSettingsUserManagementRoute:
-      AuthenticatedAppSettingsUserManagementRoute,
     AuthenticatedAppSettingsIndexRoute: AuthenticatedAppSettingsIndexRoute,
   }
 
