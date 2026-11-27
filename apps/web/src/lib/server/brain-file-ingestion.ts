@@ -28,6 +28,7 @@ export class BrainFileIngestionError extends Schema.TaggedError<BrainFileIngesti
 export interface BrainFileIngestionService {
   readonly stage: (input: {
     file: File
+    workProductId?: string
     itemId: string
     ownerUserId: string
     r2Key: string
@@ -124,6 +125,7 @@ export const makeBrainFileIngestionLayer = (
 
       const stage = Effect.fn('BrainFileIngestion.stage')(function* (input: {
         file: File
+        workProductId?: string
         itemId: string
         ownerUserId: string
         r2Key: string
@@ -144,34 +146,54 @@ export const makeBrainFileIngestionLayer = (
           catch: (cause) => ingestionFailure('stage brain upload', cause),
         })
 
-        const added = yield* brain
-          .addItem({
-            tenantId: WorkspaceId.make(input.workspaceId),
-            kind: Kind.make('file'),
-            label: normalizeDownloadFilename(input.file.name),
-            r2Key: input.r2Key,
-            sizeBytes: input.file.size,
-            canonical: {
-              type: 'file',
-              value: `brain:${input.workspaceId}:${normalizeDownloadFilename(input.file.name)}`,
+        const adopt = (canonicalValue: string) =>
+          brain.addItem(
+            {
+              tenantId: WorkspaceId.make(input.workspaceId),
+              kind: Kind.make('file'),
+              label: normalizeDownloadFilename(input.file.name),
+              r2Key: input.r2Key,
+              sizeBytes: input.file.size,
+              canonical: { type: 'file', value: canonicalValue },
+              indexStatus: 'processing',
+              origin: {
+                actor: { _tag: 'Human', userId: input.ownerUserId },
+                at,
+              },
             },
-            indexStatus: 'processing',
-            origin: {
-              actor: { _tag: 'Human', userId: input.ownerUserId },
-              at,
-            },
-          })
-          .pipe(
-            Effect.mapError((cause) =>
-              ingestionFailure('adopt staged brain upload', cause),
-            ),
-            Effect.tapError(() =>
-              discardStagedUpload({
-                r2Key: input.r2Key,
-                reason: 'upload_failed',
-              }),
-            ),
+            input.workProductId ? 'return' : 'update',
           )
+        const added = yield* Effect.gen(function* () {
+          if (!input.workProductId)
+            return yield* adopt(
+              `brain:${input.workspaceId}:${normalizeDownloadFilename(input.file.name)}`,
+            )
+          const key = `work-product:${input.workspaceId}:${input.workProductId}`
+          // Look up older partial saves before creating an owner-specific copy.
+          // An existing item keeps its origin and scope during this lookup.
+          let file = yield* adopt(key)
+          while (
+            file.r2Key !== input.r2Key &&
+            (file.origin.actor._tag !== 'Human' ||
+              file.origin.actor.userId !== input.ownerUserId ||
+              (file.scope && file.scope.kind !== 'org'))
+          ) {
+            file = yield* adopt(
+              `${key}:after:${file.id}:owner:${input.ownerUserId}`,
+            )
+          }
+          return file
+        }).pipe(
+          Effect.mapError((cause) =>
+            ingestionFailure('adopt staged brain upload', cause),
+          ),
+          Effect.tapError(() =>
+            discardStagedUpload({
+              r2Key: input.r2Key,
+              reason: 'upload_failed',
+            }),
+          ),
+        )
 
         if (added.r2Key !== input.r2Key) {
           yield* discardStagedUpload({

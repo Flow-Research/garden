@@ -1,11 +1,7 @@
 /**
- * Decorative foliage bed for the auth screens.
- *
- * Why: the login redesign (Aug 2026) replaces the old two-column marketing
- * card with Garden's own visual language — parchment ground, vellum panel,
- * and this hand-drawn bed of moss-ink stems rising from the viewport bottom.
- * Several stems carry small 8-pointed star flowers — an echo of Garden's
- * original asterisk mark (the brand mark itself is now the leaf in
+ * Decorative foliage bed behind every Garden screen: a hand-drawn bed of
+ * moss-ink stems rising from the viewport bottom. Several stems carry small
+ * 8-pointed star flowers — an echo of Garden's original asterisk mark (the brand mark itself is now the leaf in
  * packages/ui/components/common/brand-icon.tsx).
  *
  * Composition note: the auth panel is ~24rem wide and centered, covering
@@ -22,7 +18,7 @@
  * Color rides `currentColor` — the wrapper sets `text-brand` (moss in light
  * mode, sage in dark), so theming is automatic.
  */
-export function LoginFoliage({ className }: { className?: string }) {
+function GardenFoliage({ className }: { className?: string }) {
   return (
     <svg
       aria-hidden="true"
@@ -197,5 +193,25 @@ export function LoginFoliage({ className }: { className?: string }) {
         />
       </g>
     </svg>
+  )
+}
+
+/**
+ * App-wide backdrop layer for the foliage bed. Mounted once in the root layout
+ * (`routes/__root.tsx`), which stays mounted across client navigation, so the
+ * growth plays once per full page load and then stays still while the user
+ * moves between screens. `-z-10` keeps it behind all page content, above only
+ * the body ground; surfaces with their own fill cover it, so text never sits
+ * on top of stems. `pointer-events-none` keeps it out of hit testing.
+ */
+export function GardenBackdrop() {
+  return (
+    <div
+      aria-hidden="true"
+      data-testid="garden-backdrop"
+      className="pointer-events-none fixed inset-x-0 bottom-0 -z-10 text-brand"
+    >
+      <GardenFoliage className="mx-auto block h-[clamp(180px,34vh,330px)] w-full max-w-6xl" />
+    </div>
   )
 }
