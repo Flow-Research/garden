@@ -9,7 +9,7 @@
     "drizzle-orm": "catalog:",
     "drizzle-zod": "^0.8.3",
     "pg": "^8.20.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/pg": "^8.15.5",
@@ -34,6 +34,7 @@
     "./runtime": "./src/runtime.ts",
     "./inbox": "./src/inbox.ts",
     "./subscribers": "./src/subscribers.ts",
+    "./team-issue-visibility": "./src/team-issue-visibility.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/*": "./src/schema/*.ts",
     "./validation": "./src/validation/index.ts",

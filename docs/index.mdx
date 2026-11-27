@@ -1,0 +1,38 @@
+---
+title: Garden handbook
+description: How Garden is built, how to change it, and where to look things up.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+This handbook is for people who build Garden. It renders the repository's `docs/` folder, so every merged pull request updates it.
+
+## Start with the question you have
+
+| If you want to | Read |
+| --- | --- |
+| Run Garden locally for the first time | [Get started](./tutorials/get-started.md) |
+| Take a change from branch to merge | [Ship a change to dev](./guides/develop/ship-a-change.mdx) |
+| Understand where state lives and why | [How Garden is built](./concepts/architecture/how-garden-is-built.mdx) |
+| Find the code for a feature | [Architecture map](./reference/architecture-map.md) |
+| Look up an env var or Worker binding | [Environment and bindings](./reference/environment-and-bindings.md) |
+| Check what is not built yet | [Known gaps](./reference/known-gaps.md) and [roadmap](./concepts/product/roadmap.md) |
+
+## Pages come in four kinds
+
+- **Tutorials** walk you through a first run, start to finish.
+- **Guides** give the steps for one task, such as writing a migration or deploying.
+- **Concepts** explain why a part of Garden works the way it does.
+- **Reference** lists facts to look up: paths, bindings, tokens, and open gaps.
+
+**Decisions** record dated design choices. **Proposals** describe designs that are not built. **Archive** keeps historical snapshots that are no longer current.
+
+## Change a page
+
+Edit the file under `docs/` and open a pull request like any other change. Follow [Write a feature doc](./guides/develop/write-a-feature-doc.md) for new feature pages. `pnpm verify:docs` checks links, paths, and frontmatter in CI.
+
+<Callout type="warn">
+  Any signed-in user can read the handbook, and the page text ships in the app's
+  public JavaScript. Don't put secrets or credentials here.
+</Callout>

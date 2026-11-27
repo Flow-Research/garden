@@ -13,6 +13,7 @@ export function realtimeInvalidationRoots(
     case 'team:created':
     case 'team:updated':
     case 'team:deleted':
+    case 'team:policy_updated':
     case 'team_member:added':
     case 'team_member:removed':
     case 'team_member:updated':

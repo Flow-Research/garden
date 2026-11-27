@@ -143,6 +143,7 @@
     // Empty means "unset". Offline mode uses Ollama `all-minilm` (384-d).
     "GARDEN_EMBEDDING_MODEL": "",
     "GARDEN_EMBEDDING_PROVIDER": "",
+    "GARDEN_EMBEDDING_TIMEOUT_SECONDS": "",
   },
   "migrations": [
     {

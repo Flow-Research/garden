@@ -1,5 +1,8 @@
 import { Result, TaggedError } from 'better-result'
-import { getGitHubAppInstallation } from '@garden/connectors/github-app'
+import {
+  getGitHubAppInstallation,
+  normalizeGitHubAppPrivateKey,
+} from '@garden/connectors/github-app'
 import { schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
@@ -26,15 +29,13 @@ type GitHubAppEnv = Pick<
 
 type GitHubAppDatabase = Db
 
-/** Normalizes private keys stored as JSON-quoted Worker secrets before signing. */
+/** Applies shared GitHub App private-key normalization for Worker/env secrets. */
 export function normalizeGitHubAppEnv(env: GitHubAppEnv) {
-  const privateKey = env.GITHUB_APP_PRIVATE_KEY?.trim()
-
   return {
     ...env,
-    GITHUB_APP_PRIVATE_KEY: privateKey?.startsWith('"')
-      ? Result.try(() => JSON.parse(privateKey) as string).unwrapOr(privateKey)
-      : privateKey,
+    GITHUB_APP_PRIVATE_KEY: normalizeGitHubAppPrivateKey(
+      env.GITHUB_APP_PRIVATE_KEY,
+    ),
   }
 }
 
@@ -99,11 +100,20 @@ function constantTimeEquals(left: string, right: string) {
   return diff === 0
 }
 
+/**
+ * What a signed GitHub state token authorizes. `install` drives the App
+ * installation callback; `identity` drives a member's "Link with GitHub" user
+ * authorization. The purpose is signed into the payload so a token minted for
+ * one flow is rejected by the other.
+ */
+export type GitHubStatePurpose = 'install' | 'identity'
+
 export async function createGitHubSetupState(args: {
   secret: string
   userId: string
   workspaceId: string
   flowId?: string | null
+  purpose?: GitHubStatePurpose
 }) {
   const payload = base64Url(
     textEncoder.encode(
@@ -112,6 +122,7 @@ export async function createGitHubSetupState(args: {
         workspaceId: args.workspaceId,
         issuedAt: Date.now(),
         ...(args.flowId ? { flowId: args.flowId } : {}),
+        ...(args.purpose === 'identity' ? { purpose: 'identity' } : {}),
       }),
     ),
   )
@@ -119,10 +130,17 @@ export async function createGitHubSetupState(args: {
   return `${payload}.${signature}`
 }
 
+/**
+ * Verifies a signed GitHub state token. `purpose` defaults to `install`, so
+ * the existing install callback keeps working unchanged and rejects identity
+ * tokens; the identity callback passes `identity` and rejects install tokens.
+ */
 export async function resolveGitHubSetupState(args: {
   secret: string
   state: string
+  purpose?: GitHubStatePurpose
 }) {
+  const expectedPurpose = args.purpose ?? 'install'
   const [payload, signature] = args.state.split('.')
   if (!payload || !signature) {
     return Result.err(
@@ -151,6 +169,7 @@ export async function resolveGitHubSetupState(args: {
         workspaceId?: unknown
         issuedAt?: unknown
         flowId?: unknown
+        purpose?: unknown
       }
       if (
         typeof value.userId !== 'string' ||
@@ -161,6 +180,10 @@ export async function resolveGitHubSetupState(args: {
       }
       if (Date.now() - value.issuedAt > GITHUB_SETUP_STATE_TTL_MS) {
         throw new Error('GitHub setup state expired')
+      }
+      const purpose = value.purpose === 'identity' ? 'identity' : 'install'
+      if (purpose !== expectedPurpose) {
+        throw new Error('GitHub setup state was issued for a different flow')
       }
       return {
         userId: value.userId,

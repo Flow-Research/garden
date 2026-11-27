@@ -4,6 +4,12 @@ import {
   notFound,
   serviceUnavailable,
 } from '@/lib/server/control-plane'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'service-error-response',
+})
 
 /**
  * Maps a service error's `code` to an HTTP response in one place. Infrastructure
@@ -15,7 +21,8 @@ export function serviceErrorResponse(error: { code: string; message: string }) {
     return serviceUnavailable('The database is unavailable. Try again shortly.')
   }
   if (error.code === 'runtime_error') {
-    return json({ error: error.message }, 502)
+    logger.error('service.runtime_error', errorFields(error))
+    return json({ error: 'The service could not complete the request.' }, 502)
   }
   if (error.code.endsWith('_not_found')) return notFound(error.message)
   return badRequest(error.message)

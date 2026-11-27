@@ -1,19 +1,7 @@
-import { and, eq, inArray } from 'drizzle-orm'
 import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { sendIssueAssignmentEmail } from '@/lib/server/email/issue-assignment'
-import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
-import type { IssueStatus } from '@garden/core/types/issue'
-import {
-  archiveTerminalIssueInbox,
-  upsertIssueAssignmentInbox,
-} from '@garden/db/inbox'
-import {
-  addIssueSubscribers,
-  assigneeToSubscriberType,
-} from '@garden/db/subscribers'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   parseJsonBody,
@@ -30,6 +18,7 @@ import {
   workspacePermissions,
 } from '@/lib/server/workspace-permissions'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
+import { applyIssueMutationSideEffects } from '@/lib/server/issue-mutation-effects'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 import {
   isWorkspaceManager,
@@ -40,12 +29,18 @@ import {
   isWorkspaceIssue,
   isWorkspaceParticipant,
 } from '@/lib/server/workspace-refs'
-import {
-  cancelIssueRun,
-  startIssueRun,
-} from '@garden/server/issues/run-service'
-import { cancelLiveRunsOnIssueChange } from '@garden/core/issues/run-sync'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
+import {
+  addIssueSubscriberRows,
+  assigneeToSubscriberType,
+  deleteIssueRow,
+  getOrganizationName,
+  getUserEmail,
+  isTeamAssigneeMember,
+  updateIssueRow,
+  upsertIssueAssignmentInboxItem,
+  type IssueRowUpdate,
+} from '@/lib/server/queries/issues'
 
 const logger = createGardenLogger({
   service: 'garden-staging',
@@ -157,36 +152,33 @@ export const Route = createFileRoute('/api/issues/$id')({
         const resultingAssigneeId = assigneeFieldPresent
           ? (body.assignee_id ?? null)
           : existingIssue.assigneeId
-        if (nextTeamId !== null && (teamChanged || assigneeFieldPresent)) {
-          if (!resultingAssigneeId) {
-            return badRequest('Team issues must be assigned to a Team member')
-          }
+        // Team issues may be unassigned; an assignee, when present, must
+        // belong to the Team the issue ends up on.
+        if (
+          nextTeamId !== null &&
+          resultingAssigneeId &&
+          (teamChanged || assigneeFieldPresent)
+        ) {
           const resultingAssigneeType =
             assigneeFieldPresent && typeof body.assignee_id === 'string'
               ? body.assignee_type === 'agent'
                 ? 'agent'
                 : 'user'
               : existingIssue.assigneeType
-          const assigneeCondition =
-            resultingAssigneeType === 'agent'
-              ? and(
-                  eq(schema.teamMember.teamId, nextTeamId),
-                  eq(schema.teamMember.agentId, resultingAssigneeId),
-                )
-              : and(
-                  eq(schema.teamMember.teamId, nextTeamId),
-                  eq(schema.teamMember.userId, resultingAssigneeId),
-                )
-          const [assigneeMembership] = await db
-            .select({ id: schema.teamMember.id })
-            .from(schema.teamMember)
-            .where(assigneeCondition)
-          if (!assigneeMembership) {
+          const assigneeIsTeamMember = await isTeamAssigneeMember(db, {
+            teamId: nextTeamId,
+            assigneeId: resultingAssigneeId,
+            assigneeType:
+              resultingAssigneeType === 'agent' ? 'agent' : 'member',
+          })
+          if (!assigneeIsTeamMember) {
             return badRequest('Assignee must be a Team member')
           }
         }
 
-        const updateValues: Partial<typeof schema.issue.$inferInsert> = {}
+        // Build field changes first, then stamp updatedAt, so the empty-update
+        // check stays `length === 0` instead of relying on a sentinel key count.
+        const updateValues: Omit<IssueRowUpdate, 'updatedAt'> = {}
 
         if (typeof body.title === 'string') updateValues.title = body.title
         if (Object.prototype.hasOwnProperty.call(body, 'description')) {
@@ -222,8 +214,6 @@ export const Route = createFileRoute('/api/issues/$id')({
           return badRequest('No valid issue changes submitted')
         }
 
-        updateValues.updatedAt = new Date()
-
         // IDs from the body are global: confirm they live in this workspace
         // before storing them (and before emailing an assignee below).
         if (updateValues.assigneeId) {
@@ -253,16 +243,11 @@ export const Route = createFileRoute('/api/issues/$id')({
           }
         }
 
-        const [issue] = await db
-          .update(schema.issue)
-          .set(updateValues)
-          .where(
-            and(
-              eq(schema.issue.id, params.id),
-              eq(schema.issue.workspaceId, existingIssue.workspaceId),
-            ),
-          )
-          .returning()
+        const issue = await updateIssueRow(db, {
+          workspaceId: existingIssue.workspaceId,
+          issueId: params.id,
+          values: { ...updateValues, updatedAt: new Date() },
+        })
 
         if (!issue) return notFound('Issue not found')
 
@@ -281,7 +266,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           const assigneeId = issue.assigneeId
           const subscriberResult = await Result.tryPromise({
             try: () =>
-              addIssueSubscribers(db, {
+              addIssueSubscriberRows(db, {
                 workspaceId: existingIssue.workspaceId,
                 issueId: issue.id,
                 entries: [
@@ -307,8 +292,7 @@ export const Route = createFileRoute('/api/issues/$id')({
           (existingIssue.assigneeType !== issue.assigneeType ||
             existingIssue.assigneeId !== issue.assigneeId)
         ) {
-          await upsertIssueAssignmentInbox({
-            db,
+          await upsertIssueAssignmentInboxItem(db, {
             workspaceId: existingIssue.workspaceId,
             issueId: issue.id,
             actorType: 'member',
@@ -319,16 +303,13 @@ export const Route = createFileRoute('/api/issues/$id')({
           // point emailing yourself) and keep it best-effort so a Resend failure
           // never fails the assignment write.
           if (issue.assigneeId !== session.user.id) {
-            const [assignee] = await db
-              .select({ email: schema.user.email })
-              .from(schema.user)
-              .where(eq(schema.user.id, issue.assigneeId))
-            const [workspace] = await db
-              .select({ name: schema.organization.name })
-              .from(schema.organization)
-              .where(eq(schema.organization.id, existingIssue.workspaceId))
+            const assigneeEmail = await getUserEmail(db, issue.assigneeId)
+            const workspaceName = await getOrganizationName(
+              db,
+              existingIssue.workspaceId,
+            )
 
-            if (assignee?.email) {
+            if (assigneeEmail) {
               const assignerName =
                 session.user.name?.trim() || session.user.email
               const emailResult = await Result.tryPromise({
@@ -340,9 +321,9 @@ export const Route = createFileRoute('/api/issues/$id')({
                       issue: { id: issue.id, title: issue.title },
                       workspace: {
                         id: existingIssue.workspaceId,
-                        name: workspace?.name ?? 'your workspace',
+                        name: workspaceName ?? 'your workspace',
                       },
-                      assignee: { email: assignee.email },
+                      assignee: { email: assigneeEmail },
                       assignerName,
                     },
                     env: appEnv,
@@ -357,85 +338,20 @@ export const Route = createFileRoute('/api/issues/$id')({
             }
           }
         }
-        if (issue.status === 'done' || issue.status === 'cancelled') {
-          await archiveTerminalIssueInbox({
-            db,
-            workspaceId: existingIssue.workspaceId,
-            issueId: issue.id,
-          })
-        }
-        const syncDecision = cancelLiveRunsOnIssueChange({
-          currentStatus: (existingIssue.status ?? 'todo') as IssueStatus,
-          nextStatus: (issue.status ?? 'todo') as IssueStatus,
-          currentAssigneeType: existingIssue.assigneeType as
-            | 'user'
-            | 'member'
-            | 'agent'
-            | null,
-          currentAssigneeId: existingIssue.assigneeId,
-          nextAssigneeType: issue.assigneeType as
-            | 'user'
-            | 'member'
-            | 'agent'
-            | null,
-          nextAssigneeId: issue.assigneeId,
-        })
-
-        if (syncDecision.cancelLiveRuns) {
-          const liveRuns = await db
-            .select({ id: schema.issueRun.id })
-            .from(schema.issueRun)
-            .where(
-              and(
-                eq(schema.issueRun.issueId, issue.id),
-                inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
-                ...(syncDecision.cancelAgentId
-                  ? [eq(schema.issueRun.agentId, syncDecision.cancelAgentId)]
-                  : []),
-              ),
-            )
-          for (const run of liveRuns) {
-            const cancelResult = await cancelIssueRun(appEnv, {
-              workspaceId: existingIssue.workspaceId,
-              runId: run.id,
-              actor: { type: 'member', id: session.user.id },
-              reason: 'issue_changed',
-            })
-            if (cancelResult.isErr()) {
-              logger.error(
-                'issue.run_cancel_failed',
-                errorFields(cancelResult.error),
-              )
-            }
-          }
-        }
-
-        if (syncDecision.shouldWakeAgent && issue.assigneeId) {
-          const startResult = await startIssueRun(appEnv, {
-            workspaceId: existingIssue.workspaceId,
-            issueId: issue.id,
-            agentId: issue.assigneeId,
-            source: 'assignment',
-            actor: { type: 'member', id: session.user.id },
-          })
-          if (startResult.isErr()) {
-            logger.error(
-              'issue.run_start_failed',
-              errorFields(startResult.error),
-            )
-          }
-        }
-        const issuePrefix = await getWorkspaceIssuePrefix(
+        const updatedIssue = await applyIssueMutationSideEffects({
           db,
-          existingIssue.workspaceId,
-        )
-        const updatedIssue = toIssue(issue, { issuePrefix })
-        appContext.waitUntil(
-          publishWorkspaceEvent(appContext.env, existingIssue.workspaceId, {
-            type: 'issue:updated',
-            payload: { issue: updatedIssue },
-          }),
-        )
+          env: appEnv,
+          waitUntil: (promise) => appContext.waitUntil(promise),
+          workspaceId: existingIssue.workspaceId,
+          previous: {
+            status: existingIssue.status,
+            assigneeType: existingIssue.assigneeType,
+            assigneeId: existingIssue.assigneeId,
+          },
+          nextIssue: issue,
+          actor: { type: 'member', id: session.user.id },
+          wakeOnAssignment: true,
+        })
         return Response.json(updatedIssue)
       },
       DELETE: async ({ context, params }) => {
@@ -451,21 +367,16 @@ export const Route = createFileRoute('/api/issues/$id')({
         })
         if (permission) return permission
 
-        await access.db
-          .delete(schema.issue)
-          .where(
-            and(
-              eq(schema.issue.id, params.id),
-              eq(schema.issue.workspaceId, access.issue.workspaceId),
-            ),
-          )
+        await deleteIssueRow(access.db, {
+          workspaceId: access.issue.workspaceId,
+          issueId: params.id,
+        })
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
             type: 'issue:deleted',
             payload: {
               issue_id: access.issue.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )

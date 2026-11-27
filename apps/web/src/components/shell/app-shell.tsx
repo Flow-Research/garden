@@ -372,6 +372,9 @@ export function AppShell() {
                     onLogout={() => void handleLogout()}
                     onSwitchWorkspace={handleSwitchWorkspace}
                     onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
+                    onRefreshWorkspaces={() =>
+                      void workspaceListQuery.refetch()
+                    }
                   />
                 }
               />

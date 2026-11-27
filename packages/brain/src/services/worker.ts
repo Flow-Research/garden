@@ -28,7 +28,7 @@ export function makeWorkerBrainLive(args: {
   apiKey?: string
   ai: WorkersAiBinding
   files: R2BucketLike
-  modelEnv?: EmbeddingsRuntimeEnv
+  modelEnv: EmbeddingsRuntimeEnv
 }): Layer.Layer<Brain> {
   const workerExtractor = Layer.succeed(
     Extractor,

@@ -14,7 +14,8 @@ interface SettingsDialogProps {
 export function SettingsDialog({ extraAccountTabs }: SettingsDialogProps = {}) {
   const open = useSettingsDialogStore((s) => s.open)
   const setOpen = useSettingsDialogStore((s) => s.setOpen)
-  const initialTab = useSettingsDialogStore((s) => s.initialTab)
+  const activeTab = useSettingsDialogStore((s) => s.activeTab)
+  const setActiveTab = useSettingsDialogStore((s) => s.setActiveTab)
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -25,10 +26,8 @@ export function SettingsDialog({ extraAccountTabs }: SettingsDialogProps = {}) {
         {/* A dialog needs a name; this one had none for screen readers. */}
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <SettingsPage
-          // Remount when the dialog reopens with a different deep-link so the
-          // internal Tabs `defaultValue` actually kicks in.
-          key={`${open ? 'open' : 'closed'}:${initialTab ?? 'profile'}`}
-          defaultTab={initialTab ?? 'profile'}
+          value={activeTab}
+          onValueChange={setActiveTab}
           extraAccountTabs={extraAccountTabs}
         />
       </DialogContent>

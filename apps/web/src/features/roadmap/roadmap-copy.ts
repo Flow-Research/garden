@@ -305,7 +305,7 @@ export const roadmapMeta = {
   boardsUrl: 'https://github.com/Flow-Research/garden/issues',
   sources: [
     {
-      label: 'docs/roadmap.md',
+      label: 'docs/concepts/product/roadmap.md',
       detail: 'beta priorities and longer direction',
     },
     { label: 'workspace board', detail: 'FLO issues' },

@@ -1,0 +1,22 @@
+{
+  "name": "@garden/agent-sdk-call-budget",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives ."
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.23.0",
+    "@cloudflare/workers-types": "catalog:",
+    "@cloudflare/think": "catalog:",
+    "@garden/tsconfig": "workspace:*",
+    "@typescript/native": "catalog:",
+    "agents": "catalog:",
+    "ai": "6.0.208",
+    "vitest": "catalog:"
+  }
+}

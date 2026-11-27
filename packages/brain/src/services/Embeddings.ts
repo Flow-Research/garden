@@ -24,15 +24,15 @@ export const DEFAULT_OPENAI_EMBEDDING_BASE_URL = 'http://localhost:11434/v1'
  */
 export const DEFAULT_OLLAMA_EMBEDDING_MODEL = 'all-minilm'
 
-const EMBEDDING_REQUEST_TIMEOUT = '30 seconds'
+const DEFAULT_EMBEDDING_TIMEOUT_SECONDS = 30
 
 const EMBEDDINGS_ENV_KEYS = [
   'GARDEN_OFFLINE',
-  'GARDEN_MODEL_PROVIDER',
   'GARDEN_MODEL_BASE_URL',
   'GARDEN_MODEL_API_KEY',
   'GARDEN_EMBEDDING_MODEL',
   'GARDEN_EMBEDDING_PROVIDER',
+  'GARDEN_EMBEDDING_TIMEOUT_SECONDS',
 ] as const
 
 export type EmbeddingsProvider = 'workers-ai' | 'openai-compatible'
@@ -40,10 +40,7 @@ export type EmbeddingsProvider = 'workers-ai' | 'openai-compatible'
 /**
  * Env slice that chooses who embeds brain text.
  *
- * Keep the chat-provider rules aligned with `resolveAgentModelProfile` in
- * `packages/agent-runtime/src/model.ts`. `GARDEN_EMBEDDING_PROVIDER` is an
- * override so a test can keep a stub Workers AI binding while chat uses a
- * local OpenAI-compatible server.
+ * Embedding selection is independent of the chat provider.
  */
 export type EmbeddingsRuntimeEnv = {
   readonly GARDEN_OFFLINE?: string
@@ -52,6 +49,7 @@ export type EmbeddingsRuntimeEnv = {
   readonly GARDEN_MODEL_API_KEY?: string
   readonly GARDEN_EMBEDDING_MODEL?: string
   readonly GARDEN_EMBEDDING_PROVIDER?: string
+  readonly GARDEN_EMBEDDING_TIMEOUT_SECONDS?: string
 }
 
 const OpenAiEmbeddingResponseSchema = Schema.Struct({
@@ -137,14 +135,8 @@ export function embeddingsRuntimeEnv(
 /**
  * Selects the embedding provider.
  *
- * Before: every brain index and search called `env.AI.run`, which throws
- * `Binding AI needs to be run remotely` when `pnpm dev:offline` disables
- * remote bindings. After: the choice follows the chat model. An explicit
- * `GARDEN_MODEL_PROVIDER` wins; otherwise a non-empty `GARDEN_OFFLINE` selects
- * the OpenAI-compatible endpoint; otherwise Workers AI stays the default.
- * `GARDEN_EMBEDDING_PROVIDER` overrides that so fixtures can keep a local AI
- * binding. Reference: `resolveAgentModelProfile` in
- * `packages/agent-runtime/src/model.ts`.
+ * An explicit embedding provider wins. Offline mode selects the local
+ * endpoint only when the embedding provider is unset.
  */
 export function resolveEmbeddingsProvider(
   env?: EmbeddingsRuntimeEnv,
@@ -153,11 +145,7 @@ export function resolveEmbeddingsProvider(
   if (explicit === 'workers-ai' || explicit === 'openai-compatible') {
     return explicit
   }
-  const requested = env?.GARDEN_MODEL_PROVIDER?.trim()
-  const offline = (env?.GARDEN_OFFLINE ?? '').trim() !== ''
-  if (requested === 'openai-compatible' || requested === 'workers-ai') {
-    return requested
-  }
+  const offline = env?.GARDEN_OFFLINE?.trim() === '1'
   return offline ? 'openai-compatible' : 'workers-ai'
 }
 
@@ -165,6 +153,7 @@ export type OpenAiEmbeddingsConfig = {
   readonly baseURL: string
   readonly apiKey?: string
   readonly model: string
+  readonly timeoutSeconds?: number
   readonly fetch?: typeof globalThis.fetch
 }
 
@@ -193,19 +182,25 @@ const orderedEmbeddings = (
     readonly index?: number
   }>,
 ) => {
-  const indexed = data.every((row) => row.index !== undefined)
-  if (!indexed) return data
+  if (data.every((row) => row.index === undefined)) return data
+  if (
+    data.some((row) => row.index === undefined) ||
+    new Set(data.map((row) => row.index)).size !== data.length ||
+    data.some(
+      (row) =>
+        !Number.isInteger(row.index) ||
+        (row.index ?? -1) < 0 ||
+        (row.index ?? -1) >= data.length,
+    )
+  ) {
+    return undefined
+  }
   return [...data].sort((left, right) => (left.index ?? 0) - (right.index ?? 0))
 }
 
 /**
- * Embeds through `POST {baseURL}/embeddings`.
- *
- * Before: local file indexing called the Workers AI binding and failed before
- * any vector was written. After: Ollama (or any OpenAI-compatible embeddings
- * endpoint) receives the batch. The 30 second deadline matches Helix's
- * outbound bound in `HelixClient.ts`. Vectors must be `EMBEDDING_DIM` wide
- * because existing Helix indexes were created at that width.
+ * Embeds through `POST {baseURL}/embeddings`. Vectors must be
+ * `EMBEDDING_DIM` wide because existing Helix indexes use that width.
  */
 const embedWithOpenAi = (
   http: HttpClient.HttpClient,
@@ -215,8 +210,7 @@ const embedWithOpenAi = (
     if (texts.length === 0) return []
     const url = yield* Effect.try({
       try: () => resolveEmbeddingsUrl(config.baseURL),
-      catch: (cause) =>
-        embeddingFailure(`invalid embedding base URL ${config.baseURL}`, cause),
+      catch: () => embeddingFailure('invalid embedding base URL'),
     })
     const body = yield* HttpBody.json({
       model: config.model,
@@ -233,7 +227,9 @@ const embedWithOpenAi = (
     const response = yield* http
       .execute(HttpClientRequest.post(url, { body, headers }))
       .pipe(
-        Effect.timeout(EMBEDDING_REQUEST_TIMEOUT),
+        Effect.timeout(
+          `${config.timeoutSeconds ?? DEFAULT_EMBEDDING_TIMEOUT_SECONDS} seconds`,
+        ),
         Effect.mapError((cause) => {
           if (cause instanceof EmbedError) return cause
           if (
@@ -243,27 +239,21 @@ const embedWithOpenAi = (
             cause._tag === 'TimeoutError'
           ) {
             return embeddingFailure(
-              `embedding request timed out after ${EMBEDDING_REQUEST_TIMEOUT}`,
+              `embedding request timed out after ${config.timeoutSeconds ?? DEFAULT_EMBEDDING_TIMEOUT_SECONDS} seconds`,
               cause,
             )
           }
-          return embeddingFailure(
-            `could not reach embedding endpoint ${url}. Start Ollama, then run: ollama pull ${config.model}`,
-            cause,
-          )
+          return embeddingFailure('could not reach embedding endpoint')
         }),
       )
     if (response.status < 200 || response.status >= 300) {
-      const errorBody = yield* response.text.pipe(
-        Effect.catch(() => Effect.succeed('')),
-      )
       const hint =
         response.status === 404
           ? ` Pull a ${EMBEDDING_DIM}-dimensional model, for example: ollama pull ${DEFAULT_OLLAMA_EMBEDDING_MODEL}`
           : ''
       return yield* Effect.fail(
         embeddingFailure(
-          `embedding model "${config.model}" failed (${response.status}): ${errorBody.slice(0, 500)}.${hint}`,
+          `embedding model "${config.model}" failed (${response.status}).${hint}`,
         ),
       )
     }
@@ -288,6 +278,11 @@ const embedWithOpenAi = (
       ),
     )
     const rows = orderedEmbeddings(decoded.data)
+    if (rows === undefined) {
+      return yield* Effect.fail(
+        embeddingFailure('invalid embedding response indexes'),
+      )
+    }
     if (rows.length !== texts.length) {
       return yield* Effect.fail(
         embeddingFailure(
@@ -333,8 +328,7 @@ export const makeOpenAiCompatibleEmbeddingsLayer = (
 }
 
 /**
- * Workers AI by default. OpenAI-compatible embeddings when local/offline mode
- * is on, so file indexing does not touch the remote AI binding.
+ * Selects Workers AI by default and local embeddings in offline mode.
  */
 export function embeddingsLayerFor(args: {
   readonly ai: WorkersAiBinding
@@ -344,7 +338,25 @@ export function embeddingsLayerFor(args: {
   if (resolveEmbeddingsProvider(args.env) === 'workers-ai') {
     return WorkersAiEmbeddingsLive(args.ai)
   }
+  if (
+    args.env?.GARDEN_OFFLINE?.trim() !== '1' &&
+    !args.env?.GARDEN_MODEL_BASE_URL?.trim()
+  ) {
+    return Layer.succeed(
+      Embeddings,
+      Embeddings.of({
+        dim: EMBEDDING_DIM,
+        embed: () =>
+          Effect.fail(embeddingFailure('embedding base URL is required')),
+      }),
+    )
+  }
   const apiKey = args.env?.GARDEN_MODEL_API_KEY?.trim()
+  const parsedTimeout = Number(args.env?.GARDEN_EMBEDDING_TIMEOUT_SECONDS)
+  const timeoutSeconds =
+    Number.isFinite(parsedTimeout) && parsedTimeout > 0
+      ? parsedTimeout
+      : DEFAULT_EMBEDDING_TIMEOUT_SECONDS
   return makeOpenAiCompatibleEmbeddingsLayer({
     baseURL:
       args.env?.GARDEN_MODEL_BASE_URL?.trim() ||
@@ -353,6 +365,7 @@ export function embeddingsLayerFor(args: {
     model:
       args.env?.GARDEN_EMBEDDING_MODEL?.trim() ||
       DEFAULT_OLLAMA_EMBEDDING_MODEL,
+    timeoutSeconds,
     ...(args.fetch === undefined ? {} : { fetch: args.fetch }),
   })
 }

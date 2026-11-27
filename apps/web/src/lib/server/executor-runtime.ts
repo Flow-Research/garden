@@ -101,10 +101,7 @@ export const executorProgramForEnv = <A, E>(
     createExecutor({
       tenant: Tenant.make(identity.tenant),
       subject: Subject.make(identity.subject),
-      db: ({ tables }) =>
-        createD1ExecutorDb(env.EXECUTOR_DB, tables, env.EXECUTOR_BLOBS).pipe(
-          Effect.map((database) => ({ db: database.db })),
-        ),
+      db: ({ tables }) => createD1ExecutorDb(env.EXECUTOR_DB, tables),
       blobs: makeR2BlobStore(env.EXECUTOR_BLOBS),
       plugins: makeExecutorPlugins(env.EXECUTOR_SECRET_KEY, {
         fetch: makeHostedFetch({ allowLocalNetwork: false }),

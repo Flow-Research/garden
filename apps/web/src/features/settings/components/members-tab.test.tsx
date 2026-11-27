@@ -84,3 +84,72 @@ describe('MembersTab invite', () => {
     expect(toast.error).toHaveBeenCalledWith('Enter a valid email address')
   })
 })
+
+describe('MembersTab GitHub identity controls', () => {
+  const MEMBER = {
+    ...OWNER,
+    id: 'member-2',
+    user_id: 'user-2',
+    role: 'member',
+    name: 'Grace',
+    email: 'grace@example.com',
+    github_user_id: null,
+    github_login: null,
+  } as MemberWithUser
+
+  const ADMIN = {
+    ...MEMBER,
+    id: 'member-3',
+    user_id: 'user-3',
+    role: 'admin',
+    name: 'Linus',
+    email: 'linus@example.com',
+  } as MemberWithUser
+
+  function renderAs(
+    viewerUserId: string,
+    members: MemberWithUser[] = [OWNER, MEMBER],
+  ) {
+    useAuthStore.setState({ user: { id: viewerUserId } as User })
+    useWorkspaceStore.setState({
+      workspace: { id: 'ws-1', name: 'Garden' } as Workspace,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    })
+    queryClient.setQueryData(workspaceKeys.members('ws-1'), members)
+    render(
+      <QueryClientProvider client={queryClient}>
+        <WorkspaceIdProvider wsId="ws-1">
+          <MembersTab />
+        </WorkspaceIdProvider>
+      </QueryClientProvider>,
+    )
+  }
+
+  it('gives a plain member no GitHub edit control, even on their own row', () => {
+    renderAs('user-2')
+    expect(
+      screen.queryByRole('button', { name: 'Member actions' }),
+    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Link GitHub')).not.toBeInTheDocument()
+  })
+
+  it('lets an owner open Link GitHub on every row, their own included', async () => {
+    renderAs('user-1')
+    const triggers = screen.getAllByRole('button', { name: 'Member actions' })
+    expect(triggers).toHaveLength(2)
+    fireEvent.click(triggers[0]!)
+    expect(
+      await screen.findByRole('menuitem', { name: /link github/i }),
+    ).toBeInTheDocument()
+  })
+
+  it("gives an admin no GitHub control on the owner's row", () => {
+    renderAs('user-3', [OWNER, ADMIN, MEMBER])
+    // Admin rows: own row and the member row; the owner row has no menu.
+    expect(
+      screen.getAllByRole('button', { name: 'Member actions' }),
+    ).toHaveLength(2)
+  })
+})

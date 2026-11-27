@@ -88,6 +88,7 @@ export const Route = createFileRoute('/api/work-products/$id/review')({
           actorUserId: access.session.user.id,
           env: appEnv,
           input: bodyResult.value,
+          waitUntil: appContext.waitUntil,
           workProductId: params.id,
           workspaceId: workspaceResult.value.workspaceId,
         })

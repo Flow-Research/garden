@@ -82,6 +82,7 @@ export type BrainShape = {
     kind?: Kind
     summary?: string
     scope?: BrainScope
+    canonical?: { readonly type: string; readonly value: string }
     actor: Actor
   }) => Effect.Effect<BrainItem, HelixError | WriteConflict | EmbedError>
 
@@ -91,6 +92,18 @@ export type BrainShape = {
     status: BrainIndexStatus
     error?: string
   }) => Effect.Effect<BrainItem, HelixError | WriteConflict>
+  /**
+   * Records that a file's stored bytes were replaced in place (#381 re-save).
+   * Before, an overwrite kept the original `size_bytes`, so Files showed the
+   * old size. Size, update time, and the processing status change in one
+   * write; the caller then re-indexes. Null when the file is gone.
+   */
+  readonly replaceFileContent: (input: {
+    itemId: ItemId
+    tenantId: WorkspaceId
+    sizeBytes: number
+    at: DateTime.Utc
+  }) => Effect.Effect<BrainItem | null, HelixError | WriteConflict>
   readonly deleteFile: (
     itemId: ItemId,
     tenantId: WorkspaceId,
@@ -227,6 +240,7 @@ const ItemRow = Schema.Struct({
   scope_kind: Schema.optional(Schema.String),
   scope_id: Schema.optional(Schema.String),
   occurred_at: Schema.optional(Schema.String),
+  updated_at: Schema.optional(Schema.String),
 })
 
 const EdgeRow = Schema.Struct({
@@ -311,6 +325,14 @@ const decodeRow = (row: Row): Effect.Effect<BrainItem, HelixError> =>
     const id = yield* decodeItemId(row)
     const origin = yield* decodeItemOrigin(item.origin)
     const scope = yield* decodeScope(item.scope_kind, item.scope_id)
+    const updatedAt =
+      item.updated_at === undefined
+        ? undefined
+        : Option.getOrUndefined(
+            Schema.decodeUnknownOption(Schema.DateTimeUtcFromString)(
+              item.updated_at,
+            ),
+          )
     const occurredAt =
       item.occurred_at === undefined
         ? undefined
@@ -342,6 +364,7 @@ const decodeRow = (row: Row): Effect.Effect<BrainItem, HelixError> =>
       body: item.body,
       scope,
       ...(occurredAt === undefined ? {} : { occurredAt }),
+      ...(updatedAt === undefined ? {} : { updatedAt }),
     }
   })
 
@@ -471,6 +494,11 @@ const propsOf = (item: NewBrainItem): Record<string, PropertyValueInput> => {
   if (item.summary !== undefined) props[PROPS.summary] = item.summary
   if (item.r2Key !== undefined) props[PROPS.r2Key] = item.r2Key
   if (item.sizeBytes !== undefined) props[PROPS.sizeBytes] = item.sizeBytes
+  if (item.updatedAt !== undefined) {
+    props[PROPS.updatedAt] = new Date(
+      DateTime.toEpochMillis(item.updatedAt),
+    ).toISOString()
+  }
   if (item.canonical !== undefined) {
     props[PROPS.canonicalType] = item.canonical.type
     props[PROPS.canonicalValue] = item.canonical.value
@@ -520,6 +548,7 @@ const itemProjection = () => [
   PropertyProjection.new(PROPS.scopeKind),
   PropertyProjection.new(PROPS.scopeId),
   PropertyProjection.new(PROPS.occurredAt),
+  PropertyProjection.new(PROPS.updatedAt),
 ]
 
 const hitProjection = () => [
@@ -575,7 +604,7 @@ const FRESHNESS_HALF_LIFE_DAYS = 90
 const FRESHNESS_FLOOR = 0.25
 export const RRF_K = 60
 const MAX_EMBED_CHARS = 2000
-const EMBED_BATCH_SIZE = 100
+const EMBED_BATCH_SIZE = 16
 const MAX_INDEX_SECTIONS = 1000
 const NEIGHBORHOOD_MAX_ITEMS = 50
 const NEIGHBORHOOD_MAX_EDGES = 100
@@ -1124,6 +1153,44 @@ export const makeBrain = Effect.gen(function* () {
     },
   )
 
+  /** See `BrainShape.replaceFileContent`. */
+  const replaceFileContent = Effect.fn('Brain.replaceFileContent')(
+    function* (input: {
+      itemId: ItemId
+      tenantId: WorkspaceId
+      sizeBytes: number
+      at: DateTime.Utc
+    }) {
+      const request = writeBatch()
+        .varAs(
+          'updated',
+          setProperties(
+            g()
+              .n([nodeId(input.itemId)])
+              .where(
+                Predicate.eq(PROPS.tenantId, input.tenantId),
+              ) as unknown as Traversal<'nodes', 'write'>,
+            {
+              [PROPS.sizeBytes]: input.sizeBytes,
+              [PROPS.updatedAt]: new Date(
+                DateTime.toEpochMillis(input.at),
+              ).toISOString(),
+              [PROPS.indexStatus]: 'processing',
+              [PROPS.indexError]: '',
+              [PROPS.indexed]: false,
+            },
+          ),
+        )
+        .returning(['updated'])
+        .toQueryRequest({ queryName: QUERY.replaceFileContent })
+      const result = yield* retryWriteConflict(
+        helix.run(request, { awaitDurability: true }),
+      )
+      if (firstRow(result, 'updated') === undefined) return null
+      return yield* readItem(helix, input.itemId, input.tenantId)
+    },
+  )
+
   /**
    * Persists the file indexing lifecycle independently from the indexing work.
    * Before this operation, an indexing failure left `indexed` false forever,
@@ -1296,6 +1363,12 @@ export const makeBrain = Effect.gen(function* () {
               IndexSpec.nodeEquality(LABELS.Section, SOURCE_KEY_PROP),
             ),
           )
+          .varAs(
+            'idx_note_source',
+            g().createIndexIfNotExists(
+              IndexSpec.nodeEquality(LABELS.Note, SOURCE_KEY_PROP),
+            ),
+          )
           .returning([
             'idx_file_vector',
             'idx_file_text',
@@ -1305,6 +1378,7 @@ export const makeBrain = Effect.gen(function* () {
             'idx_note_text',
             'idx_file_source',
             'idx_section_source',
+            'idx_note_source',
           ])
           .toQueryRequest({ queryName: QUERY.ensureIndexes })
         const result = yield* helix.run(request)
@@ -1316,6 +1390,7 @@ export const makeBrain = Effect.gen(function* () {
           .concat(toRows(result['idx_note_text']))
           .concat(toRows(result['idx_file_source']))
           .concat(toRows(result['idx_section_source']))
+          .concat(toRows(result['idx_note_source']))
           .flatMap((row) => {
             const id = row.operation_id
             return typeof id === 'string' ? [id] : []
@@ -1411,7 +1486,16 @@ export const makeBrain = Effect.gen(function* () {
           ),
         )
       }),
-    addText: ({ tenantId, label, body, kind, summary, scope, actor }) =>
+    addText: ({
+      tenantId,
+      label,
+      body,
+      kind,
+      summary,
+      scope,
+      canonical,
+      actor,
+    }) =>
       Effect.gen(function* () {
         const item: NewBrainItem = {
           tenantId,
@@ -1419,6 +1503,7 @@ export const makeBrain = Effect.gen(function* () {
           label,
           ...(summary === undefined ? {} : { summary }),
           ...(scope === undefined ? {} : { scope }),
+          ...(canonical === undefined ? {} : { canonical }),
           body,
           origin: { actor, at: DateTime.makeUnsafe(new Date()) },
         }
@@ -1428,14 +1513,35 @@ export const makeBrain = Effect.gen(function* () {
           ...propsWithEmbedding(item, vector),
           [PROPS.indexed]: true,
         }
-        const request = writeBatch()
-          .varAs('created', g().addN(storageLabelOf(item), props))
-          .returning(['created'])
+        const sourceKey = item.canonical?.value
+        const batch = writeBatch()
+        const request = (
+          sourceKey === undefined
+            ? batch.varAs('created', g().addN(storageLabelOf(item), props))
+            : batch
+                .varAs(
+                  'existing',
+                  g()
+                    .nWithLabelWhere(
+                      storageLabelOf(item),
+                      SourcePredicate.eq(SOURCE_KEY_PROP, sourceKey),
+                    )
+                    .where(Predicate.eq(PROPS.tenantId, item.tenantId)),
+                )
+                .varAsIf(
+                  'created',
+                  BatchCondition.varEmpty('existing'),
+                  g().addN(storageLabelOf(item), props),
+                )
+        )
+          .returning(
+            sourceKey === undefined ? ['created'] : ['existing', 'created'],
+          )
           .toQueryRequest({ queryName: QUERY.index })
         const result = yield* retryWriteConflict(
           helix.run(request, { awaitDurability: true }),
         )
-        const row = firstRow(result, 'created')
+        const row = firstRow(result, 'existing') ?? firstRow(result, 'created')
         if (row === undefined) {
           return yield* Effect.fail(
             new HelixError({ message: 'addText returned no node' }),
@@ -1454,6 +1560,7 @@ export const makeBrain = Effect.gen(function* () {
       }),
     updateItemMetadata,
     updateIndexStatus,
+    replaceFileContent,
     deleteFile,
     index: (itemId, tenantId) =>
       Effect.gen(function* () {

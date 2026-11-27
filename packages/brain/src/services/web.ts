@@ -45,18 +45,15 @@ export const WebExtractorLive = Layer.succeed(
 /**
  * Web Worker brain layer.
  *
- * Before: embeddings always used `env.AI`. Local Ollama runs
- * (`pnpm dev:offline`) disable remote bindings, so file indexing failed with
- * `Binding AI needs to be run remotely`. After: `modelEnv` selects Ollama's
- * OpenAI-compatible embeddings endpoint in that mode and Workers AI otherwise.
- * Pass `embeddingsRuntimeEnv(env)` from the request env so the flags survive.
+ * Pass `embeddingsRuntimeEnv(env)` from the request environment so local
+ * embedding settings reach the indexing layer.
  */
 export function makeWebBrainLive(args: {
   baseUrl: string
   apiKey?: string
   ai: WorkersAiBinding
   files: R2BucketLike
-  modelEnv?: EmbeddingsRuntimeEnv
+  modelEnv: EmbeddingsRuntimeEnv
 }): Layer.Layer<Brain> {
   return Layer.effect(Brain, makeBrain).pipe(
     Layer.provide(

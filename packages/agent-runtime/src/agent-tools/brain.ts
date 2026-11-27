@@ -260,7 +260,9 @@ export type BrainToolDependencies = {
   env: { HELIX_URL?: string; HELIX_API_KEY?: string } & EmbeddingsRuntimeEnv
   ai: WorkersAiBinding
   files: R2BucketLike
-  getContext: () => BrainToolContext | null | Promise<BrainToolContext | null>
+  getContext: (
+    toolName: string,
+  ) => BrainToolContext | null | Promise<BrainToolContext | null>
   brain?: BrainToolOperations
 }
 
@@ -356,9 +358,11 @@ const makeBrainToolsService = (
   deps: BrainToolDependencies,
   brain: BrainToolOperations | null,
 ): BrainToolsServiceShape => {
-  const resolveContext = Effect.fn('BrainTools.resolveContext')(function* () {
+  const resolveContext = Effect.fn('BrainTools.resolveContext')(function* (
+    toolName: string,
+  ) {
     const ctx = yield* Effect.tryPromise({
-      try: async () => await deps.getContext(),
+      try: async () => await deps.getContext(toolName),
       catch: (cause) =>
         new BrainToolContextError({
           message: 'Failed to resolve the active brain tool context.',
@@ -383,7 +387,7 @@ const makeBrainToolsService = (
   })
 
   const search = Effect.fn('BrainTools.search')(function* (input: SearchInput) {
-    const ctx = yield* resolveContext()
+    const ctx = yield* resolveContext('brain_search')
     const service = yield* requireBrain()
     yield* service.ensureIndexes()
     return yield* service.search({
@@ -406,7 +410,7 @@ const makeBrainToolsService = (
   const readFile = Effect.fn('BrainTools.readFile')(function* (
     input: ReadFileInput,
   ) {
-    const ctx = yield* resolveContext()
+    const ctx = yield* resolveContext('brain_read_file')
     const service = yield* requireBrain()
     if (service.readFileItem === undefined) {
       return yield* new BrainToolsUnavailableError({
@@ -476,7 +480,7 @@ const makeBrainToolsService = (
   )
 
   const add = Effect.fn('BrainTools.add')(function* (input: AddInput) {
-    const ctx = yield* resolveContext()
+    const ctx = yield* resolveContext('add_to_brain')
     const service = yield* requireBrain()
     if (input.mode === 'update') {
       if (
@@ -489,6 +493,7 @@ const makeBrainToolsService = (
         })
       }
       yield* requireVisibleTarget(ctx, service, input.itemId)
+      yield* resolveContext('add_to_brain')
       return yield* service.updateItemMetadata({
         tenantId: WorkspaceId.make(ctx.workspaceId),
         itemId: ItemId.make(input.itemId),
@@ -511,6 +516,7 @@ const makeBrainToolsService = (
         ? userScope(ctx.userId)
         : orgScope()
     yield* service.ensureIndexes()
+    yield* resolveContext('add_to_brain')
     return yield* service.addText({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       label: input.label,
@@ -525,9 +531,10 @@ const makeBrainToolsService = (
   const observeMention = Effect.fn('BrainTools.observeMention')(function* (
     input: ObserveMentionInput,
   ) {
-    const ctx = yield* resolveContext()
+    const ctx = yield* resolveContext('brain_observe_mention')
     const service = yield* requireBrain()
     yield* requireVisibleTarget(ctx, service, input.itemId)
+    yield* resolveContext('brain_observe_mention')
     return yield* service.observeMention({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       itemId: ItemId.make(input.itemId),
@@ -538,10 +545,11 @@ const makeBrainToolsService = (
   })
 
   const link = Effect.fn('BrainTools.link')(function* (input: LinkInput) {
-    const ctx = yield* resolveContext()
+    const ctx = yield* resolveContext('brain_link')
     const service = yield* requireBrain()
     yield* requireVisibleTarget(ctx, service, input.from)
     yield* requireVisibleTarget(ctx, service, input.to)
+    yield* resolveContext('brain_link')
     return yield* service.linkItems({
       tenantId: WorkspaceId.make(ctx.workspaceId),
       from: ItemId.make(input.from),
@@ -554,7 +562,7 @@ const makeBrainToolsService = (
   const neighborhood = Effect.fn('BrainTools.neighborhood')(function* (
     input: NeighborhoodInput,
   ) {
-    const ctx = yield* resolveContext()
+    const ctx = yield* resolveContext('brain_neighborhood')
     const service = yield* requireBrain()
     return yield* service.neighborhood({
       tenantId: WorkspaceId.make(ctx.workspaceId),

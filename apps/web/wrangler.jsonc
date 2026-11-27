@@ -106,6 +106,11 @@
       "binding": "DECIDE_ANALYSIS_WORKFLOW",
       "class_name": "DecideAnalysisWorkflow",
     },
+    {
+      "name": "garden-github-repo-import-workflow-local",
+      "binding": "GITHUB_REPO_IMPORT_WORKFLOW",
+      "class_name": "GitHubRepoImportWorkflow",
+    },
   ],
   "r2_buckets": [
     {
@@ -151,6 +156,7 @@
     // Empty means "unset". Offline mode uses Ollama `all-minilm` (384-d).
     "GARDEN_EMBEDDING_MODEL": "",
     "GARDEN_EMBEDDING_PROVIDER": "",
+    "GARDEN_EMBEDDING_TIMEOUT_SECONDS": "",
     // Provider OAuth credentials. Empty string means "unset"; local dev fills
     // these from process env (wrangler only forwards declared keys), deployed
     // workers use real secrets which override these defaults.
@@ -160,6 +166,7 @@
     "GITHUB_APP_SLUG": "",
     "GITHUB_APP_PRIVATE_KEY": "",
     "GITHUB_WEBHOOK_SECRET": "",
+    "WORKSTREAM_MCP_CLIENT_ID": "",
     "GOOGLE_CLIENT_ID": "",
     "GOOGLE_CLIENT_SECRET": "",
     "SLACK_CLIENT_ID": "",
