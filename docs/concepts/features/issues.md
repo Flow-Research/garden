@@ -3,7 +3,7 @@ title: Issues are the shared ledger of work for people and agents
 description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-27
 ---
 
 An issue is a unit of work that a person or an agent owns. The UI calls issues Tasks and shows them at `/tasks`. Assigning an issue to an agent turns it into a run: the agent works on the issue in the background, records what it did, and returns reviewable outputs to the same issue.
@@ -90,9 +90,11 @@ The Markdown file is the source of truth. After a save the card links the file a
 
 ## Chat and issues link in both directions
 
-Chat agents can work with issues directly. `createChatSubAgentTools` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` gives a chat agent `create_issue`, `read_issue`, `list_issues`, `post_issue_comment`, `read_run`, and `propose_agent`. `create_issue` accepts an optional `team_id` to file the issue on a Team, and assigns either an agent (`assignee_agent_id`) or a person (`assignee_member`, resolved by name, email, or id the same way `assign_issue` resolves it), never both. The chat owner is the creator, so the issue service applies the Team create rules described in [Teams](teams.md).
+Chat agents can work with issues directly. `createChatSubAgentTools` in `packages/agent-runtime/src/chat-sub-agent-tools.ts` gives a chat agent `create_issue`, `read_issue`, `read_issue_attachment`, `list_issues`, `post_issue_comment`, `read_run`, and `propose_agent`. `read_issue` returns attachment IDs. `read_issue_attachment` checks the chat owner's current workspace membership, issue access, agent permissions, and Team policy before it loads a file. A stored tool result contains an attachment reference. On later turns, the tool checks access again and loads text, image, or PDF content for model output. The OpenAI-compatible provider receives image and PDF parts. For Workers AI, Garden moves authorized issue image results into a user image part only for the documented vision model `@cf/moonshotai/kimi-k2.5`. The configured default `@cf/zai-org/glm-5.3` returns an explicit unsupported result instead of a note that implies visual inspection. Workers AI issue PDF reads also return an unsupported result. Chat reads have a 3.5 MiB limit. Issue runs keep their existing large-text behavior; their image and PDF reads use the 3.5 MiB limit. Only PNG, JPEG, GIF, and WebP images become model image parts. `create_issue` accepts an optional `team_id` to file the issue on a Team, and assigns either an agent (`assignee_agent_id`) or a person (`assignee_member`, resolved by name, email, or id the same way `assign_issue` resolves it), never both. The chat owner is the creator, so the issue service applies the Team create rules described in [Teams](teams.md).
 
 A chat thread can also point at one issue. `chat_thread.primary_issue_id` stores the link, `/api/chat/threads/:id/primary-issue` sets it, and the chat title bar shows the issue as a pill. From an issue's detail header you can open an agent chat about that issue. Issue mentions in chat messages render as links through `MentionAwareAnchor` in `apps/web/src/components/ai-elements/message.tsx`.
+
+For verification, read an issue image in chat with `@cf/moonshotai/kimi-k2.5`. The model request must contain an image part and an instruction to treat its content as untrusted evidence. Repeat with the default `@cf/zai-org/glm-5.3` model. The tool result must report unsupported inspection without image bytes or a claim that the image was inspected. Revoke issue access before replaying a stored read. The replay must not send image bytes to the model. Request-boundary tests cover the translation and default-model result; live Kimi K2.5 inspection remains unproved.
 
 ## The Inbox is computed, not stored
 

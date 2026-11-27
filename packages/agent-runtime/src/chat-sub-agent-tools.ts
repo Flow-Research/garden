@@ -46,6 +46,7 @@ import { createBrainTools, type BrainToolContext } from './agent-tools/brain'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { memberGithubIdentity } from './member-github-identity'
 import { createSandboxTools } from './sandbox-tools'
+import { createReadChatIssueAttachmentTool } from './agent-tools/read-chat-issue-attachment'
 import {
   createIssue as createIssueService,
   listIssues as listIssuesService,
@@ -90,6 +91,13 @@ type ChatSubAgentToolsInput = {
   issueRunEnv: IssueRunEnv
   /** Run-scoped identity; when set, tools skip the chat-thread lookup. */
   getRunIdentity?: () => ChatToolRunIdentity | null
+  files?: R2Bucket
+  /**
+   * Current agent/Team permission for a native tool, evaluated per call. Tools
+   * that load bytes from storage use it at the byte-read boundary because Think
+   * can rebuild a stored result on a later turn without calling `execute`.
+   */
+  canUseTool?: (runtimeToolName: string) => Promise<boolean> | boolean
   cancelIssueRun?: (input: { issueId: string; runId: string }) => Promise<void>
   brain: {
     helixUrl?: string
@@ -1960,6 +1968,8 @@ export function createChatSubAgentTools({
   getSandbox,
   issueRunEnv,
   getRunIdentity,
+  files,
+  canUseTool,
   cancelIssueRun,
   brain,
 }: ChatSubAgentToolsInput): ToolSet {
@@ -2151,6 +2161,17 @@ export function createChatSubAgentTools({
         return Result.serialize(await readIssueFromChat(context, input))
       },
     }),
+
+    ...(databaseUrl && threadId && files
+      ? {
+          read_issue_attachment: createReadChatIssueAttachmentTool({
+            databaseUrl,
+            threadId,
+            files,
+            ...(canUseTool ? { canUseTool } : {}),
+          }),
+        }
+      : {}),
 
     update_issue_status: tool({
       description:

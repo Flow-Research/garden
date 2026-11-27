@@ -14,7 +14,11 @@ import {
   type IssueRunToolContext,
 } from './issue-run-tool-context'
 
-const MAX_MODEL_ATTACHMENT_BYTES = 3.5 * 1024 * 1024
+/**
+ * Chat attachments and issue-run image/PDF parts use this model payload cap.
+ * Issue-run text keeps its earlier unlimited behavior.
+ */
+export const MAX_MODEL_ATTACHMENT_BYTES = 3.5 * 1024 * 1024
 
 export const readAttachmentInputSchema = z
   .object({
@@ -25,9 +29,20 @@ export const readAttachmentInputSchema = z
   })
   .strict()
 
-type AttachmentRow = typeof schema.issueAttachment.$inferSelect
+export type AttachmentRow = typeof schema.issueAttachment.$inferSelect
 
-function formatSize(bytes: number) {
+/**
+ * File-store surface the attachment readers need. `R2Bucket` satisfies it
+ * structurally, so callers pass `env.FILES` unchanged and tests can supply bytes
+ * without standing up a whole bucket.
+ */
+export type AttachmentFileStore = {
+  get: (
+    key: string,
+  ) => Promise<{ arrayBuffer: () => Promise<ArrayBuffer> } | null>
+}
+
+export function formatAttachmentSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`
   const kib = bytes / 1024
   if (kib < 1024) return `${kib.toFixed(1)} KiB`
@@ -43,8 +58,17 @@ function isTextMediaType(mediaType: string) {
   )
 }
 
-function attachmentKind(mediaType: string) {
-  if (mediaType.startsWith('image/')) return 'image'
+/**
+ * Maps a stored media type onto the four transcript kinds. Shared so a new
+ * model-readable file type only has to be taught here.
+ */
+export function attachmentKind(mediaType: string) {
+  if (
+    ['image/png', 'image/jpeg', 'image/gif', 'image/webp'].includes(mediaType)
+  ) {
+    return 'image'
+  }
+  if (mediaType.startsWith('image/')) return 'binary'
   if (mediaType === 'application/pdf') return 'file'
   if (isTextMediaType(mediaType)) return 'text'
   return 'binary'
@@ -96,19 +120,31 @@ async function loadIssueAttachment(args: {
 }
 
 /**
- * Loads attachment bytes from Garden's FILES bucket only after the scoped DB
- * lookup succeeds. Missing objects remain a recoverable product error; R2 I/O
- * failures remain distinguishable from database failures.
+ * Loads attachment bytes from Garden's FILES bucket only after the caller has
+ * established access for the row. Shared by every reader so storage error
+ * classes and the R2 access pattern stay identical. Missing objects remain a
+ * recoverable product error; R2 I/O failures remain distinguishable from
+ * database failures.
  */
-async function loadIssueAttachmentBytes(args: {
-  context: IssueRunToolContext
-  attachment: AttachmentRow
-}) {
+export async function loadAttachmentBytes(
+  files: AttachmentFileStore,
+  attachment: AttachmentRow,
+  maxBytes = MAX_MODEL_ATTACHMENT_BYTES,
+): Promise<Result<Uint8Array, IssueRunToolError>> {
   return await Result.gen(async function* () {
+    // Reject on the stored size before reading an object that has a finite cap.
+    if (attachment.sizeBytes > maxBytes) {
+      return Result.err(
+        new IssueRunToolError({
+          code: 'invalid_input',
+          message: `Read ${attachment.filename}, but it exceeds the ${formatAttachmentSize(MAX_MODEL_ATTACHMENT_BYTES)} inline model output limit.`,
+        }),
+      )
+    }
+
     const object = yield* Result.await(
       Result.tryPromise({
-        try: async () =>
-          await args.context.env.FILES.get(args.attachment.r2Key),
+        try: async () => await files.get(attachment.r2Key),
         catch: (cause) =>
           new IssueRunToolError({
             code: 'storage_failed',
@@ -142,39 +178,69 @@ async function loadIssueAttachmentBytes(args: {
 }
 
 /**
+ * Loads text under the caller's size limit before decoding it. Issue runs pass
+ * Infinity to retain their existing large-text reads.
+ */
+export async function loadAttachmentText(
+  files: AttachmentFileStore,
+  attachment: AttachmentRow,
+  maxBytes = MAX_MODEL_ATTACHMENT_BYTES,
+): Promise<Result<string, IssueRunToolError>> {
+  const bytesResult = await loadAttachmentBytes(files, attachment, maxBytes)
+  if (bytesResult.isErr()) return Result.err(bytesResult.error)
+  const bytes = bytesResult.value
+  if (bytes.byteLength > maxBytes) {
+    return Result.err(
+      new IssueRunToolError({
+        code: 'invalid_input',
+        message: `Read ${attachment.filename}, but it exceeds the ${formatAttachmentSize(MAX_MODEL_ATTACHMENT_BYTES)} inline model output limit.`,
+      }),
+    )
+  }
+  return Result.ok(Buffer.from(bytes).toString('utf8'))
+}
+
+/**
  * Returns metadata to the transcript while keeping image/PDF bytes out of the
  * public tool result. Think receives those bytes later through toModelOutput.
+ * `issueId` overrides the row's own link because comment attachments reach
+ * their issue through the parent comment.
  */
-function attachmentMetadata(row: AttachmentRow, content?: string) {
+export function attachmentMetadata(
+  row: AttachmentRow,
+  args: { issueId?: string; content?: string } = {},
+) {
   const kind = attachmentKind(row.contentType)
-  return toolOkResult({
+  return {
     attachment_id: row.id,
-    issue_id: row.issueId,
+    issue_id: args.issueId ?? row.issueId,
     comment_id: row.commentId,
     filename: row.filename,
     media_type: row.contentType,
     size_bytes: row.sizeBytes,
     kind,
     model_readable: kind === 'image' || kind === 'file' || kind === 'text',
-    ...(content !== undefined ? { content } : {}),
+    ...(args.content !== undefined ? { content: args.content } : {}),
     note:
       kind === 'image'
-        ? `Read ${row.filename} (${row.contentType}, ${formatSize(row.sizeBytes)}). Image bytes are attached privately to the model result.`
+        ? `Read ${row.filename} (${row.contentType}, ${formatAttachmentSize(row.sizeBytes)}). Image bytes are attached privately to the model result.`
         : kind === 'file'
-          ? `Read ${row.filename} (${row.contentType}, ${formatSize(row.sizeBytes)}). File bytes are attached privately to the model result.`
-          : `Read ${row.filename} (${row.contentType}, ${formatSize(row.sizeBytes)}).`,
-  })
+          ? `Read ${row.filename} (${row.contentType}, ${formatAttachmentSize(row.sizeBytes)}). File bytes are attached privately to the model result.`
+          : `Read ${row.filename} (${row.contentType}, ${formatAttachmentSize(row.sizeBytes)}).`,
+  }
 }
 
 /**
- * Converts successful image/PDF metadata into AI SDK private content parts.
- * Binary payloads are loaded lazily and bounded so stored bytes never leak into
- * the durable transcript or unexpectedly consume the model context window.
+ * Converts attachment metadata into model text or private image/PDF parts.
+ * `resolveBytes` re-resolves and loads the bytes under the calling tool's own
+ * access scope, so issue-run and chat readers share the cap, note text, and
+ * part shape without sharing a scope.
  */
-async function issueAttachmentModelOutput(args: {
-  context: IssueRunToolContext
-  input: unknown
+export async function attachmentModelOutput(args: {
   output: unknown
+  resolveBytes: () => Promise<
+    Result<{ attachment: AttachmentRow; bytes: Uint8Array }, string>
+  >
 }) {
   if (!args.output || typeof args.output !== 'object') {
     return { type: 'json' as const, value: args.output as never }
@@ -186,46 +252,44 @@ async function issueAttachmentModelOutput(args: {
   if (typeof output.content === 'string') {
     return { type: 'text' as const, value: output.content }
   }
-  if (output.kind !== 'image' && output.kind !== 'file') {
-    return { type: 'json' as const, value: output as never }
-  }
-  if (!args.input || typeof args.input !== 'object') {
-    return { type: 'json' as const, value: output as never }
-  }
-  const attachmentId = (args.input as { attachment_id?: unknown }).attachment_id
-  if (typeof attachmentId !== 'string') {
+  if (
+    output.kind !== 'image' &&
+    output.kind !== 'file' &&
+    output.kind !== 'text'
+  ) {
     return { type: 'json' as const, value: output as never }
   }
 
-  const attachmentResult = await loadIssueAttachment({
-    context: args.context,
-    attachmentId,
-  })
-  if (attachmentResult.isErr()) {
+  const resolution = await args.resolveBytes()
+  if (resolution.isErr()) {
+    return { type: 'error-text' as const, value: resolution.error }
+  }
+  const { attachment, bytes } = resolution.value
+  if (attachmentKind(attachment.contentType) !== output.kind) {
     return {
       type: 'error-text' as const,
-      value: attachmentResult.error.message,
+      value: `Attachment type ${attachment.contentType} is not supported for this model output.`,
     }
   }
-  const bytesResult = await loadIssueAttachmentBytes({
-    context: args.context,
-    attachment: attachmentResult.value,
-  })
-  if (bytesResult.isErr()) {
-    return { type: 'error-text' as const, value: bytesResult.error.message }
-  }
-  if (bytesResult.value.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
+  if (bytes.byteLength > MAX_MODEL_ATTACHMENT_BYTES) {
     return {
       type: 'error-text' as const,
-      value: `Read ${attachmentResult.value.filename}, but it exceeds the ${formatSize(MAX_MODEL_ATTACHMENT_BYTES)} inline model output limit.`,
+      value: `Read ${attachment.filename}, but it exceeds the ${formatAttachmentSize(MAX_MODEL_ATTACHMENT_BYTES)} inline model output limit.`,
     }
   }
 
-  const data = bytesResult.value.toString('base64')
+  if (output.kind === 'text') {
+    return {
+      type: 'text' as const,
+      value: Buffer.from(bytes).toString('utf8'),
+    }
+  }
+
+  const data = Buffer.from(bytes).toString('base64')
   const text =
     typeof output.note === 'string'
       ? output.note
-      : `Read ${attachmentResult.value.filename} (${attachmentResult.value.contentType}, ${formatSize(bytesResult.value.byteLength)}).`
+      : `Read ${attachment.filename} (${attachment.contentType}, ${formatAttachmentSize(bytes.byteLength)}).`
   return {
     type: 'content' as const,
     value: [
@@ -234,16 +298,59 @@ async function issueAttachmentModelOutput(args: {
         ? {
             type: 'image-data' as const,
             data,
-            mediaType: attachmentResult.value.contentType,
+            mediaType: attachment.contentType,
           }
         : {
             type: 'file-data' as const,
             data,
-            mediaType: attachmentResult.value.contentType,
-            filename: attachmentResult.value.filename,
+            mediaType: attachment.contentType,
+            filename: attachment.filename,
           },
     ],
   }
+}
+
+/**
+ * Wraps the shared model-output conversion for issue runs, which re-resolve the
+ * attachment through the active run's workspace/issue scope.
+ */
+async function issueAttachmentModelOutput(args: {
+  context: IssueRunToolContext
+  input: unknown
+  output: unknown
+}) {
+  return await attachmentModelOutput({
+    output: args.output,
+    resolveBytes: async () => {
+      if (!args.input || typeof args.input !== 'object') {
+        return Result.err('Invalid attachment reference.')
+      }
+      const attachmentId = (args.input as { attachment_id?: unknown })
+        .attachment_id
+      if (typeof attachmentId !== 'string') {
+        return Result.err('Invalid attachment reference.')
+      }
+
+      const attachmentResult = await loadIssueAttachment({
+        context: args.context,
+        attachmentId,
+      })
+      if (attachmentResult.isErr()) {
+        return Result.err(attachmentResult.error.message)
+      }
+      const bytesResult = await loadAttachmentBytes(
+        args.context.env.FILES,
+        attachmentResult.value,
+      )
+      if (bytesResult.isErr()) {
+        return Result.err(bytesResult.error.message)
+      }
+      return Result.ok({
+        attachment: attachmentResult.value,
+        bytes: bytesResult.value,
+      })
+    },
+  })
 }
 
 /**
@@ -254,7 +361,7 @@ async function issueAttachmentModelOutput(args: {
 export function createReadAttachmentTool(context: IssueRunToolContext) {
   return tool({
     description:
-      'Read an attachment on the current issue. Use this after the issue body or comments mention an attachment id, especially for screenshots/images. Images and PDFs are lazily loaded into the model with private image-data/file-data parts.',
+      'Read an attachment on the current issue. Use this after the issue body or comments mention an attachment id, especially for screenshots/images. Image inspection requires a vision-capable model. If model output says inspection is unsupported, report that limit instead of describing the image. PDFs also require a model that supports file parts.',
     inputSchema: readAttachmentInputSchema,
     execute: async ({ attachment_id }) => {
       const attachmentResult = await loadIssueAttachment({
@@ -266,18 +373,18 @@ export function createReadAttachmentTool(context: IssueRunToolContext) {
       const attachment = attachmentResult.value
 
       if (attachmentKind(attachment.contentType) === 'text') {
-        const bytesResult = await loadIssueAttachmentBytes({
-          context,
+        const textResult = await loadAttachmentText(
+          context.env.FILES,
           attachment,
-        })
-        if (bytesResult.isErr()) return toolErrorResult(bytesResult.error)
-        return attachmentMetadata(
-          attachment,
-          bytesResult.value.toString('utf8'),
+          Number.POSITIVE_INFINITY,
+        )
+        if (textResult.isErr()) return toolErrorResult(textResult.error)
+        return toolOkResult(
+          attachmentMetadata(attachment, { content: textResult.value }),
         )
       }
 
-      return attachmentMetadata(attachment)
+      return toolOkResult(attachmentMetadata(attachment))
     },
     toModelOutput: async ({ input, output }) =>
       await issueAttachmentModelOutput({ context, input, output }),

@@ -1810,6 +1810,40 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       loadExecutorCatalog: (input) => this.loadChatExecutorCatalog(input),
       getSandbox: () => this.getAgentSandbox(),
       issueRunEnv: this.env,
+      files: this.env.FILES,
+      canUseTool: async (runtimeToolName) => {
+        const identities = await this.getDb()
+          .select({
+            workspaceId: schema.chatThread.workspaceId,
+            ownerUserId: schema.chatThread.ownerUserId,
+            agentPermissions: schema.agent.permissions,
+          })
+          .from(schema.chatThread)
+          .innerJoin(
+            schema.agent,
+            eq(schema.agent.id, schema.chatThread.agentId),
+          )
+          .where(
+            or(
+              eq(schema.chatThread.id, this.name),
+              eq(schema.chatThread.runtimeKey, this.name),
+            ),
+          )
+          .limit(2)
+        const identity = identities[0]
+        if (!identity || identities.length !== 1) return false
+        const teamPolicy = await loadTeamAgentPolicyForUser(this.getDb(), {
+          workspaceId: identity.workspaceId,
+          userId: identity.ownerUserId,
+        })
+        return isChatToolAllowed(
+          derivePermissions({
+            agent: { permissions: identity.agentPermissions },
+          }),
+          teamPolicy,
+          runtimeToolName,
+        )
+      },
       brain: {
         ...(this.env.HELIX_URL === undefined
           ? {}
