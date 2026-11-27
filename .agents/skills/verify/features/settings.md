@@ -21,6 +21,14 @@
 5. Sign in from a second browser. Expect the current device first with "This device", and the other session with its OS, browser and a sign-out button. Sign it out, then expect the row removed.
 6. At phone width, expect the sessions table to scroll horizontally inside its card without page overflow.
 
+## Preferences section
+
+1. Open `/settings/preferences`. Expect one card with Appearance and Developer sections, and the Theme trigger showing the current theme with its icon.
+2. Open the Theme dropdown and choose each of Light, Dark and System. Expect the page to switch mode at once, the trigger to follow, and the choice to persist after reload.
+3. Toggle Debug mode on, then open an agent chat tab. Expect the debug drawer. Toggle it off and expect the drawer gone.
+4. Open the Settings modal. Expect its Appearance and Developer tabs to show the same theme and Debug mode state.
+5. At 375px wide, expect rows to fit without horizontal overflow.
+
 ## General section
 
 1. Open `/settings/general` as a workspace admin or owner. Expect a General card with Name, Description, Context, the Context hint and the slug, then a tinted Danger zone card.
@@ -28,5 +36,3 @@
 3. Sign in as a member. Expect disabled fields and "Only admins and owners can edit workspace settings." at the top of the card.
 4. Select Leave workspace. Expect the confirmation dialog. Cancel keeps the workspace. Confirm removes access.
 5. At 768 and 375 widths, expect bordered cards with no grey container, the Danger zone button below its text on phones, and no page-level horizontal overflow.
-
-Other section redesigns are outside this scenario.
