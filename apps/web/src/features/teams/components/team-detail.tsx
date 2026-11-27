@@ -471,7 +471,7 @@ export function TeamDetailCard({
                 onAddMember={() => setAddMemberOpen(true)}
                 onAgentSettings={() => setAgentPolicyOpen(true)}
                 onRemove={setMemberToRemove}
-                onSeeIssues={() => onTabChange('issues')}
+                onSeeIssues={showTabs ? () => onTabChange('issues') : undefined}
                 search={memberSearch}
                 team={team}
                 visibleMembers={visibleMembers}
