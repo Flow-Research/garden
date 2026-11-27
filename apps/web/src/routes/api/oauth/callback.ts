@@ -1,6 +1,7 @@
 import { Effect, Option, Result } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { decodeOAuthCallbackState, OAuthState } from '@executor-js/sdk/core'
+import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   requireWorkspaceAccess,
@@ -64,7 +65,29 @@ export const settleOAuthCallback = Effect.fn('ExecutorOAuth.settleCallback')(
           : { callbackDomain: input.callbackDomain }),
       }),
     )
-    if (connection.owner !== 'org') {
+    if (connection.owner === 'org') {
+      const connector = getConnectorByExecutorSlug(
+        String(connection.integration),
+      )
+      if (connector) {
+        const syncResult = yield* Effect.result(
+          syncCapabilities(
+            connector.id,
+            input.identity.subject,
+            input.identity.tenant,
+          ),
+        )
+        if (Result.isFailure(syncResult)) {
+          yield* Effect.sync(() =>
+            logger.warn('connection.capability_sync_failed', {
+              connectorId: connector.id,
+              workspaceId: input.identity.tenant,
+              ...errorFields(syncResult.failure),
+            }),
+          )
+        }
+      }
+    } else {
       const mirrorResult = yield* Effect.result(
         mirrorExecutorConnection({
           executorSlug: String(connection.integration),
