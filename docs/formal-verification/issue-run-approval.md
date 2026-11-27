@@ -28,6 +28,7 @@ to approval reuse before a product fix is planned.
 - `packages/agent-runtime/src/runtime-mcp-controller.ts` checks connector
   approval and matches canonical arguments.
 - `packages/db/src/schema/capabilities.ts` defines approval rows.
+- `apps/web/src/lib/server/issue-run-reconciler.ts` denies stale requests and fails matching waiting runs.
 - `apps/web/src/routes/api/permission-requests/$id/resolve.ts` checks the
   actor's authority and resolves connector approvals through
   `apps/web/src/lib/server/permission-request.ts`.
@@ -47,9 +48,7 @@ as `failed`.
 
 An approval row uses `pending`, `approved`, or `denied`. It has an `expires_at`
 column, but the connector approval creation, resolution, and lookup paths do
-not set or enforce that timestamp. Approval expiry is not current behavior.
-The model must represent it only as a proposed extension and must not report
-the missing expiry transition as a runtime defect.
+not set or enforce that timestamp. The reconciler separately denies pending connector writes more than 24 hours after `requested_at`. It records `approval_stale` on matching waiting runs. Track the database result and the waiting Workflow separately.
 
 The connector runtime first matches an approval by agent, capability, tool call
 ID, and canonical arguments. It also reuses a recent approved request for the
@@ -76,13 +75,12 @@ queued -> running
 queued -> failed | cancelled
 running -> waiting_for_approval | waiting_for_input
 running -> succeeded | failed | cancelled | blocked
-waiting_for_approval -> running | failed | cancelled
+waiting_for_approval -> failed | cancelled
 waiting_for_input -> running | failed | cancelled
 ```
 
 The approval edges are `not_requested -> pending -> approved | denied`.
-Model an expiry edge only in a separate proposed variant after its product
-behavior is defined. The Workflow identity maps one run ID to one instance ID.
+Include the timer-driven `pending -> denied` transition in the current model. The approval route can record a decision without waking the Workflow. Treat automatic resumption after approval as an unverified transition. The Workflow identity maps one run ID to one instance ID.
 Duplicate start requests must not create a second execution path.
 
 Split each sensitive connector action into `ReadRunAndPolicy`,
@@ -109,8 +107,7 @@ proves that they are atomic.
    owner decision above.
 6. Duplicate Workflow creation for one run ID does not duplicate work.
 7. Every resume event reaches only the Workflow instance recorded for that
-   run. The web resolve route writes approval state. A later run-control
-   request sends the resume event through the run service.
+   run. The web route only writes the approval decision. The verified comment/mention resume path applies to `waiting_for_input`. Model a run that continues to wait after approval.
 
 If a property fails, replay its steps against the named production entry
 points. If the model permits an impossible step, correct the model. If code
@@ -123,7 +120,7 @@ approval concurrent with cancellation; and live-run read, cancellation, then
 dispatch. Also check denial then retry, duplicate start, agent eviction then
 resume, tool submission retry, an approval for arguments A used with arguments
 B, and approval reuse across two runs. Include a waiting run that fails before
-resume. Test an expiry path only in the proposed expiry variant.
+resume. Race the stale-request sweep against approval. Check what happens if the database closes a run while its Workflow still waits.
 
 ## Proof work
 
