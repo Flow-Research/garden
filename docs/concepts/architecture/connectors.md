@@ -38,6 +38,10 @@ Executor stores integration and connection state in the `EXECUTOR_DB` D1 databas
 
 Unknown tools fail closed. A tool with no risk class defaults to `ask`. Unclassified native or hosted GitHub tools are not exposed at all. Executor receives tenant and member identity from Garden, and it never replaces Garden's workspace authorization checks.
 
+The `capability` table has one row per connector and tool name across all workspaces. Executor lists tools for one workspace and member at a time. Sync adds those tools, but a partial Executor list cannot remove shared rows or lower their stored risk. If two lists give different risks for one name, sync keeps the stricter risk. It seeds grants only for tools in the current list. The Garden native registry defines its full tool list, so native sync can update definitions and remove names that the registry no longer defines.
+
+For an upgrade from older sync behavior, resync each existing org connection from its workspace before no-member runs need it. An admin can use the connection resync action. Review shared capability risks and grants if older tenant syncs might have lowered a risk or removed another workspace's tool. Resync a workspace that exposes the stricter tool to raise the shared risk. Review existing `auto` grants separately because a risk change does not replace a saved grant. A resync cannot restore deleted audit records; recovery requires a database backup. Waiting agent or system runs created before `connectorIdentity` existed need review and cancellation before a new run can start. These steps require live workspace data and are not part of this code change.
+
 ## Each runtime gets its own Executor MCP session
 
 Installed Executor tools reach an agent through one MCP server per runtime. `RuntimeMcpController.ensureProxyMcpConnections` in `packages/agent-runtime/src/runtime-mcp-controller.ts` registers that server for every chat facet and run facet.
