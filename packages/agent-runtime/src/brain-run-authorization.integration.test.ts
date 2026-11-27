@@ -3021,9 +3021,17 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         agentId,
         title: 'G06 private control',
       })
+      // The native chat turn needs the owner's live session as its handoff.
+      const sessionId = crypto.randomUUID()
+      await database!.db.insert(schema.session).values({
+        id: sessionId,
+        token: crypto.randomUUID(),
+        userId: ownerId,
+        expiresAt: new Date(Date.now() + 600_000),
+      })
       const response = await harness!.fetch('/chat', {
         method: 'POST',
-        body: JSON.stringify({ agentId, threadId }),
+        body: JSON.stringify({ agentId, threadId, sessionId, userId: ownerId }),
       })
       expect(response.status, await response.clone().text()).toBe(200)
       const outcome = (await response.json()) as {

@@ -1,4 +1,4 @@
-diff --git a/node_modules/agents/.bun-tag-c0c639aa2299e502 b/.bun-tag-c0c639aa2299e502
+diff --git a/.bun-tag-c0c639aa2299e502 b/.bun-tag-c0c639aa2299e502
 new file mode 100644
 index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
 diff --git a/dist/agent-tool-types-CNyE1iz_.d.ts b/dist/agent-tool-types-CNyE1iz_.d.ts
@@ -17,6 +17,83 @@ index 571eececebd5a1eaf7f2fbf5278801c4d34728ba..317e526489fcd3fd477a50525da0df66
    getStreamIdForEventId(eventId: EventId): Promise<StreamId | undefined>;
    replayEventsAfter(
      lastEventId: EventId,
+diff --git a/dist/chat/index.d.ts b/dist/chat/index.d.ts
+index 232fc94e6bcfe75eb0387e6752a3d57e4a0bf7ec..cb0e5b94f043244b10c484718bdd6f9220af867a 100644
+--- a/dist/chat/index.d.ts
++++ b/dist/chat/index.d.ts
+@@ -1207,6 +1207,7 @@ interface ContinuationPending<
+   requestId: string;
+   clientTools?: ClientToolSchema[];
+   body?: Record<string, unknown>;
++  requestContext?: unknown;
+   errorPrefix: string | null;
+   prerequisite: Promise<boolean> | null;
+   pastCoalesce: boolean;
+@@ -1218,6 +1219,7 @@ interface ContinuationDeferred<
+   connectionId: string | null;
+   clientTools?: ClientToolSchema[];
+   body?: Record<string, unknown>;
++  requestContext?: unknown;
+   errorPrefix: string;
+   prerequisite: Promise<boolean> | null;
+ }
+@@ -2029,6 +2031,7 @@ type ChatFiberSnapshot<Kind extends string = string> = {
+   startedAt: number;
+   lastBody?: Record<string, unknown>;
+   lastClientTools?: ClientToolSchema[];
++  requestContext?: unknown;
+ };
+ declare function createChatFiberSnapshot<Kind extends string>({
+   kind,
+@@ -2037,7 +2040,8 @@ declare function createChatFiberSnapshot<Kind extends string>({
+   continuation,
+   messages,
+   lastBody,
+-  lastClientTools
++  lastClientTools,
++  requestContext
+ }: {
+   kind: Kind;
+   requestId: string;
+@@ -2046,6 +2050,7 @@ declare function createChatFiberSnapshot<Kind extends string>({
+   messages: ReadonlyArray<SnapshotMessage>;
+   lastBody?: Record<string, unknown>;
+   lastClientTools?: ClientToolSchema[];
++  requestContext?: unknown;
+ }): ChatFiberSnapshot<Kind>;
+ declare function wrapChatFiberSnapshot<Kind extends string>(
+   key: string,
+diff --git a/dist/chat/index.js b/dist/chat/index.js
+index 33228f9a5a38fc6f892ecbed67ed78363698994d..eff57ad8ac120cc27cb3ab13b298ea31d3d4f98b 100644
+--- a/dist/chat/index.js
++++ b/dist/chat/index.js
+@@ -1164,6 +1164,7 @@ var ContinuationState = class {
+ 			requestId: generateRequestId(),
+ 			clientTools: d.clientTools,
+ 			body: d.body,
++			requestContext: d.requestContext,
+ 			errorPrefix: d.errorPrefix,
+ 			prerequisite: d.prerequisite,
+ 			pastCoalesce: false
+@@ -2169,7 +2170,7 @@ async function persistReconstructedOrphan(chunks, options) {
+ }
+ //#endregion
+ //#region src/chat/recovery.ts
+-function createChatFiberSnapshot({ kind, requestId, recoveryRootRequestId, continuation, messages, lastBody, lastClientTools }) {
++function createChatFiberSnapshot({ kind, requestId, recoveryRootRequestId, continuation, messages, lastBody, lastClientTools, requestContext }) {
+ 	const latestMessage = messages.length > 0 ? messages[messages.length - 1] : void 0;
+ 	let latestUser;
+ 	for (let index = messages.length - 1; index >= 0; index--) if (messages[index].role === "user") {
+@@ -2187,7 +2188,8 @@ function createChatFiberSnapshot({ kind, requestId, recoveryRootRequestId, conti
+ 		latestUserMessageId: latestUser?.id,
+ 		startedAt: Date.now(),
+ 		lastBody,
+-		lastClientTools
++		lastClientTools,
++		requestContext
+ 	};
+ }
+ function wrapChatFiberSnapshot(key, snapshot, user) {
 diff --git a/dist/mcp/index.d.ts b/dist/mcp/index.d.ts
 index c8fad448e8797b89690a99d93490d1363851b225..77f9fe3f6f2375eadc9f7a2974f0d202fe75b3bd 100644
 --- a/dist/mcp/index.d.ts
@@ -908,4 +985,3 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +export { DurableObjectEventStore, ElicitRequestSchema, MAX_SSE_AGE_MS, MCP_SERVER_ID_MAX_LENGTH, McpAgent, RPCClientTransport, RPCServerTransport, RPC_DO_PREFIX, SSEEdgeClientTransport, StreamableHTTPEdgeClientTransport, WorkerTransport, createMcpHandler, experimental_createMcpHandler, getMcpAuthContext, normalizeServerId };
  
  //# sourceMappingURL=index.js.map
-\ No newline at end of file

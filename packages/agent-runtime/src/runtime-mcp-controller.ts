@@ -240,6 +240,11 @@ export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
 
 export type ThreadRuntimeIdentity = {
   threadId: string
+  /**
+   * The `chat_thread` row behind a chat runtime. Run runtimes leave it unset,
+   * because their `threadId` names an issue or automation scope instead.
+   */
+  chatThreadId?: string
   workspaceId: string
   userId: string
   agentId: string
@@ -1532,6 +1537,7 @@ export class RuntimeMcpController {
           ),
           teamId: teamApproval?.team.teamId ?? null,
           issueId: identityResult.value.issueId ?? null,
+          threadId: identityResult.value.chatThreadId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,
           status: 'pending',
@@ -1678,6 +1684,7 @@ export class RuntimeMcpController {
 
     return Result.ok({
       threadId,
+      chatThreadId: threadId,
       workspaceId: thread.workspaceId,
       userId: thread.userId,
       agentId: thread.agentId,

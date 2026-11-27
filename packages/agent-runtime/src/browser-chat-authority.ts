@@ -5,7 +5,7 @@ import { z } from 'zod'
 import type { GardenDatabase } from '@garden/db'
 import * as schema from '@garden/db/schema'
 
-const principalSchema = z.strictObject({
+export const browserChatPrincipalSchema = z.strictObject({
   sessionId: z.string().uuid(),
   userId: z.string().uuid(),
   workspaceId: z.string().uuid(),
@@ -14,7 +14,7 @@ const principalSchema = z.strictObject({
   runtimeKey: z.string().uuid(),
   runtimeName: z.string().min(1).max(256),
 })
-export type BrowserChatPrincipal = z.infer<typeof principalSchema>
+export type BrowserChatPrincipal = z.infer<typeof browserChatPrincipalSchema>
 export const browserConnectionTag = 'garden.browser.bound.v1'
 export const nonChatConnectionTag = 'garden.browser.nonchat.v1'
 const chatConnectionTag = 'garden.browser.chat.v1'
@@ -111,7 +111,7 @@ export async function resolveBrowserChatPrincipal(
   })
   return rows.andThen((values) => {
     if (values.length !== 1) return Result.err(browserChatRefused())
-    const principal = principalSchema.safeParse({
+    const principal = browserChatPrincipalSchema.safeParse({
       ...values[0],
       runtimeName: input.runtimeName,
     })
@@ -126,7 +126,7 @@ export async function checkBrowserChatPrincipal(
   db: GardenDatabase,
   input: BrowserChatPrincipal,
 ): Promise<Result<BrowserChatPrincipal, BrowserChatAuthorityError>> {
-  const parsed = principalSchema.safeParse(input)
+  const parsed = browserChatPrincipalSchema.safeParse(input)
   if (!parsed.success) return Result.err(browserChatRefused())
   const current = await resolveBrowserChatPrincipal(db, {
     ...parsed.data,
@@ -142,7 +142,7 @@ export async function checkBrowserChatPrincipal(
 /** Platform tags survive hibernation without exposing cookies or session tokens. */
 export function browserChatTags(principal: BrowserChatPrincipal): string[] {
   const encoded = Buffer.from(
-    JSON.stringify(principalSchema.parse(principal)),
+    JSON.stringify(browserChatPrincipalSchema.parse(principal)),
   ).toString('base64url')
   const chunks = Math.ceil(encoded.length / 192)
   if (chunks > 6) throw new Error('Private chat scope exceeds tag capacity')
@@ -188,7 +188,7 @@ export function browserChatPrincipalFromTags(
       ) as unknown,
     catch: () => browserChatRefused(),
   }).andThen((value) => {
-    const parsed = principalSchema.safeParse(value)
+    const parsed = browserChatPrincipalSchema.safeParse(value)
     return parsed.success
       ? Result.ok(parsed.data)
       : Result.err(browserChatRefused())

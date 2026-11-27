@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../node_modules/wrangler/config-schema.json",
+  "name": "garden-chat-request-fixture",
+  "main": "chat-request-worker.ts",
+  "compatibility_date": "2026-04-18",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "dev": { "ip": "127.0.0.1" },
+  "durable_objects": {
+    "bindings": [
+      { "name": "REQUEST_AGENT", "class_name": "RequestAgent" },
+      { "name": "REQUEST_ROOT", "class_name": "RequestRoot" },
+      { "name": "RUN_AGENT", "class_name": "RunTurnAgent" },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "fixture",
+      "new_sqlite_classes": ["RequestAgent", "RequestRoot", "RunTurnAgent"],
+    },
+  ],
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "00000000000000000000000000000000" },
+  ],
+  "vars": { "FIXTURE_BASE_URL": "http://127.0.0.1:0" },
+}
