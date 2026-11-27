@@ -278,25 +278,26 @@ export function AppShell() {
       // Navigate first: a mounted entity route must never re-render against
       // the new workspace with foreign ids (doomed detail queries).
       const leaf = router.state.matches.at(-1)
-      void navigate({
-        href: workspaceSwitchTarget(leaf?.fullPath ?? '/home', pathname),
-      })
-      void Result.tryPromise(() => switchWorkspace(nextWorkspace)).then(
-        (result) =>
-          result.tapBoth({
-            ok: () => {
-              queryClient.invalidateQueries()
-              void router.invalidate()
-              toast.success(`Switched to ${nextWorkspace.name}`)
-            },
-            err: (error) => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to switch workspace',
-              )
-            },
-          }),
+      void Result.tryPromise(async () => {
+        await navigate({
+          href: leaf ? workspaceSwitchTarget(leaf.fullPath, pathname) : '/home',
+        })
+        await switchWorkspace(nextWorkspace)
+      }).then((result) =>
+        result.tapBoth({
+          ok: () => {
+            queryClient.invalidateQueries()
+            void router.invalidate()
+            toast.success(`Switched to ${nextWorkspace.name}`)
+          },
+          err: (error) => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Failed to switch workspace',
+            )
+          },
+        }),
       )
     },
     [navigate, pathname, queryClient, router, switchWorkspace, workspace?.id],
@@ -417,7 +418,7 @@ export function AppShell() {
                 }
               />
               <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <Outlet />
+                <Outlet key={workspaceId} />
               </main>
             </div>
             <SearchCommand />

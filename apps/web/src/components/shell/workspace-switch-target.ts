@@ -14,7 +14,17 @@ export function workspaceSwitchTarget(
   const entityIndex = segments.findIndex(
     (segment) => segment.startsWith('$') && segment !== '$',
   )
-  if (entityIndex === -1) return pathname
+  if (entityIndex === -1) {
+    // Only a splat needs the concrete pathname. Other pages use their route.
+    const splat = segments.indexOf('$')
+    if (splat >= 0) {
+      const section = `/${segments.slice(0, splat).join('/')}`
+      return splat > 0 && pathname.startsWith(`${section}/`)
+        ? pathname
+        : '/home'
+    }
+    return `/${segments.join('/')}`
+  }
   if (entityIndex === 0) return '/home'
   return `/${segments.slice(0, entityIndex).join('/')}`
 }

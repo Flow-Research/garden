@@ -16,9 +16,7 @@ describe('workspaceSwitchTarget', () => {
     expect(workspaceSwitchTarget('/agents/$agentId', '/agents/a1')).toBe(
       '/agents',
     )
-    expect(workspaceSwitchTarget('/tasks/$issueId', '/tasks/i1')).toBe(
-      '/tasks',
-    )
+    expect(workspaceSwitchTarget('/tasks/$issueId', '/tasks/i1')).toBe('/tasks')
     expect(
       workspaceSwitchTarget(
         '/settings/user-management/teams/$teamId',
@@ -31,6 +29,11 @@ describe('workspaceSwitchTarget', () => {
     expect(workspaceSwitchTarget('/handbook/$', '/handbook/runs')).toBe(
       '/handbook/runs',
     )
+  })
+
+  it('uses the matched section when the current pathname differs', () => {
+    expect(workspaceSwitchTarget('/teams/', '/agents/old')).toBe('/teams')
+    expect(workspaceSwitchTarget('/handbook/$', '/agents/old')).toBe('/home')
   })
 
   it('lands on home when the entity has no parent section', () => {
