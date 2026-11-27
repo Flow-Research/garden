@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Result } from 'better-result'
+import { GitHubApiError } from './github-repositories'
 import { reviewWorkProduct, workProductReviewBodySchema } from './work-products'
 
 const requestRepo = vi.hoisted(() => vi.fn())
@@ -420,6 +421,39 @@ async function runPrContract(pr: { title: string; body: string }) {
 }
 
 describe('approved connector reply after a GitHub account rename', () => {
+  it('preserves a temporary lookup failure and does not send a comment', async () => {
+    githubCalls.length = 0
+    requestRepo
+      .mockReset()
+      .mockResolvedValue(
+        Result.err(
+          new GitHubApiError({ message: 'Service unavailable', status: 503 }),
+        ),
+      )
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      linkedLogin: 'Renamed',
+      bindingMetadata: { github_repo_id: 27 },
+      workProduct: { ...approvedWorkProduct({}), type: 'connector_reply' },
+    })
+    state.db = db
+    const result = await reviewWorkProduct({
+      actorUserId: agentId,
+      env: {} as never,
+      input: { action: 'apply' },
+      workProductId,
+      workspaceId,
+    })
+    expect(result).toMatchObject({
+      error: {
+        kind: 'transient',
+        retryable: true,
+        detail: 'Service unavailable',
+      },
+    })
+    expect(githubCalls).toEqual([])
+  })
+
   it.each([
     [
       'numeric identity',

@@ -305,7 +305,9 @@ async function resolveWritebackInvocation(args: {
   env: AppEnv
   binding: IssueSourceBindingRow
   workProduct: WorkProductRow
-}): Promise<ResultValue<WritebackInvocation, WorkProductReviewError>> {
+}): Promise<
+  ResultValue<WritebackInvocation, ConnectorError | WorkProductReviewError>
+> {
   const body = args.workProduct.body?.trim()
   if (!body) return Result.err(invalidState('Work product body is empty'))
 
@@ -366,7 +368,9 @@ async function resolveWritebackInvocation(args: {
             ? `/repos/${ref.owner}/${ref.repo}`
             : `/repositories/${repoId}`,
       })
-      const record = response.isOk() ? objectOrNull(response.value) : null
+      if (response.isErr())
+        return Result.err(classifyConnectorError(response.error))
+      const record = objectOrNull(response.value)
       const current = parseRepository(stringValue(record?.full_name))
       if (
         !current ||
