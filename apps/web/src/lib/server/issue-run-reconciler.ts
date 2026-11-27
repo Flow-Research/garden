@@ -245,6 +245,10 @@ async function sweepStaleApprovals(
  * over run recovery and schedule dispatch. Keep this intentionally narrow so it
  * cannot race Workflow or Agents SDK ownership of live execution.
  */
+// Every 12 hours. The reconciler performs ledger cleanup without a durable
+// deadline, so a slow cadence avoids needless database wakeups.
+export const ISSUE_RUN_RECONCILE_CRON = '0 */12 * * *'
+
 export async function reconcile(
   env: AppEnv,
 ): Promise<ResultValue<ReconcileReport, IssueRunReconcilerError>> {
