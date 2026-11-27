@@ -8,4 +8,9 @@ export {
   unescapeMentionLabel,
   type MentionLinkType,
 } from './mentions'
-export { preprocessFileCards, isCdnUrl, isFileCardUrl } from './file-cards'
+export {
+  safeFileHref,
+  preprocessFileCards,
+  isCdnUrl,
+  isFileCardUrl,
+} from './file-cards'
