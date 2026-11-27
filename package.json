@@ -36,7 +36,7 @@
     "verify:code-policy": "node scripts/verify-code-policy.mjs",
     "smoke": "node scripts/smoke.mjs",
     "test:smoke": "node --test scripts/smoke.test.mjs",
-    "test:pr-contract": "node --test scripts/pr-evidence.test.mjs scripts/diagrams.test.mjs",
+    "test:pr-contract": "node --test scripts/pr-evidence.test.mjs scripts/diagram-contract.test.mjs scripts/diagrams.test.mjs",
     "screenshot:webp": "node scripts/screenshot-webp.mjs",
     "typecheck": "turbo run typecheck --concurrency=1",
     "test": "turbo run test && pnpm run test:dependency-security",

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { diagramFailures } from './diagram-contract.mjs'
 import { evidenceFailures } from './pr-evidence.mjs'
 
 const REQUIRED_HEADINGS = [
@@ -246,6 +247,19 @@ function main() {
         body,
         prNumber: pullRequest.number,
         verification,
+      }),
+    )
+
+    failures.push(
+      ...diagramFailures({
+        files,
+        body,
+        manifest: JSON.parse(
+          readFileSync(
+            new URL('../docs/diagrams/manifest.json', import.meta.url),
+            'utf8',
+          ),
+        ),
       }),
     )
   }
