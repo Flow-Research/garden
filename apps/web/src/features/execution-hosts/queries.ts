@@ -11,6 +11,10 @@ const SYNC_INTERVAL_MS = HOST_REPORT_WINDOW_MS / 2
 
 export const executionHostKeys = {
   all: (wsId: string) => ['workspaces', wsId, 'execution-hosts'] as const,
+  attention: (wsId: string) =>
+    [...executionHostKeys.all(wsId), 'attention'] as const,
+  interventions: (wsId: string, launchId: string) =>
+    [...executionHostKeys.all(wsId), 'interventions', launchId] as const,
   directory: (wsId: string) =>
     [...executionHostKeys.all(wsId), 'directory'] as const,
   run: (wsId: string, launchId: string) =>

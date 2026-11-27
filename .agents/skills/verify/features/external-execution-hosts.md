@@ -59,7 +59,7 @@ Required observations include these results:
 - A run on a stale host shows "Stale", and a failed refresh shows "Unknown". Neither shows "Running".
 - "Cancellation requested" stays separate from termination that the host confirmed.
 - "Load more events" sends the returned cursor and shows events beyond the first 200.
-- The page has only the "Refresh", "Show run", "Load more events" and "Load more hosts" controls.
+- Open a listed run and check the question reason. Verify that Resume and Stop post to the bound question. Confirm the stored decision and host-reported state independently.
 
 The HTTP suite in the first section proves the server refusals with actual sessions.
 It includes the exact 503 message that selects the disabled state.

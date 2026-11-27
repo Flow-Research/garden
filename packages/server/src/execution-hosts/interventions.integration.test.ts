@@ -216,6 +216,29 @@ describe('external host interventions with actual PostgreSQL', () => {
     }
   }
 
+  it('lists only open questions in the authorized workspace attention view', async () => {
+    const state = await fixture()
+    await state.send({
+      operation: 'intervention',
+      intervention: state.intervention,
+    })
+    const list = async () =>
+      (
+        await state.receiver.attention(
+          state.pilot.userId,
+          state.workspaceId,
+          state.now(),
+        )
+      ).unwrap().runs
+    expect(await list()).toEqual([{ launchId: state.launch.launchId }])
+    const before = state.now()
+    state.setClock(state.intervention.expiresAt)
+    expect(await list()).toEqual([])
+    state.setClock(before)
+    expect((await state.answer('stop')).isOk()).toBe(true)
+    expect(await list()).toEqual([])
+  })
+
   it('stores a valid signed intervention once and returns the same receipt on retry', async () => {
     const state = await fixture()
     const body = {

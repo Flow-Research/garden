@@ -65,9 +65,11 @@ const refusals: Record<
 }
 
 function Time({ at }: { at: number }) {
+  const date = new Date(at)
+  if (!Number.isFinite(date.getTime())) return <span>Unknown time</span>
   return (
-    <time dateTime={new Date(at).toISOString()}>
-      {new Date(at).toLocaleString(undefined, {
+    <time dateTime={date.toISOString()}>
+      {date.toLocaleString(undefined, {
         dateStyle: 'medium',
         timeStyle: 'medium',
       })}
@@ -468,7 +470,7 @@ function RunSection({
 /**
  * Read-only status of the external execution hosts of the current workspace.
  * Every fact comes from the member read routes under `/api/execution-hosts`.
- * The page starts no launch, cancellation or other host effect.
+ * The page shows host evidence and lets the operator answer a pending question.
  */
 export function ExecutionHostsPage({
   launchId,

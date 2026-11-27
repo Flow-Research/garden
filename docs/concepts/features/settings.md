@@ -14,13 +14,13 @@ The page follows the supplied All settings design: heading and description, hori
 
 `/settings` redirects to `/settings/profile`. Section links preserve browser history and support direct entry and reload. The authenticated app layout owns session and workspace access.
 
-| Section         | URL                                                                    | Existing content reused                                                  |
-| --------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Profile         | `/settings/profile`                                                    | Redesigned; see [Profile](#profile)                                      |
-| User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins |
-| Preferences     | `/settings/preferences`                                                | Appearance and theme selection                                           |
-| General         | `/settings/general`                                                    | Workspace settings                                                       |
-| Execution hosts | `/settings/execution-hosts` | Read-only [execution-host status](./external-execution-hosts.md) |
+| Section         | URL                                                                    | Existing content reused                                                       |
+| --------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Profile         | `/settings/profile`                                                    | Redesigned; see [Profile](#profile)                                           |
+| User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins      |
+| Preferences     | `/settings/preferences`                                                | Appearance and theme selection                                                |
+| General         | `/settings/general`                                                    | Workspace settings                                                            |
+| Execution hosts | `/settings/execution-hosts`                                            | [Execution-host status and operator decisions](./external-execution-hosts.md) |
 
 User Management, Preferences and General reuse the same components, queries and mutations as the modal and the Teams page. Notifications has no tab or route until its behavior is implemented. Settings adds no new account operations, APIs or permissions.
 

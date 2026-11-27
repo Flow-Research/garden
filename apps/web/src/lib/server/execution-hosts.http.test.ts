@@ -1057,7 +1057,7 @@ describe('execution-host HTTP discovery', () => {
     const denied = await handleExecutionHostDirectory(
       context(attention, randomUUID()),
     )
-    expect(denied.ok).toBe(false)
+    expect(denied.status).toBe(403)
     const firstBody = hostDirectorySchema.parse(await first.json())
     expect(firstBody.workspaceId).toBe(state.workspaceId)
     expect(firstBody.hosts.map((host) => host.hostId)).toEqual([

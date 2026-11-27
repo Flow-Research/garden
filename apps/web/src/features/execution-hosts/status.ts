@@ -21,7 +21,8 @@ export function hostFreshness(
 ): HostFreshness {
   if (host.status === 'revoked') return 'revoked'
   if (host.lastSeenAt === null) return 'never_reported'
-  return observedAt - host.lastSeenAt > HOST_REPORT_WINDOW_MS
+  return observedAt < host.lastSeenAt ||
+    observedAt - host.lastSeenAt > HOST_REPORT_WINDOW_MS
     ? 'stale'
     : 'recent'
 }

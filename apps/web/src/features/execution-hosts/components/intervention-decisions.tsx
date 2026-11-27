@@ -6,6 +6,7 @@ import {
 import { Button } from '@garden/ui/components/ui/button'
 import { getApiTransport } from '@/lib/api'
 import { useRef } from 'react'
+import { executionHostKeys } from '../queries'
 
 export function AttentionRuns({
   workspace,
@@ -15,7 +16,7 @@ export function AttentionRuns({
   open: (id: string) => void
 }) {
   const query = useQuery({
-    queryKey: ['execution-host-attention', workspace],
+    queryKey: executionHostKeys.attention(workspace),
     refetchInterval: 5000,
     retry: false,
     queryFn: async ({ signal }) => {
@@ -55,7 +56,7 @@ export function InterventionDecisions({
   workspace: string
   launch: string
 }) {
-  const key = ['host-interventions', workspace, launch]
+  const key = executionHostKeys.interventions(workspace, launch)
   const url =
     '/api/execution-hosts/runs/' + encodeURIComponent(launch) + '/interventions'
   const headers = { 'X-Workspace-ID': workspace }
@@ -95,7 +96,7 @@ export function InterventionDecisions({
       await Promise.all([
         client.invalidateQueries({ queryKey: key }),
         client.invalidateQueries({
-          queryKey: ['execution-host-attention', workspace],
+          queryKey: executionHostKeys.attention(workspace),
         }),
       ])
     },

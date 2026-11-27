@@ -18,8 +18,13 @@ import {
 import { ExecutionHostsPage } from './execution-hosts-page'
 
 const api = vi.hoisted(() => ({
+  request: vi.fn(),
   listExecutionHosts: vi.fn(),
   getExecutionHostRun: vi.fn(),
+}))
+vi.mock('@/lib/api', async (importActual) => ({
+  ...(await importActual<Record<string, unknown>>()),
+  getApiTransport: () => ({ request: api.request }),
 }))
 vi.mock('../api', async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
@@ -52,6 +57,22 @@ function nth<T>(items: T[], index: number): T {
 }
 
 const synchronized = <T,>(value: T) => ({ ...value, receivedAt: NOW })
+
+const questions = (interventions: unknown[]) => ({
+  kind: 'interventions',
+  workspaceId: WORKSPACE_ID,
+  launchId: LAUNCH_ID,
+  observedAt: NOW,
+  interventions,
+})
+beforeEach(() => {
+  api.request.mockReset()
+  api.request.mockImplementation(async (path: string) =>
+    path.includes('view=attention')
+      ? { workspaceId: WORKSPACE_ID, runs: [] }
+      : questions([]),
+  )
+})
 
 describe('ExecutionHostsPage host list', () => {
   beforeEach(() => {
@@ -92,7 +113,7 @@ describe('ExecutionHostsPage host list', () => {
     ).toBeVisible()
   })
 
-  it('offers no control that starts, cancels or approves host work', async () => {
+  it('shows only status controls for a run without a pending decision', async () => {
     api.getExecutionHostRun.mockResolvedValue(
       synchronized(hostSnapshot([hostEvent(1)])),
     )
@@ -101,6 +122,63 @@ describe('ExecutionHostsPage host list', () => {
     expect(
       screen.getAllByRole('button').map((button) => button.textContent),
     ).toEqual(['Refresh', 'Show run', 'Refresh'])
+  })
+
+  it('lets the operator retry Stop for an uncertain worker with the same answer identity', async () => {
+    api.getExecutionHostRun.mockResolvedValue(
+      synchronized(hostSnapshot([hostEvent(1)])),
+    )
+    const question = {
+      contractVersion: 'harnessy.execution-host.v1',
+      id: crypto.randomUUID(),
+      workspaceId: WORKSPACE_ID,
+      hostId: HOST_ID,
+      launchId: LAUNCH_ID,
+      runId: LAUNCH_ID,
+      grantId: crypto.randomUUID(),
+      sourceRevision: 'a'.repeat(40),
+      taskRevision: 'b'.repeat(64),
+      kind: 'review',
+      reason: 'reconciliation_required',
+      raisedAt: NOW,
+      expiresAt: NOW + 10000,
+    }
+    const sent: string[] = []
+    api.request.mockImplementation(
+      async (path: string, options: RequestInit) => {
+        if (path.includes('view=attention'))
+          return { workspaceId: WORKSPACE_ID, runs: [{ launchId: LAUNCH_ID }] }
+        if (options.method === 'POST') {
+          sent.push(String(options.body))
+          throw new Error('Receipt unavailable')
+        }
+        return questions([
+          {
+            intervention: question,
+            status: 'open',
+            digest: 'a'.repeat(64),
+            receivedAt: NOW,
+            answer: null,
+          },
+        ])
+      },
+    )
+    renderPage(LAUNCH_ID)
+    expect(
+      await screen.findByRole('button', { name: 'Review run ' + LAUNCH_ID }),
+    ).toBeVisible()
+    expect(await screen.findByRole('button', { name: 'Resume' })).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Garden could not confirm',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Stop' }))
+    await vi.waitFor(() => expect(sent).toHaveLength(2))
+    expect(sent[0]).toEqual(sent[1])
+    expect(JSON.parse(sent[0] ?? '{}')).toMatchObject({
+      decision: 'stop',
+      interventionId: question.id,
+    })
   })
 
   it('shows a stale, a revoked and a never-reported host as such', async () => {

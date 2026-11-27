@@ -83,10 +83,10 @@ The settings section at `/settings/execution-hosts` shows the status of the host
 `ExecutionHostsPage` in `apps/web/src/features/execution-hosts/components/execution-hosts-page.tsx` owns this page.
 The Run needs attention list opens a run with a pending question. The authorized operator can record Resume or Stop. Garden shows the recorded choice and the latest host evidence separately. Resume releases the hold for permission and allowance checks. Stop requests cancellation. The host confirms when the worker has stopped.
 
-The page reads two existing member routes: `GET /api/execution-hosts/` and `GET /api/execution-hosts/runs/$launchId/`.
+The directory and snapshot use these member routes: `GET /api/execution-hosts/` and `GET /api/execution-hosts/runs/$launchId/`.
 Each request sends the current workspace in the `X-Workspace-ID` header.
 The server applies the same fresh-session, pilot-operator and workspace-administration checks as before.
-The page adds no route, no identity path and no browser storage.
+The attention view filters the directory by open question. The run detail reads questions and posts decisions through the interventions route using the same workspace and session.
 
 The host list shows these facts for each host: host ID, enrollment state, last signed contact, repositories, agent, key generation and capability digest.
 The page shows a separate state for each server answer:
