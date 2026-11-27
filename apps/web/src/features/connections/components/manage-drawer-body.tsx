@@ -98,7 +98,13 @@ export function ManageDrawerBody({
   const visibleConnections = activeIntegration.connections.filter(
     (connection) => connection.owner === owner,
   )
-  const connectedInScope = visibleConnections.length > 0
+  const needsReauthorization = visibleConnections.some(
+    (connection) =>
+      Option.isSome(connection.health) &&
+      connection.health.value.status === 'expired',
+  )
+  const connectedInScope =
+    visibleConnections.length > 0 && !needsReauthorization
   const githubNeedsRepair =
     activeIntegration.providerId === 'github.com' &&
     activeIntegration.status === 'degraded'
@@ -143,7 +149,14 @@ export function ManageDrawerBody({
   }
 
   let accountSetup: ReactNode = null
-  if (nativeProvider && connectedInScope) {
+  if (integration.providerId === 'executor:workstream' && owner === 'org') {
+    accountSetup = (
+      <p className="text-sm text-muted-foreground">
+        Workstream requires a Personal connection. Switch to Personal to connect
+        your invited account.
+      </p>
+    )
+  } else if (nativeProvider && connectedInScope) {
     accountSetup = null
   } else if (nativeProvider) {
     let nativeLabel = 'Connect native app'
@@ -222,7 +235,7 @@ export function ManageDrawerBody({
         disabled={saving}
         onClick={() => onOAuth(executorOAuthStartUrl(integration.slug, owner))}
       >
-        Authorize {integration.label}
+        {needsReauthorization ? 'Reconnect' : 'Authorize'} {integration.label}
       </Button>
     )
   }
@@ -373,6 +386,12 @@ export function ManageDrawerBody({
                   {selectedIntegration.slug === integration.slug &&
                   !connectedInScope ? (
                     <section className="mt-8 border-t pt-6">
+                      {needsReauthorization ? (
+                        <p className="mb-3 text-sm text-muted-foreground">
+                          Your authorization has expired or was revoked.
+                          Reconnect to use these tools.
+                        </p>
+                      ) : null}
                       <h3 className="text-sm font-semibold text-foreground">
                         Connect a {owner === 'user' ? 'Personal' : 'Workspace'}{' '}
                         account

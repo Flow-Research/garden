@@ -6,6 +6,7 @@ import type {
   issueRunStatusSchema,
 } from '@garden/db/validation'
 import type { z } from 'zod'
+import type { PublicRunFailure } from '@garden/core/runs/failure'
 
 export type IssueRunStatus = z.infer<typeof issueRunStatusSchema>
 export type IssueRunEventType = z.infer<typeof issueRunEventTypeSchema>
@@ -56,7 +57,8 @@ export interface IssueRun {
   result_json?: Record<string, unknown> | null
   usage_json?: Record<string, unknown> | null
   usage: IssueRunUsage | null
-  error: string | null
+  failure: PublicRunFailure | null
+  blocked_reason: string | null
   started_at: string | null
   finished_at: string | null
   created_at: string

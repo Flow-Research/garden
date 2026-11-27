@@ -51,7 +51,6 @@ describe('handleRealtimeConnect', () => {
         fakeDb([
           [{ role: 'member' }],
           [{ teamId: 'team-1' }, { teamId: 'team-2' }],
-          [{ teamId: 'team-1' }],
         ]),
       close: mocks.close,
     })
@@ -100,6 +99,5 @@ describe('handleRealtimeConnect', () => {
     expect(forwarded.headers.get('x-garden-user-id')).toBe('user-1')
     expect(forwarded.headers.get('x-garden-role')).toBe('member')
     expect(forwarded.headers.get('x-garden-team-ids')).toBe('team-1,team-2')
-    expect(forwarded.headers.get('x-garden-owned-team-ids')).toBe('team-1')
   })
 })

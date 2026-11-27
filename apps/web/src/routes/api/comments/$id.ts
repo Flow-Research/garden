@@ -1,7 +1,5 @@
-import { eq } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
 import {
   commentBodySchema,
   parseJsonBody,
@@ -9,14 +7,36 @@ import {
 import { badRequest, notFound } from '@/lib/server/control-plane'
 import { requireIssueAccess } from '@/lib/server/issue-access'
 import { publishWorkspaceEvent } from '@/lib/server/realtime'
+import {
+  deleteIssueCommentById,
+  getIssueCommentById,
+  updateIssueCommentBody,
+} from '@/lib/server/queries/issues'
 
-function toComment(row: typeof schema.issueComment.$inferSelect) {
+/**
+ * Maps an issue_comment row to the public comment DTO.
+ * `authorId` is null for connector comments (schema check constraint).
+ */
+function toComment(row: {
+  id: string
+  issueId: string
+  authorType: string
+  authorId: string | null
+  body: string
+  createdAt: Date | null
+}) {
   const createdAt = (row.createdAt ?? new Date()).toISOString()
+  const authorType =
+    row.authorType === 'user'
+      ? 'member'
+      : row.authorType === 'connector'
+        ? 'connector'
+        : row.authorType
 
   return {
     id: row.id,
     issue_id: row.issueId,
-    author_type: row.authorType === 'user' ? 'member' : row.authorType,
+    author_type: authorType,
     author_id: row.authorId,
     content: row.body,
     type: 'comment',
@@ -42,10 +62,7 @@ export const Route = createFileRoute('/api/comments/$id')({
         const body = bodyResult.value
 
         const db = await appContext.db()
-        const [existingComment] = await db
-          .select()
-          .from(schema.issueComment)
-          .where(eq(schema.issueComment.id, params.id))
+        const existingComment = await getIssueCommentById(db, params.id)
         if (!existingComment) return notFound('Comment not found')
 
         const access = await requireIssueAccess(
@@ -61,11 +78,10 @@ export const Route = createFileRoute('/api/comments/$id')({
           )
         }
 
-        const [updatedComment] = await db
-          .update(schema.issueComment)
-          .set({ body: body.content })
-          .where(eq(schema.issueComment.id, params.id))
-          .returning()
+        const updatedComment = await updateIssueCommentBody(db, {
+          commentId: params.id,
+          body: body.content,
+        })
 
         if (!updatedComment) return notFound('Comment not found')
         appContext.waitUntil(
@@ -75,7 +91,6 @@ export const Route = createFileRoute('/api/comments/$id')({
               issue_id: access.issue.id,
               comment_id: updatedComment.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )
@@ -85,10 +100,7 @@ export const Route = createFileRoute('/api/comments/$id')({
         const appContext = requireAppRequestContext(context)
 
         const db = await appContext.db()
-        const [existingComment] = await db
-          .select()
-          .from(schema.issueComment)
-          .where(eq(schema.issueComment.id, params.id))
+        const existingComment = await getIssueCommentById(db, params.id)
         if (!existingComment) return notFound('Comment not found')
 
         const access = await requireIssueAccess(
@@ -104,9 +116,7 @@ export const Route = createFileRoute('/api/comments/$id')({
           )
         }
 
-        await db
-          .delete(schema.issueComment)
-          .where(eq(schema.issueComment.id, params.id))
+        await deleteIssueCommentById(db, params.id)
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
             type: 'comment:deleted',
@@ -114,7 +124,6 @@ export const Route = createFileRoute('/api/comments/$id')({
               issue_id: access.issue.id,
               comment_id: existingComment.id,
               team_id: access.issue.teamId,
-              assignee_id: access.issue.assigneeId,
             },
           }),
         )

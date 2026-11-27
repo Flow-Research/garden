@@ -7,7 +7,7 @@ import type { Workspace, MemberWithUser, Invitation } from './workspace'
 import type { Project } from './project'
 import type { IssueRun, IssueRunEvent, IssueRunStatus } from './issue-run'
 import type { IssueSourceBinding, IssueWorkProduct } from './issue-work-product'
-import type { Team, TeamMemberKind } from './team'
+import type { TeamMemberKind } from './team'
 
 // App realtime event types.
 export type WSEventType =
@@ -66,6 +66,7 @@ export type WSEventType =
   | 'team:created'
   | 'team:updated'
   | 'team:deleted'
+  | 'team:policy_updated'
   | 'team_member:added'
   | 'team_member:removed'
   | 'team_member:updated'
@@ -99,6 +100,7 @@ export type RealtimePublishableEvent =
   | { type: 'team:created'; payload: TeamCreatedPayload }
   | { type: 'team:updated'; payload: TeamUpdatedPayload }
   | { type: 'team:deleted'; payload: TeamDeletedPayload }
+  | { type: 'team:policy_updated'; payload: TeamPolicyUpdatedPayload }
   | { type: 'team_member:added'; payload: TeamMemberAddedPayload }
   | { type: 'team_member:removed'; payload: TeamMemberRemovedPayload }
   | { type: 'issue:created'; payload: IssueCreatedPayload }
@@ -127,22 +129,16 @@ export interface IssueDeletedPayload {
   issue_id: string
   /** Present when the deleted issue belonged to a Team. */
   team_id?: string | null
-  /**
-   * The deleted issue's assignee. Team-scoped deletions gate on this so a
-   * normal member only hears about issues they could see.
-   */
-  assignee_id?: string | null
 }
 
 /**
  * A comment on an issue was added, edited, removed or reacted to. Carries the
- * issue's Team and assignee so the hub gates it like the issue itself.
+ * issue's Team so the hub gates it like the issue itself.
  */
 export interface CommentChangedPayload {
   issue_id: string
   comment_id: string
   team_id: string | null
-  assignee_id: string | null
 }
 
 export interface AgentStatusPayload {
@@ -349,26 +345,33 @@ export interface InvitationRevokedPayload {
 }
 
 /**
- * Team event payloads always carry the workspace and Team ids so subscribers
- * can evaluate audience before rendering anything.
+ * Team event payloads carry identifiers only. Every workspace client receives
+ * them, so they must not include a caller-relative Team DTO (`can_manage`,
+ * visibility-dependent counts) or Team content. Clients invalidate and refetch
+ * the authoritative Team queries instead (#154).
  */
 export interface TeamCreatedPayload {
   workspace_id: string
   team_id: string
-  team: Team
 }
 
 export interface TeamUpdatedPayload {
   workspace_id: string
   team_id: string
-  team: Team
+}
+
+/**
+ * A Team's agent policy changed. IDs only: the policy is visible to workspace
+ * managers and the Team owner, who refetch it.
+ */
+export interface TeamPolicyUpdatedPayload {
+  workspace_id: string
+  team_id: string
 }
 
 export interface TeamDeletedPayload {
   workspace_id: string
   team_id: string
-  /** Kept in the payload so the event stays useful after the row is gone. */
-  name: string
 }
 
 export interface TeamMemberAddedPayload {

@@ -53,9 +53,13 @@ Maintainers use the [Garden review standard](docs/reference/review-format.mdx)
 for pull request reviews. It defines the expected structure for respectful,
 evidence-based comments and clear next actions.
 
+For Garden tasks assigned through Workstream, follow the
+[Workstream contribution handoff](docs/guides/develop/workstream-contribution-handoff.md)
+alongside this standard. Ordinary GitHub contributions remain available.
+
 ## Code conventions
 
-The October 2026 audit ([docs/audit](docs/audit/2026-10-codebase-audit.md))
+The October 2026 audit ([archived audit](docs/archive/audits/2026-10-codebase-audit.md))
 found several competing patterns for the same job. New code follows one:
 
 - **No `any`.** Lint rejects it, tests included. Type unknown input as

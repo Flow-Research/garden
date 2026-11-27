@@ -1,3 +1,4 @@
+import { getChatFacetTarget, isAgentDoPath } from '@/lib/server/agent-do-path'
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
 import {
@@ -12,12 +13,16 @@ import {
   WorkspaceRealtimeDO,
 } from '@garden/agent-runtime'
 import { DecideAnalysisWorkflow } from './decide-analysis-workflow'
+import { GitHubRepoImportWorkflow } from './github-repo-import-workflow'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
 import { Result } from 'better-result'
 import { createSessionAuth } from '@/lib/auth'
 import type { AppEnv } from '@/lib/server/env'
 import { bindAppEnv } from '@/lib/server/env'
-import { requireAgentAccess } from '@/lib/server/agent-do-router'
+import {
+  requireAgentAccess,
+  requireChatFacetAccess,
+} from '@/lib/server/agent-do-router'
 import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
 import { reconcile } from '@/lib/server/issue-run-reconciler'
 import {
@@ -55,6 +60,7 @@ export { RunWorkflow }
 export { Sandbox }
 export { WorkspaceRealtimeDO }
 export { DecideAnalysisWorkflow }
+export { GitHubRepoImportWorkflow }
 export { ExecutorMcpExecutionOwnerDirectory, ExecutorMcpSession }
 
 type ServerEnv = AppEnv
@@ -158,9 +164,26 @@ async function routeAgentDoRequest(request: Request, env: ServerEnv) {
   const agentRuntimeName = getAgentRuntimeNameFromRequest(request)
   if (!agentRuntimeName) return new Response('Not found', { status: 404 })
 
-  const response = await routeAgentRequest(request, env, {
-    routingRetry: AGENT_ROUTING_RETRY,
-  })
+  // The SDK trusts these headers for internal routing and facet restoration.
+  // Public clients select a target only through the authorized URL; the SDK
+  // generates its own metadata after this boundary.
+  const headers = new Headers(request.headers)
+  for (const name of [
+    'x-cf-agents-subagent-url',
+    'x-partykit-props',
+    'x-partykit-room',
+    'x-partykit-namespace',
+    'x-partykit-jurisdiction',
+  ]) {
+    headers.delete(name)
+  }
+  const response = await routeAgentRequest(
+    new Request(request, { headers }),
+    env,
+    {
+      routingRetry: AGENT_ROUTING_RETRY,
+    },
+  )
   return response ?? new Response('Not found', { status: 404 })
 }
 
@@ -217,11 +240,19 @@ async function authorizeAgentRequest(
   }
 
   const userLogger = logger.child({ userId: session.user.id })
+  const chatTarget = getChatFacetTarget(request.url)
+  if (chatTarget.kind === 'invalid') {
+    return {
+      request,
+      response: new Response('Not found', { status: 404 }),
+      userId: session.user.id,
+    }
+  }
 
   const cacheKey = `${session.user.id}:${agentRuntimeName}`
   const now = Date.now()
   let access = agentDoAuthCache.get(cacheKey) ?? null
-  if (!access || access.expiresAt <= now) {
+  if (chatTarget.kind === 'chat' || !access || access.expiresAt <= now) {
     const accessResult = await requireAgentAccess(
       env,
       agentRuntimeName,
@@ -245,6 +276,26 @@ async function authorizeAgentRequest(
       expiresAt: now + AGENT_DO_AUTH_CACHE_TTL_MS,
     }
     agentDoAuthCache.set(cacheKey, access)
+  }
+
+  if (chatTarget.kind === 'chat') {
+    const chatAccess = await requireChatFacetAccess(
+      env,
+      access,
+      chatTarget.threadName,
+      session,
+    )
+    if (chatAccess.isErr()) {
+      userLogger.warn('agent.request.chat_access_denied', {
+        agentRuntimeName,
+        message: chatAccess.error.message,
+      })
+      return {
+        request,
+        response: new Response('Not found', { status: 404 }),
+        userId: session.user.id,
+      }
+    }
   }
 
   userLogger.info('agent.request.connecting', {
@@ -362,7 +413,7 @@ export default {
       )
     }
 
-    if (url.pathname.startsWith('/agents/')) {
+    if (isAgentDoPath(url.pathname)) {
       const agentAuth = await authorizeAgentRequest(request, env, logger)
       if (agentAuth.response) {
         const response = withRequestIdHeader(

@@ -55,6 +55,8 @@ const OWNER: MemberWithUser = {
   name: USER.name,
   email: USER.email,
   avatar_url: null,
+  github_user_id: null,
+  github_login: null,
 }
 
 function renderWithClient(ui: React.ReactNode) {

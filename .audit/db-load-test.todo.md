@@ -2,13 +2,13 @@
 
 Goal: add a rerunnable PostgreSQL load suite that seeds real Garden table
 relationships at 10x, 100x, and 1000x, runs route-shaped queries, profiles the
-slow path, applies one schema fix, and writes statistical results plus a chart.
+slow path, applies one candidate index in the treatment copy, and writes statistical results plus a chart.
 
 - [x] Ground the current schema and route-shaped query paths.
-- [x] Add the issue-list order index in the Drizzle schema and migration.
+- [x] Add the candidate issue-list index only in the treatment database.
 - [x] Add the isolated load harness and the SVG report writer.
 - [x] Add the maintainer feature document and package command.
-- [x] Run baseline and after measurements with seven paired samples.
+- [x] Run the first baseline and after measurements with seven paired samples.
 - [x] Review the generated report, checks, and final diff.
 
 Data shape:
@@ -18,7 +18,7 @@ Data shape:
   skills.
 - Relationship keys use deterministic UUIDs so two database copies contain the
   same rows.
-- The baseline copy has the candidate index removed.
+- The baseline copy has no candidate index.
 - The after copy has the candidate index applied.
 
 Measurement contract:
@@ -30,7 +30,7 @@ Measurement contract:
 - Record median, p95, range, paired bootstrap confidence interval, and a
   two-sided sign-flip p-value.
 - Run `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` outside timed samples.
-- Save JSON and SVG artifacts under `.audit/db-load-test/`.
+- Save JSON, Markdown, and SVG artifacts under a local temporary directory.
 
 Non-goals:
 

@@ -1,9 +1,16 @@
+import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
+import { parseWorkProductSavedFile } from '@garden/core/issues/work-product-saved-file'
+import { useQuery } from '@tanstack/react-query'
+import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useEffect, useRef, useState } from 'react'
 import {
   Check,
   CheckCircle2,
+  Download,
   ExternalLink,
   FileText,
+  FolderIcon,
+  FolderInput,
   GitPullRequest,
   History,
   ListChecks,
@@ -16,6 +23,15 @@ import { cn } from '@garden/ui/lib/utils'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Button } from '@garden/ui/components/ui/button'
 import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@garden/ui/components/ui/dropdown-menu'
+import { brainFolderListOptions } from '@/features/brain/queries'
 import type { WorkProductReviewAction } from '@/lib/issues/mutations'
 import {
   Empty,
@@ -59,6 +75,8 @@ export interface WorkProductCardProps {
     title: string
     body: string
     applied_external_url: string | null
+    /** Carries `pr_target` when the work product can be applied as a PR. */
+    payload?: Record<string, unknown> | null
     previous_versions_count: number
     updated_at: string
   }
@@ -68,7 +86,10 @@ export interface WorkProductCardProps {
   pulseOnMount?: boolean
   /** The review action in flight for this card; disables its actions. */
   pendingAction?: WorkProductReviewAction | null
+  /** Approves and keeps the issue open so follow-up comments can start runs. */
   onApprove?: () => void
+  /** Approves and moves the issue to done. */
+  onApproveAndClose?: () => void
   onRequestChanges?: () => void
   /**
    * Posts the work product to the connector. Confirmed first; return the
@@ -76,6 +97,10 @@ export interface WorkProductCardProps {
    * stays open on failure, for a retry).
    */
   onApply?: () => Promise<unknown>
+  /** Opens a PR writing the body to `payload.pr_target`; confirmed first. */
+  onApplyPr?: () => Promise<unknown>
+  /** Saves the approved body as a Markdown file in the picked folder. */
+  onSaveToFiles?: (folderId: string) => Promise<unknown>
   onShowDiff?: () => void
 }
 
@@ -150,12 +175,17 @@ export function WorkProductCard({
   pulseOnMount = false,
   pendingAction = null,
   onApprove,
+  onApproveAndClose,
   onRequestChanges,
   onApply,
+  onApplyPr,
+  onSaveToFiles,
   onShowDiff,
 }: WorkProductCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [confirmApply, setConfirmApply] = useState(false)
+  const [confirmApplyPr, setConfirmApplyPr] = useState(false)
+  const prTarget = parseWorkProductPrTarget(workProduct.payload)
   const busy = pendingAction !== null
   const connectorName = connectorId
     ? (CONNECTOR_NAME[connectorId] ?? 'the connector')
@@ -167,10 +197,15 @@ export function WorkProductCard({
 
   const showReviewActions =
     workProduct.status === 'review' && workProduct.review_state === 'pending'
-  const showApply =
-    workProduct.status === 'approved' &&
-    !workProduct.applied_external_url &&
-    connectorId
+  const applyable =
+    workProduct.status === 'approved' && !workProduct.applied_external_url
+  const showApply = applyable && connectorId
+  const showApplyPr = applyable && prTarget !== null && onApplyPr
+  const savedFile = parseWorkProductSavedFile(workProduct.payload)
+  // Saving is a copy, not an apply, so it stays available after Apply.
+  const showSaveToFiles =
+    (workProduct.status === 'approved' || workProduct.status === 'applied') &&
+    onSaveToFiles !== undefined
 
   useEffect(() => {
     if (!pulseOnMount) return
@@ -263,6 +298,17 @@ export function WorkProductCard({
             variant="outline"
             className="h-7"
             disabled={busy}
+            onClick={onApproveAndClose}
+          >
+            {pendingAction === 'approve_and_close'
+              ? 'Closing…'
+              : 'Approve and close'}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7"
+            disabled={busy}
             onClick={onRequestChanges}
           >
             {pendingAction === 'request_changes'
@@ -272,21 +318,49 @@ export function WorkProductCard({
         </div>
       )}
 
-      {showApply && (
+      {(showApply || showApplyPr) && (
         <div className="flex items-center gap-2 border-t border-info/15 px-4 py-2.5">
-          <Button
-            size="sm"
-            className="h-7"
-            disabled={busy}
-            onClick={() => setConfirmApply(true)}
-          >
-            <Send className="size-3.5 mr-1" />
-            Apply{connectorId === 'github' ? ' to GitHub' : ''}
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            Posts to the connector under your account.
+          {showApply && (
+            <Button
+              size="sm"
+              className="h-7"
+              disabled={busy}
+              onClick={() => setConfirmApply(true)}
+            >
+              <Send className="size-3.5 mr-1" />
+              Apply{connectorId === 'github' ? ' to GitHub' : ''}
+            </Button>
+          )}
+          {showApplyPr && (
+            <Button
+              size="sm"
+              variant={showApply ? 'outline' : 'default'}
+              className="h-7"
+              disabled={busy}
+              onClick={() => setConfirmApplyPr(true)}
+            >
+              <GitPullRequest className="size-3.5 mr-1" />
+              {pendingAction === 'apply_pr' ? 'Opening PR…' : 'Apply as PR'}
+            </Button>
+          )}
+          <span className="min-w-0 truncate text-xs text-muted-foreground">
+            {showApplyPr && prTarget
+              ? `PR to ${prTarget.repository}: ${prTarget.path}`
+              : 'Posts to the connector under your account.'}
           </span>
         </div>
+      )}
+
+      {prTarget && (
+        <ConfirmDialog
+          open={confirmApplyPr}
+          onOpenChange={setConfirmApplyPr}
+          title="Open a pull request?"
+          description={`Garden will create a branch from ${prTarget.base_branch} in ${prTarget.repository}, write “${workProduct.title}” to ${prTarget.path}, and open a pull request under your approval. Merging stays on GitHub.`}
+          confirmLabel="Open PR"
+          pendingLabel="Opening…"
+          onConfirm={() => (onApplyPr ? onApplyPr() : Promise.resolve())}
+        />
       )}
 
       <ConfirmDialog
@@ -308,9 +382,53 @@ export function WorkProductCard({
             rel="noreferrer"
             className="text-xs text-success hover:underline inline-flex items-center gap-1"
           >
-            View on connector
+            {prTarget ? 'View pull request' : 'View on connector'}
             <ExternalLink className="size-3" />
           </a>
+        </div>
+      )}
+
+      {(showSaveToFiles || savedFile) && (
+        <div className="flex items-center gap-2 border-t border-border px-4 py-2.5">
+          {showSaveToFiles && onSaveToFiles && (
+            <SaveToFilesMenu
+              busy={busy}
+              saving={pendingAction === 'save_to_files'}
+              saved={savedFile !== null}
+              onSave={onSaveToFiles}
+            />
+          )}
+          {savedFile ? (
+            <>
+              <a
+                href={savedFile.url}
+                target="_blank"
+                rel="noreferrer"
+                className="min-w-0 truncate text-xs text-foreground hover:underline inline-flex items-center gap-1"
+              >
+                {savedFile.file_name}
+                <ExternalLink className="size-3 shrink-0" />
+              </a>
+              <a
+                href={`${savedFile.url}?download`}
+                className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+              >
+                <Download className="size-3" />
+                Markdown
+              </a>
+              <a
+                href={savedFile.url.replace(/\/content$/, '/docx')}
+                className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+              >
+                <Download className="size-3" />
+                Word
+              </a>
+            </>
+          ) : (
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
+              Saves a Markdown copy to Files & Folders.
+            </span>
+          )}
         </div>
       )}
 
@@ -325,6 +443,54 @@ export function WorkProductCard({
   )
 }
 
+/**
+ * Folder picker for "Save to Files" (#381). Lists the workspace folders the
+ * person can see, from the same query the Files page uses, so a pick here
+ * matches what Files & Folders shows. The server re-checks visibility.
+ */
+function SaveToFilesMenu({
+  busy,
+  saving,
+  saved,
+  onSave,
+}: {
+  busy: boolean
+  saving: boolean
+  saved: boolean
+  onSave: (folderId: string) => Promise<unknown>
+}) {
+  const foldersQuery = useQuery(brainFolderListOptions(useWorkspaceId()))
+  const folders = foldersQuery.data ?? []
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <Button size="sm" variant="outline" className="h-7" disabled={busy} />
+        }
+      >
+        <FolderInput className="size-3.5 mr-1" />
+        {saving ? 'Saving…' : saved ? 'Save again' : 'Save to Files'}
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-52">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            {folders.length === 0 ? 'No folders yet' : 'Save to folder'}
+          </DropdownMenuLabel>
+          {folders.map((folder) => (
+            <DropdownMenuItem
+              key={folder.id}
+              onClick={() => void onSave(folder.id)}
+            >
+              <FolderIcon />
+              <span className="min-w-0 truncate">{folder.name}</span>
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 // ─── List wrapper ────────────────────────────────────────────────────────────
 
 interface WorkProductListProps {
@@ -335,8 +501,11 @@ interface WorkProductListProps {
   /** The review in flight, if any; only the matching card is disabled. */
   pending?: { id: string; action: WorkProductReviewAction } | null
   onApprove?: (id: string) => void
+  onApproveAndClose?: (id: string) => void
   onRequestChanges?: (id: string) => void
   onApply?: (id: string) => Promise<unknown>
+  onApplyPr?: (id: string) => Promise<unknown>
+  onSaveToFiles?: (id: string, folderId: string) => Promise<unknown>
 }
 
 export function WorkProductList({
@@ -345,8 +514,11 @@ export function WorkProductList({
   pulseId,
   pending = null,
   onApprove,
+  onApproveAndClose,
   onRequestChanges,
   onApply,
+  onApplyPr,
+  onSaveToFiles,
 }: WorkProductListProps) {
   if (workProducts.length === 0) return null
 
@@ -360,8 +532,15 @@ export function WorkProductList({
           pulseOnMount={pulseId === wp.id}
           pendingAction={pending?.id === wp.id ? pending.action : null}
           onApprove={() => onApprove?.(wp.id)}
+          onApproveAndClose={() => onApproveAndClose?.(wp.id)}
           onRequestChanges={() => onRequestChanges?.(wp.id)}
           onApply={() => (onApply ? onApply(wp.id) : Promise.resolve())}
+          onApplyPr={onApplyPr ? () => onApplyPr(wp.id) : undefined}
+          onSaveToFiles={
+            onSaveToFiles
+              ? (folderId) => onSaveToFiles(wp.id, folderId)
+              : undefined
+          }
         />
       ))}
     </div>

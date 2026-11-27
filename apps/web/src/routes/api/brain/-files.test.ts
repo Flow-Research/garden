@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { Result } from 'better-result'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
@@ -15,6 +16,7 @@ import { makeWebBrainLive } from '@garden/brain/services/web'
 import type { AppRequestContext } from '@/lib/server/context'
 import { postBrainFileUpload, getBrainFiles } from './files'
 import { getBrainFileExtractedText } from './files/$id/text'
+import { overwriteBrainFile } from '@/lib/server/brain-file-upload'
 
 const FIXTURES = resolve(process.cwd(), '../../packages/brain/fixtures/docs')
 
@@ -170,6 +172,21 @@ vi.mock('@garden/brain/services/web', async () => {
             )
           },
           readFile: () => Effect.die('unused readFile'),
+          replaceFileContent: ({ itemId, tenantId, sizeBytes, at }) => {
+            const item = mockBrainItems.get(itemId)
+            if (item === undefined || item.tenantId !== tenantId) {
+              return Effect.succeed(null)
+            }
+            const updated: BrainItem = {
+              ...item,
+              sizeBytes,
+              updatedAt: at,
+              indexed: false,
+              indexStatus: 'processing',
+            }
+            mockBrainItems.set(item.id, updated)
+            return Effect.succeed(updated)
+          },
         }),
       ),
   }
@@ -188,10 +205,12 @@ vi.mock('@/lib/server/control-plane', () => ({
 }))
 
 vi.mock('@/lib/server/chat-agents', () => ({
-  ensureAgentRow: vi.fn().mockResolvedValue({
-    id: 'agent-1',
-    hostName: 'agent-host-1',
-  }),
+  ensureAgentRow: vi.fn().mockImplementation(async () =>
+    Result.ok({
+      id: 'agent-1',
+      hostName: 'agent-host-1',
+    }),
+  ),
 }))
 
 vi.mock('@/lib/server/db', () => ({
@@ -1177,5 +1196,78 @@ describe('GET /api/brain/files', () => {
         'uploadedAt',
       ])
     }
+  })
+})
+
+describe('overwriteBrainFile', () => {
+  afterEach(() => {
+    mockBrainItems.clear()
+  })
+
+  it('replaces the bytes in place and records the new size and update time', async () => {
+    const files = makeFiles()
+    const r2Key = 'brain/workspaces/ws-resave/item-resave/guide.md'
+    files.objects.set(r2Key, new TextEncoder().encode('# Old'))
+    storeBrainFile({
+      indexed: true,
+      indexStatus: 'ready',
+      itemId: 'item-resave',
+      label: 'guide.md',
+      r2Key,
+      workspaceId: 'ws-resave',
+    })
+    const body = '# Guide\n\nRevised and re-approved text.'
+    const deferred: Promise<unknown>[] = []
+
+    const result = await overwriteBrainFile({
+      env: {
+        BRAIN_FILES: files.bucket,
+        AgentDO: {},
+        HYPERDRIVE: {},
+        AI: stubAi,
+        HELIX_URL: 'http://localhost:6968',
+        HELIX_API_KEY: '',
+      } as never,
+      fileId: 'item-resave',
+      body,
+      ownerUserId: 'user-route',
+      waitUntil: (promise) => {
+        deferred.push(promise)
+      },
+      workspaceId: 'ws-resave',
+    })
+
+    expect(result.isOk()).toBe(true)
+    const item = result.isOk() ? result.value : null
+    expect(item?.id).toBe('item-resave')
+    expect(item?.label).toBe('guide.md')
+    expect(item?.sizeBytes).toBe(new TextEncoder().encode(body).byteLength)
+    expect(item?.updatedAt).toBeDefined()
+    expect(new TextDecoder().decode(files.objects.get(r2Key))).toBe(body)
+    expect(mockBrainItems.get('item-resave')?.sizeBytes).toBe(
+      new TextEncoder().encode(body).byteLength,
+    )
+    expect(deferred).toHaveLength(1)
+  })
+
+  it('returns null when the file was deleted so the caller saves anew', async () => {
+    const files = makeFiles()
+    const result = await overwriteBrainFile({
+      env: {
+        BRAIN_FILES: files.bucket,
+        AgentDO: {},
+        HYPERDRIVE: {},
+        AI: stubAi,
+        HELIX_URL: 'http://localhost:6968',
+        HELIX_API_KEY: '',
+      } as never,
+      fileId: 'item-gone',
+      body: '# Gone',
+      ownerUserId: 'user-route',
+      workspaceId: 'ws-resave',
+    })
+
+    expect(result.isOk() && result.value).toBeNull()
+    expect(files.objects.size).toBe(0)
   })
 })

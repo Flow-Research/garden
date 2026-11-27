@@ -17,7 +17,7 @@ The folders follow [Diátaxis](https://diataxis.fr). Each page has one job.
 | [`concepts/`](./concepts/architecture/how-garden-is-built.mdx) | Why a part of Garden works the way it does | [Run engine](./concepts/architecture/run-engine.md) |
 | [`reference/`](./reference/architecture-map.md) | Facts to look up: paths, bindings, tokens, gaps | [Environment and bindings](./reference/environment-and-bindings.md) |
 | [`decisions/`](./decisions/) | Dated design decisions and their trade-offs | [Scoped Executor MCP sessions](./decisions/2026-10-scoped-executor-mcp-sessions.md) |
-| [`proposals/`](./proposals/) | Designs that are not built yet | [Teams settings entry](./proposals/teams-settings-entry.md) |
+| [`proposals/`](./proposals/) | Designs that are not built yet | [Decide in automations](./proposals/decide-automations.md) |
 | [`archive/`](./archive/) | Historical snapshots. Not current truth. | Past audits and specs |
 
 `templates/` holds the feature page template. It is not a site page.
@@ -36,6 +36,8 @@ Read in this order, and stop when you have what you need:
 | Question | Read |
 | --- | --- |
 | What is Garden building now? | [Roadmap](./concepts/product/roadmap.md), [Product](./concepts/product/product.md) |
+| What must web and native clients share? | [Client scope and boundary proposal](./proposals/cross-platform-clients.md), [HTTP API](./concepts/architecture/http-api.md) |
+| How will Garden launch work on an enrolled host? | [Execution-host contract proposal](./proposals/execution-host-contract.md) |
 | Where does this behavior live? | [Architecture map](./reference/architecture-map.md) |
 | How do runs, tools, and permissions work? | [Run engine](./concepts/architecture/run-engine.md), [Connectors](./concepts/architecture/connectors.md), [Agent runtime](./concepts/architecture/agent-runtime.md), [Permissions](./concepts/features/permissions.md) |
 | What must not be claimed yet? | [Known gaps](./reference/known-gaps.md) |

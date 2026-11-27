@@ -1,5 +1,7 @@
 # Garden database load test
 
+Historical baseline from the previous harness. The captured plans did not establish use of the candidate index. Rerun the corrected harness before drawing a performance conclusion.
+
 Generated 2026-11-05T10:17:20.807Z against PostgreSQL 16.14.
 
 The suite seeded one isolated workspace at 10x, 100x, 1000x. It ran 7 paired samples per query and scale, with 4 concurrent calls in each sample. It used one warmup call per side. The before copy removed `issue_workspace_updated_order_idx`. The after copy added it.

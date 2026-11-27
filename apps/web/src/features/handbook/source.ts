@@ -1,9 +1,6 @@
 import { loader } from 'fumadocs-core/source'
-import { applyMdxPreset } from 'fumadocs-mdx/config'
 import { defineDocs } from 'fumadocs-mdx/macro'
-import { handbookBasePath, remarkHandbookLinks } from './remark-handbook-links'
-
-export const handbookRoute = handbookBasePath
+import { handbookBasePath } from './base-path'
 
 /**
  * The handbook renders the repository's `docs/` folder, so a merged pull
@@ -13,8 +10,21 @@ export const handbookRoute = handbookBasePath
  *
  * `applyMdxPreset` keeps Fumadocs' default heading, TOC, and code plugins;
  * a collection-level `mdxOptions` alone would drop them. `async` keeps each
- * page in its own lazily loaded chunk. Reference: fumadocs-mdx 15.4.0
- * `DocMacroOptions` and `applyMdxPreset` typings.
+ * page in its own lazily loaded chunk.
+ *
+ * The preset and `remarkHandbookLinks` are imported inside the options
+ * object, not at the top of the file. The macro transform replaces the whole
+ * `defineDocs` options object in app code but keeps top-level imports, and
+ * this module ships to the browser through the handbook route. Top-level
+ * imports pulled `fumadocs-core/mdx-plugins` and the remark plugin's
+ * `node:path` and `node:url` into the client, so no page hydrated in vite
+ * dev. The imports are awaited while the build-time
+ * evaluator loads this module: deferring it into the `mdxOptions` function
+ * failed every MDX compile with "Vite module runner has been closed", because
+ * vite's `runnerImport` closes its runner once the module has loaded.
+ * Reference: fumadocs-mdx 15.4.0 `transformMacroModule`,
+ * `transformMacroConfigModule`, and `createMacroEvaluator`; vite 8
+ * `runnerImport`.
  */
 export const handbookDocs = defineDocs({
   dir: '../../docs',
@@ -30,9 +40,14 @@ export const handbookDocs = defineDocs({
       'proposals/**/*.{md,mdx}',
       'archive/**/*.{md,mdx}',
     ],
-    mdxOptions: applyMdxPreset({
-      remarkPlugins: (defaults) => [...defaults, remarkHandbookLinks],
-    }),
+    mdxOptions: await Promise.all([
+      import('fumadocs-mdx/config'),
+      import('./remark-handbook-links'),
+    ]).then(([{ applyMdxPreset }, { remarkHandbookLinks }]) =>
+      applyMdxPreset({
+        remarkPlugins: (defaults) => [...defaults, remarkHandbookLinks],
+      }),
+    ),
   },
   meta: {
     files: ['meta.json', '*/**/meta.json'],
@@ -41,5 +56,5 @@ export const handbookDocs = defineDocs({
 
 export const handbookSource = loader({
   source: handbookDocs.toFumadocsSource(),
-  baseUrl: handbookRoute,
+  baseUrl: handbookBasePath,
 })

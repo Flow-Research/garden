@@ -45,9 +45,9 @@ const APP_TITLE = 'Garden'
 const APP_DESCRIPTION =
   'Garden is a company operating surface where humans and AI agents work side by side.'
 // Browser chrome color mirrors the token system's per-mode page ground
-// (background.main.default: white.1000 light / gray.900 dark).
-const APP_THEME_COLOR_LIGHT = '#ffffff'
-const APP_THEME_COLOR_DARK = '#1e1e1e'
+// (background.main.default: garden.parchment light / garden.charcoal dark).
+const APP_THEME_COLOR_LIGHT = '#f9f7f2'
+const APP_THEME_COLOR_DARK = '#1a1f1c'
 const APP_COVER_IMAGE = '/garden-cover.png'
 // Pre-paint theme bootstrap: applies the stored light/dark/system choice before
 // hydration so first paint never flashes the wrong mode. Mirrors next-themes'

@@ -1,26 +1,23 @@
 import { createHash } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
-import { availableParallelism } from 'node:os'
+import { availableParallelism, loadavg, tmpdir } from 'node:os'
 import { performance } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
 import { migrate } from 'drizzle-orm/node-postgres/migrator'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Client, Pool } from 'pg'
-import { getServerEnv } from '@garden/env'
 
 const CANDIDATE_INDEX = 'issue_workspace_updated_order_idx'
 const DEFAULT_REPETITIONS = 7
 const DEFAULT_CONCURRENCY = 4
+const MAX_CONCURRENCY = 8
 const BOOTSTRAP_SAMPLES = 20_000
 const MIGRATIONS_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
   '../drizzle',
 )
-const OUTPUT_DIR = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../.audit/db-load-test',
-)
+const OUTPUT_DIR = resolve(tmpdir(), `garden-db-load-test-${process.pid}`)
 
 const SCALE_VALUES = [10, 100, 1000] as const
 type Scale = (typeof SCALE_VALUES)[number]
@@ -35,6 +32,8 @@ type Options = {
 
 type DatabasePairState = {
   names: string[]
+  pools: Set<Pool>
+  interrupted: boolean
 }
 
 type FixtureIds = {
@@ -156,22 +155,35 @@ type FixturePair = {
 }
 
 /**
- * Parse the load-test flags so every run uses explicit, bounded parameters.
- * The harness previously had no repeatable scale or sample contract because
- * no load tool existed. The flags now define the dimensions recorded in the
- * report and keep a local run from silently expanding beyond the requested
- * workload.
+ * Parse the bounded dimensions recorded in each report.
  */
 function parseOptions(argv: readonly string[]): Options {
   const values = new Map<string, string>()
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index] ?? ''
     if (arg === '--') continue
-    if (!arg.startsWith('--')) continue
+    if (!arg.startsWith('--')) throw new Error(`Unknown argument ${arg}.`)
     const [rawKey, inlineValue] = arg.slice(2).split('=', 2)
     const key = rawKey ?? ''
     const next = inlineValue ?? argv[index + 1]
-    if (inlineValue === undefined) index += 1
+    if (inlineValue === undefined) {
+      if (!next || next.startsWith('--')) {
+        throw new Error(`Missing value for --${key}.`)
+      }
+      index += 1
+    }
+    if (
+      ![
+        'scales',
+        'scale',
+        'repetitions',
+        'concurrency',
+        'output',
+        'keep-databases',
+      ].includes(key)
+    ) {
+      throw new Error(`Unknown flag --${key}.`)
+    }
     values.set(key, next ?? '')
   }
 
@@ -191,6 +203,9 @@ function parseOptions(argv: readonly string[]): Options {
     values.get('concurrency'),
     DEFAULT_CONCURRENCY,
   )
+  if (concurrency > MAX_CONCURRENCY) {
+    throw new Error(`Concurrency must be at most ${MAX_CONCURRENCY}.`)
+  }
   const outputDir = resolve(values.get('output') || OUTPUT_DIR)
 
   return {
@@ -298,6 +313,27 @@ function databaseUrl(baseUrl: string, databaseName: string): string {
   return url.toString()
 }
 
+/** Require a dedicated local PostgreSQL server before creating databases. */
+function loadTestAdminUrl(): string {
+  const value = process.env.LOAD_TEST_DATABASE_URL
+  if (!value) {
+    throw new Error(
+      'Set LOAD_TEST_DATABASE_URL to a dedicated local PostgreSQL server.',
+    )
+  }
+  const url = new URL(value)
+  if (!['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname)) {
+    throw new Error('LOAD_TEST_DATABASE_URL must use a loopback host.')
+  }
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+    throw new Error('LOAD_TEST_DATABASE_URL must be a PostgreSQL URL.')
+  }
+  if (value === process.env.DATABASE_URL) {
+    throw new Error('LOAD_TEST_DATABASE_URL must differ from DATABASE_URL.')
+  }
+  return value
+}
+
 /**
  * Create a temporary PostgreSQL database or a clone of a seeded source.
  * Cloning after seeding gives baseline and treatment copies identical rows and
@@ -313,10 +349,9 @@ async function createDatabase(
   const templateClause = template
     ? ` TEMPLATE ${quoteIdentifier(template)}`
     : ''
-  await client.query(
-    `CREATE DATABASE ${quoteIdentifier(name)}${templateClause}`,
-  )
-  await client.end()
+  await client
+    .query(`CREATE DATABASE ${quoteIdentifier(name)}${templateClause}`)
+    .finally(() => client.end())
 }
 
 /**
@@ -328,10 +363,9 @@ async function createDatabase(
 async function dropDatabase(adminUrl: string, name: string): Promise<void> {
   const client = new Client({ connectionString: adminUrl })
   await client.connect()
-  await client.query(
-    `DROP DATABASE IF EXISTS ${quoteIdentifier(name)} WITH (FORCE)`,
-  )
-  await client.end()
+  await client
+    .query(`DROP DATABASE IF EXISTS ${quoteIdentifier(name)} WITH (FORCE)`)
+    .finally(() => client.end())
 }
 
 /**
@@ -361,8 +395,9 @@ function createBenchmarkPool(url: string, max: number): Pool {
  */
 async function migrateDatabase(url: string): Promise<void> {
   const pool = createBenchmarkPool(url, 4)
-  await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_DIR })
-  await pool.end()
+  await migrate(drizzle(pool), { migrationsFolder: MIGRATIONS_DIR }).finally(
+    () => pool.end(),
+  )
 }
 
 /**
@@ -374,8 +409,10 @@ async function migrateDatabase(url: string): Promise<void> {
 async function seedDatabase(
   url: string,
   scale: Scale,
+  state: DatabasePairState,
 ): Promise<{ ids: FixtureIds; counts: FixtureCounts }> {
   const pool = createBenchmarkPool(url, 8)
+  state.pools.add(pool)
   const ids = fixtureIds()
   const counts = fixtureCounts(scale)
 
@@ -636,6 +673,7 @@ async function seedDatabase(
   await seedSecondaryRelationships(pool, ids, counts)
   await pool.query('ANALYZE')
   await pool.end()
+  state.pools.delete(pool)
   return { ids, counts }
 }
 
@@ -1317,18 +1355,20 @@ function timeScenario(
       (result) => (result as PromiseFulfilledResult<QueryOutput>).value,
     )
     const durationMs = performance.now() - startedAt
-    const summary = outputs.map(summarizeOutput).reduce(
-      (total, current) => ({
-        rowCount: total.rowCount + current.rowCount,
-        checksum: current.checksum,
-      }),
-      { rowCount: 0, checksum: '' },
+    const summaries = outputs.map(summarizeOutput)
+    const rowCount = summaries.reduce(
+      (total, current) => total + current.rowCount,
+      0,
     )
+    const checksum = createHash('sha256')
+      .update(summaries.map((summary) => summary.checksum).join(':'))
+      .digest('hex')
+      .slice(0, 16)
     return {
       durationMs,
-      rowCount: summary.rowCount,
-      checksum: summary.checksum,
-      error: summary.rowCount === 0 ? 'query returned no rows' : null,
+      rowCount,
+      checksum,
+      error: rowCount === 0 ? 'query returned no rows' : null,
     }
   })
 }
@@ -1349,7 +1389,7 @@ function errorMessage(cause: unknown): string {
  * making a result impossible to reproduce from the saved report metadata.
  */
 function sampleOrderBit(seed: number): boolean {
-  const value = (seed * 1_103_515_245 + 12_345) % 2_147_483_647
+  const value = (Math.imul(seed, 1_103_515_245) + 12_345) >>> 0
   return value % 2 === 0
 }
 
@@ -1577,9 +1617,7 @@ async function captureProfile(
 
 /**
  * Create one source database, clone it, and apply the candidate index only to
- * the treatment copy. The current migration contains the fix, so dropping the
- * index from the source gives a true before state without an older migration
- * chain or a second seed pass.
+ * the treatment copy.
  */
 async function provisionFixturePair(
   adminUrl: string,
@@ -1594,24 +1632,21 @@ async function provisionFixturePair(
   const sourceUrl = databaseUrl(adminUrl, sourceName)
   await migrateDatabase(sourceUrl)
 
-  const sourcePool = createBenchmarkPool(sourceUrl, 8)
-  await sourcePool.query(
-    `drop index if exists ${quoteIdentifier(CANDIDATE_INDEX)}`,
-  )
-  await sourcePool.end()
-  const seeded = await seedDatabase(sourceUrl, scale)
+  const seeded = await seedDatabase(sourceUrl, scale, state)
+  if (state.interrupted) throw new Error('Load test interrupted.')
 
   await createDatabase(adminUrl, treatmentName, sourceName)
   const treatmentUrl = databaseUrl(adminUrl, treatmentName)
-  const treatmentPool = createBenchmarkPool(treatmentUrl, 8)
+  const treatmentPool = createBenchmarkPool(treatmentUrl, MAX_CONCURRENCY * 6)
+  state.pools.add(treatmentPool)
   await treatmentPool.query(
     `create index if not exists ${quoteIdentifier(CANDIDATE_INDEX)}
      on issue using btree
-       (workspace_id, updated_at desc nulls last,
-        created_at desc nulls last, number desc nulls last)`,
+       (workspace_id, updated_at desc, created_at desc, number desc)`,
   )
   await treatmentPool.query('ANALYZE')
-  const beforePool = createBenchmarkPool(sourceUrl, 8)
+  const beforePool = createBenchmarkPool(sourceUrl, MAX_CONCURRENCY * 6)
+  state.pools.add(beforePool)
   await beforePool.query('ANALYZE')
 
   return {
@@ -1621,7 +1656,9 @@ async function provisionFixturePair(
     counts: seeded.counts,
     close: async () => {
       await beforePool.end()
+      state.pools.delete(beforePool)
       await treatmentPool.end()
+      state.pools.delete(treatmentPool)
     },
   }
 }
@@ -1635,17 +1672,19 @@ async function measureScale(
   pair: FixturePair,
   scale: Scale,
   options: Options,
+  state: DatabasePairState,
 ): Promise<ScenarioMeasurement[]> {
   const measurements: ScenarioMeasurement[] = []
   for (const scenario of queryScenarios()) {
+    if (state.interrupted) throw new Error('Load test interrupted.')
+    await timeScenario(scenario, pair.beforePool, pair.ids, 1)
+    await timeScenario(scenario, pair.afterPool, pair.ids, 1)
     const beforeProfile = scenario.profile
       ? await captureProfile(pair.beforePool, scenario.profile(pair.ids))
       : null
     const afterProfile = scenario.profile
       ? await captureProfile(pair.afterPool, scenario.profile(pair.ids))
       : null
-    await timeScenario(scenario, pair.beforePool, pair.ids, 1)
-    await timeScenario(scenario, pair.afterPool, pair.ids, 1)
 
     const before: TimedSample[] = []
     const after: TimedSample[] = []
@@ -1655,6 +1694,7 @@ async function measureScale(
       repetition < options.repetitions;
       repetition += 1
     ) {
+      if (state.interrupted) throw new Error('Load test interrupted.')
       const beforeFirst = sampleOrderBit(
         scale * 10_000 + repetition * 101 + scenario.id.length,
       )
@@ -1695,12 +1735,18 @@ async function measureScale(
         afterSample.error === null &&
         beforeSample.checksum !== afterSample.checksum
       ) {
-        throw new Error(
-          `${scenario.id} returned different result witnesses at ${scale}x`,
-        )
+        beforeSample.error = 'result witness differs from treatment'
+        afterSample.error = 'result witness differs from baseline'
+        errors += 2
       }
     }
     const statistics = calculateStatistics(before, after, errors)
+    if (
+      scenario.id === 'issues:list' &&
+      afterProfile?.indexName !== CANDIDATE_INDEX
+    ) {
+      statistics.verdict = 'inconclusive'
+    }
     measurements.push({
       scale,
       scenarioId: scenario.id,
@@ -1733,22 +1779,21 @@ async function runBenchmark(
   options: Options,
   state: DatabasePairState,
 ): Promise<BenchmarkReport> {
-  const env = getServerEnv()
-  const adminUrl = env.DATABASE_URL
+  const adminUrl = loadTestAdminUrl()
   const versionClient = new Client({ connectionString: adminUrl })
   await versionClient.connect()
-  const versionResult = await versionClient.query(
-    `select current_setting('server_version') as version`,
-  )
-  await versionClient.end()
+  const versionResult = await versionClient
+    .query(`select current_setting('server_version') as version`)
+    .finally(() => versionClient.end())
   const postgresVersion = String(versionResult.rows[0]?.version ?? 'unknown')
   const measurements: ScenarioMeasurement[] = []
   for (const scale of options.scales) {
+    if (state.interrupted) throw new Error('Load test interrupted.')
     process.stdout.write(`seeding ${scale}x fixture\n`)
     const pair = await provisionFixturePair(adminUrl, scale, state)
-    const scaleMeasurements = await measureScale(pair, scale, options)
-    measurements.push(...scaleMeasurements)
-    await pair.close()
+    await measureScale(pair, scale, options, state)
+      .then((scaleMeasurements) => measurements.push(...scaleMeasurements))
+      .finally(() => pair.close())
     if (!options.keepDatabases) {
       const beforeName = state.names[state.names.length - 2]
       const afterName = state.names[state.names.length - 1]
@@ -1762,7 +1807,8 @@ async function runBenchmark(
       state.names.splice(-2)
     }
   }
-  const hostLoad = await readHostLoad()
+  if (state.interrupted) throw new Error('Load test interrupted.')
+  const hostLoad = readHostLoad()
   const cpuCount = availableParallelism()
   return {
     generatedAt: new Date().toISOString(),
@@ -1787,12 +1833,12 @@ async function runBenchmark(
 }
 
 /**
- * Read the host load supplied by the launcher without adding a process probe
- * inside the timed benchmark. The command wrapper records the same machine
- * state in the report when `uptime` is available.
+ * Read host load outside the timed benchmark.
  */
-async function readHostLoad(): Promise<string> {
-  return process.env.LOAD_TEST_HOST_LOAD ?? 'not recorded'
+function readHostLoad(): string {
+  return loadavg()
+    .map((value) => value.toFixed(2))
+    .join(', ')
 }
 
 /**
@@ -1876,6 +1922,11 @@ function renderSvg(report: BenchmarkReport): string {
  * reader cannot mistake a local synthetic run for a production capacity claim.
  */
 function renderMarkdown(report: BenchmarkReport): string {
+  const candidateIndexPlans = report.measurements.filter(
+    (row) =>
+      row.scenarioId === 'issues:list' &&
+      row.afterProfile?.indexName === CANDIDATE_INDEX,
+  ).length
   const rows = report.measurements
     .map((row) => {
       const stats = row.statistics
@@ -1896,7 +1947,7 @@ function renderMarkdown(report: BenchmarkReport): string {
 
 Generated ${report.generatedAt} against PostgreSQL ${report.database.postgresVersion}.
 
-The suite seeded one isolated workspace at ${report.method.scales.map((scale) => `${scale}x`).join(', ')}. It ran ${report.method.repetitions} paired samples per query and scale, with ${report.method.concurrency} concurrent calls in each sample. It used one warmup call per side. The before copy removed \`${report.database.candidateIndex}\`. The after copy added it.
+The suite seeded one isolated workspace at ${report.method.scales.map((scale) => `${scale}x`).join(', ')}. It ran ${report.method.repetitions} paired samples per query and scale, with ${report.method.concurrency} concurrent calls in each sample. It used one warmup call per side. The baseline copy had no candidate index. The treatment copy added \`${report.database.candidateIndex}\`.
 
 ## Results
 
@@ -1907,7 +1958,7 @@ ${rows}
 ## Query plans
 
 The plan columns show node, index, and sort method. Buffer columns show shared
-hit/read blocks. The candidate index did not appear in the captured plans.
+hit/read blocks. The candidate index appeared in ${candidateIndexPlans} of ${report.method.scales.length} issue-list treatment plans. An issue-list result is inconclusive when its treatment plan does not use the candidate index.
 
 | Scale | Query | Before plan | After plan | Before buffers | After buffers |
 | --- | --- | --- | --- | ---: | ---: |
@@ -1917,7 +1968,7 @@ The confidence interval uses paired bootstrap resampling at 95%. The sign-flip t
 
 The query rows were consumed and before and after full row-multiset checksums were compared. The comparison ignores row order inside each result set because the search query has non-unique timestamp ties. Profiles use \`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)\` outside the timed samples. The profile is diagnostic evidence, not part of the latency number.
 
-The benchmark does not measure HTTP, Workers, external connectors, network latency, or production traffic. Repeat it against a production-sized clone before making a capacity promise.
+The benchmark does not measure HTTP, Workers, external connectors, network latency, or production traffic. A separate approved experiment is needed before making a capacity promise.
 `
 }
 
@@ -1937,7 +1988,7 @@ function writeReport(report: BenchmarkReport, outputDir: string): void {
 }
 
 /**
- * Close any database names still tracked after a failed or kept run.
+ * Close pools and drop any database names still tracked after a failed run.
  * The cleanup list is explicit, so failure recovery cannot drop a developer's
  * configured Garden database.
  */
@@ -1946,42 +1997,62 @@ async function cleanupDatabases(
   state: DatabasePairState,
   keepDatabases: boolean,
 ): Promise<void> {
-  if (keepDatabases) return
-  for (const name of [...state.names].reverse()) {
-    await dropDatabase(adminUrl, name)
+  const poolResults = await Promise.allSettled(
+    [...state.pools].map((pool) => pool.end()),
+  )
+  state.pools.clear()
+  const databaseResults = keepDatabases
+    ? []
+    : await Promise.allSettled(
+        [...state.names].reverse().map((name) => dropDatabase(adminUrl, name)),
+      )
+  const failures = [...poolResults, ...databaseResults].filter(
+    (result) => result.status === 'rejected',
+  )
+  if (failures.length) {
+    throw new Error(
+      `Cleanup failed for ${failures.length} connection or database operations. Remaining databases: ${state.names.join(', ')}`,
+    )
   }
-  state.names.length = 0
+  if (!keepDatabases) state.names.length = 0
 }
 
 /**
  * Run the command-line benchmark and write its artifacts.
- * The rejection handler cleans temporary databases before setting a failing
- * exit code, so an interrupted load run does not leave large local databases.
+ * Clean temporary databases after success, failure, or an interrupt.
  */
-function main(): void {
+async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2))
-  const adminUrl = getServerEnv().DATABASE_URL
-  const state: DatabasePairState = { names: [] }
-  runBenchmark(options, state).then(
-    (report) => {
+  const adminUrl = loadTestAdminUrl()
+  const state: DatabasePairState = {
+    names: [],
+    pools: new Set(),
+    interrupted: false,
+  }
+  const interrupt = () => {
+    state.interrupted = true
+  }
+  process.on('SIGINT', interrupt)
+  process.on('SIGTERM', interrupt)
+  await runBenchmark(options, state)
+    .then((report) => {
       writeReport(report, options.outputDir)
-      return cleanupDatabases(adminUrl, state, options.keepDatabases).then(
+      process.stdout.write(`wrote ${resolve(options.outputDir, 'report.md')}\n`)
+      process.stdout.write(
+        `wrote ${resolve(options.outputDir, 'report.svg')}\n`,
+      )
+    })
+    .finally(async () => {
+      await cleanupDatabases(adminUrl, state, options.keepDatabases).finally(
         () => {
-          process.stdout.write(
-            `wrote ${resolve(options.outputDir, 'report.md')}\n`,
-          )
-          process.stdout.write(
-            `wrote ${resolve(options.outputDir, 'report.svg')}\n`,
-          )
+          process.removeListener('SIGINT', interrupt)
+          process.removeListener('SIGTERM', interrupt)
         },
       )
-    },
-    (cause: unknown) =>
-      cleanupDatabases(adminUrl, state, options.keepDatabases).then(() => {
-        console.error(`database load test failed: ${errorMessage(cause)}`)
-        process.exitCode = 1
-      }),
-  )
+    })
 }
 
-main()
+main().then(undefined, (cause: unknown) => {
+  console.error(`database load test failed: ${errorMessage(cause)}`)
+  process.exitCode = 1
+})

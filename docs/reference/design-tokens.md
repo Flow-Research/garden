@@ -3,7 +3,7 @@ title: Design tokens
 description: The color, type, radius, shadow, and spacing tokens Garden ships, with their CSS variables and light and dark values.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-05
 ---
 
 Source: `packages/ui/styles/tokens.css`, generated from `packages/ui/tokens/tokens.json` by `pnpm --filter @garden/ui tokens:build`. Do not edit `tokens.css` by hand. Font stacks are defined in `apps/web/src/styles.css`. For the reasoning behind the system, see [design direction](../concepts/design/design-direction.md).
@@ -19,7 +19,7 @@ Source: `packages/ui/styles/tokens.css`, generated from `packages/ui/tokens/toke
 
 ## Ground
 
-The body background is `--background-main-default` (`packages/ui/styles/base.css`). There is no parchment ground, grain, or atmospheric gradient.
+The body background is `--background-main-default` (`packages/ui/styles/base.css`). The ground is the flat Garden parchment in light mode and green-tinted charcoal in dark mode. There is no grain or atmospheric gradient.
 
 ## Primitive color scales
 
@@ -38,27 +38,44 @@ Each scale has steps 100 to 1000: `--black-*`, `--blue-*`, `--brand-*`, `--gray-
 | 900 | `#002417` | `#1e1e1e` |
 | 1000 | `#001910` | `#111111` |
 
+## Garden palette
+
+The brand green, success green, and page ground use the original Garden palette, restored on 2026-11-05. These primitives live in the `garden` group of `tokens.json` and are emitted as `--garden-*`.
+
+| Primitive | Value | Used for |
+| --- | --- | --- |
+| `--garden-moss-light` | `#4d7250` | Brand green, light mode |
+| `--garden-moss-dark` | `#7a9b6f` | Brand green, dark mode |
+| `--garden-sage-light` | `#7a9b6f` | Success green, light mode |
+| `--garden-sage-dark` | `#9bb491` | Success green, dark mode |
+| `--garden-parchment` | `#f9f7f2` | Page ground, light mode |
+| `--garden-parchment-deep` | `#efebe1` | Secondary ground, light mode |
+| `--garden-charcoal` | `#1a1f1c` | Page ground, dark mode |
+| `--garden-charcoal-deep` | `#232a25` | Secondary ground, dark mode |
+
+The `--brand-*` scale below still feeds the brand secondary and tertiary variants.
+
 ## Key semantic tokens
 
 Semantic tokens follow the pattern `--{background|text|border|icon}-{role}-{variant}`. Roles are `main`, `neutral`, `brand`, `success`, `warning`, `danger`, `disabled`, and `utilities`. The table lists the most used ones. See `tokens.css` for the full set.
 
 | Token | Light | Dark |
 | --- | --- | --- |
-| `--background-main-default` | `#ffffff` | `#1e1e1e` |
-| `--background-main-secondary` | `#f5f5f5` | `#2c2c2c` |
-| `--background-brand-default` | `#012f1d` | `#f5fffb` |
+| `--background-main-default` | `#f9f7f2` | `#1a1f1c` |
+| `--background-main-secondary` | `#efebe1` | `#232a25` |
+| `--background-brand-default` | `#4d7250` | `#7a9b6f` |
 | `--background-brand-secondary` | `#8efed3` | `#01452b` |
-| `--background-success-default` | `#14ae5c` | `#008043` |
+| `--background-success-default` | `#7a9b6f` | `#9bb491` |
 | `--background-warning-default` | `#e8b931` | `#e8b931` |
 | `--background-danger-default` | `#ec221f` | `#c00f0c` |
 | `--text-default` | `#1e1e1e` | `#f5f5f5` |
 | `--text-neutral-default` | `#303030` | `#e3e3e3` |
 | `--text-neutral-secondary` | `#5a5a5a` | `#cdcdcd` |
 | `--text-secondary` | `#757575` | `#b3b3b3` |
-| `--text-brand-default` | `#012f1d` | `#f5fffb` |
+| `--text-brand-default` | `#4d7250` | `#7a9b6f` |
 | `--text-danger-default` | `#900b09` | `#fdd3d0` |
 | `--border-default` | `#d9d9d9` | `#444444` |
-| `--border-brand-default` | `#012f1d` | `#f5fffb` |
+| `--border-brand-default` | `#4d7250` | `#7a9b6f` |
 
 Badge tokens: `--badge-{blue|green|yellow|gray}-{background|text}`.
 
