@@ -48,13 +48,13 @@ The `capability` table has one row per connector and tool name across all worksp
 
 A run without a member can use an organization tool that already has a correct capability row. It cannot discover a missing capability or record a grant on behalf of an administrator. Before using an existing organization connection, compare its current tools and approval requirements with the stored catalog. If entries are missing or risks are stale, an administrator must resync that connection. Check existing automatic grants if an older sync lowered a risk. Resync cannot restore deleted audit records.
 
-Use this read-only query to identify waiting runs with an old snapshot. It returns run IDs and the recorded actor type. It does not read prompts, credentials or tool output.
+Use this read-only query to identify active runs with an old snapshot. It returns run IDs, current status and the recorded actor type. It does not read prompts, credentials or tool output.
 
 ```sql
-SELECT id, workspace_id, context_snapshot->'actor'->>'type' AS recorded_actor
+SELECT id, workspace_id, status, context_snapshot->'actor'->>'type' AS recorded_actor
 FROM issue_run
-WHERE status = 'waiting_for_input'
-  AND NOT (COALESCE(context_snapshot, '{}'::jsonb) ? 'connectorIdentity')
+WHERE status IN ('queued', 'running', 'waiting_for_input', 'waiting_for_approval')
+  AND NOT jsonb_exists(COALESCE(context_snapshot, '{}'::jsonb), 'connectorIdentity')
 ORDER BY workspace_id, id;
 ```
 
