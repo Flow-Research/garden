@@ -1,15 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { WorkspaceTab } from '@/features/settings/components/workspace-tab'
-import { SettingsPanel } from '@/features/settings/components/settings-page-shell'
+import { GeneralSettings } from '@/features/settings/components/general-settings'
 
 export const Route = createFileRoute('/_authenticated/_app/settings/general')({
-  component: WorkspaceTabSection,
+  component: GeneralSettings,
 })
-
-function WorkspaceTabSection() {
-  return (
-    <SettingsPanel>
-      <WorkspaceTab />
-    </SettingsPanel>
-  )
-}

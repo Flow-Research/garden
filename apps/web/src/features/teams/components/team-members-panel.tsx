@@ -36,7 +36,7 @@ export function TeamMembersPanel({
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex gap-3">
+      <div className="grid grid-cols-1 gap-3 @lg:grid-cols-3">
         <TeamSummaryCard
           label="Total members"
           value={team.member_count}
