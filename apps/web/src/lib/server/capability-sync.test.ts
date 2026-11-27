@@ -31,16 +31,10 @@ describe('Executor capability discovery', () => {
     } satisfies ExecutorCatalog['tools'][number]
 
     expect(
-      executorToolsForCapabilitySync(
-        [personalTool, orgTool],
-        'google_drive',
-      ),
+      executorToolsForCapabilitySync([personalTool, orgTool], 'google_drive'),
     ).toEqual([personalTool])
     expect(
-      executorToolsForCapabilitySync(
-        [orgTool, personalTool],
-        'google_drive',
-      ),
+      executorToolsForCapabilitySync([orgTool, personalTool], 'google_drive'),
     ).toEqual([personalTool])
   })
 })
