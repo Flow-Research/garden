@@ -690,6 +690,12 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
         'uses the real issue guard durable-history reader when hydration is empty or storage fails':
           [],
       }
+      for (const kind of ['issue', 'automation'])
+        rolesByScenario[
+          `closes a cancelled ${kind} run with denied Brain permissions`
+        ] = [
+          `${kind === 'issue' ? 'Issue' : 'Automation'}RunSubAgent.executeWorkflowTurn`,
+        ]
       rolesByScenario[
         'closes native authority connections after repeated allowed and denied checks'
       ] = ['IssueRunSubAgent.validateBrainSummaryAccess']
