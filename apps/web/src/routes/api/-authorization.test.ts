@@ -20,7 +20,6 @@ const PERMISSION_CHECKS = [
   'requireWorkspacePermission(',
   'workspacePermissions.',
   // Helpers that perform the permission check themselves.
-  'setAgentStatus(',
   'updateIssueSubscription(',
   'requireTeamManage(',
   'requireTeamOwnerTransfer(',

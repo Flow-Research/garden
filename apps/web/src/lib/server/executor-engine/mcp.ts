@@ -59,6 +59,9 @@ type GardenExecutor = Executor<GardenExecutorPlugins>
 
 interface GardenSessionDb {
   readonly db: ExecutorDb['db']
+  readonly workstreamOAuthStorage: NonNullable<
+    ExecutorDb['workstreamOAuthStorage']
+  >
   readonly blobs: BlobStore
   readonly attachExecutor: (executor: GardenExecutor) => void
   readonly end: () => Promise<void>
@@ -79,6 +82,7 @@ const openGardenSessionDb = async (
   let executor: GardenExecutor | null = null
   return {
     db: database.db,
+    workstreamOAuthStorage: database.workstreamOAuthStorage,
     blobs,
     attachExecutor: (nextExecutor) => {
       executor = nextExecutor
@@ -110,7 +114,10 @@ const buildGardenExecutionStack = (
     const executor = yield* createExecutor({
       tenant: Tenant.make(session.organizationId),
       subject: Subject.make(session.userId),
-      db: { db: database.db },
+      db: {
+        db: database.db,
+        workstreamOAuthStorage: database.workstreamOAuthStorage,
+      },
       blobs: database.blobs,
       plugins: makeExecutorPlugins(env.EXECUTOR_SECRET_KEY, {
         activeToolkitSlug:
