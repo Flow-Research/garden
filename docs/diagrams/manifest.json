@@ -1,0 +1,38 @@
+{
+  "diagrams": {
+    "garden-components": {
+      "title": "Garden components",
+      "watches": [
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/agent-runtime/src/brain-run-authority.ts",
+        "packages/server/src/issues/run-service.ts",
+        "apps/web/wrangler.jsonc"
+      ]
+    },
+    "garden-deployment": {
+      "title": "Deployment and storage",
+      "watches": ["apps/web/wrangler.jsonc", "alchemy.run.ts"]
+    },
+    "garden-issue-run": {
+      "title": "Garden run and context",
+      "watches": [
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/agent-runtime/src/run-sub-agent-base.ts",
+        "packages/agent-runtime/src/brain-run-authority.ts"
+      ]
+    },
+    "garden-member-connector": {
+      "title": "Member connector access",
+      "watches": ["apps/web/src/lib/server/executor-engine/"]
+    },
+    "garden-host-launch": {
+      "title": "Host launch protocol",
+      "watches": ["packages/server/src/execution-hosts/"]
+    },
+    "garden-host-intervention": {
+      "title": "Intervention and recovery",
+      "watches": ["packages/server/src/execution-hosts/"]
+    }
+  }
+}
