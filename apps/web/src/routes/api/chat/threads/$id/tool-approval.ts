@@ -124,6 +124,7 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
               workspaceId: access.thread.workspaceId,
               actorUserId: access.session.user.id,
               toolCallId,
+              threadId: access.thread.id,
             })
           : Result.ok(null)
         if (teamScopeResult.isErr()) {
@@ -139,6 +140,7 @@ export const Route = createFileRoute('/api/chat/threads/$id/tool-approval')({
           actorUserId: access.session.user.id,
           db: access.db,
           toolCallId,
+          threadId: access.thread.id,
           ...(teamScopeResult.value ? { teamId: teamScopeResult.value } : {}),
           workspaceId: access.thread.workspaceId,
         })

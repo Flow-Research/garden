@@ -195,7 +195,12 @@ describe('connector approval from the runtime insert to the chat tool decision (
     const rows = await testDb.db
       .select()
       .from(schema.permissionRequest)
-      .where(eq(schema.permissionRequest.toolCallId, toolCallId))
+      .where(
+        and(
+          eq(schema.permissionRequest.toolCallId, toolCallId),
+          eq(schema.permissionRequest.threadId, seeded.threadId),
+        ),
+      )
     expect(rows).toHaveLength(1)
     const row = rows[0]
     if (!row) throw new Error('The runtime wrote no permission request')
@@ -297,6 +302,83 @@ describe('connector approval from the runtime insert to the chat tool decision (
     })
     expect(response.status).toBe(200)
     await expectApprovedEffect(seeded, toolCallId)
+  })
+
+  it.each(['chat', 'inbox'] as const)(
+    'limits %s approval to one thread when call IDs match',
+    async (surface) => {
+      const seeded = await seed({ owner: (fixture) => fixture.adminId })
+      const otherThreadId = randomUUID()
+      await testDb.db.insert(schema.chatThread).values({
+        id: otherThreadId,
+        runtimeKey: otherThreadId,
+        workspaceId: seeded.fixture.workspaceId,
+        agentId: seeded.fixture.activeAgentId,
+        ownerUserId: seeded.fixture.adminId,
+        title: 'Separate conversation',
+      })
+      const toolCallId = randomUUID()
+      const other = { ...seeded, threadId: otherThreadId }
+      const otherRow = await requestApproval(other, toolCallId)
+      const ownRow = await requestApproval(seeded, toolCallId)
+      const actor = {
+        seeded,
+        userId: seeded.fixture.adminId,
+        role: 'admin' as const,
+        approved: true,
+      }
+      const response =
+        surface === 'chat'
+          ? await resolveInChat({ ...actor, toolCallId })
+          : await resolveInInbox({ ...actor, requestId: ownRow.id })
+      expect(response.status).toBe(200)
+      await expectApprovedEffect(seeded, toolCallId)
+      const [stillPending] = await testDb.db
+        .select()
+        .from(schema.permissionRequest)
+        .where(eq(schema.permissionRequest.id, otherRow.id))
+      expect(stillPending?.status).toBe('pending')
+      // The recent decision for identical tool arguments in the first thread
+      // must not satisfy a later request in the second thread.
+      await requestApproval(other, randomUUID())
+    },
+  )
+
+  it('keeps the first recorded decision when two approvers decide concurrently', async () => {
+    const seeded = await seed({ owner: (fixture) => fixture.adminId })
+    const toolCallId = randomUUID()
+    const row = await requestApproval(seeded, toolCallId)
+    const results = await Promise.all(
+      [true, false].map((approved) =>
+        resolveInInbox({
+          seeded,
+          userId: seeded.fixture.adminId,
+          role: 'admin',
+          requestId: row.id,
+          approved,
+        }),
+      ),
+    )
+    expect(results.filter((response) => response.status === 200)).toHaveLength(
+      1,
+    )
+    const [decision] = await testDb.db
+      .select()
+      .from(schema.permissionRequest)
+      .where(eq(schema.permissionRequest.id, row.id))
+    expect(decision?.status).toBe(
+      results[0]?.status === 200 ? 'approved' : 'denied',
+    )
+    const audits = await testDb.db
+      .select()
+      .from(schema.toolCallAudit)
+      .where(eq(schema.toolCallAudit.toolCallId, toolCallId))
+    expect(
+      audits.filter(
+        (audit) =>
+          audit.resultStatus === 'approved' || audit.resultStatus === 'denied',
+      ),
+    ).toHaveLength(1)
   })
 
   it('admits a decision that another workspace approver made in the inbox', async () => {

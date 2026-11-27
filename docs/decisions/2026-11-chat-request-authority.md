@@ -135,6 +135,8 @@ This removal applies to each Think subclass, which includes the run and Brain su
 A server-side `approveExecution` or `rejectExecution` call without its own connection does not continue the turn.
 Garden has no caller for those methods today.
 
+A chat decision applies to one thread and agent. Different threads can receive the same provider tool call ID. The chat route, Inbox batch, approval reuse and action check all retain the thread scope. A competing decision cannot change a terminal row or append a second audit record.
+
 A connector approval row from before this change has no thread, so its decision is refused.
 The chat card resolves the rows of one capability for each call.
 An Executor call that names two connectors therefore needs a second decision in the Inbox before its effect.
