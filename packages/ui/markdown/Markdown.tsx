@@ -10,7 +10,7 @@ import { Download, FileText } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { cn } from '@garden/ui/lib/utils'
 import { CodeBlock, InlineCode } from './CodeBlock'
-import { preprocessFileCards } from './file-cards'
+import { preprocessFileCards, safeFileHref } from './file-cards'
 import { preprocessLinks } from './linkify'
 import { preprocessMentionShortcodes } from './mentions'
 
@@ -66,7 +66,7 @@ function textLabel(children: ReactNode): string | undefined {
 }
 
 function FileCard({ href, filename }: { href: string; filename: string }) {
-  const safeHref = /^https?:\/\//i.test(href) ? href : ''
+  const safeHref = safeFileHref(href)
   return (
     <div className="my-1 flex items-center gap-2 rounded-md border bg-muted/50 px-2.5 py-1">
       <FileText className="size-4 shrink-0 text-muted-foreground" />

@@ -372,7 +372,7 @@ export function ConnectionsPage({
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 flex-col">
       <header className="px-8 pt-6 pb-1">
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="text-lg font-semibold tracking-[-0.015em] text-foreground">
