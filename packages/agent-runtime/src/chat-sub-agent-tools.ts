@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { Workspace } from '@cloudflare/computer'
+import { createChatReadTool } from './legacy-chat-media'
 import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { createExecuteTool } from '@cloudflare/think/tools/execute'
 import type { Sandbox as SandboxDO } from '@cloudflare/sandbox'
@@ -1987,10 +1988,13 @@ export function createChatSubAgentTools({
         }
       : null
 
+  const workspaceTools = createAITools({ workspace })
+  const read = createChatReadTool(workspaceTools, documentFiles)
   return {
+    read,
     execute: createExecuteTool({
       ctx,
-      tools: createAITools({ workspace }),
+      tools: { ...workspaceTools, read },
       loader,
       description: COMPACT_EXECUTE_DESCRIPTION,
     }),

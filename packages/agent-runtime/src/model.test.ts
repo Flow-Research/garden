@@ -150,6 +150,88 @@ describe('createAgentModel', () => {
     },
   )
 
+  it.each(['generate', 'stream'] as const)(
+    'bounds public %s telemetry and keeps tool call identity',
+    async (mode) => {
+      const prompt = '界'.repeat(500_000)
+      const toolCall = {
+        type: 'tool-call' as const,
+        toolCallId: 'call1',
+        toolName: 'lookup',
+        input: '{"item":"report"}',
+      }
+      const usage = {
+        inputTokens: { total: 7, noCache: 7, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 2, text: 2, reasoning: 0 },
+      }
+      const finishReason = { unified: 'tool-calls' as const, raw: 'tool-calls' }
+      const source = new MockLanguageModelV4({
+        doGenerate: { content: [toolCall], finishReason, usage, warnings: [] },
+        doStream: {
+          stream: new ReadableStream({
+            start(controller) {
+              controller.enqueue(toolCall)
+              controller.enqueue({ type: 'finish', finishReason, usage })
+              controller.close()
+            },
+          }),
+        },
+      })
+      createWorkersAISpy.mockReturnValue(() => source)
+      const pending: Promise<unknown>[] = []
+      const model = createAgentModel({
+        ai: {} as Ai,
+        env: { VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: 'synthetic-test-token' },
+        tracing: {
+          distinctId: 'owner',
+          traceId: 'trace',
+          workspaceId: 'workspace',
+          properties: {},
+          privacyMode: false,
+          waitUntil: (task) => {
+            pending.push(task)
+          },
+        },
+      })
+      if (typeof model !== 'object' || model.specificationVersion !== 'v4')
+        throw new Error('Expected V4 model')
+      const call = { prompt: [{ role: 'system' as const, content: prompt }] }
+      if (mode === 'generate') {
+        expect((await model.doGenerate(call)).content).toEqual([toolCall])
+        expect(source.doGenerateCalls[0]?.prompt).toEqual(call.prompt)
+      } else {
+        const reader = (await model.doStream(call)).stream.getReader()
+        expect((await reader.read()).value).toEqual(toolCall)
+        await reader.read()
+        await reader.read()
+        expect(source.doStreamCalls[0]?.prompt).toEqual(call.prompt)
+      }
+      await Promise.all(pending)
+      expect(telemetryEvents).toHaveLength(1)
+      expect(
+        new TextEncoder().encode(JSON.stringify(telemetryEvents)).length,
+      ).toBeLessThan(20 * 1024)
+      expect(telemetryEvents[0]).toMatchObject({
+        properties: {
+          $ai_input_tokens: 7,
+          $ai_output_choices: [
+            {
+              role: 'assistant',
+              content: [
+                {
+                  type: 'tool-call',
+                  id: 'call1',
+                  function: { name: 'lookup', arguments: toolCall.input },
+                },
+              ],
+            },
+          ],
+        },
+      })
+      expect(JSON.stringify(telemetryEvents)).toContain('[truncated]')
+    },
+  )
+
   it.each([true, false, undefined])(
     'passes content privacy to the generation adapter: %s',
     (privacyMode) => {
