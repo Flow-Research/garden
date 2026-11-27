@@ -52,6 +52,7 @@ import { ChatTabsStrip } from './chat-tabs'
 import { TaskTabsStrip } from './task-tabs'
 import { UserCard } from './user-card'
 import { WorkspaceMenu } from './workspace-menu'
+import { workspaceSwitchTarget } from './workspace-switch-target'
 
 /**
  * Mount-only prefetch for workspace-wide caches (agents, members, skills,
@@ -276,7 +277,10 @@ export function AppShell() {
       if (nextWorkspace.id === workspace?.id) return
       // Navigate first: a mounted entity route must never re-render against
       // the new workspace with foreign ids (doomed detail queries).
-      void navigate({ to: '/home' })
+      const leaf = router.state.matches.at(-1)
+      void navigate({
+        href: workspaceSwitchTarget(leaf?.fullPath ?? '/home', pathname),
+      })
       void Result.tryPromise(() => switchWorkspace(nextWorkspace)).then(
         (result) =>
           result.tapBoth({
@@ -295,7 +299,7 @@ export function AppShell() {
           }),
       )
     },
-    [navigate, queryClient, router, switchWorkspace, workspace?.id],
+    [navigate, pathname, queryClient, router, switchWorkspace, workspace?.id],
   )
 
   const handleLogout = useCallback(async () => {
