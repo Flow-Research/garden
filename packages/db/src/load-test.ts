@@ -328,8 +328,17 @@ function loadTestAdminUrl(): string {
   if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
     throw new Error('LOAD_TEST_DATABASE_URL must be a PostgreSQL URL.')
   }
-  if (value === process.env.DATABASE_URL) {
-    throw new Error('LOAD_TEST_DATABASE_URL must differ from DATABASE_URL.')
+  if (url.search || url.hash)
+    throw new Error('Use a load-test URL without query or fragment overrides.')
+  const app = process.env.DATABASE_URL
+    ? new URL(process.env.DATABASE_URL)
+    : null
+  if (
+    app &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(app.hostname) &&
+    (app.port || '5432') === (url.port || '5432')
+  ) {
+    throw new Error('Use a separate local PostgreSQL server for the load test.')
   }
   return value
 }
@@ -1627,15 +1636,17 @@ async function provisionFixturePair(
   const stamp = `${Date.now()}-${process.pid}-${scale}`
   const sourceName = `garden_load_source_${stamp}`
   const treatmentName = `garden_load_after_${stamp}`
-  state.names.push(sourceName, treatmentName)
   await createDatabase(adminUrl, sourceName)
+  state.names.push(sourceName)
   const sourceUrl = databaseUrl(adminUrl, sourceName)
   await migrateDatabase(sourceUrl)
+  if (state.interrupted) throw new Error('Load test interrupted.')
 
   const seeded = await seedDatabase(sourceUrl, scale, state)
   if (state.interrupted) throw new Error('Load test interrupted.')
 
   await createDatabase(adminUrl, treatmentName, sourceName)
+  state.names.push(treatmentName)
   const treatmentUrl = databaseUrl(adminUrl, treatmentName)
   const treatmentPool = createBenchmarkPool(treatmentUrl, MAX_CONCURRENCY * 6)
   state.pools.add(treatmentPool)
@@ -1780,6 +1791,7 @@ async function runBenchmark(
   state: DatabasePairState,
 ): Promise<BenchmarkReport> {
   const adminUrl = loadTestAdminUrl()
+  const hostLoad = readHostLoad()
   const versionClient = new Client({ connectionString: adminUrl })
   await versionClient.connect()
   const versionResult = await versionClient
@@ -1808,7 +1820,6 @@ async function runBenchmark(
     }
   }
   if (state.interrupted) throw new Error('Load test interrupted.')
-  const hostLoad = readHostLoad()
   const cpuCount = availableParallelism()
   return {
     generatedAt: new Date().toISOString(),
@@ -2031,6 +2042,23 @@ async function main(): Promise<void> {
   }
   const interrupt = () => {
     state.interrupted = true
+    if (!state.names.length) return
+    // Interrupt only sessions in databases this invocation successfully created.
+    const admin = new Client({ connectionString: adminUrl })
+    void admin
+      .connect()
+      .then(() =>
+        admin.query(
+          "select pg_cancel_backend(pid) from pg_stat_activity where datname = any($1::text[]) and state = 'active' and pid <> pg_backend_pid()",
+          [[...state.names]],
+        ),
+      )
+      .finally(() => admin.end())
+      .catch(() =>
+        process.stderr.write(
+          'Could not interrupt the active benchmark sessions.\n',
+        ),
+      )
   }
   process.on('SIGINT', interrupt)
   process.on('SIGTERM', interrupt)
