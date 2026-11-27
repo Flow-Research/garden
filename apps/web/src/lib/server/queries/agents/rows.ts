@@ -31,7 +31,7 @@ export async function getAgentWorkspaceHost(
 }
 
 export async function insertAgent(
-  db: Db,
+  db: Pick<Db, 'insert'>,
   values: typeof schema.agent.$inferInsert,
 ) {
   return requireReturnedRow(
