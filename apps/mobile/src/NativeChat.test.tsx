@@ -70,7 +70,7 @@ class TestSocket extends EventTarget {
   sent: string[] = []
   options: {
     onOpen?: () => void
-    onClose?: () => void
+    onClose?: (event: CloseEvent) => void
     onMessage?: (event: MessageEvent) => void
   } = {}
   getHttpUrl() {
@@ -85,9 +85,9 @@ class TestSocket extends EventTarget {
     this.readyState = 1
     this.options.onOpen?.()
   }
-  close() {
+  close(code = 1000) {
     this.readyState = 3
-    this.options.onClose?.()
+    this.options.onClose?.(new CloseEvent('close', { code }))
     this.dispatchEvent(new Event('close'))
   }
   deliver(payload: unknown) {
@@ -177,6 +177,17 @@ function connectHistory() {
 }
 
 describe('native chat through the actual Cloudflare SDK', () => {
+  it('hides private chat and clears the active workspace after an explicit policy close', async () => {
+    const app = await fixture()
+    connectHistory()
+    act(() => socket.close(1008))
+    await waitFor(() =>
+      expect(app.controller.getSnapshot().phase).toBe('blocked'),
+    )
+    expect(app.controller.getSnapshot().chatDraft).toBeNull()
+    expect(screen.queryByText(thread.title)).toBeNull()
+  })
+
   it('waits for connect history, then renders the actual SDK text stream', async () => {
     await fixture()
     fireEvent.change(screen.getByLabelText('Chat message'), {

@@ -47,6 +47,7 @@ function ConnectedChat({
   origin: string
   Socket: typeof WebSocket
 }) {
+  const [policyRefused] = useState(() => controller.chatPolicyRefusal(thread))
   const [historyReady, setHistoryReady] = useState(false)
   const [connected, setConnected] = useState(false)
   const state = useSyncExternalStore(
@@ -78,7 +79,8 @@ function ConnectedChat({
       setConnected(true)
       setHistoryReady(false)
     },
-    onClose: () => {
+    onClose: (event) => {
+      if (event.code === 1008) policyRefused()
       setConnected(false)
       setHistoryReady(false)
       setNotice(
@@ -188,6 +190,9 @@ function ConnectedChat({
     }
     sending.current = false
   }
+
+  if (state.phase === 'blocked' || state.accountId !== thread.ownerUserId)
+    return null
 
   return (
     <View style={{ gap: 12 }}>

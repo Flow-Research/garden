@@ -315,6 +315,8 @@ describe('the production ChatSubAgent authority hooks against actual PostgreSQL'
     const executor = buildMcpAiToolKey('executor', 'execute')
     await expect(tool('create_issue')).resolves.toBeUndefined()
     await expect(tool(executor)).resolves.toBeUndefined()
+    const githubRead = buildMcpAiToolKey('github', 'get_issue')
+    await expect(tool(githubRead)).resolves.toBeUndefined()
     await setTeamPolicy(principal, {
       allowed_areas: TEAM_AGENT_AREAS.filter(
         (area) => area !== 'tasks' && area !== 'connections',
@@ -322,6 +324,7 @@ describe('the production ChatSubAgent authority hooks against actual PostgreSQL'
     })
     await expect(tool('create_issue')).rejects.toThrow(refusedTool)
     await expect(tool(executor)).rejects.toThrow(refusedTool)
+    await expect(tool(githubRead)).rejects.toThrow(refusedTool)
     await expect(tool('brain_search')).resolves.toBeUndefined()
   })
 
