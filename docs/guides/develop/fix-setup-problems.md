@@ -40,21 +40,8 @@ If `qwen3:8b` is missing, pull it. To use a different model or a hosted OpenAI-c
 
 Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare. You need a Cloudflare account on the Workers paid plan. The default model, `@cf/zai-org/glm-5.3`, is not available on the free plan. Usage can create charges.
 
-1. Sign in and print your account id:
-
-   ```bash
-   pnpm --filter @garden/web exec wrangler login
-   pnpm --filter @garden/web exec wrangler whoami
-   ```
-
-2. Put the account id in `CLOUDFLARE_ACCOUNT_ID` in `.env`.
-3. Start the services, migrate, and run Garden:
-
-   ```bash
-   pnpm offline:up
-   pnpm --filter @garden/db db:migrate
-   pnpm dev
-   ```
+Follow the [Workers AI setup](../../development/onboarding.md#use-workers-ai-when-required).
+It starts a separate Compose project so Workers AI searches its own Helix data.
 
 ## Workers AI does not respond
 

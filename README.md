@@ -161,21 +161,9 @@ Offline limitations:
 
 ### 4. Standard mode — Cloudflare Workers AI
 
-Sign in to Cloudflare and note your Account ID:
-
-```bash
-pnpm --filter @garden/web exec wrangler login
-pnpm --filter @garden/web exec wrangler whoami
-```
-
-Copy the Account ID from `wrangler whoami` into `CLOUDFLARE_ACCOUNT_ID` in
-`.env`. Then:
-
-```bash
-pnpm offline:up                        # local Postgres (skip if already running)
-pnpm --filter @garden/db db:migrate    # skip if already migrated
-pnpm dev
-```
+Use a separate local Helix database for Workers AI. Follow the
+[Workers AI setup](docs/development/onboarding.md#use-workers-ai-when-required)
+to sign in, select the separate Compose project and start Garden.
 
 `pnpm dev` starts the app on port 3000 with local D1, R2, Durable Object, and
 Workflow state, Hyperdrive pointed at `DATABASE_URL`, and the remote Workers

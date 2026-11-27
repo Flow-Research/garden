@@ -137,8 +137,14 @@ Add the reported account ID to `CLOUDFLARE_ACCOUNT_ID` in `.env`. Use the local
 `DATABASE_URL` and `HELIX_URL` from `.env.example` for this setup.
 
 Ollama and Workers AI use different models to create search vectors. Each
-model needs its own Helix data. Stop the local Compose services to free their
-ports. Then start a separate Compose project for Workers AI:
+model needs its own Helix data. If Garden is running, stop the app first.
+Remove local overrides for `GARDEN_OFFLINE` and `GARDEN_EMBEDDING_PROVIDER`
+from your shell and `.env` before selecting Workers AI. The commands below
+assume the original Compose project uses its default name. Keep
+`garden-workers-ai` for the Workers AI project.
+
+Stop the local Compose services to free their ports. Then start the separate
+project:
 
 ```bash
 docker compose -f compose.dev.yaml --profile ollama stop
@@ -157,7 +163,7 @@ To return to Ollama, stop the Garden app. Stop the Workers AI services with
 local model instructions above to start the original project.
 
 Workers AI usage can create charges on your Cloudflare account. The default
-model, `@cf/moonshotai/kimi-k2.7-code`, is not available on the free plan.
+model, `@cf/zai-org/glm-5.3`, is not available on the free plan.
 
 ## Understand the system boundaries
 
