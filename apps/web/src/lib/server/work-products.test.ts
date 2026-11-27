@@ -317,7 +317,13 @@ async function makeApplyDb(args: {
           ])
         }
         if (table === schema.githubAppInstallation) {
-          return queryRows([{ installationId: 1, status: 'active' }])
+          return queryRows([
+            {
+              installationId: 1,
+              accountLogin: 'Flow-Research',
+              status: 'active',
+            },
+          ])
         }
         throw new Error('unexpected table')
       },
