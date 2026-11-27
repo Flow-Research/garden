@@ -6,6 +6,7 @@ import { RunWorkflow } from '../src/run-workflow'
 import { RunSubAgentBase } from '../src/run-sub-agent-base'
 import { Effect } from 'effect'
 import { Result } from 'better-result'
+import { runFailure, type RunFailure } from '@garden/core/runs/failure'
 import { tool } from 'ai'
 import { z } from 'zod'
 import { Brain } from '@garden/brain/services/brain'
@@ -257,7 +258,7 @@ export default {
         ? await getSubAgentByName(parent,IssueRunSubAgent,input.objectId)
         : await getSubAgentByName(parent,AutomationRunSubAgent,input.objectId)
       const result = await Result.tryPromise(() => input.method === 'fail'
-        ? facet.failWorkflowTurn({runId:input.runId,reason:'synthetic-requested-failure'})
+        ? facet.failWorkflowTurn({runId:input.runId,failure:runFailure('unknown')})
         : facet.requestCancel({runId:input.runId}))
       return Response.json({ok:result.isOk()})
     }
@@ -450,7 +451,7 @@ export default {
         env: { RUN_WORKFLOW: { get: async () => ({ sendEvent: async (event: unknown) => { events.push(event) } }) } },
         runConfig: () => ({ kind: 'fixture', logger: {} }), runLogFields: () => null,
         authorizeFinalObservation: async () => input.mode === 'allowed' ? Result.ok(undefined) : Result.err(new Error('Denied')),
-        forceCloseFailed: async (_runId: string, reason: string) => { reasons.push(reason); return Result.ok(undefined) },
+        forceCloseFailed: async (_runId: string, failure: RunFailure) => { reasons.push(failure.cause); return Result.ok(undefined) },
         closeFailedRun(runId: string, reason: string) { return Reflect.get(base, 'closeFailedRun').call(this, runId, reason) },
         failureReasonForOutput(runId: string, reason: string) { return Reflect.get(base, 'failureReasonForOutput').call(this, runId, reason) },
         inspectSubmission: async () => {

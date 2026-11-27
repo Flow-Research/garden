@@ -1,6 +1,11 @@
 import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { createLogger } from '@garden/observability/console'
+import {
+  runFailure,
+  runFailureEventPayloadSchema,
+  toPublicRunFailure,
+} from '@garden/core/runs/failure'
 import type { AppEnv } from '@/lib/server/env'
 import { getDb, schema } from '@/lib/server/db'
 
@@ -209,14 +214,13 @@ async function sweepStaleApprovals(
               from ${schema.issueRunEvent}
               where ${schema.issueRunEvent.runId} = ${run.id}::uuid
             )`,
-            eventType: 'issue_run:reconciler_action',
+            eventType: 'issue_run:failed',
             stream: 'system',
             level: 'warn',
-            message: 'Approval request expired',
-            payload: {
-              permission_request_id: row.id,
-              reason: 'stale_approval',
-            },
+            message: 'Run failed',
+            payload: runFailureEventPayloadSchema.parse({
+              failure: toPublicRunFailure(runFailure('approval_stale')),
+            }),
           })
         })
       },
