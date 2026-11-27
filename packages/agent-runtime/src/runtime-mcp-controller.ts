@@ -217,11 +217,13 @@ export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
  */
 function permissionRequestContext(
   toolLabel: string,
-  teams: readonly { teamName: string }[],
+  teams: readonly { teamId: string; teamName: string }[],
 ) {
   if (teams.length <= 1) return toolLabel
-  const names = teams.map((team) => team.teamName).join(', ')
-  return `${toolLabel} (required by ${names} Team policies)`
+  const labels = [...teams]
+    .sort((left, right) => left.teamId.localeCompare(right.teamId))
+    .map((team) => `${team.teamName} [${team.teamId}]`)
+  return `${toolLabel} (required by ${labels.join(', ')} Team policies)`
 }
 
 export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{

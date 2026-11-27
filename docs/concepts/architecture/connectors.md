@@ -38,7 +38,7 @@ Executor stores integration and connection state in the `EXECUTOR_DB` D1 databas
 
 Before Garden completes or cancels a connector authorization, it checks the pending connection in Executor. An organization connection requires current connection-management permission. A personal connection must belong to the signed-in member.
 
-An Executor catalog tool that requires approval still needs approval when an agent has an automatic grant. This applies to both seeded and administrator-issued grants. An existing approval can satisfy the normal approval policy.
+An Executor catalog tool that requires approval still needs approval when an agent has an automatic grant. This applies to both seeded and administrator-issued grants. A reused approval must match the run and current Team IDs. An older multi-Team approval that records only Team names needs a new decision.
 
 Unknown tools fail closed. A tool with no risk class defaults to `ask`. Unclassified native or hosted GitHub tools are not exposed at all. Executor receives tenant and member identity from Garden, and it never replaces Garden's workspace authorization checks.
 
