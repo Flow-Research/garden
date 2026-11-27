@@ -1,4 +1,4 @@
-import { Result } from 'better-result'
+import { safeFileHref } from '@garden/ui/markdown'
 import { mergeAttributes, Node } from '@tiptap/core'
 import {
   NodeViewWrapper,
@@ -9,22 +9,7 @@ import { Download, FileText } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 
-const FILE_MARKDOWN = /^!file\[([^\]]*)\]\((https?:\/\/[^)]+)\)/
-
-/**
- * Returns the link only when it is an absolute http or https URL, the same
- * rule that the Markdown tokenizer applies. Any other value becomes empty, so
- * the card shows no download action.
- */
-export function safeFileHref(value: unknown): string {
-  const href = typeof value === 'string' ? value.trim() : ''
-  if (!/^https?:\/\//i.test(href)) return ''
-  const url = Result.try(() => new URL(href))
-  if (url.isErr()) return ''
-  return url.value.protocol === 'http:' || url.value.protocol === 'https:'
-    ? href
-    : ''
-}
+const FILE_MARKDOWN = /^!file\[([^\]]*)\]\(([^)\r\n]+)\)/
 
 /** Visual node for a file attachment embedded in editor content. */
 function FileCardView({ node }: NodeViewProps) {
@@ -104,7 +89,7 @@ export const FileCardExtension = Node.create({
       'div',
       mergeAttributes(HTMLAttributes, {
         'data-type': 'fileCard',
-        'data-href': node.attrs.href,
+        'data-href': safeFileHref(node.attrs.href),
         'data-filename': node.attrs.filename,
       }),
     ]
@@ -117,10 +102,12 @@ export const FileCardExtension = Node.create({
     tokenize(source: string) {
       const match = FILE_MARKDOWN.exec(source)
       if (!match) return undefined
+      const href = safeFileHref(match[2])
+      if (!href) return undefined
       return {
         type: 'fileCard',
         raw: match[0],
-        attributes: { filename: match[1], href: match[2] },
+        attributes: { filename: match[1], href },
       }
     },
   },
@@ -128,7 +115,7 @@ export const FileCardExtension = Node.create({
     helpers.createNode('fileCard', token.attributes),
   renderMarkdown: (node) => {
     const filename = node.attrs?.filename || 'file'
-    const href = node.attrs?.href || ''
+    const href = safeFileHref(node.attrs?.href)
     return `!file[${filename}](${href})`
   },
 

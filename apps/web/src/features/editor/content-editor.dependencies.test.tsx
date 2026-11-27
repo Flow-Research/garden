@@ -31,7 +31,8 @@ import { DOMSerializer, Schema } from '@tiptap/pm/model'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { NavigationProvider } from '../navigation'
 import { ContentEditor } from './content-editor'
-import { safeFileHref } from './extensions/file-card'
+import { safeFileHref } from '@garden/ui/markdown'
+import { ReadonlyContent } from './readonly-content'
 
 const navigation = {
   push: vi.fn(),
@@ -184,7 +185,7 @@ describe('ContentEditor on the installed Tiptap and ProseMirror', () => {
     expect(editor.getMarkdown()).not.toMatch(/javascript|data:/i)
   })
 
-  it('accepts only absolute http and https file links', () => {
+  it('accepts absolute http and https file links and rejects generic paths', () => {
     expect(safeFileHref('https://cdn.example.com/a.pdf')).toBe(
       'https://cdn.example.com/a.pdf',
     )
@@ -203,6 +204,36 @@ describe('ContentEditor on the installed Tiptap and ProseMirror', () => {
       42,
     ])
       expect(safeFileHref(value)).toBe('')
+  })
+
+  it('keeps Garden upload links through Markdown and HTML', async () => {
+    const href = '/api/attachments/f293e0ac-4a07-4147-b82b-9d6c1f97abcd'
+    const markdown = `!file[report.pdf](${href})`
+    const { editor, container } = await renderEditor({ defaultValue: markdown })
+    expect(editor.state.doc.firstChild?.attrs.href).toBe(href)
+    expect(editor.getMarkdown().trim()).toBe(markdown)
+    editor.commands.setContent(editor.getHTML())
+    const saved = editor.getMarkdown().trim()
+    expect(saved).toBe(markdown)
+    const comment = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceIdProvider wsId="ws-1">
+          <NavigationProvider value={navigation}>
+            <ReadonlyContent content={saved} />
+          </NavigationProvider>
+        </WorkspaceIdProvider>
+      </QueryClientProvider>,
+    )
+    expect(
+      comment.container
+        .querySelector('a[download="report.pdf"]')
+        ?.getAttribute('href'),
+    ).toBe(href)
+    await waitFor(() =>
+      expect(
+        container.querySelector('button[aria-label="Download report.pdf"]'),
+      ).toBeTruthy(),
+    )
   })
 
   it('keeps mention links and file cards through load and save', async () => {
