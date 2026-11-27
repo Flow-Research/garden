@@ -1300,7 +1300,7 @@ export const makeBrain = Effect.gen(function* () {
           .varAs(
             'idx_note_source',
             g().createIndexIfNotExists(
-              IndexSpec.nodeUniqueEquality(LABELS.Note, SOURCE_KEY_PROP),
+              IndexSpec.nodeEquality(LABELS.Note, SOURCE_KEY_PROP),
             ),
           )
           .returning([

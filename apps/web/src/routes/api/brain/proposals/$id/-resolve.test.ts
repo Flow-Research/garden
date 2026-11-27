@@ -78,6 +78,11 @@ const proposalRow = () => ({
 /** Models the proposal row lock and the pending-only claim index in this route test. */
 function fakeDb(row: ReturnType<typeof proposalRow>) {
   const updates: Array<Record<string, unknown>> = []
+  const lock = vi.fn(async (mode: string) => {
+    if (mode !== 'update')
+      throw new Error('Approval requires an exclusive row lock')
+    return [row]
+  })
   let previous = Promise.resolve()
   const db = {
     transaction: vi.fn(async (work: (tx: unknown) => Promise<unknown>) => {
@@ -96,7 +101,7 @@ function fakeDb(row: ReturnType<typeof proposalRow>) {
     select: vi.fn(() => ({
       from: vi.fn(() => ({
         where: vi.fn(() => ({
-          for: vi.fn(async () => [row]),
+          for: lock,
         })),
       })),
     })),
@@ -115,6 +120,7 @@ function fakeDb(row: ReturnType<typeof proposalRow>) {
     db,
     updates,
     row,
+    lock,
     canInsertCompeting: () => row.status !== 'pending',
   }
 }
@@ -282,7 +288,7 @@ describe('resolveBrainProposal user scope', () => {
   })
 
   it('serializes rejection behind approval while the pending claim is held', async () => {
-    const { db, updates, row } = fakeDb(proposalRow())
+    const { db, updates, row, lock } = fakeDb(proposalRow())
     let releaseWrite = () => {}
     let signalStarted = () => {}
     const started = new Promise<void>((resolve) => {
@@ -315,6 +321,7 @@ describe('resolveBrainProposal user scope', () => {
 
     const approval = postResolve({ db, userId: ownerId })
     await started
+    expect(lock).toHaveBeenCalledWith('update')
     const rejection = postResolve({ db, userId: ownerId, action: 'reject' })
     expect(row.status).toBe('pending')
     expect(updates).toHaveLength(0)

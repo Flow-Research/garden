@@ -130,6 +130,10 @@ layer(BrainTestLive, { excludeTestServices: true })('brain', (it) => {
         )
 
         expect(retry.id).toBe(first.id)
+        const otherTenant = WorkspaceId.make(`ws-other-${crypto.randomUUID()}`)
+        const other = yield* brain.addText({ ...input, tenantId: otherTenant })
+        expect(other.tenantId).toBe(otherTenant)
+        expect(other.id).not.toBe(first.id)
       }),
   )
 

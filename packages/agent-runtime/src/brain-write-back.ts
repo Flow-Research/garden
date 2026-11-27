@@ -142,9 +142,12 @@ const matchesExistingClaim = (
       (existingScope.kind === 'user' && existingScope.userId === scope.userId))
   if (!sameScope) return false
   const normalized = normalizeBrainWriteBackClaim(claim)
-  return [hit.item.body, hit.item.summary, hit.item.label].some(
-    (value) =>
-      value !== undefined && normalizeBrainWriteBackClaim(value) === normalized,
+  const content = [hit.item.body, hit.item.summary, hit.item.label].find(
+    (value) => value !== undefined && value.trim() !== '',
+  )
+  return (
+    content !== undefined &&
+    normalizeBrainWriteBackClaim(content) === normalized
   )
 }
 
@@ -198,6 +201,21 @@ export function createBrainWriteBackTools(
       if (decision === undefined) {
         return { ok: false, error: 'No write-back decision.' }
       }
+      const operationKey = brainWriteProposalOperationKey(
+        context.runId,
+        claimHash,
+      )
+      const reviewSkipReason = async () => {
+        const db = getPooledDb(dependencies.databaseUrl)
+        const existing = await db.query.brainWriteProposal.findFirst({
+          columns: { id: true },
+          where: and(
+            eq(schema.brainWriteProposal.workspaceId, context.workspaceId),
+            eq(schema.brainWriteProposal.operationKey, operationKey),
+          ),
+        })
+        return existing === undefined ? 'duplicate' : 'retry'
+      }
       const layer =
         dependencies.env.HELIX_URL === undefined
           ? undefined
@@ -240,7 +258,14 @@ export function createBrainWriteBackTools(
           return { ok: false, error: 'Brain duplicate check failed.' }
         }
         if (duplicateCheck.ok && duplicateCheck.duplicate) {
-          return { ok: true, action: 'skipped', reason: 'duplicate' }
+          return {
+            ok: true,
+            action: 'skipped',
+            reason:
+              decision.action === 'review'
+                ? await reviewSkipReason()
+                : 'duplicate',
+          }
         }
       }
 
@@ -290,10 +315,6 @@ export function createBrainWriteBackTools(
 
       if (decision.action === 'review') {
         const db = getPooledDb(dependencies.databaseUrl)
-        const operationKey = brainWriteProposalOperationKey(
-          context.runId,
-          candidate.claimHash,
-        )
         const inserted = await db
           .insert(schema.brainWriteProposal)
           .values({
@@ -311,17 +332,10 @@ export function createBrainWriteBackTools(
           .returning({ id: schema.brainWriteProposal.id })
         if (inserted.length === 0) {
           // Any status counts: a replay after approval/rejection is still a retry.
-          const retry = await db.query.brainWriteProposal.findFirst({
-            columns: { id: true },
-            where: and(
-              eq(schema.brainWriteProposal.workspaceId, context.workspaceId),
-              eq(schema.brainWriteProposal.operationKey, operationKey),
-            ),
-          })
           return {
             ok: true,
             action: 'skipped',
-            reason: retry === undefined ? 'duplicate' : 'retry',
+            reason: await reviewSkipReason(),
           }
         }
         return { ok: true, action: 'proposed', reason: decision.reason }
