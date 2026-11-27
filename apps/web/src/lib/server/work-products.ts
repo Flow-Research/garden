@@ -21,11 +21,7 @@ import type { AppEnv } from './env'
 import { getDb, schema } from './db'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
-import {
-  addBrainFolderFile,
-  createBrainFolder,
-  listBrainFolders,
-} from './brain-folders'
+import { addBrainFolderFile, getOrCreateApprovedFolder } from './brain-folders'
 import { overwriteBrainFile, saveBrainFileUpload } from './brain-file-upload'
 
 const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i
@@ -1429,47 +1425,15 @@ async function resolveDestinationFolder(args: {
   env: AppEnv
   workspaceId: string
 }): Promise<ResultValue<{ id: string; name: string }, WorkProductReviewError>> {
-  return Result.gen(async function* () {
-    const db = await getDb(args.env)
-    const [named] = yield* Result.await(
-      Result.tryPromise({
-        try: () =>
-          db
-            .select({ name: schema.organization.name })
-            .from(schema.organization)
-            .where(eq(schema.organization.id, args.workspaceId))
-            .limit(1),
-        catch: (cause) =>
-          saveFailed('Failed to load the workspace name', cause),
-      }),
-    )
-    if (!named) return Result.err(saveFailed('Workspace not found'))
-    const name =
-      Array.from(named.name).length <= 50
-        ? named.name
-        : 'Approved workspace documents'
-    return Result.tryPromise({
-      try: async () => {
-        const folders = await listBrainFolders({
-          env: args.env,
-          workspaceId: args.workspaceId,
-          userId: args.actorUserId,
-        })
-        const existing = folders.find(
-          (folder) => folder.name === name && folder.privacy === 'shared',
-        )
-        if (existing) return { id: existing.id, name }
-        const created = await createBrainFolder({
-          env: args.env,
-          workspaceId: args.workspaceId,
-          userId: args.actorUserId,
-          name,
-          privacy: 'shared',
-        })
-        return { id: created.id, name }
-      },
-      catch: (cause) => saveFailed(`Failed to open the ${name} folder`, cause),
-    })
+  return Result.tryPromise({
+    try: async () =>
+      getOrCreateApprovedFolder(
+        await getDb(args.env),
+        args.workspaceId,
+        args.actorUserId,
+      ),
+    catch: (cause) =>
+      saveFailed('Failed to open the shared workspace documents folder', cause),
   })
 }
 
