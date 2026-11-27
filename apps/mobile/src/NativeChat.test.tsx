@@ -183,6 +183,7 @@ describe('native chat through the actual Cloudflare SDK', () => {
     const app = await fixture()
     connectHistory()
     await act(async () => app.controller.refresh())
+    await act(async () => app.controller.selectThread(thread.id))
     act(() => socket.close(1008))
     await waitFor(() =>
       expect(app.controller.getSnapshot().phase).toBe('blocked'),

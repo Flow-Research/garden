@@ -1034,7 +1034,9 @@ export function createMobileController(ports: MobilePorts) {
       return () => {
         if (
           auth === chatAuth &&
-          state.selectedThread === thread &&
+          state.selectedThread?.id === thread.id &&
+          state.selectedThread.hostName === thread.hostName &&
+          state.selectedThread.runtime_key === thread.runtime_key &&
           state.accountId === thread.ownerUserId &&
           state.workspaceId === thread.workspaceId
         ) {

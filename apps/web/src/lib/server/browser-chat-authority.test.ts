@@ -426,6 +426,29 @@ describe('actual SDK cloned-request and hibernating frame dispatch', () => {
     )
   })
 
+  it('requests a later retry when a running socket cannot verify access', async () => {
+    const state = await fixture()
+    const { parent, context, sockets } = sdkRuntime(state)
+    await parent.fetch(state.request())
+    const socket = sockets[0]
+    if (!socket) throw new Error('Actual SDK did not accept the socket')
+    const unavailable = Reflect.construct(AgentDO, [
+      context,
+      {
+        ...state.env,
+        HYPERDRIVE: { connectionString: 'postgres://test@127.0.0.1:1/test' },
+      },
+    ]) as InstanceType<typeof AgentDO>
+    await Reflect.apply(unavailable.webSocketMessage, unavailable, [
+      socket,
+      'hello',
+    ])
+    expect(socket.close).toHaveBeenCalledWith(
+      1013,
+      'Chat access is unavailable',
+    )
+  })
+
   it('redacts a failed second admission before the SDK serializes its upgrade error', async () => {
     const state = await fixture()
     const proof = sdkRuntime(state)

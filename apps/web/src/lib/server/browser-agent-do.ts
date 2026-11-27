@@ -98,7 +98,10 @@ export class AgentDO extends RuntimeAgentDO {
     }
     const current = await admitBrowserChatFrame(principal.value, this.env)
     if (current.isErr()) {
-      socket.close(1008, 'Chat access is unavailable')
+      socket.close(
+        current.error.code === 'unavailable' ? 1013 : 1008,
+        'Chat access is unavailable',
+      )
       return
     }
     return super.webSocketMessage(socket, message)
