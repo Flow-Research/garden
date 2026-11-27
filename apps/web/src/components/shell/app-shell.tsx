@@ -321,8 +321,10 @@ export function AppShell() {
   // neutral skeleton rather than the setup prompt while it resolves.
   const isRestoringWorkspace = !hasSession && !activeWorkspaceId
 
+  // No fill on the shell root: the body already paints the page ground, and a
+  // fill here would hide the root GardenBackdrop foliage on every app screen.
   return (
-    <div className="flex h-svh bg-background-main-default">
+    <div className="flex h-svh">
       {activeWorkspaceId ? (
         <>
           <WorkspaceWarmCaches wsId={activeWorkspaceId} />
