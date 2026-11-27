@@ -4,7 +4,7 @@ import { issueRunTaskExample } from '../examples/issue-run-task.ts'
 import { createIssueRunEvidence } from '../evidence/issue-run.ts'
 import { evalConfigurationSchema, type IssueRunStatus } from '../index.ts'
 import type { GardenIssueRunResponse } from '../runner/garden-api.ts'
-import { createTrialIdentity } from '../runner/issue-run.ts'
+import { createTrialIdentity, runIssueRunTask } from '../runner/issue-run.ts'
 import { gradeIssueRunStatus, prepareIssueRunTask } from './issue-run-status.ts'
 
 const issueId = '00000000-0000-4000-8000-000000000001'
@@ -20,6 +20,24 @@ const configuration = evalConfigurationSchema.parse({
 const identity = createTrialIdentity({
   taskId: issueRunTaskExample.taskId,
   taskVersion: issueRunTaskExample.version,
+})
+
+it('uses private transport settings only when checking the eval target', async () => {
+  let cookie: string | null = null
+  const result = await runIssueRunTask({
+    task: issueRunTaskExample,
+    identity,
+    config: {
+      ...configuration,
+      sessionCookie: 'session=fixture',
+      fetch: async (_url, init) => {
+        cookie = new Headers(init?.headers).get('cookie')
+        return Response.json([])
+      },
+    },
+  })
+  assert.equal(cookie, 'session=fixture')
+  assert.equal(result.isErr() && result.error.code, 'invalid_eval_workspace')
 })
 
 function grade(status: IssueRunStatus) {

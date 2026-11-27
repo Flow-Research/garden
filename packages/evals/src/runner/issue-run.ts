@@ -177,11 +177,12 @@ export async function runIssueRunTask(input: {
       })
     }
 
-    const configuration = evalConfigurationSchema.safeParse(input.config)
+    const { sessionCookie, fetch, ...publicConfig } = input.config
+    const configuration = evalConfigurationSchema.safeParse(publicConfig)
     const safeConfigurationResult =
       !configuration.success ||
-      !input.config.sessionCookie ||
-      /[\r\n]/.test(input.config.sessionCookie)
+      !sessionCookie ||
+      /[\r\n]/.test(sessionCookie)
         ? Result.err(
             new GardenEvalError({
               stage: 'fixture_setup',
@@ -199,8 +200,8 @@ export async function runIssueRunTask(input: {
     const deadlineAt = Date.now() + safeConfiguration.deadlineMs
     const api = createGardenApiClient({
       ...safeConfiguration,
-      sessionCookie: input.config.sessionCookie,
-      fetch: input.config.fetch,
+      sessionCookie,
+      fetch,
     })
     yield* Result.await(
       api.verifyEvalTarget({
