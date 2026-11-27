@@ -1042,6 +1042,22 @@ describe('execution-host HTTP discovery', () => {
     )
     expect(first.status).toBe(200)
     expect(first.headers.get('cache-control')).toBe('no-store')
+    const directory = state.directoryRequest()
+    const attention = new Request(directory.url + '?view=attention', {
+      headers: directory.headers,
+    })
+    const pending = await handleExecutionHostDirectory(
+      context(attention, state.operatorId),
+    )
+    expect(pending.status).toBe(200)
+    expect(await pending.json()).toEqual({
+      workspaceId: state.workspaceId,
+      runs: [],
+    })
+    const denied = await handleExecutionHostDirectory(
+      context(attention, randomUUID()),
+    )
+    expect(denied.status).toBe(403)
     const firstBody = hostDirectorySchema.parse(await first.json())
     expect(firstBody.workspaceId).toBe(state.workspaceId)
     expect(firstBody.hosts.map((host) => host.hostId)).toEqual([
@@ -1097,6 +1113,50 @@ describe('execution-host HTTP discovery', () => {
         )
       ).status,
     ).toBe(401)
+  })
+
+  it('refuses status reads while the pilot is unset, for another operator, and for an ordinary member', async () => {
+    const state = await fixture()
+    const disabled = await handleExecutionHostDirectory(
+      context(state.directoryRequest()),
+    )
+    expect(disabled.status).toBe(503)
+    // The status page shows its disabled state for exactly this answer.
+    expect(await disabled.json()).toEqual({
+      error: 'The engineering pilot is not configured',
+    })
+    expect(
+      (
+        await handleExecutionHostDirectory(
+          context(state.directoryRequest(), randomUUID()),
+        )
+      ).status,
+    ).toBe(403)
+    await database.db
+      .update(schema.member)
+      .set({ role: 'member' })
+      .where(
+        and(
+          eq(schema.member.organizationId, state.workspaceId),
+          eq(schema.member.userId, state.operatorId),
+        ),
+      )
+    expect(
+      (
+        await handleExecutionHostDirectory(
+          context(state.directoryRequest(), state.operatorId),
+        )
+      ).status,
+    ).toBe(403)
+    expect(
+      (
+        await handleExecutionHostRun(
+          context(state.directoryRequest(), state.operatorId),
+          randomUUID(),
+          'snapshot',
+        )
+      ).status,
+    ).toBe(403)
   })
 
   it('returns a bounded directory cursor without skipping or repeating authorized rows', async () => {

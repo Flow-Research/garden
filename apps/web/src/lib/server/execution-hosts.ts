@@ -293,6 +293,17 @@ export async function handleExecutionHostDirectory(context: AppRequestContext) {
   if (workspace.isErr()) return workspace.error
   const pilot = await requireFreshPilot(context, workspace.value, false)
   if (pilot.isErr()) return pilot.error
+  if (new URL(context.request.url).searchParams.get('view') === 'attention') {
+    const result = await pilot.value.receiver.attention(
+      pilot.value.actorId,
+      workspace.value,
+      Date.now(),
+    )
+    if (result.isErr()) return controlFailure(result.error)
+    return Response.json(result.value, {
+      headers: { 'Cache-Control': 'no-store' },
+    })
+  }
   const after =
     new URL(context.request.url).searchParams.get('afterHostId') ?? undefined
   const result = await pilot.value.receiver.directory(
