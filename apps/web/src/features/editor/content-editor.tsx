@@ -19,7 +19,7 @@
  * 3. PREPROCESSING is minimal: only legacy mention shortcode migration and
  *    URL linkification (preprocessMarkdown). No HTML conversion.
  *
- * Tech: Tiptap v3.22.1 (ProseMirror wrapper), @tiptap/markdown for
+ * Tech: Tiptap v3.33.0 (ProseMirror wrapper), @tiptap/markdown for
  * bidirectional Markdown ↔ ProseMirror JSON conversion.
  */
 
