@@ -44,7 +44,6 @@ vi.mock('@/features/navigation/use-surface-navigation', () => ({
 }))
 vi.mock('./chat-tabs', () => ({ ChatTabsStrip: () => null }))
 vi.mock('./task-tabs', () => ({ TaskTabsStrip: () => null }))
-vi.mock('./user-card', () => ({ UserCard: () => null }))
 vi.mock('./workspace-menu', () => ({ WorkspaceMenu: () => null }))
 
 function renderShell() {
@@ -102,6 +101,18 @@ describe('AppShell sidebar', () => {
     if (!inbox) throw new Error('no Inbox nav item')
     fireEvent.click(inbox)
     expect(viewport.navigate).toHaveBeenCalled()
+    expect(drawer()).toHaveClass('-translate-x-full')
+  })
+
+  it('opens the Settings page from the account menu and closes the drawer', async () => {
+    viewport.mobile = true
+    renderShell()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+
+    expect(viewport.navigate).toHaveBeenCalledWith({ to: '/settings' })
     expect(drawer()).toHaveClass('-translate-x-full')
   })
 })
