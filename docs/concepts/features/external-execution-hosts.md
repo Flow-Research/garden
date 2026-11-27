@@ -128,3 +128,5 @@ No deployed host enrollment, direct launch, native approval journey or device qu
 The execution-host page shows open decisions for the signed-in pilot operator. A recorded answer confirms Garden received the choice. Host events supply evidence of the subsequent run state. Deployment qualification remains open.
 Existing Garden managed runs keep their current Workflow owner.
 See the [execution-host proposal](../../proposals/execution-host-contract.md) for the complete delivery gates.
+
+After Garden records Stop, the receiver refuses new authority for that run. The host can still pull the answer and report when the worker stops. Garden refuses Resume while the worker state needs reconciliation.

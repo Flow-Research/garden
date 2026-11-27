@@ -1020,7 +1020,13 @@ export class ExecutionHostReceiver {
         .select()
         .from(executionHostIntervention)
         .where(eq(executionHostIntervention.launchRecordId, row.id))
-        .orderBy(asc(executionHostIntervention.receivedAt))
+        .orderBy(
+          asc(
+            sql`case when ${executionHostIntervention.answerId} is null and ${executionHostIntervention.expiresAt} > ${new Date(now)} then 0 else 1 end`,
+          ),
+          desc(executionHostIntervention.receivedAt),
+          desc(executionHostIntervention.id),
+        )
         .limit(100)
       const list = interventionListSchema.safeParse({
         kind: 'interventions',
@@ -1127,6 +1133,13 @@ export class ExecutionHostReceiver {
         )
           return conflict('Stored intervention is invalid')
         const record = intervention.data
+        if (
+          record.reason === 'reconciliation_required' &&
+          decision === 'resume'
+        )
+          return conflict(
+            'The host must reconcile the worker state before resuming',
+          )
         expiresAt = record.expiresAt
         if (record.expiresAt <= now) return conflict('Intervention expired')
         if (await this.#runClosed(tx, row)) return conflict('The run is closed')
@@ -1472,7 +1485,17 @@ export class ExecutionHostReceiver {
           kind: 'authority_refused',
           reason: 'expired_or_revoked',
         })
-      if (row.cancelCommandId !== null)
+      const stop = await tx
+        .select({ id: executionHostIntervention.id })
+        .from(executionHostIntervention)
+        .where(
+          and(
+            eq(executionHostIntervention.launchRecordId, row.id),
+            sql`${executionHostIntervention.answer} ->> 'decision' = 'stop'`,
+          ),
+        )
+        .limit(1)
+      if (row.cancelCommandId !== null || stop.length > 0)
         return Result.ok({
           kind: 'authority_refused',
           reason: 'cancellation_requested',

@@ -216,6 +216,44 @@ describe('external host interventions with actual PostgreSQL', () => {
     }
   }
 
+  it('denies new authority after Stop even before the host pulls the answer', async () => {
+    const state = await fixture()
+    await state.send({
+      operation: 'intervention',
+      intervention: state.intervention,
+    })
+    const authority = () =>
+      state.send({
+        operation: 'authority',
+        launchId: state.launch.launchId,
+        grantId: state.launch.grant.id,
+      })
+    expect((await authority()).unwrap().kind).toBe('authority_current')
+    expect((await state.answer('stop')).isOk()).toBe(true)
+    expect((await authority()).unwrap()).toEqual({
+      kind: 'authority_refused',
+      reason: 'cancellation_requested',
+    })
+    expect(await state.pullCommands()).toHaveLength(1)
+  })
+
+  it('keeps the question open when Resume cannot resolve worker uncertainty', async () => {
+    const state = await fixture()
+    const question = {
+      ...state.intervention,
+      reason: 'reconciliation_required' as const,
+      kind: 'review' as const,
+    }
+    expect(
+      (
+        await state.send({ operation: 'intervention', intervention: question })
+      ).isOk(),
+    ).toBe(true)
+    const refused = await state.answer('resume')
+    expect(refused.isErr() && refused.error.status).toBe(409)
+    expect((await state.answer('stop')).isOk()).toBe(true)
+  })
+
   it('lists only open questions in the authorized workspace attention view', async () => {
     const state = await fixture()
     await state.send({
