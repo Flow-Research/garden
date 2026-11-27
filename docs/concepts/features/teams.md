@@ -194,7 +194,7 @@ Design controls with no backing in Garden still render, disabled, with a **Comin
 
 An approval held by one Team goes to the Team owner's Inbox. If the owner has left the workspace, it goes to workspace owners and admins instead. An approval held by several Teams goes to workspace owners and admins. `teamPolicyApproverIds` in `packages/db/src/inbox.ts` routes it.
 
-`POST /api/permission-requests/:id/resolve` and `POST /api/chat/threads/:id/tool-approval` accept a decision from anyone with `permissionManage`, as before, or from the current owner of the request's Team. The routes read `team.owner_user_id` when the decision arrives, so after an ownership transfer the new owner can decide open requests and the previous owner gets 403. A Team owner's decision is scoped to their Team's requests. Another Team's owner gets 403.
+`POST /api/permission-requests/:id/resolve` and `POST /api/chat/threads/:id/tool-approval` accept a decision from anyone with `permissionManage`, as before, or from the current owner of the request's Team. The routes read `team.owner_user_id` when the decision arrives, so after an ownership transfer the new owner can decide open requests and the previous owner gets 403. For connector approvals with no request Team, the inbox sends the card to workspace owners and admins. This also applies when the issue belongs to a Team. The issue creator or assignee can decide only if they have workspace approval permission. A Team owner's decision is scoped to their Team's requests. Another Team's owner gets 403.
 
 ### API and events
 
