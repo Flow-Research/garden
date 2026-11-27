@@ -1,8 +1,9 @@
 import { Resend } from 'resend'
 import { Result, TaggedError } from 'better-result'
-import type {
-  AgentModelHealthFailure,
-  AgentModelHealthReport,
+import {
+  settleBefore,
+  type AgentModelHealthFailure,
+  type AgentModelHealthReport,
 } from '@garden/agent-runtime/src/model-health'
 
 const ALERT_FROM_EMAIL = 'Garden <hello@garden.flowresearch.tech>'
@@ -48,19 +49,21 @@ export async function sendModelHealthAlertEmail(input: ModelHealthAlertInput) {
   const resend = new Resend(input.apiKey)
   const sent = await Result.tryPromise({
     try: async () =>
-      await resend.emails.send({
-        from: ALERT_FROM_EMAIL,
-        to: input.recipients,
-        subject: `[Garden ${input.environment}] Model health check failed: ${report.status}`,
-        text: renderModelHealthAlertText(input),
-        tags: [{ name: 'kind', value: 'model_health_alert' }],
-      }),
-    catch: (cause) =>
+      await settleBefore(
+        AbortSignal.timeout(10_000),
+        resend.emails.send({
+          from: ALERT_FROM_EMAIL,
+          to: input.recipients,
+          subject: `[Garden ${input.environment}] Model health check failed: ${report.status}`,
+          text: renderModelHealthAlertText(input),
+          tags: [{ name: 'kind', value: 'model_health_alert' }],
+        }),
+      ),
+    catch: () =>
       new ModelHealthAlertError({
         code: 'send_failed',
         message: 'Resend request failed',
         statusCode: null,
-        cause,
       }),
   })
 
@@ -69,7 +72,7 @@ export async function sendModelHealthAlertEmail(input: ModelHealthAlertInput) {
       ? Result.err(
           new ModelHealthAlertError({
             code: 'provider_rejected',
-            message: `${response.error.name}: ${response.error.message}`,
+            message: 'Resend rejected the alert.',
             statusCode: response.error.statusCode ?? null,
           }),
         )
@@ -93,7 +96,11 @@ export function renderModelHealthAlertText({
     ...(report.finishReason ? [`Finish reason: ${report.finishReason}`] : []),
     ...(report.detail ? [`Detail: ${report.detail}`] : []),
     '',
-    `Next step: ${NEXT_STEP[report.status]}`,
+    `Next step: ${
+      report.status === 'unavailable' && report.provider === 'openai-compatible'
+        ? 'Set GARDEN_MODEL_ID to a supported model on the configured compatible endpoint.'
+        : NEXT_STEP[report.status]
+    }`,
     '',
     'Agent runs on this target may fail until the model answers again. Search the Worker logs for event = "model_health_check.failed" to see each run.',
   ].join('\n')

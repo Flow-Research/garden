@@ -117,7 +117,7 @@ describe('runModelHealthCheck', () => {
     )
     expect(email.text).toContain(`Model: ${MODEL_ID}`)
     expect(email.text).toContain('Provider: workers-ai')
-    expect(email.text).toContain('Capacity temporarily exceeded')
+    expect(email.text).toContain('Model request failed.')
     expect(email.text).toContain('Next step:')
     expect(email.text).not.toContain('re_test_secret')
     expect(logEvent('model_health_check.failed')).toMatchObject({
@@ -125,8 +125,6 @@ describe('runModelHealthCheck', () => {
       status: 'provider_error',
       failure: 'provider_error',
       modelId: MODEL_ID,
-      alertAttempted: true,
-      alert: 'sent',
     })
     expect(logEvent('model_health_check.alert_sent')).toMatchObject({
       emailId: 'email_1',
@@ -186,6 +184,20 @@ describe('runModelHealthCheck', () => {
     )
   })
 
+  it('logs the failed probe before an unresponsive mail request times out', async () => {
+    const timeout = new AbortController()
+    vi.spyOn(AbortSignal, 'timeout').mockReturnValue(timeout.signal)
+    resend.send.mockImplementation(() => {
+      expect(logEvent('model_health_check.failed')).toBeDefined()
+      timeout.abort()
+      return new Promise(() => {})
+    })
+    const outcome = await runModelHealthCheck(
+      env({ AI: aiBinding(async () => ({ response: '' })) }),
+    )
+    expect(outcome.alert).toBe('failed')
+  })
+
   it('keeps the failure when alert delivery is rejected', async () => {
     resend.send.mockResolvedValue({
       data: null,
@@ -212,8 +224,6 @@ describe('runModelHealthCheck', () => {
     })
     expect(logEvent('model_health_check.failed')).toMatchObject({
       status: 'provider_error',
-      alertAttempted: true,
-      alert: 'failed',
     })
   })
 
@@ -244,10 +254,7 @@ describe('runModelHealthCheck', () => {
     expect(outcome.alert).toBe('not_configured')
     expect(resend.send).not.toHaveBeenCalled()
     expect(logEvent('model_health_check.alert_not_configured')).toBeDefined()
-    expect(logEvent('model_health_check.failed')).toMatchObject({
-      alertAttempted: false,
-      alert: 'not_configured',
-    })
+    expect(logEvent('model_health_check.failed')).toMatchObject({})
   })
 
   it('never logs credentials', async () => {

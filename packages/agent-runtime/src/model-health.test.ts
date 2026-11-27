@@ -63,7 +63,7 @@ describe('probeAgentModel', () => {
     const report = await probe(ai)
 
     expect(report.status).toBe('unavailable')
-    expect(report.detail).toContain('Model has been deprecated')
+    expect(report.detail).toBe('Model request failed.')
   })
 
   it('reports other provider failures as provider_error without retrying', async () => {
@@ -74,9 +74,7 @@ describe('probeAgentModel', () => {
     const report = await probe(ai)
 
     expect(report.status).toBe('provider_error')
-    expect(report.detail).toBe(
-      'Error: AiError: 3040: Capacity temporarily exceeded',
-    )
+    expect(report.detail).toBe('Model request failed.')
     expect(binding.run).toHaveBeenCalledOnce()
   })
 
@@ -166,7 +164,9 @@ describe('probeAgentModel', () => {
     })
 
     it('reports a rejected API key as a configuration error without leaking it', async () => {
-      stubProvider(401, { error: { message: 'invalid api key' } })
+      stubProvider(401, {
+        error: { message: 'invalid api key: sk-test-secret' },
+      })
 
       const report = await probeAgentModel({
         ai: unusedAi,

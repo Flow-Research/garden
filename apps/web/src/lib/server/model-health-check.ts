@@ -87,16 +87,14 @@ export async function runModelHealthCheck(
     return { report, alert: 'not_needed' }
   }
 
-  const alert = await alertTeam(env, checkedAt, {
-    ...report,
-    status: report.status,
-  })
   logger.error('model_health_check.failed', {
     ...fields,
     failure: report.status,
     detail: report.detail,
-    alertAttempted: alert !== 'not_configured',
-    alert,
+  })
+  const alert = await alertTeam(env, checkedAt, {
+    ...report,
+    status: report.status,
   })
   return { report, alert }
 }

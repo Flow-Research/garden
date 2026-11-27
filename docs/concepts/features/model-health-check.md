@@ -2,7 +2,7 @@
 title: Model health check
 description: How the daily scheduled check probes Garden's configured agent model, classifies failures, and alerts the team.
 status: current
-owner: "@Umoren"
+owner: '@Umoren'
 last_reviewed: 2026-11-26
 ---
 
@@ -42,38 +42,38 @@ Users see nothing. The team sees:
 
 1. Each day at 08:00 UTC, the Worker runs the check.
 2. If the model is healthy, the Worker logs `model_health_check.completed` at `info`. Deployed Workers drop `info` logs by default, so a healthy day leaves only the Cron invocation in Workers Logs.
-3. If the model is unhealthy, the Worker emails each address in `GARDEN_ALERT_EMAIL` and logs `model_health_check.failed` at `error`. The subject reads `[Garden <environment>] Model health check failed: <status>`. The email gives the provider, model id, status, time, duration, a sanitized detail, and a next step.
+3. If the model is unhealthy, the Worker logs `model_health_check.failed` at `error` before it tries to email each address in `GARDEN_ALERT_EMAIL`. The subject reads `[Garden <environment>] Model health check failed: <status>`. The email gives the provider, model id, status, time, duration, a sanitized detail, and a next step.
 
-| Status | Meaning |
-| --- | --- |
-| `healthy` | The model answered with text. |
-| `timeout` | No answer within two minutes. |
-| `unavailable` | The provider retired the model (Workers AI error 5028 or "Model has been deprecated", detected by `observeRetiredAgentModel`) or answered HTTP 404 or 410. |
-| `provider_error` | Any other provider or network failure. |
-| `invalid_response` | The model answered with no text, or finished with a reason other than `stop` or `length`. |
-| `configuration_error` | The `AI` binding is missing, the model could not be built from the configuration, or the provider rejected the credentials with HTTP 401 or 403. |
+| Status                | Meaning                                                                                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `healthy`             | The model answered with text.                                                                                                                              |
+| `timeout`             | No answer within two minutes.                                                                                                                              |
+| `unavailable`         | The provider retired the model (Workers AI error 5028 or "Model has been deprecated", detected by `observeRetiredAgentModel`) or answered HTTP 404 or 410. |
+| `provider_error`      | Any other provider or network failure.                                                                                                                     |
+| `invalid_response`    | The model answered with no text, or finished with a reason other than `stop` or `length`.                                                                  |
+| `configuration_error` | The `AI` binding is missing, the model could not be built from the configuration, or the provider rejected the credentials with HTTP 401 or 403.           |
 
 ### Log events
 
 All events come from the `model-health-check` component of the `garden-staging` service. Filter on `event` in Workers Logs, as described in [Find a problem in the Worker logs](../../guides/operate/debug-with-logs.md).
 
-| Event | Level | Fields |
-| --- | --- | --- |
-| `model_health_check.started` | `info` | — |
-| `model_health_check.completed` | `info` | `status`, `provider`, `modelId`, `durationMs`, `finishReason`, `alertAttempted`, `alert` |
-| `model_health_check.failed` | `error` | The fields above, plus `failure` and `detail` |
-| `model_health_check.alert_sent` | `info` | `emailId`, `recipientCount` |
-| `model_health_check.alert_failed` | `error` | `code` (`send_failed` or `provider_rejected`), `statusCode`, `message`, `recipientCount` |
-| `model_health_check.alert_not_configured` | `warn` | `hasResendApiKey`, `recipientCount` |
-| `scheduled.job_failed` | `error` | `cron` and the thrown error |
-| `scheduled.unknown_cron` | `error` | `cron` |
+| Event                                     | Level   | Fields                                                                                   |
+| ----------------------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `model_health_check.started`              | `info`  | —                                                                                        |
+| `model_health_check.completed`            | `info`  | `status`, `provider`, `modelId`, `durationMs`, `finishReason`, `alertAttempted`, `alert` |
+| `model_health_check.failed`               | `error` | `status`, `provider`, `modelId`, `durationMs`, `finishReason`, `failure`, `detail`       |
+| `model_health_check.alert_sent`           | `info`  | `emailId`, `recipientCount`                                                              |
+| `model_health_check.alert_failed`         | `error` | `code` (`send_failed` or `provider_rejected`), `statusCode`, `message`, `recipientCount` |
+| `model_health_check.alert_not_configured` | `warn`  | `hasResendApiKey`, `recipientCount`                                                      |
+| `scheduled.job_failed`                    | `error` | `cron` and the thrown error                                                              |
+| `scheduled.unknown_cron`                  | `error` | `cron`                                                                                   |
 
-`alert` on the completed and failed events is `not_needed`, `not_configured`, `sent`, or `failed`. A failed alert never changes `status`. Logs carry no API keys, request bodies, or full provider responses. `detail` holds the error name and message, clipped to 500 characters.
+The separate alert event reports delivery status. The Worker waits up to ten seconds for the email request. A failed alert never changes `status`. Logs carry no API keys, request bodies, or full provider responses. For provider failures, `detail` contains a fixed message and, when available, the HTTP status code.
 
 ### Investigate an unhealthy status
 
 1. Find `model_health_check.failed` for the target and read `status`, `modelId`, and `detail`.
-2. For `unavailable`, choose a supported model and update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts`. See [Fix setup problems](../../guides/develop/fix-setup-problems.md).
+2. For `unavailable` on an OpenAI-compatible endpoint, update `GARDEN_MODEL_ID`. For Workers AI, choose a supported model and update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts`. See [Fix setup problems](../../guides/develop/fix-setup-problems.md).
 3. For `timeout` or `provider_error`, check the AI Gateway logs for the target's `AI_GATEWAY_ID` and the provider's status page. A one-off failure that passes the next day is usually a provider incident.
 4. For `configuration_error`, check the `AI` binding and the `GARDEN_MODEL_*` variables on the target.
 5. For `invalid_response`, check whether the provider changed the model's response format.
@@ -90,7 +90,7 @@ All events come from the `model-health-check` component of the `garden-staging` 
 
 The check reads Worker bindings and variables only. It writes no database rows or files. It needs `AI` (or the `GARDEN_MODEL_*` endpoint), and for alerts, `RESEND_API_KEY` and `GARDEN_ALERT_EMAIL`.
 
-`GARDEN_ALERT_EMAIL` is a comma-separated list of addresses. `alchemy.run.ts` binds it only when the deploy environment sets it, so set it in the Workers Builds environment of each target that should alert. Without it, failures are still logged, with `alert: "not_configured"`.
+`GARDEN_ALERT_EMAIL` is a comma-separated list of addresses. `alchemy.run.ts` binds it only when the deploy environment sets it, so set it in the Workers Builds environment of each target that should alert. Without it, failures are still logged, with a separate `model_health_check.alert_not_configured` event.
 
 ## How to verify it
 

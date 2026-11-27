@@ -25,7 +25,7 @@ export type AgentModelHealthReport = {
   durationMs: number
   /** The AI SDK finish reason, when the provider answered. */
   finishReason?: string
-  /** Sanitized failure detail: error name and clipped message, never payloads. */
+  /** Failure detail from the probe. Provider response messages are excluded. */
   detail?: string
 }
 
@@ -43,7 +43,6 @@ export type AgentModelHealthProbeInput = {
  * page the team when a model phrases "OK" differently.
  */
 const PROBE_PROMPT = 'Reply with the single word OK.'
-const MAX_DETAIL_LENGTH = 500
 const USABLE_FINISH_REASONS = new Set(['stop', 'length'])
 
 type ProbeFailure = {
@@ -144,8 +143,12 @@ export async function probeAgentModel(
  * Rejects when `signal` aborts even if the provider ignores the signal, so a
  * hung binding call cannot outlive the probe's bound.
  */
-function settleBefore<T>(signal: AbortSignal, work: Promise<T>) {
+export function settleBefore<T>(signal: AbortSignal, work: Promise<T>) {
   return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason)
+      return
+    }
     signal.addEventListener('abort', () => reject(signal.reason), {
       once: true,
     })
@@ -179,18 +182,8 @@ function classifyProviderError(cause: unknown, retired: boolean): ProbeFailure {
 }
 
 function describeError(cause: unknown) {
-  const text =
-    cause instanceof Error
-      ? `${cause.name}: ${cause.message}`
-      : typeof cause === 'string'
-        ? cause
-        : 'Unknown error'
-  const statusCode = APICallError.isInstance(cause)
-    ? ` (HTTP ${cause.statusCode ?? 'unknown'})`
-    : ''
-  const clipped =
-    text.length > MAX_DETAIL_LENGTH
-      ? `${text.slice(0, MAX_DETAIL_LENGTH)}…`
-      : text
-  return `${clipped}${statusCode}`
+  if (APICallError.isInstance(cause) && Number.isInteger(cause.statusCode)) {
+    return `Model request failed (HTTP ${cause.statusCode}).`
+  }
+  return 'Model request failed.'
 }
