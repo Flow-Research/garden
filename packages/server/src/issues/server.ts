@@ -1092,22 +1092,6 @@ export async function createIssue(
         }
         const issue = insertedIssue
 
-        await upsertIssueAssignmentInbox({
-          db: tx,
-          workspaceId: issue.workspaceId,
-          issueId: issue.id,
-          actorType: 'member',
-          actorId: parsed.data.createdBy,
-        })
-        await upsertIssueMentionInbox({
-          db: tx,
-          workspaceId: issue.workspaceId,
-          issueId: issue.id,
-          content: issue.description ?? '',
-          actorType: 'member',
-          actorId: parsed.data.createdBy,
-        })
-
         if (parsed.data.source) {
           await attachSourceBindingInTransaction(tx, {
             workspaceId: parsed.data.workspaceId,
@@ -1139,6 +1123,28 @@ export async function createIssue(
   // and receive activity. Idempotent + best-effort: a failure here must not
   // fail issue creation, which already committed above.
   const createdIssue = result.value
+  const inboxResult = await Result.tryPromise({
+    try: async () => {
+      await upsertIssueAssignmentInbox({
+        db,
+        workspaceId: createdIssue.workspaceId,
+        issueId: createdIssue.id,
+        actorType: 'member',
+        actorId: parsed.data.createdBy,
+      })
+      await upsertIssueMentionInbox({
+        db,
+        workspaceId: createdIssue.workspaceId,
+        issueId: createdIssue.id,
+        content: createdIssue.description ?? '',
+        actorType: 'member',
+        actorId: parsed.data.createdBy,
+      })
+    },
+    catch: (cause) => serviceDbError('record issue notifications', cause),
+  })
+  if (inboxResult.isErr())
+    logger.error('issue inbox upsert failed', inboxResult.error.message)
   const initialSubscribers: SubscriberEntry[] = [
     { userType: 'member', userId: parsed.data.createdBy, reason: 'creator' },
   ]

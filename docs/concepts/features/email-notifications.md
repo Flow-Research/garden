@@ -40,7 +40,9 @@ row does not create another email.
 Temporary failures keep the item queued. The dispatcher continues to later
 items after one message fails. It pauses the batch for rate limits, provider
 outages, and credential errors. A credential rejection on the first attempt
-returns the item to pending. Permanent message rejections record `failed`.
+returns the item to pending. If an earlier attempt has an unknown outcome, the
+24-hour limit still applies during an outage. These items record `failed` when
+the limit expires. Permanent message rejections also record `failed`.
 Email bodies show mention labels without editor link markup.
 
 Delivery rechecks workspace membership and Team issue visibility. Removed members,

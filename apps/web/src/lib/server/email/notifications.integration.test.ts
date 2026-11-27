@@ -235,10 +235,10 @@ describe('workspace notification email delivery', () => {
       .select()
       .from(schema.issueComment)
       .where(eq(schema.issueComment.issueId, issueId))
-    expect(comment?.mentions?.agents).toEqual([])
-    expect(new Set(comment?.mentions?.users)).toEqual(
-      new Set([authorId, recipientId]),
-    )
+    expect([
+      { users: [authorId, recipientId], agents: [] },
+      { users: [recipientId, authorId], agents: [] },
+    ]).toContainEqual(comment?.mentions)
   })
 
   it('recomputes member and agent mentions after a comment edit', async () => {
@@ -256,10 +256,10 @@ describe('workspace notification email delivery', () => {
       commentId,
       body: `${mention(recipientId)} ${mention(recipientId)} @Author [@Agent](mention://agent/${agentId})`,
     })
-    expect(updated?.mentions?.agents).toEqual([agentId])
-    expect(new Set(updated?.mentions?.users)).toEqual(
-      new Set([authorId, recipientId]),
-    )
+    expect([
+      { users: [authorId, recipientId], agents: [agentId] },
+      { users: [recipientId, authorId], agents: [agentId] },
+    ]).toContainEqual(updated?.mentions)
     const cleared = await updateIssueCommentBody(testDb.db, {
       commentId,
       body: 'No member mentions',
