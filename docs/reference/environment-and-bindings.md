@@ -3,7 +3,7 @@ title: Environment variables and Worker bindings
 description: Every binding and environment variable the Garden web Worker uses, with its type, purpose, and where the code reads it.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-26
 ---
 
 The Garden web Worker is declared twice. `apps/web/wrangler.jsonc` configures local development. `alchemy.run.ts` provisions the deployed Worker for each target in `deploy-targets.mjs`. The runtime type for both is `AppEnv` in `apps/web/src/lib/server/env.ts`. Node tooling validates a subset through `parseServerEnv` and `getServerEnv` in `packages/env/src/index.ts`.
@@ -57,9 +57,10 @@ Deployed resource names come from `deploy-targets.mjs`. See [Deploy targets](./d
 
 | Schedule        | Handler                                    | Purpose                                                       |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------- |
-| `0 */12 * * *`  | `scheduled` in `apps/web/src/server.ts`    | Calls `reconcile(env)` to repair stale issue-run ledger state. |
+| `0 */12 * * *`  | `scheduledJobs` in `apps/web/src/server.ts` | Calls `reconcile(env)` to repair stale issue-run ledger state. |
+| `0 8 * * *`     | `scheduledJobs` in `apps/web/src/server.ts` | Calls `runModelHealthCheck(env)`. See [Model health check](../concepts/features/model-health-check.md). |
 
-The same schedule is set in `apps/web/wrangler.jsonc` and `alchemy.run.ts`.
+The same schedules are set in `apps/web/wrangler.jsonc` and `alchemy.run.ts`. `apps/web/src/server.test.ts` fails when either list differs from `scheduledJobs`. A Cron pattern with no job logs `scheduled.unknown_cron` and runs nothing.
 
 ## Runtime variables and secrets
 
@@ -94,6 +95,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | `DISCORD_PUBLIC_KEY`          | Var    | No                   | Discord interaction signature key.                                  | `apps/web/src/lib/server/env.ts`                         |
 | `DISCORD_BOT_PERMISSIONS`     | Var    | No                   | Permission integer for the Discord install link.                    | `apps/web/src/lib/server/discord-install.ts`             |
 | `RESEND_API_KEY`              | Secret | Yes in deployed Workers | Sends email, such as issue-assignment mail.                     | `apps/web/src/lib/server/email/issue-assignment.ts`      |
+| `GARDEN_ALERT_EMAIL`          | Var    | No                   | Comma-separated team addresses for operational alerts, such as a failed [model health check](../concepts/features/model-health-check.md). Bound only when the deploy environment sets it. Without it, failures are only logged. | `apps/web/src/lib/server/model-health-check.ts` |
 | `EXA_API_KEY`                 | Secret | No                   | Web search for agent web tools. Without it, the tools report an unconfigured error. | `packages/agent-runtime/src/agent-tools/web.ts` |
 | `AI_GATEWAY_ID`               | Var    | Yes in deployed Workers | AI Gateway that routes Workers AI calls. Set from `aiGatewayId` in `deploy-targets.mjs`. | `packages/agent-runtime/src/run-sub-agent-base.ts` |
 | `SANDBOX_TRANSPORT`           | Var    | Yes                  | Sandbox transport. Default `rpc`.                                   | `apps/web/src/lib/server/env.ts`                         |
@@ -118,7 +120,7 @@ Leave **Request user authorization (OAuth) during installation** off. Linking a 
 
 ## Offline model variables
 
-`apps/web/wrangler.jsonc` declares these as empty `vars` so that `pnpm dev:offline` can pass them through. Deployed Workers do not set them. `packages/agent-runtime/src/model.ts` reads them.
+`apps/web/wrangler.jsonc` declares these as empty `vars` so that `pnpm dev:offline` can pass them through. Deployed Workers do not set them. `packages/agent-runtime/src/model.ts` reads them, and the daily model health check probes whichever model they select.
 
 | Name                                 | Purpose                                                |
 | ------------------------------------ | ------------------------------------------------------ |
