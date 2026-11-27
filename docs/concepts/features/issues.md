@@ -3,7 +3,7 @@ title: Issues are the shared ledger of work for people and agents
 description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-24
 ---
 
 An issue is a unit of work that a person or an agent owns. The UI calls issues Tasks and shows them at `/tasks`. Assigning an issue to an agent turns it into a run: the agent works on the issue in the background, records what it did, and returns reviewable outputs to the same issue.
@@ -70,7 +70,7 @@ The facet also enforces the agent's `run_timeout_sec`. Token and cost usage accu
 
 An issue can carry source bindings. `packages/server/src/issues/source-binding.ts` attaches and lists them. During a run the agent reads the bound item with the `read_source` tool from `packages/agent-runtime/src/agent-tools/read-source.ts`, so it works from the original pull request, message, or email thread instead of a pasted summary.
 
-The run returns its results as work products. The `create_work_product` and `revise_work_product` tools write `issue_work_product` rows. A work product is a reviewable deliverable such as a report, checklist, plan, or proposed change. `apps/web/src/lib/server/work-products.ts` handles review and apply.
+The run returns its results as work products. The `create_work_product` and `revise_work_product` tools write `issue_work_product` rows. A work product is a reviewable deliverable such as a report, checklist, plan, or proposed change. `apps/web/src/lib/server/work-products.ts` handles review and apply. The task page's **Activity** tab shows work-product cards followed by system activity (status changes, run failures); comments and agent replies live in the **Comments** tab, and Activity links to each agent reply.
 
 Approving a work product offers two choices, and the review request must name one through the required `close_issue` flag. **Approve** (`close_issue: false`) marks the work product approved and moves an `in_review` issue back to `in_progress`, so the issue stays open and a later `@Garden` comment can start a follow-up run. **Approve and close** (`close_issue: true`) moves an `in_review` issue to `done`. Comment wakeups skip `done` issues, so closing ends agent follow-ups until someone reopens the issue. Both choices leave an issue in any other status unchanged.
 
@@ -105,6 +105,41 @@ Computing the Inbox keeps it consistent with the data it summarizes. An item dis
 While a run is active, the issue queries in `apps/web/src/lib/issues/queries.ts` refetch every two seconds (`refetchInterval: 2000`). Issue and comment changes outside a run reach the client through the workspace realtime hub. `apps/web/src/lib/realtime/invalidation.ts` turns `issue:*` and `comment:*` events into query invalidations. The [realtime](../architecture/realtime.md) page explains why the hub only tells clients to refetch.
 
 The issue UI lives in `apps/web/src/features/issues/components`.
+
+## Task detail keeps the history and conversation together
+
+Task detail uses a centered column with an editable title and description. The
+column and its loading wrapper shrink to the available width. Long titles wrap
+in an auto-sizing text field, and Enter finishes editing. On phones, header
+actions use a separate row, conversation metadata wraps, and the properties
+sheet fits the viewport with a visible Close button. Status,
+priority, and due date are editable badges below the description, alongside
+reactions and attachment upload. The header provides **New Sub-task**, the
+existing actions menu, and a properties toggle. The properties rail retains
+assignee, project, parent task, creation details, and debug usage information.
+
+**Activity** shows work-product cards, then system activity such as status
+changes and run failures. Each agent reply also appears there as one
+"<agent> replied" row; selecting it opens **Comments** and highlights the reply.
+**Comments** shows every comment, agent replies included, with threaded replies,
+a count derived from the loaded timeline, and the composer below the thread.
+Switching tabs
+keeps the top-level comment draft. A comment focus link opens Comments directly.
+Subscribers can subscribe or unsubscribe and manage other participants beside
+the tabs. The tabs and subscriber controls stick beneath the task header once
+scrolled into view, keeping navigation available through a long conversation.
+
+Comment cards place the avatar beside author and time, with the action menu at
+the top right. Reactions and Reply sit below the body, followed by an inset
+divider. Collapse and expand live in the action menu alongside existing copy,
+edit, and delete actions. Comment bodies, metadata, and actions wrap on phones.
+
+Agent runs, questions, approvals, plans, and reviewable outputs stay above the
+tabs so either view can reach them. Composer instructions describe an agent run
+only when the task is assigned to an agent. Tasks without an agent use a normal
+comment composer. Empty activity describes task updates rather than scheduled
+automation runs. Meeting cards and other sample content from design mockups are
+not task features.
 
 ## Automations do not create issues
 

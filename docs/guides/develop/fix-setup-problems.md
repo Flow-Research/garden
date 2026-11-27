@@ -58,7 +58,7 @@ Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare
 
 ## Workers AI does not respond
 
-If a run fails with "The configured AI model was retired by its provider", Cloudflare has removed the model that Garden is configured to use. Update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts` to a supported model.
+If a run fails with "The configured AI model was retired by its provider", Cloudflare has removed the model that Garden is configured to use. Update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts` to a supported model. Deployed targets report this daily through the [model health check](../../concepts/features/model-health-check.md).
 
 Run `wrangler whoami` again. Confirm that `CLOUDFLARE_ACCOUNT_ID` matches the signed-in account. If the account is not on the Workers paid plan, use `pnpm dev:offline`.
 

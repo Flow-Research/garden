@@ -26,6 +26,18 @@ const serverSchema = {
   SLACK_CLIENT_ID: z.string().min(1).optional(),
   SLACK_CLIENT_SECRET: z.string().min(1).optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
+  // Comma-separated team addresses for operational alerts, such as the daily
+  // model health check. Optional: without it the check still logs failures.
+  GARDEN_ALERT_EMAIL: z
+    .string()
+    .refine(
+      (value) =>
+        value
+          .split(',')
+          .every((entry) => z.email().safeParse(entry.trim()).success),
+      'GARDEN_ALERT_EMAIL must be a comma-separated list of email addresses',
+    )
+    .optional(),
   // Optional: absent in environments that don't need web search. The web tools
   // report an unconfigured error to the model rather than failing the turn.
   EXA_API_KEY: z.string().min(1).optional(),
