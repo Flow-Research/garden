@@ -58,6 +58,10 @@ Older planning documents used `ask_always`, `ask_on_risky`, and `never_ask`. Tho
 
 `packages/agent-runtime/src/runtime-mcp-controller.ts` wraps each MCP tool with a `needsApproval` check. For a connector call, it looks up the capability's risk class and the grant's trust level. If no grant row exists, it uses the same risk-based default that Executor and the Connectors page use (`defaultTrustLevelForRisk`), so read tools do not raise stale approval cards. Calls routed through Executor are resolved to their connector first and then checked the same way.
 
+Capability sync reads both org and user tools from the trusted Executor catalog. Garden syncs after an authorized org OAuth callback, credential connection, keyless connection, or refresh. It uses the current member and workspace for the catalog read and grant attribution. Org connections do not create personal account mirrors. A catalog tool marked `requiresApproval` gets the `send_external` risk class, so its default trust level asks for approval. If org and user connections expose the same tool name, the stricter catalog approval wins. Team policy can still add approval requirements.
+
+If the capability row is missing, the runtime denies the call. It cannot create an approval request without a capability ID. A later sync can make a known org or user tool available. An unknown tool remains denied.
+
 An approval surfaces in the chat timeline through `apps/web/src/features/chat/use-tool-approvals.ts` and in the Inbox as a `permission_request`. Approval decisions write `tool_call_audit` rows (`packages/db/src/schema/audit.ts`) through `apps/web/src/lib/server/permission-request.ts`, and the agent and connector activity routes read them. You manage grants on the Connectors page, `apps/web/src/features/connections/components/connections-page.tsx`.
 
 ## Codemode and the container sandbox are separate surfaces

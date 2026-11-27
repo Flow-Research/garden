@@ -1,5 +1,5 @@
 import { Effect, Schema } from 'effect'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getConnectorById } from '@garden/connectors'
 import { isMcpConnector, isNativeConnector } from '@garden/connectors/sdk'
 import {
@@ -9,7 +9,7 @@ import {
 } from '@garden/connectors/capabilities'
 import { getDb, schema } from './db'
 import { appEnv } from './env'
-import { loadExecutorCatalog } from './executor-runtime'
+import { loadExecutorCatalog, type ExecutorCatalog } from './executor-runtime'
 import { createGardenLogger } from '@garden/observability/logger'
 
 const logger = createGardenLogger({
@@ -212,6 +212,22 @@ function dedupeCapabilityRows(
   )
 }
 
+/** Projects tools visible to this Executor subject into global capability names. */
+export function executorToolsForCapabilitySync(
+  tools: ExecutorCatalog['tools'],
+  executorSlug: string,
+) {
+  const byName = new Map<string, ExecutorCatalog['tools'][number]>()
+  for (const tool of tools) {
+    if (tool.integration !== executorSlug) continue
+    const existing = byName.get(tool.name)
+    if (!existing || (!existing.requiresApproval && tool.requiresApproval)) {
+      byName.set(tool.name, tool)
+    }
+  }
+  return [...byName.values()]
+}
+
 type CapabilityToolLike = {
   name: string
   description?: string | null
@@ -235,6 +251,12 @@ const toCapabilityValue = Effect.fn('CapabilitySync.toCapabilityValue')(
       })
     }
 
+    const risks: RiskClass[] = ['destructive', 'send_external', 'write', 'read']
+    const riskClass =
+      risks.find(
+        (risk) =>
+          risk === args.riskOverride || risk === classification?.riskClass,
+      ) ?? 'ask'
     const inputSchema = args.tool.inputSchema ?? null
     return {
       id: crypto.randomUUID(),
@@ -250,7 +272,7 @@ const toCapabilityValue = Effect.fn('CapabilitySync.toCapabilityValue')(
         (isMcpConnector(connector) && connector.oauth
           ? connector.oauth.scopes
           : []),
-      riskClass: args.riskOverride ?? classification?.riskClass ?? 'ask',
+      riskClass,
     } satisfies typeof schema.capability.$inferInsert
   },
 )
@@ -286,18 +308,15 @@ export const syncCapabilities = Effect.fn('CapabilitySync.sync')(function* (
       ),
     )
     const liveRows: Array<typeof schema.capability.$inferInsert> = []
-    for (const tool of catalog.tools) {
-      if (
-        tool.integration !== connector.executorSlug ||
-        tool.owner !== 'user'
-      ) {
-        continue
-      }
+    for (const tool of executorToolsForCapabilitySync(
+      catalog.tools,
+      connector.executorSlug,
+    )) {
       liveRows.push(
         yield* toCapabilityValue({
           connectorId,
           tool: { name: tool.name, description: tool.description },
-          riskOverride: tool.requiresApproval ? 'write' : 'read',
+          riskOverride: tool.requiresApproval ? 'send_external' : 'read',
         }),
       )
     }
@@ -306,6 +325,7 @@ export const syncCapabilities = Effect.fn('CapabilitySync.sync')(function* (
       capabilityRows: dedupeCapabilityRows(liveRows),
       userId,
       workspaceId,
+      canonical: false,
     })
   }
 
@@ -333,6 +353,7 @@ export const syncCapabilities = Effect.fn('CapabilitySync.sync')(function* (
     capabilityRows: dedupeCapabilityRows(discoveredCapabilityRows),
     userId,
     workspaceId,
+    canonical: true,
   })
 })
 
@@ -342,8 +363,9 @@ const persistCapabilityRows = Effect.fn('CapabilitySync.persist')(
     capabilityRows: Array<typeof schema.capability.$inferInsert>
     userId: string
     workspaceId: string
+    canonical: boolean
   }) {
-    const { connectorId, capabilityRows, userId, workspaceId } = args
+    const { connectorId, capabilityRows, userId, workspaceId, canonical } = args
     const db = yield* Effect.tryPromise({
       try: async () => getDb(appEnv),
       catch: (cause) =>
@@ -368,14 +390,23 @@ const persistCapabilityRows = Effect.fn('CapabilitySync.persist')(
                   schema.capability.connectorType,
                   schema.capability.name,
                 ],
-                set: {
-                  description: capability.description,
-                  inputSchema: capability.inputSchema,
-                  outputSchema: capability.outputSchema,
-                  schemaHash: capability.schemaHash,
-                  requiredScopes: capability.requiredScopes,
-                  riskClass: capability.riskClass,
-                },
+                set: canonical
+                  ? {
+                      description: capability.description,
+                      inputSchema: capability.inputSchema,
+                      outputSchema: capability.outputSchema,
+                      schemaHash: capability.schemaHash,
+                      requiredScopes: capability.requiredScopes,
+                      riskClass: capability.riskClass,
+                    }
+                  : {
+                      riskClass: sql`case
+                        when ${schema.capability.riskClass} = 'destructive' or ${capability.riskClass} = 'destructive' then 'destructive'
+                        when ${schema.capability.riskClass} = 'send_external' or ${capability.riskClass} = 'send_external' then 'send_external'
+                        when ${schema.capability.riskClass} = 'write' or ${capability.riskClass} = 'write' then 'write'
+                        else 'read'
+                      end`,
+                    },
               }),
           catch: (cause) =>
             new CapabilitySyncError({
@@ -410,17 +441,23 @@ const persistCapabilityRows = Effect.fn('CapabilitySync.persist')(
         }),
     })
 
-    if (capabilityRows.length === 0 && existingCapabilities.length > 0) {
+    if (
+      canonical &&
+      capabilityRows.length === 0 &&
+      existingCapabilities.length > 0
+    ) {
       yield* Effect.sync(() =>
         logger.warn('capability_sync.empty_prune_refused', { connectorId }),
       )
       return
     }
 
-    const staleCapabilityIds = existingCapabilities
-      .filter((capability) => !toolNames.includes(capability.name))
-      .map((capability) => capability.id)
-    yield* deleteStaleCapabilityDependencies(staleCapabilityIds)
+    const staleCapabilityIds = canonical
+      ? existingCapabilities
+          .filter((capability) => !toolNames.includes(capability.name))
+          .map((capability) => capability.id)
+      : []
+    if (canonical) yield* deleteStaleCapabilityDependencies(staleCapabilityIds)
 
     if (staleCapabilityIds.length > 0) {
       yield* Effect.tryPromise({
@@ -441,7 +478,7 @@ const persistCapabilityRows = Effect.fn('CapabilitySync.persist')(
 
     yield* seedDefaultPermissionGrants({
       capabilities: existingCapabilities
-        .filter((capability) => !staleCapabilityIds.includes(capability.id))
+        .filter((capability) => toolNames.includes(capability.name))
         .map((capability) => ({
           id: capability.id,
           riskClass: capability.riskClass,

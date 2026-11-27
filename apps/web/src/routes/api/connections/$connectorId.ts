@@ -6,6 +6,7 @@ import {
 } from '@garden/connectors/github-app'
 import { eq } from 'drizzle-orm'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
+import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import {
   AuthTemplateSlug,
   ConnectionName,
@@ -202,6 +203,32 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
           return badRequest(
             'The provider rejected these credentials or tool sync failed',
           )
+        }
+        if (bodyResult.value.owner === 'org') {
+          const connector = getConnectorByExecutorSlug(params.connectorId)
+          if (connector) {
+            const synced = await Effect.runPromise(
+              Effect.result(
+                syncCapabilities(
+                  connector.id,
+                  workspaceContext.session.user.id,
+                  workspaceContext.workspaceId,
+                ),
+              ),
+            )
+            if (Result.isFailure(synced)) {
+              await captureApiFailure({
+                request,
+                event: 'executor.connection.capability_sync_failed',
+                error: synced.failure,
+                level: 'warn',
+              })
+              return Response.json(
+                { error: 'Connector tool sync failed' },
+                { status: 502 },
+              )
+            }
+          }
         }
         capturePostHogEvent(appContext, {
           distinctId: workspaceContext.session.user.id,
@@ -709,6 +736,35 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
         }
         if (outcome.kind === 'credentials-required') {
           return badRequest('This integration requires credentials')
+        }
+        if (
+          bodyResult.value.action === 'connect' ||
+          bodyResult.value.action === 'resync'
+        ) {
+          const connector = getConnectorByExecutorSlug(params.connectorId)
+          if (connector) {
+            const synced = await Effect.runPromise(
+              Effect.result(
+                syncCapabilities(
+                  connector.id,
+                  workspaceContext.session.user.id,
+                  workspaceContext.workspaceId,
+                ),
+              ),
+            )
+            if (Result.isFailure(synced)) {
+              await captureApiFailure({
+                request,
+                event: 'executor.connection.capability_sync_failed',
+                error: synced.failure,
+                level: 'warn',
+              })
+              return Response.json(
+                { error: 'Connector tool sync failed' },
+                { status: 502 },
+              )
+            }
+          }
         }
         capturePostHogEvent(appContext, {
           distinctId: workspaceContext.session.user.id,

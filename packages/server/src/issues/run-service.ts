@@ -29,6 +29,10 @@ import {
   type RunWorkflowBinding,
   type RunWorkflowControlEvent,
 } from '../runtime-bindings'
+import {
+  canCommentResumeRun,
+  resolveRunConnectorIdentity,
+} from './run-connector-identity'
 
 export class IssueRunServiceError extends TaggedError('IssueRunServiceError')<{
   code:
@@ -85,6 +89,12 @@ export type StartIssueRunInput = {
     correlationId?: string
   }
   actor: { type: 'member' | 'agent' | 'system'; id: string }
+  /**
+   * For agent actors: the member the agent was acting for (the chat owner, or
+   * the member behind the parent run). Decides the run's per-member
+   * connections; see `resolveRunConnectorIdentity` (#383).
+   */
+  onBehalfOfUserId?: string | null
 }
 
 export type IssueRunEnv = {
@@ -724,6 +734,7 @@ export async function startIssueRun(
   }
 
   const runId = crypto.randomUUID()
+  const connectorIdentity = resolveRunConnectorIdentity(input)
   const writeResult = await Result.tryPromise({
     try: async () =>
       await db.transaction(async (tx) => {
@@ -738,6 +749,7 @@ export async function startIssueRun(
             agentId: schema.issueRun.agentId,
             issueId: schema.issueRun.issueId,
             workflowInstanceId: schema.issueRun.workflowInstanceId,
+            contextSnapshot: schema.issueRun.contextSnapshot,
           })
           .from(schema.issueRun)
           .where(
@@ -750,14 +762,29 @@ export async function startIssueRun(
           .limit(1)
 
         if (activeRun) {
-          if (
+          const canResume =
             canResumeWaitingRun({
               agentId: input.agentId,
               runAgentId: activeRun.agentId,
               runStatus: activeRun.status as IssueRunStatus,
               source: input.source,
-            })
-          ) {
+            }) && canCommentResumeRun(activeRun.contextSnapshot, input.actor)
+          const [comment] =
+            canResume && input.trigger?.commentId
+              ? await tx
+                  .select({ id: schema.issueComment.id })
+                  .from(schema.issueComment)
+                  .where(
+                    and(
+                      eq(schema.issueComment.id, input.trigger.commentId),
+                      eq(schema.issueComment.issueId, input.issueId),
+                      eq(schema.issueComment.authorType, 'user'),
+                      eq(schema.issueComment.authorId, input.actor.id),
+                    ),
+                  )
+                  .limit(1)
+              : []
+          if (comment) {
             await tx.execute(sql`
               select pg_advisory_xact_lock(hashtextextended(${activeRun.id}::text, 0))
             `)
@@ -804,6 +831,7 @@ export async function startIssueRun(
             source: input.source,
             trigger: input.trigger ?? {},
             actor: input.actor,
+            connectorIdentity,
           },
         })
         await tx
@@ -823,6 +851,7 @@ export async function startIssueRun(
           payload: {
             source: input.source,
             actor: input.actor,
+            connector_identity: connectorIdentity,
           },
         })
 

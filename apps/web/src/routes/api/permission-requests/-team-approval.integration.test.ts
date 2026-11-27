@@ -133,6 +133,60 @@ describe('Team owner approvals (integration)', () => {
     expect(await statusOf(requestId)).toBe('approved')
   })
 
+  it('keeps other run and Team approvals pending when an admin resolves one request', async () => {
+    const { fixture, requestId, technicalId } = await seed()
+    const [original] = await testDb.db
+      .select()
+      .from(schema.permissionRequest)
+      .where(eq(schema.permissionRequest.id, requestId))
+    if (!original) throw new Error('Missing reference approval')
+    const issueId = randomUUID()
+    await testDb.db.insert(schema.issue).values({
+      id: issueId,
+      workspaceId: fixture.workspaceId,
+      number: 455,
+      title: 'Independent approvals',
+      createdBy: fixture.adminId,
+    })
+    const runs = [randomUUID(), randomUUID()]
+    await testDb.db.insert(schema.issueRun).values(
+      runs.map((id) => ({
+        id,
+        workspaceId: fixture.workspaceId,
+        issueId,
+        agentId: fixture.activeAgentId,
+        hostName: fixture.activeAgentId,
+        status: 'waiting_for_approval',
+        triggerSource: 'manual',
+      })),
+    )
+    await testDb.db
+      .update(schema.permissionRequest)
+      .set({ issueId, runId: runs[0], context: 'current' })
+      .where(eq(schema.permissionRequest.id, requestId))
+    const others = [
+      { runId: runs[1], teamId: technicalId, context: 'current' },
+      { runId: runs[0], teamId: null, context: 'current' },
+      { runId: runs[0], teamId: technicalId, context: 'different' },
+    ].map((scope) => ({
+      ...original,
+      ...scope,
+      issueId,
+      id: randomUUID(),
+      toolCallId: randomUUID(),
+    }))
+    await testDb.db.insert(schema.permissionRequest).values(others)
+    const response = await resolveAs({
+      userId: fixture.adminId,
+      role: 'admin',
+      workspaceId: fixture.workspaceId,
+      requestId,
+    })
+    expect(response.status).toBe(200)
+    expect(await statusOf(requestId)).toBe('approved')
+    for (const row of others) expect(await statusOf(row.id)).toBe('pending')
+  })
+
   it('follows an ownership transfer to the new owner', async () => {
     const { fixture, technicalId, technicalOwnerId, requestId } = await seed()
     const newOwnerId = await seedUser(testDb, fixture.workspaceId, 'member')

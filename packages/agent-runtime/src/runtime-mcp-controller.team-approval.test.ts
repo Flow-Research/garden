@@ -197,6 +197,32 @@ describe('Team policy approvals (integration)', () => {
     expect(inbox.map((item) => item.recipientId)).toContain(seeded.teamOwnerId)
   })
 
+  it('checks the current Team policy again when an approved call resumes', async () => {
+    const seeded = await seed()
+    await seedTeam(seeded, 'Technical', { approval_required: ['write'] })
+    const toolCallId = `policy-change-${randomUUID()}`
+    expect(await needsApproval(seeded, seeded.actingUserId, toolCallId)).toBe(
+      true,
+    )
+    const request = await requestFor(toolCallId)
+    if (!request) throw new Error('Approval request missing')
+    await testDb.db
+      .update(schema.permissionRequest)
+      .set({
+        status: 'approved',
+        resolvedAt: new Date(),
+        resolvedBy: seeded.teamOwnerId,
+      })
+      .where(eq(schema.permissionRequest.id, request.id))
+    expect(await needsApproval(seeded, seeded.actingUserId, toolCallId)).toBe(
+      false,
+    )
+    await seedTeam(seeded, 'Finance', { approval_required: ['write'] })
+    expect(await needsApproval(seeded, seeded.actingUserId, toolCallId)).toBe(
+      true,
+    )
+  })
+
   it('requires workspace approval when more than one Team holds a call', async () => {
     const seeded = await seed()
     await seedTeam(seeded, 'Finance', {
@@ -216,6 +242,36 @@ describe('Team policy approvals (integration)', () => {
       .from(schema.inboxItem)
       .where(eq(schema.inboxItem.itemKey, `approval:${request?.id}`))
     expect(inbox.map((item) => item.recipientId)).toEqual([seeded.adminId])
+  })
+
+  it('requires a new approval when a Team is replaced by one with the same name', async () => {
+    const seeded = await seed()
+    const replaced = await seedTeam(seeded, 'Finance', {
+      approval_required: ['write'],
+    })
+    await seedTeam(seeded, 'Technical', { approval_required: ['write'] })
+    const toolCallId = `replaced-${randomUUID()}`
+    expect(await needsApproval(seeded, seeded.actingUserId, toolCallId)).toBe(
+      true,
+    )
+    const request = await requestFor(toolCallId)
+    if (!request) throw new Error('Approval request missing')
+    await testDb.db
+      .update(schema.permissionRequest)
+      .set({
+        status: 'approved',
+        resolvedAt: new Date(),
+        resolvedBy: seeded.adminId,
+      })
+      .where(eq(schema.permissionRequest.id, request.id))
+    expect(await needsApproval(seeded, seeded.actingUserId, toolCallId)).toBe(
+      false,
+    )
+    await testDb.db.delete(schema.team).where(eq(schema.team.id, replaced))
+    await seedTeam(seeded, 'Finance', { approval_required: ['write'] })
+    expect(await needsApproval(seeded, seeded.actingUserId, toolCallId)).toBe(
+      true,
+    )
   })
 
   it('does not hold classes the Team leaves on agent settings', async () => {

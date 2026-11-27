@@ -1,5 +1,5 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { canonicalJsonString } from '@garden/connectors/capabilities'
 import { schema, type Db } from './db'
 
@@ -11,6 +11,10 @@ type PermissionRequestRow = {
   capabilityId: string | null
   argsJson: unknown
   issueId: string | null
+  runId: string | null
+  threadId: string | null
+  teamId: string | null
+  context: string | null
   toolCallId: string
 }
 
@@ -21,7 +25,11 @@ type ConnectorWritePermissionRequestRow = PermissionRequestRow & {
 export class PermissionRequestServiceError extends TaggedError(
   'PermissionRequestServiceError',
 )<{
-  code: 'database_failed' | 'hash_failed' | 'permission_request_not_found'
+  code:
+    | 'database_failed'
+    | 'hash_failed'
+    | 'permission_request_not_found'
+    | 'permission_request_changed'
   status: number
   message: string
   cause?: unknown
@@ -107,6 +115,10 @@ async function loadReferenceRequest(
           capabilityId: schema.permissionRequest.capabilityId,
           argsJson: schema.permissionRequest.argsJson,
           issueId: schema.permissionRequest.issueId,
+          runId: schema.permissionRequest.runId,
+          threadId: schema.permissionRequest.threadId,
+          teamId: schema.permissionRequest.teamId,
+          context: schema.permissionRequest.context,
           toolCallId: schema.permissionRequest.toolCallId,
         })
         .from(schema.permissionRequest)
@@ -183,6 +195,10 @@ async function loadMatchingPendingRequests(args: {
             eq(schema.permissionRequest.kind, 'connector_write'),
             isNotNull(schema.permissionRequest.capabilityId),
             eq(schema.permissionRequest.status, 'pending'),
+            sql`${schema.permissionRequest.runId} is not distinct from ${args.referenceRequest.runId}`,
+            sql`${schema.permissionRequest.threadId} is not distinct from ${args.referenceRequest.threadId}`,
+            sql`${schema.permissionRequest.teamId} is not distinct from ${args.referenceRequest.teamId}`,
+            sql`${schema.permissionRequest.context} is not distinct from ${args.referenceRequest.context}`,
             issueScope,
             args.teamId
               ? eq(schema.permissionRequest.teamId, args.teamId)
@@ -305,12 +321,25 @@ export async function resolveConnectorWritePermissionRequests(
             resolvedBy: input.actorUserId,
             resolvedAt,
           })
-          .where(inArray(schema.permissionRequest.id, matchingRequestIds))
+          .where(
+            and(
+              inArray(schema.permissionRequest.id, matchingRequestIds),
+              eq(schema.permissionRequest.status, 'pending'),
+            ),
+          )
           .returning({
             argsJson: schema.permissionRequest.argsJson,
             capabilityId: schema.permissionRequest.capabilityId,
             toolCallId: schema.permissionRequest.toolCallId,
           })
+        if (updated.length !== matchingRequestIds.length) {
+          throw new PermissionRequestServiceError({
+            code: 'permission_request_changed',
+            status: 409,
+            message:
+              'A permission request already has a decision. Refresh to see its status.',
+          })
+        }
         if (auditRows.length > 0) {
           await tx.insert(schema.toolCallAudit).values(auditRows)
         }

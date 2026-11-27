@@ -110,7 +110,9 @@ export function ConnectionsPage({
         return
       }
       if (event.data.ok === true) {
-        toast.success('Connection authorized')
+        if (typeof event.data.warning === 'string')
+          toast.warning(event.data.warning)
+        else toast.success('Connection authorized')
         void refreshConnections()
       } else {
         toast.error(

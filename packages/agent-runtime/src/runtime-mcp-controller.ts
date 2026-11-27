@@ -217,11 +217,13 @@ export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
  */
 function permissionRequestContext(
   toolLabel: string,
-  teams: readonly { teamName: string }[],
+  teams: readonly { teamId: string; teamName: string }[],
 ) {
   if (teams.length <= 1) return toolLabel
-  const names = teams.map((team) => team.teamName).join(', ')
-  return `${toolLabel} (required by ${names} Team policies)`
+  const labels = [...teams]
+    .sort((left, right) => left.teamId.localeCompare(right.teamId))
+    .map((team) => `${team.teamName} [${team.teamId}]`)
+  return `${toolLabel} (required by ${labels.join(', ')} Team policies)`
 }
 
 export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
@@ -240,7 +242,18 @@ export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
 export type ThreadRuntimeIdentity = {
   threadId: string
   workspaceId: string
+  /**
+   * The member the runtime is attributed to: the chat thread owner, or the
+   * agent owner for issue and automation runs. Team agent policy reads this.
+   */
   userId: string
+  /**
+   * The member whose per-member connections (OAuth accounts, Executor
+   * credentials) the runtime may use. Chat uses the thread owner. Issue runs
+   * use the triggering member, or `null` when no member is behind the run
+   * (#383). It is never filled with another person as a stand-in.
+   */
+  connectorUserId: string | null
   agentId: string
   issueId?: string
   runId?: string
@@ -260,12 +273,27 @@ export function buildExecutorMcpServerName(identity: ThreadRuntimeIdentity) {
   return [
     'executor',
     identity.workspaceId,
-    identity.userId,
+    executorSubjectFor(identity),
     identity.agentId,
     identity.threadId,
     identity.issueId ?? 'chat',
     identity.runId ?? 'session',
   ].join(':')
+}
+
+/**
+ * Executor subject for a runtime. Executor shows a session every `org`
+ * connection in its tenant plus the `user` connections whose subject matches
+ * (`ownerVisibilityCondition` in @executor-js/sdk 1.5.40). The subject
+ * therefore decides whose personal credentials a tool call can reach. Before
+ * #383 issue runs used the agent owner here. A run with no member behind it
+ * now gets an agent-scoped subject that owns no connections, so it keeps the
+ * workspace's org connections and sees no person's user connections.
+ */
+export function executorSubjectFor(
+  identity: Pick<ThreadRuntimeIdentity, 'connectorUserId' | 'agentId'>,
+) {
+  return identity.connectorUserId ?? `no-member:${identity.agentId}`
 }
 
 type StoredConnectorServerRowRecord = {
@@ -281,7 +309,7 @@ type StoredConnectorServerRowRecord = {
 export type McpHostEnv = {
   BETTER_AUTH_SECRET: string
   BETTER_AUTH_URL: string
-  HYPERDRIVE: Hyperdrive
+  HYPERDRIVE: Pick<Hyperdrive, 'connectionString'>
   DISCORD_BOT_TOKEN?: string
   GITHUB_APP_ID?: string
   GITHUB_CLIENT_ID?: string
@@ -1323,7 +1351,12 @@ export class RuntimeMcpController {
 
     const capability = capabilityResult.value[0]
     if (!capability) {
-      return Result.ok(false)
+      return Result.err(
+        new RuntimeMcpError({
+          code: 'permission_denied',
+          message: `Capability ${args.connectorId}.${args.toolName} is unavailable.`,
+        }),
+      )
     }
 
     // Team policy can only add approvals, so it is read before any rule that
@@ -1349,7 +1382,16 @@ export class RuntimeMcpController {
       capability.riskClass,
     )
 
+    // Discovered Executor tools use send_external for a mandatory catalog
+    // approval. Grants created while the tool was read-only cannot remove it.
+    const connector = getConnectorById(args.connectorId)
+    const catalogRequiresApproval =
+      connector !== undefined &&
+      !isNativeConnector(connector) &&
+      capability.riskClass === 'send_external'
+
     if (
+      !catalogRequiresApproval &&
       !teamApproval &&
       args.shouldAutoApprove?.({
         connectorId: args.connectorId,
@@ -1360,6 +1402,13 @@ export class RuntimeMcpController {
       return Result.ok(false)
     }
 
+    const requiredTeamId = teamApproval?.otherTeams.length
+      ? null
+      : (teamApproval?.team.teamId ?? null)
+    const requiredContext = permissionRequestContext(
+      `${args.connectorId}.${args.toolName}`,
+      teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
+    )
     const toolArgsSignature = canonicalJsonString(args.toolArgs)
     const existingRequestResult = await Result.tryPromise({
       try: async () =>
@@ -1367,6 +1416,9 @@ export class RuntimeMcpController {
           .select({
             argsJson: schema.permissionRequest.argsJson,
             status: schema.permissionRequest.status,
+            runId: schema.permissionRequest.runId,
+            teamId: schema.permissionRequest.teamId,
+            context: schema.permissionRequest.context,
           })
           .from(schema.permissionRequest)
           .where(
@@ -1393,7 +1445,11 @@ export class RuntimeMcpController {
     if (existingRequestResult.isErr()) return existingRequestResult
 
     const existingRequest = existingRequestResult.value.find(
-      (request) => canonicalJsonString(request.argsJson) === toolArgsSignature,
+      (request) =>
+        request.runId === (identityResult.value.runId ?? null) &&
+        request.teamId === requiredTeamId &&
+        request.context === requiredContext &&
+        canonicalJsonString(request.argsJson) === toolArgsSignature,
     )
     if (existingRequest?.status === 'pending') {
       return Result.ok(true)
@@ -1467,7 +1523,7 @@ export class RuntimeMcpController {
       connectionTrust: connectionGrantResult.value[0]?.trustLevel,
       riskClass: capability.riskClass,
     })
-    if (trustLevel !== 'ask' && !teamApproval) {
+    if (trustLevel !== 'ask' && !teamApproval && !catalogRequiresApproval) {
       return Result.ok(false)
     }
 
@@ -1478,6 +1534,7 @@ export class RuntimeMcpController {
             argsJson: schema.permissionRequest.argsJson,
             resolvedAt: schema.permissionRequest.resolvedAt,
             status: schema.permissionRequest.status,
+            runId: schema.permissionRequest.runId,
             teamId: schema.permissionRequest.teamId,
             context: schema.permissionRequest.context,
           })
@@ -1508,17 +1565,11 @@ export class RuntimeMcpController {
       if (request.status !== 'approved' || !request.resolvedAt) {
         return false
       }
+      if (request.runId !== (identityResult.value.runId ?? null)) return false
 
       return (
-        request.teamId ===
-          (teamApproval?.otherTeams.length
-            ? null
-            : (teamApproval?.team.teamId ?? null)) &&
-        request.context ===
-          permissionRequestContext(
-            `${args.connectorId}.${args.toolName}`,
-            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
-          ) &&
+        request.teamId === requiredTeamId &&
+        request.context === requiredContext &&
         Date.now() - request.resolvedAt.getTime() <=
           PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
         canonicalJsonString(request.argsJson) === toolArgsSignature
@@ -1536,13 +1587,8 @@ export class RuntimeMcpController {
           agentId: identityResult.value.agentId,
           capabilityId: capability.id,
           runId: identityResult.value.runId ?? null,
-          context: permissionRequestContext(
-            `${args.connectorId}.${args.toolName}`,
-            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
-          ),
-          teamId: teamApproval?.otherTeams.length
-            ? null
-            : (teamApproval?.team.teamId ?? null),
+          context: requiredContext,
+          teamId: requiredTeamId,
           issueId: identityResult.value.issueId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,
@@ -1692,6 +1738,7 @@ export class RuntimeMcpController {
       threadId,
       workspaceId: thread.workspaceId,
       userId: thread.userId,
+      connectorUserId: thread.userId,
       agentId: thread.agentId,
     } satisfies ThreadRuntimeIdentity)
   }
@@ -1713,7 +1760,7 @@ export class RuntimeMcpController {
             const value = (this.host.env as Record<string, unknown>)[name]
             return typeof value === 'string' ? value : undefined
           },
-          userId: identity.userId,
+          userId: identity.connectorUserId,
           workspaceId: identity.workspaceId,
         }),
       catch: (cause) =>
@@ -1844,7 +1891,7 @@ export class RuntimeMcpController {
         props: {
           session: {
             organizationId: identityResult.value.workspaceId,
-            userId: identityResult.value.userId,
+            userId: executorSubjectFor(identityResult.value),
             elicitationMode: 'model',
             resource: { kind: 'default' },
             ...(this.host.env.BETTER_AUTH_URL
@@ -1928,6 +1975,11 @@ export class RuntimeMcpController {
 
     const identityResult = await this.resolveRuntimeIdentity()
     if (identityResult.isErr()) return identityResult
+    // Capability sync lists tools with a member's Executor credentials and
+    // records that member as the grantor. A run with no member behind it has
+    // neither, so it leaves the catalog to member-backed runtimes (#383).
+    const connectorUserId = identityResult.value.connectorUserId
+    if (connectorUserId === null) return Result.ok(undefined)
 
     const endpoint = new URL(
       '/api/internal/capability-sync',
@@ -1947,7 +1999,7 @@ export class RuntimeMcpController {
               },
               body: JSON.stringify({
                 connectorId,
-                userId: identityResult.value.userId,
+                userId: connectorUserId,
                 workspaceId: identityResult.value.workspaceId,
               }),
             })
