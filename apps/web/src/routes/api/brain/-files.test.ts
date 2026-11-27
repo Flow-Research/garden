@@ -16,7 +16,10 @@ import { makeWebBrainLive } from '@garden/brain/services/web'
 import type { AppRequestContext } from '@/lib/server/context'
 import { postBrainFileUpload, getBrainFiles } from './files'
 import { getBrainFileExtractedText } from './files/$id/text'
-import { overwriteBrainFile } from '@/lib/server/brain-file-upload'
+import {
+  overwriteBrainFile,
+  saveBrainFileUpload,
+} from '@/lib/server/brain-file-upload'
 
 const FIXTURES = resolve(process.cwd(), '../../packages/brain/fixtures/docs')
 
@@ -1281,6 +1284,48 @@ describe('overwriteBrainFile', () => {
     expect(files.objects.get(r2Key)).toEqual(original)
     expect(mockBrainItems.get(item.id)).toEqual(item)
     expect(waitUntil).not.toHaveBeenCalled()
+  })
+
+  it('saves each approver’s work-product copy and reuses their own file on retry', async () => {
+    const files = makeFiles()
+    const env = {
+      BRAIN_FILES: files.bucket,
+      AgentDO: {},
+      HYPERDRIVE: {},
+      AI: stubAi,
+      HELIX_URL: 'http://localhost:6968',
+      HELIX_API_KEY: '',
+    } as never
+    const save = async (ownerUserId: string, body: string) => {
+      const result = await saveBrainFileUpload({
+        env,
+        ownerUserId,
+        file: new File([body], 'guide.md', { type: 'text/markdown' }),
+        workProductId: 'document',
+        workspaceId: 'ws-resave',
+        waitUntil: () => {},
+      })
+      if (result.isErr()) throw result.error
+      return result.value
+    }
+    const first = await save('alice', 'Original')
+    const second = await save('bob', 'Revision')
+    const retried = await save('bob', 'Updated revision')
+    expect(second.id).not.toBe(first.id)
+    expect(retried.id).toBe(second.id)
+    expect(retried.r2Key).toBe(second.r2Key)
+    expect(files.objects.size).toBe(2)
+    if (!first.r2Key || !second.r2Key)
+      throw new Error('Expected saved files with storage keys')
+    expect(new TextDecoder().decode(files.objects.get(first.r2Key))).toBe(
+      'Original',
+    )
+    expect(new TextDecoder().decode(files.objects.get(second.r2Key))).toBe(
+      'Updated revision',
+    )
+    expect(mockBrainItems.get(first.id)?.origin.actor).toMatchObject({
+      userId: 'alice',
+    })
   })
 
   it('returns null when the file was deleted so the caller saves anew', async () => {
