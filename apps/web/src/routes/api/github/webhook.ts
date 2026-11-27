@@ -222,9 +222,9 @@ async function ensureLinkedIssue(
  * answers 503 so a redelivery retries; links that already committed see the
  * redelivery as `duplicate`.
  */
-async function deliverToBindings(
-  bindings: GitHubWebhookBindingMatch[],
-  run: (binding: GitHubWebhookBindingMatch) => Promise<BindingResult>,
+async function deliverToBindings<Binding extends GitHubWebhookBindingMatch>(
+  bindings: Binding[],
+  run: (binding: Binding) => Promise<BindingResult>,
 ) {
   if (bindings.length === 0) return json({ ok: true, status: 'unbound' }, 200)
   const results: Record<string, unknown>[] = []

@@ -72,8 +72,10 @@ import { RawFileStore } from './RawFileStore.ts'
 
 export type BrainShape = {
   readonly ensureIndexes: () => Effect.Effect<void, HelixError | WriteConflict>
+  /** Use return to look up a canonical duplicate without changing its stored metadata. */
   readonly addItem: (
     input: NewBrainItem,
+    onExisting?: 'update' | 'return',
   ) => Effect.Effect<BrainItem, HelixError | WriteConflict>
   readonly addText: (input: {
     tenantId: WorkspaceId
@@ -1399,7 +1401,7 @@ export const makeBrain = Effect.gen(function* () {
           concurrency: 'unbounded',
         })
       }),
-    addItem: (input) =>
+    addItem: (input, onExisting = 'update') =>
       Effect.gen(function* () {
         const item = yield* Effect.try({
           try: () => Schema.decodeUnknownSync(NewBrainItem)(input),
@@ -1434,7 +1436,7 @@ export const makeBrain = Effect.gen(function* () {
             ),
           )
         }
-        const request = writeBatch()
+        const batch = writeBatch()
           .varAs(
             'existing',
             g()
@@ -1449,27 +1451,34 @@ export const makeBrain = Effect.gen(function* () {
             BatchCondition.varEmpty('existing'),
             g().addN(storageLabel, props),
           )
-          .varAsIf(
-            'updated',
-            BatchCondition.varNotEmpty('existing'),
-            setProperties(
-              g().n(NodeRef.var('existing')) as unknown as Traversal<
-                'nodes',
-                'write'
-              >,
-              propsWithoutR2Key(props),
-            )
-              .setProperty(PROPS.indexed, false)
-              .setProperty(PROPS.indexError, ''),
-          )
-          .returning(['created', 'updated'])
-          .toQueryRequest({ queryName: QUERY.index })
+        const request = (
+          onExisting === 'return'
+            ? batch.returning(['created', 'existing'])
+            : batch
+                .varAsIf(
+                  'updated',
+                  BatchCondition.varNotEmpty('existing'),
+                  setProperties(
+                    g().n(NodeRef.var('existing')) as unknown as Traversal<
+                      'nodes',
+                      'write'
+                    >,
+                    propsWithoutR2Key(props),
+                  )
+                    .setProperty(PROPS.indexed, false)
+                    .setProperty(PROPS.indexError, ''),
+                )
+                .returning(['created', 'updated'])
+        ).toQueryRequest({ queryName: QUERY.index })
         const result = yield* retryWriteConflict(
           helix.run(request, { awaitDurability: true }),
         )
         const created = firstRow(result, 'created')
-        const updated = firstRow(result, 'updated')
-        const row = created ?? updated
+        const existing = firstRow(
+          result,
+          onExisting === 'return' ? 'existing' : 'updated',
+        )
+        const row = created ?? existing
         if (row === undefined) {
           return yield* Effect.fail(
             new HelixError({ message: 'addItem returned no node' }),

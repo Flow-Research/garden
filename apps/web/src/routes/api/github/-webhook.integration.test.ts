@@ -1161,6 +1161,7 @@ describe('POST /api/github/webhook (integration)', () => {
         baseRef?: string
         repoId?: number
         fullName?: string
+        previousBody?: string | null
       }) {
         const fullName = args.fullName ?? LINKED_REPO
         const [owner, name] = fullName.split('/')
@@ -1185,6 +1186,9 @@ describe('POST /api/github/webhook (integration)', () => {
             updated_at: nextUpdatedAt(),
           },
           sender: { login: 'pr-author', type: 'User' },
+          ...(args.previousBody !== undefined
+            ? { changes: { body: { from: args.previousBody } } }
+            : {}),
         }
       }
 
@@ -1399,6 +1403,36 @@ describe('POST /api/github/webhook (integration)', () => {
         expect(response.status).toBe(200)
         expect(response.json).toMatchObject({ ok: true, status: 'unbound' })
         expect((await readIssue(issueId))?.status).toBe('todo')
+      })
+
+      it('reconciles issue links added and removed in a PR body edit', async () => {
+        const first = await openLinkedIssue()
+        const second = await openLinkedIssue()
+        const pr = newPr()
+        await deliverPr({
+          action: 'opened',
+          number: pr,
+          body: `Closes #${first.number}`,
+        })
+        expect((await readIssue(first.issueId))?.status).toBe('in_review')
+
+        const edited = await deliverPr({
+          action: 'edited',
+          number: pr,
+          body: `Closes #${second.number}`,
+          previousBody: `Closes #${first.number}`,
+        })
+        expect(edited.status).toBe(200)
+        expect((await readIssue(first.issueId))?.status).toBe('in_progress')
+        expect((await readIssue(second.issueId))?.status).toBe('in_review')
+
+        await deliverPr({
+          action: 'closed',
+          number: pr,
+          body: `Closes #${second.number}`,
+          state: 'closed',
+        })
+        expect((await readIssue(second.issueId))?.status).toBe('in_progress')
       })
 
       it('ignores a PR without closing keywords', async () => {

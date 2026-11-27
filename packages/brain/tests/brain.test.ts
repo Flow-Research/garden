@@ -43,6 +43,41 @@ layer(BrainTestLive, { excludeTestServices: true })('brain', (it) => {
   )
 
   it.effect.skipIf(skipHelixIntegration)(
+    'returns an existing file without changing its owner or stored metadata',
+    () =>
+      Effect.gen(function* () {
+        const brain = yield* Brain
+        const canonical = {
+          type: 'file',
+          value: `one-file-${crypto.randomUUID()}`,
+        }
+        const first = yield* brain.addItem(
+          note({
+            canonical,
+            label: 'Original',
+            sizeBytes: 12,
+            r2Key: 'original',
+          }),
+        )
+        const other = yield* brain.addItem(
+          note({
+            canonical,
+            label: 'Revision',
+            sizeBytes: 25,
+            r2Key: 'revision',
+            origin: { actor: { _tag: 'Human', userId: 'second-member' }, at },
+          }),
+          'return',
+        )
+        expect(other.id).toBe(first.id)
+        expect(other.origin).toEqual(first.origin)
+        expect(other.label).toBe('Original')
+        expect(other.sizeBytes).toBe(12)
+        expect(other.r2Key).toBe('original')
+      }),
+  )
+
+  it.effect.skipIf(skipHelixIntegration)(
     'treats canonical duplicates as the same item',
     () =>
       Effect.gen(function* () {
