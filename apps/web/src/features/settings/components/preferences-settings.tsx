@@ -11,6 +11,7 @@ import {
 } from '@garden/ui/components/ui/select'
 import { Switch } from '@garden/ui/components/ui/switch'
 import { useDevSettingsStore } from '../dev-settings-store'
+import { NotificationPreferencesSection } from './notification-preferences-section'
 import { SettingsPanel } from './settings-page-shell'
 
 type ThemeValue = 'light' | 'dark' | 'system'
@@ -35,6 +36,9 @@ export function PreferencesSettings() {
       <PreferenceSection title="Developer">
         <DebugModeRow />
       </PreferenceSection>
+      <div className="py-4 sm:py-5">
+        <NotificationPreferencesSection />
+      </div>
     </SettingsPanel>
   )
 }

@@ -23,6 +23,8 @@ import {
   requireAgentAccess,
   requireChatFacetAccess,
 } from '@/lib/server/agent-do-router'
+import { createRuntimeDbClient } from '@garden/db/runtime'
+import { dispatchNotificationEmails } from '@/lib/server/email/notifications'
 import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
 import {
   ISSUE_RUN_RECONCILE_CRON,
@@ -366,6 +368,18 @@ const scheduledJobs: Record<string, (env: ServerEnv) => Promise<void>> = {
         message: result.error.message,
       })
     }
+  },
+  '* * * * *': async (env) => {
+    const client = await createRuntimeDbClient(env.HYPERDRIVE)
+    const result = await dispatchNotificationEmails({
+      db: client.db,
+      env,
+    }).finally(() => client.close())
+    result.match({
+      ok: (report) => webLogger.info('notification_email.dispatch', report),
+      err: (error) =>
+        webLogger.error('notification_email.failed', errorFields(error)),
+    })
   },
   [MODEL_HEALTH_CHECK_CRON]: async (env) => {
     await runModelHealthCheck(env)

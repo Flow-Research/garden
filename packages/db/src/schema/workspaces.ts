@@ -12,6 +12,7 @@ import {
 } from 'drizzle-orm/pg-core'
 import { team } from './teams.js'
 import { user } from './users.js'
+import type { NotificationPreferences } from './notification-preferences.js'
 
 export const organization = pgTable(
   'organization',
@@ -79,6 +80,10 @@ export const member = pgTable(
     role: text('role').notNull().default('member'),
     githubUserId: text('github_user_id'),
     githubLogin: text('github_login'),
+    notificationPreferences: jsonb('notification_preferences')
+      .$type<NotificationPreferences>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     createdAt: timestamp('created_at', {
       withTimezone: true,
       mode: 'date',

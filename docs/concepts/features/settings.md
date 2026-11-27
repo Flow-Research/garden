@@ -3,7 +3,7 @@ title: Settings page rollout
 description: The routed Settings shell, its sections, User Management's Members and Team sub-tabs, and the separate modal entry during design rollout.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-23
+last_reviewed: 2026-11-27
 ---
 
 Select **Settings** in the account menu to open the authenticated `/settings` page. The workspace menu opens the Settings modal.
@@ -21,7 +21,7 @@ The page follows the supplied All settings design: heading and description, hori
 | Preferences     | `/settings/preferences`                                                | Redesigned; see [Preferences](#preferences)                              |
 | General         | `/settings/general`                                                    | Redesigned; see [General](#general)                                      |
 
-User Management uses the existing workspace and Team queries and mutations. Preferences and General use the same stores and mutations as their modal controls. Notifications has no tab or route. Settings adds no new account operations, APIs or permissions.
+User Management uses the existing workspace and Team queries and mutations. Preferences and General use the same stores and mutations as their modal controls. The modal has a Notifications tab. The routed page includes notifications under Preferences. Settings adds no new account operations, APIs or permissions.
 
 ## Profile
 
@@ -61,14 +61,16 @@ The designs also show elements Garden has no backend for, so they are not built:
 
 ## Preferences
 
-The Preferences section is one card with two sections:
+The Preferences section is one card with three sections:
 
 - **Appearance.** A Theme row with a dropdown of Light, Dark and System. It calls `next-themes`, so the choice applies to this device only. Until `next-themes` reads the stored choice, the trigger shows no option.
 - **Developer.** A Debug mode switch bound to the client-side `useDevSettingsStore`. It shows the agent chat debug drawer on this device.
 
+- **Email notifications.** The member can change which workspace events send an email. Both the routed page and the modal Notifications tab use the [member preference API](./email-notifications.md#member-preferences).
+
 The modal keeps its separate Appearance and Developer tabs, which read the same theme and store.
 
-Design elements without backend support are not shown: Agent preferences (communication style, proactivity, decision autonomy), Language and time, and Privacy (cookie settings, view history). Garden has no setting, schema or API for them. Notifications is also left out, as above.
+Design elements without backend support are not shown: Agent preferences (communication style, proactivity, decision autonomy), Language and time, and Privacy (cookie settings, view history). Garden has no setting, schema or API for them.
 
 Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and routing the workspace Settings entry to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
 

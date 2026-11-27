@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowUpRight,
+  Bell,
   Bug,
   User,
   Palette,
@@ -27,6 +28,7 @@ import { AppearanceTab } from './appearance-tab'
 import { DeveloperTab } from './developer-tab'
 import { WorkspaceTab } from './workspace-tab'
 import { MembersTab } from './members-tab'
+import { NotificationPreferencesSection } from './notification-preferences-section'
 
 const accountTabs = [
   { value: 'profile', label: 'Account', icon: User },
@@ -37,6 +39,7 @@ const accountTabs = [
 const workspaceTabs = [
   { value: 'workspace', label: 'General', icon: Settings },
   { value: 'members', label: 'Members', icon: Users },
+  { value: 'notifications', label: 'Notifications', icon: Bell },
 ]
 
 export interface ExtraSettingsTab {
@@ -159,6 +162,9 @@ export function SettingsPage({
           </TabsContent>
           <TabsContent value="members">
             <MembersTab />
+          </TabsContent>
+          <TabsContent value="notifications">
+            <NotificationPreferencesSection />
           </TabsContent>
           {extraAccountTabs?.map((tab) => (
             <TabsContent key={tab.value} value={tab.value}>

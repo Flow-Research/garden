@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { readFileSync } from 'node:fs'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Result } from 'better-result'
 import type { AppEnv } from '@/lib/server/env'
 import type * as IssueRunReconciler from '@/lib/server/issue-run-reconciler'
 import type * as ModelHealthCheck from '@/lib/server/model-health-check'
@@ -14,6 +15,8 @@ const harness = vi.hoisted(() => ({
   threadReads: vi.fn(),
   reconcile: vi.fn(),
   modelHealthCheck: vi.fn(),
+  dispatchNotificationEmails: vi.fn(),
+  closeEmailDb: vi.fn(),
 }))
 
 vi.mock('@tanstack/react-start/server-entry', () => ({ default: {} }))
@@ -45,6 +48,12 @@ vi.mock('./github-repo-import-workflow', () => ({
 vi.mock('@cloudflare/sandbox', () => ({
   proxyToSandbox: async () => null,
   Sandbox: class {},
+}))
+vi.mock('@garden/db/runtime', () => ({
+  createRuntimeDbClient: async () => ({ db: {}, close: harness.closeEmailDb }),
+}))
+vi.mock('@/lib/server/email/notifications', () => ({
+  dispatchNotificationEmails: harness.dispatchNotificationEmails,
 }))
 vi.mock('@/lib/auth', () => ({ createSessionAuth: vi.fn() }))
 vi.mock('@/lib/server/env', () => ({ bindAppEnv: vi.fn() }))
@@ -447,9 +456,21 @@ describe('scheduled', () => {
     })
   })
 
+  it('dispatches notification email only on the minute schedule and closes its database', async () => {
+    harness.dispatchNotificationEmails.mockResolvedValue(
+      Result.ok({ kind: 'unconfigured' }),
+    )
+    await fire('* * * * *')
+    expect(harness.dispatchNotificationEmails).toHaveBeenCalledOnce()
+    expect(harness.closeEmailDb).toHaveBeenCalledOnce()
+    expect(harness.modelHealthCheck).not.toHaveBeenCalled()
+    expect(harness.reconcile).not.toHaveBeenCalled()
+  })
+
   it('runs only the reconciler on its cron', async () => {
     await fire(ISSUE_RUN_RECONCILE_CRON)
 
+    expect(harness.dispatchNotificationEmails).not.toHaveBeenCalled()
     expect(harness.reconcile).toHaveBeenCalledOnce()
     expect(harness.modelHealthCheck).not.toHaveBeenCalled()
   })
@@ -457,6 +478,7 @@ describe('scheduled', () => {
   it('runs only the model health check on its cron', async () => {
     await fire(MODEL_HEALTH_CHECK_CRON)
 
+    expect(harness.dispatchNotificationEmails).not.toHaveBeenCalled()
     expect(harness.modelHealthCheck).toHaveBeenCalledOnce()
     expect(harness.reconcile).not.toHaveBeenCalled()
   })
@@ -488,7 +510,11 @@ describe('scheduled', () => {
   })
 
   it('deploys exactly the crons that have jobs', () => {
-    const jobs = [ISSUE_RUN_RECONCILE_CRON, MODEL_HEALTH_CHECK_CRON].sort()
+    const jobs = [
+      ISSUE_RUN_RECONCILE_CRON,
+      MODEL_HEALTH_CHECK_CRON,
+      '* * * * *',
+    ].sort()
     const wrangler = readFileSync(
       new URL('../wrangler.jsonc', import.meta.url),
       'utf8',

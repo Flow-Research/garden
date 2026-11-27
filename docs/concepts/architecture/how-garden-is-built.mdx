@@ -3,7 +3,7 @@ title: How Garden is built
 description: Three planes, what each one owns, and why the boundaries sit where they do.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-10
 ---
 
 Garden runs as one Cloudflare Worker, but its state lives in three places. Most design questions in Garden come down to one question: which plane owns this state?
@@ -19,6 +19,11 @@ Garden runs as one Cloudflare Worker, but its state lives in three places. Most 
 The control plane holds every record that the product must list, search, permission-check, or audit. That includes users, workspaces, issues, runs, automations, permission grants, documents, and the `tool_call_audit` log. The schemas live in `packages/db/src/schema/`.
 
 File bytes go to R2. The `FILES` bucket holds uploads and generated files, and `BRAIN_FILES` holds Brain documents. Postgres keeps the metadata and access rules for each file.
+
+New inbox items also store their email delivery state in Postgres. A minute cron
+sends pending notifications through Resend and records the result. The
+[email delivery decision](../../decisions/2026-11-inbox-email-delivery.md) explains
+why the inbox ledger owns this work.
 
 When Postgres and a Durable Object disagree, Postgres is correct. A run row exists in Postgres before the run starts, so a crashed run still leaves a record to inspect.
 

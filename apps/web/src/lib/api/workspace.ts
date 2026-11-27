@@ -10,6 +10,10 @@ import type {
   Workspace,
 } from '@garden/core/types'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
+import type {
+  NotificationPreferenceUpdate,
+  NotificationPreferenceView,
+} from '@garden/db/schema/notification-preferences'
 import type { PermissionTrustLevel } from '@garden/connectors/capabilities'
 import { getApiTransport } from './state'
 
@@ -46,6 +50,25 @@ export function updateWorkspace(
 
 export function listMembers(workspaceId: string): Promise<MemberWithUser[]> {
   return getApiTransport().request(`/api/workspaces/${workspaceId}/members`)
+}
+
+/** The signed-in member's own notification toggles in one workspace. */
+export function getNotificationPreferences(
+  workspaceId: string,
+): Promise<{ preferences: NotificationPreferenceView }> {
+  return getApiTransport().request(
+    `/api/workspaces/${workspaceId}/notification-preferences`,
+  )
+}
+
+export function updateNotificationPreference(
+  workspaceId: string,
+  data: NotificationPreferenceUpdate,
+): Promise<{ preferences: NotificationPreferenceView }> {
+  return getApiTransport().request(
+    `/api/workspaces/${workspaceId}/notification-preferences`,
+    { method: 'PATCH', body: JSON.stringify(data) },
+  )
 }
 
 export function createMember(

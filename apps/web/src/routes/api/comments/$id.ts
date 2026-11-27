@@ -1,4 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { Result } from 'better-result'
+import { createLogger } from '@garden/observability/console'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
   commentBodySchema,
@@ -11,7 +13,10 @@ import {
   deleteIssueCommentById,
   getIssueCommentById,
   updateIssueCommentBody,
+  upsertIssueMentionInboxItem,
 } from '@/lib/server/queries/issues'
+
+const logger = createLogger('issue-comments-api')
 
 /**
  * Maps an issue_comment row to the public comment DTO.
@@ -84,6 +89,22 @@ export const Route = createFileRoute('/api/comments/$id')({
         })
 
         if (!updatedComment) return notFound('Comment not found')
+        const mentionResult = await Result.tryPromise({
+          try: () =>
+            upsertIssueMentionInboxItem(db, {
+              workspaceId: access.issue.workspaceId,
+              issueId: access.issue.id,
+              content: updatedComment.body,
+              commentId: updatedComment.id,
+              actorType: 'member',
+              actorId: access.session.user.id,
+            }),
+          catch: (cause) => cause,
+        })
+        mentionResult.match({
+          ok: () => undefined,
+          err: (error) => logger.error('mention_inbox_upsert_failed', error),
+        })
         appContext.waitUntil(
           publishWorkspaceEvent(appContext.env, access.issue.workspaceId, {
             type: 'comment:updated',

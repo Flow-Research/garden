@@ -1,4 +1,5 @@
-import { asc, eq, inArray } from 'drizzle-orm'
+import { matchMentions } from '@garden/server/issues/server'
+import { and, asc, eq, inArray } from 'drizzle-orm'
 import { schema, type Db } from '@/lib/server/db'
 
 /**
@@ -42,14 +43,48 @@ export async function getCommentIssueId(db: Db, commentId: string) {
   return comment?.issueId ?? null
 }
 
-/** Updates a comment body and returns the row, or null when missing. */
+/** Updates comment text and resolves current workspace mentions. */
 export async function updateIssueCommentBody(
   db: Db,
-  input: { commentId: string; body: string },
+  input: {
+    commentId: string
+    body: string
+  },
 ) {
+  const [comment] = await db
+    .select({ workspaceId: schema.issue.workspaceId })
+    .from(schema.issueComment)
+    .innerJoin(schema.issue, eq(schema.issue.id, schema.issueComment.issueId))
+    .where(eq(schema.issueComment.id, input.commentId))
+    .limit(1)
+  if (!comment) return null
+  const [agents, members] = await Promise.all([
+    db
+      .select({ id: schema.agent.id, name: schema.agent.name })
+      .from(schema.agent)
+      .where(
+        and(
+          eq(schema.agent.workspaceId, comment.workspaceId),
+          inArray(schema.agent.status, ['active', 'pending_approval']),
+        ),
+      ),
+    db
+      .select({
+        id: schema.member.userId,
+        name: schema.user.name,
+        email: schema.user.email,
+      })
+      .from(schema.member)
+      .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
+      .where(eq(schema.member.organizationId, comment.workspaceId)),
+  ])
+  const mentions = matchMentions(input.body, { agents, members })
   const [updated] = await db
     .update(schema.issueComment)
-    .set({ body: input.body })
+    .set({
+      body: input.body,
+      mentions,
+    })
     .where(eq(schema.issueComment.id, input.commentId))
     .returning()
   return updated ?? null

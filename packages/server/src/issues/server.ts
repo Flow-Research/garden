@@ -1,6 +1,11 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import {
+  explicitMemberMentionIds,
+  upsertIssueAssignmentInbox,
+  upsertIssueMentionInbox,
+} from '@garden/db/inbox'
+import {
   addIssueSubscribers,
   assigneeToSubscriberType,
   type SubscriberEntry,
@@ -44,7 +49,8 @@ import {
 import { startIssueRun, type IssueRunEnv } from './run-service'
 
 const MENTION_PATTERN = /@([A-Za-z0-9._-]+)/g
-const MENTION_LINK_PATTERN = /\(mention:\/\/(member|user|agent)\/([^)\s]+)\)/g
+const MENTION_LINK_PATTERN =
+  /(?:\[[^\]\n]*\])?\(mention:\/\/(member|user|agent)\/([^)\s]+)\)/g
 
 export class IssueServiceError extends TaggedError('IssueServiceError')<{
   code:
@@ -453,7 +459,7 @@ async function resolveMentions(args: {
       ),
     args.db
       .select({
-        id: schema.user.id,
+        id: schema.member.userId,
         name: schema.user.name,
         email: schema.user.email,
       })
@@ -462,10 +468,22 @@ async function resolveMentions(args: {
       .where(eq(schema.member.organizationId, args.workspaceId)),
   ])
 
-  return matchMentions(args.content, {
+  const mentions = matchMentions(args.content, {
     agents: agentRows,
     members: memberRows,
   })
+  const explicitIds = new Set(explicitMemberMentionIds(args.content))
+  return {
+    agents: mentions.agents,
+    users: [
+      ...new Set([
+        ...mentions.users,
+        ...memberRows
+          .filter((member) => explicitIds.has(member.id))
+          .map((member) => member.id),
+      ]),
+    ],
+  }
 }
 
 function mentionsJson(mentions: { agents: string[]; users: string[] }) {
@@ -1106,6 +1124,28 @@ export async function createIssue(
   // and receive activity. Idempotent + best-effort: a failure here must not
   // fail issue creation, which already committed above.
   const createdIssue = result.value
+  const inboxResult = await Result.tryPromise({
+    try: async () => {
+      await upsertIssueAssignmentInbox({
+        db,
+        workspaceId: createdIssue.workspaceId,
+        issueId: createdIssue.id,
+        actorType: 'member',
+        actorId: parsed.data.createdBy,
+      })
+      await upsertIssueMentionInbox({
+        db,
+        workspaceId: createdIssue.workspaceId,
+        issueId: createdIssue.id,
+        content: createdIssue.description ?? '',
+        actorType: 'member',
+        actorId: parsed.data.createdBy,
+      })
+    },
+    catch: (cause) => serviceDbError('record issue notifications', cause),
+  })
+  if (inboxResult.isErr())
+    logger.error('issue inbox upsert failed', inboxResult.error.message)
   const initialSubscribers: SubscriberEntry[] = [
     { userType: 'member', userId: parsed.data.createdBy, reason: 'creator' },
   ]
@@ -1350,6 +1390,23 @@ export async function postIssueComment(
         })
       }
       const comment = insertedComment
+      const mentionInboxResult = await Result.tryPromise({
+        try: () =>
+          upsertIssueMentionInbox({
+            db,
+            workspaceId: issue.workspaceId,
+            issueId: issue.id,
+            content: comment.body,
+            commentId: comment.id,
+            actorType: 'member',
+            actorId: parsed.data.authorUserId,
+          }),
+        catch: (cause) => cause,
+      })
+      mentionInboxResult.match({
+        ok: () => undefined,
+        err: (error) => logger.error('mention inbox upsert failed', error),
+      })
       await linkIssueAttachments({
         db,
         workspaceId: parsed.data.workspaceId,

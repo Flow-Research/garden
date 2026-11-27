@@ -175,8 +175,8 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     },
   },
   // Must match `triggers.crons` in apps/web/wrangler.jsonc: the 12-hour
-  // issue-run reconciler and the daily model health check.
-  crons: ['0 */12 * * *', '0 8 * * *'],
+  // issue-run reconciler, daily model health check, and minute email dispatcher.
+  crons: ['0 */12 * * *', '0 8 * * *', '* * * * *'],
   // Use the stable script name here. Passing the Worker declaration can
   // resolve to `undefined` while Alchemy plans another direct resource.
   tailConsumers: [deployTarget.tailWorkerName],

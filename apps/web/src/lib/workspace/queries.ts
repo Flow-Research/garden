@@ -16,6 +16,17 @@ export const workspaceKeys = {
   connections: (wsId: string) => ['workspaces', wsId, 'connections'] as const,
   assigneeFrequency: (wsId: string) =>
     ['workspaces', wsId, 'assignee-frequency'] as const,
+  notificationPreferences: (wsId: string) =>
+    ['workspaces', wsId, 'notification-preferences'] as const,
+}
+
+export function notificationPreferencesOptions(wsId: string) {
+  return queryOptions({
+    queryKey: workspaceKeys.notificationPreferences(wsId),
+    queryFn: async () =>
+      (await api.getNotificationPreferences(wsId)).preferences,
+    staleTime: 5 * 60_000,
+  })
 }
 
 export function workspaceListOptions() {

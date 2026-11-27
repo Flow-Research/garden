@@ -912,6 +912,11 @@ async function persistInboxSourceItems(args: {
           title: source.title,
           body: source.body,
           details: source.details,
+          // Rebuilding an inbox view must not send mail for past activity.
+          emailDelivery: {
+            kind: 'skipped' as const,
+            reason: 'historical' as const,
+          },
           activityAt: source.activityAt,
           updatedAt: now,
         })),
