@@ -10,8 +10,10 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/server/executor-runtime', () => ({
-  executorProgram: (_identity: unknown, use: (executor: unknown) => unknown) =>
-    use({ oauth: { complete: mocks.complete } }),
+  executorProgram: (
+    _identity: unknown,
+    runWithExecutor: (executor: unknown) => unknown,
+  ) => runWithExecutor({ oauth: { complete: mocks.complete } }),
 }))
 vi.mock('@/lib/server/capability-sync', () => ({
   syncCapabilities: mocks.syncCapabilities,
