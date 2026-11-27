@@ -646,48 +646,55 @@ describe('maintained Think dispatch, real SQLite and current PostgreSQL policy',
     expect(received.some((entry) => entry.id === id && entry.error)).toBe(true)
   }, 60_000)
 
-  it('continues a real pending browser tool result under its original request lineage', async () => {
-    const principal = await fixture()
-    const { socket, received } = await socketFor(principal)
-    toolResponse = true
-    controlledToolName = 'browser_effect'
-    const id = send(socket, randomUUID(), {
-      clientTools: [
-        {
-          name: 'browser_effect',
-          parameters: { type: 'object', properties: {} },
-        },
-      ],
-    })
-    await completed(received, id)
-    expect(modelCalls).toHaveLength(1)
-    const inspection = await drive(principal, { operation: 'inspect' })
-    const data = (await inspection.json()) as {
-      messages: Array<{ parts: Array<{ type: string; toolCallId?: string }> }>
-    }
-    const pending = data.messages
-      .flatMap((message) => message.parts)
-      .find((part) => part.type === 'tool-browser_effect')
-    expect(pending?.toolCallId).toBeDefined()
-    socket.send(
-      JSON.stringify({
-        type: 'cf_agent_tool_result',
-        toolCallId: pending?.toolCallId,
-        toolName: 'browser_effect',
-        output: 'controlled browser result',
-        state: 'output-available',
-        autoContinue: true,
-      }),
-    )
-    await vi.waitFor(() => expect(modelCalls).toHaveLength(2), {
-      timeout: 30_000,
-      interval: 20,
-    })
-    expect(
-      actions.filter((entry) => entry.action === 'apply-tool-result').length,
-    ).toBeGreaterThanOrEqual(2)
-    expect(effects).toBe(0)
-  }, 60_000)
+  it.each(['browser_effect', 'server_question'] as const)(
+    'continues a pending %s result under its original request lineage',
+    async (name) => {
+      const principal = await fixture()
+      const { socket, received } = await socketFor(principal)
+      toolResponse = true
+      controlledToolName = name
+      const id = send(socket, randomUUID(), {
+        clientTools:
+          name === 'browser_effect'
+            ? [
+                {
+                  name: 'browser_effect',
+                  parameters: { type: 'object', properties: {} },
+                },
+              ]
+            : [],
+      })
+      await completed(received, id)
+      expect(modelCalls).toHaveLength(1)
+      const inspection = await drive(principal, { operation: 'inspect' })
+      const data = (await inspection.json()) as {
+        messages: Array<{ parts: Array<{ type: string; toolCallId?: string }> }>
+      }
+      const pending = data.messages
+        .flatMap((message) => message.parts)
+        .find((part) => part.type === `tool-${name}`)
+      expect(pending?.toolCallId).toBeDefined()
+      socket.send(
+        JSON.stringify({
+          type: 'cf_agent_tool_result',
+          toolCallId: pending?.toolCallId,
+          toolName: name,
+          output: 'controlled browser result',
+          state: 'output-available',
+          autoContinue: true,
+        }),
+      )
+      await vi.waitFor(() => expect(modelCalls).toHaveLength(2), {
+        timeout: 30_000,
+        interval: 20,
+      })
+      expect(
+        actions.filter((entry) => entry.action === 'apply-tool-result').length,
+      ).toBeGreaterThanOrEqual(2)
+      expect(effects).toBe(0)
+    },
+    60_000,
+  )
 
   it('keeps native save and submission methods outside the actual browser RPC allowlist', async () => {
     const principal = await fixture()

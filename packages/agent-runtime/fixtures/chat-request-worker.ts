@@ -91,6 +91,10 @@ function fixtureModel(env: ChatRequestFixtureEnv) {
 
 function fixtureTools(env: ChatRequestFixtureEnv) {
   return {
+    server_question: tool({
+      description: 'The server defines this question and the browser supplies its result.',
+      inputSchema: z.object({ marker: z.string().optional() }),
+    }),
     fixture_effect: tool({
       description: 'Records one controlled local effect.',
       inputSchema: z.object({ marker: z.string().optional() }),

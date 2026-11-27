@@ -400,12 +400,17 @@ index b55c8a39634199612c5169db6b4a925416bccba0..d7d20364a5a3c8b47ab7c572de262231
  					stepNumber: event.stepNumber,
  					messages: event.messages,
  					durationMs: event.durationMs
-@@ -1990,7 +2124,7 @@ var Think = class Think extends Agent {
+@@ -1990,7 +2124,12 @@ var Think = class Think extends Agent {
  			toUIMessageStream: () => result.toUIMessageStream({ sendReasoning: finalSendReasoning }),
  			output: outputPromise
  		};
 -		return this._transformInferenceResult(streamResult);
-+		return bindResultContext(this._transformInferenceResult(streamResult), requestContext, input.clientTools);
++		// A schema-only function can be declared by the server and answered in the UI.
++		// Keep provider-executed tools out of the browser result channel.
++		const browserTools = Object.entries(mergedTools)
++			.filter(([, entry]) => (entry.type === undefined || entry.type === "function" || entry.type === "dynamic") && typeof entry.execute !== "function")
++			.map(([name]) => ({ name }));
++		return bindResultContext(this._transformInferenceResult(streamResult), requestContext, [...(input.clientTools ?? []), ...browserTools]);
  	}
  	/** @internal Test seam — override in test agents to wrap the stream (e.g. error injection). */
  	_transformInferenceResult(result) {
