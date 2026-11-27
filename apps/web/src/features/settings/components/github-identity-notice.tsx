@@ -5,8 +5,8 @@ import {
   AlertDescription,
   AlertTitle,
 } from '@garden/ui/components/ui/alert'
-import { Button } from '@garden/ui/components/ui/button'
-import { useSettingsDialogStore } from '@/features/settings/settings-dialog-store'
+import { Button, buttonVariants } from '@garden/ui/components/ui/button'
+import { Link } from '@tanstack/react-router'
 
 export type GithubIdentityOutcome = 'linked' | 'taken' | 'failed'
 
@@ -27,10 +27,9 @@ const COPY: Record<GithubIdentityOutcome, { title: string; body: string }> = {
 
 /**
  * Outcome of "Link with GitHub", shown where `/api/github/identity/complete`
- * lands the member (Home, `?github_identity=`). Settings is a store-driven
- * dialog with no URL, so the redirect cannot reopen it directly; this notice
- * reports the result and offers the way back. Dismiss strips the param so a
- * reload does not replay it.
+ * lands the member (Home, `?github_identity=`), with a link back to
+ * `/settings/profile` where the GitHub identity lives. Dismiss strips the
+ * param so a reload does not replay it.
  */
 export function GithubIdentityNotice({
   outcome,
@@ -39,7 +38,6 @@ export function GithubIdentityNotice({
   outcome: GithubIdentityOutcome
   onDismiss: () => void
 }) {
-  const openSettings = useSettingsDialogStore((state) => state.openSettings)
   const copy = COPY[outcome]
   const failed = outcome !== 'linked'
 
@@ -56,16 +54,12 @@ export function GithubIdentityNotice({
       <AlertTitle>{copy.title}</AlertTitle>
       <AlertDescription>{copy.body}</AlertDescription>
       <AlertAction className="flex gap-1">
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => {
-            openSettings('profile')
-            onDismiss()
-          }}
+        <Link
+          to="/settings/profile"
+          className={buttonVariants({ size: 'sm', variant: 'ghost' })}
         >
           Open settings
-        </Button>
+        </Link>
         <Button size="sm" variant="ghost" onClick={onDismiss}>
           Dismiss
         </Button>

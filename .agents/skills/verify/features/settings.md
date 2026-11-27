@@ -5,7 +5,7 @@
 3. Use browser Back and Forward. Expect URL, active underline and content to agree.
 4. Reload `/settings/user-management`. Expect `/settings/user-management/members` with members and invitations, without passing through Profile.
 5. At phone width, scroll the section navigation horizontally. Expect readable labels, visible focus and no page-level horizontal overflow.
-6. Select Settings in the account menu. Expect the flyout to close and `/settings/profile` to show All settings. At phone width, expect the navigation drawer to close too. Open Workspace settings from the workspace menu and expect the Settings modal.
+6. Select Settings in the account menu. Expect the flyout to close and `/settings/profile` to show All settings. At phone width, expect the navigation drawer to close too. From the workspace menu, Workspace settings opens `/settings/general`, and Team members and Invite members open `/settings/user-management/members`. ⌘, then Open Settings in the search palette opens `/settings/profile`. Open `/home?github_identity=linked` and select Open settings; expect `/settings/profile`.
 7. Sign out and open `/settings/profile`. Expect the existing login redirect, with no account data rendered.
 8. Confirm Notifications is absent and Teams still uses its existing routes.
 9. As a workspace owner or admin, open `/settings/user-management`. Expect `/settings/user-management/members` with Members and Team pills, Members active. Select Team. Expect `/settings/user-management/teams`, Create a Team and the Team grid or the No Teams empty state.
@@ -27,8 +27,7 @@
 1. Open `/settings/preferences`. Expect one card with Appearance and Developer sections, and the Theme trigger showing the current theme with its icon.
 2. Open the Theme dropdown and choose each of Light, Dark and System. Expect the page to switch mode at once, the trigger to follow, and the choice to persist after reload.
 3. Toggle Debug mode on, then open an agent chat tab. Expect the debug drawer. Toggle it off and expect the drawer gone.
-4. Open the Settings modal. Expect its Appearance and Developer tabs to show the same theme and Debug mode state.
-5. At 375px wide, expect rows to fit without horizontal overflow.
+4. At 375px wide, expect rows to fit without horizontal overflow.
 
 ## General section
 
