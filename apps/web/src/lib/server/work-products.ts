@@ -20,6 +20,10 @@ import {
 } from '@garden/db/validation'
 import type { AppEnv } from './env'
 import { getDb, schema } from './db'
+import {
+  createGitHubRequester,
+  loadWorkspaceGitHubInstallation,
+} from './github-repositories'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { addBrainFolderFile, getOrCreateApprovedFolder } from './brain-folders'
@@ -297,10 +301,11 @@ function resolveGithubIssueRef(binding: IssueSourceBindingRow) {
       )
 }
 
-function resolveWritebackInvocation(args: {
+async function resolveWritebackInvocation(args: {
+  env: AppEnv
   binding: IssueSourceBindingRow
   workProduct: WorkProductRow
-}): ResultValue<WritebackInvocation, WorkProductReviewError> {
+}): Promise<ResultValue<WritebackInvocation, WorkProductReviewError>> {
   const body = args.workProduct.body?.trim()
   if (!body) return Result.err(invalidState('Work product body is empty'))
 
@@ -313,7 +318,69 @@ function resolveWritebackInvocation(args: {
     const refResult = resolveGithubIssueRef(args.binding)
     if (refResult.isErr()) return Result.err(refResult.error)
 
-    const ref = refResult.value
+    let ref = refResult.value
+    // Only a stored source binding can follow a rename. Agent-authored PR
+    // targets still go through the ordinary owner check without rewriting.
+    const installation = await Result.tryPromise({
+      try: async () =>
+        loadWorkspaceGitHubInstallation(
+          await getDb(args.env),
+          args.binding.workspaceId,
+        ),
+      catch: (cause) =>
+        dbError('Failed to load GitHub App installation', cause),
+    })
+    if (installation.isErr()) return Result.err(installation.error)
+    const linked = installation.value
+    if (linked?.status === 'disconnected' || !linked) {
+      return Result.err(
+        invalidState('GitHub App installation is not connected'),
+      )
+    }
+    if (
+      linked.accountLogin &&
+      ref.owner.toLowerCase() !== linked.accountLogin.toLowerCase()
+    ) {
+      const repoId = firstNumber(objectOrNull(args.binding.metadata), [
+        'github_repo_id',
+      ])
+      // A legacy binding can contain only a name. Ask GitHub about its original
+      // path; substituting the new login would risk a different same-named repo.
+      const safeSegment = (value: string) =>
+        /^[a-zA-Z0-9_.-]+$/.test(value) && value !== '.' && value !== '..'
+      if (
+        repoId === null &&
+        (!safeSegment(ref.owner) || !safeSegment(ref.repo))
+      ) {
+        return Result.err(
+          invalidState('Invalid GitHub repository name in source binding'),
+        )
+      }
+      const response = await createGitHubRequester(
+        args.env,
+        linked,
+      )({
+        operation: 'github.getRepository',
+        path:
+          repoId === null
+            ? `/repos/${ref.owner}/${ref.repo}`
+            : `/repositories/${repoId}`,
+      })
+      const record = response.isOk() ? objectOrNull(response.value) : null
+      const current = parseRepository(stringValue(record?.full_name))
+      if (
+        !current ||
+        current.owner.toLowerCase() !== linked.accountLogin.toLowerCase() ||
+        (repoId !== null && record?.id !== repoId)
+      ) {
+        return Result.err(
+          invalidState(
+            'GitHub could not confirm this source repository under the connected account',
+          ),
+        )
+      }
+      ref = { ...ref, ...current }
+    }
     return Result.ok({
       connectorId: 'github',
       toolName: 'add_issue_comment',
@@ -1020,7 +1087,8 @@ async function applyWorkProduct(args: {
   })
   if (bindingResult.isErr()) return Result.err(bindingResult.error)
 
-  const invocationResult = resolveWritebackInvocation({
+  const invocationResult = await resolveWritebackInvocation({
+    env: args.env,
     binding: bindingResult.value,
     workProduct,
   })

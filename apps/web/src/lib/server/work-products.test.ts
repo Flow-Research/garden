@@ -1,6 +1,13 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { Result } from 'better-result'
 import { reviewWorkProduct, workProductReviewBodySchema } from './work-products'
+
+const requestRepo = vi.hoisted(() => vi.fn())
+vi.mock('./github-repositories', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./github-repositories')>()),
+  createGitHubRequester: () => requestRepo,
+}))
 
 const state = vi.hoisted(() => ({ db: undefined as unknown }))
 
@@ -191,6 +198,11 @@ vi.mock('@garden/connectors/github/tools', async () => {
   const { Effect } = await import('effect')
   const responses: Record<string, (input: Record<string, unknown>) => unknown> =
     {
+      add_issue_comment: () => ({
+        id: 12,
+        html_url:
+          'https://github.com/Renamed/garden/issues/375#issuecomment-12',
+      }),
       get_commit: () => ({ sha: 'base-sha' }),
       create_branch: (input) => ({ ref: `refs/heads/${String(input.branch)}` }),
       get_file_contents: () => null,
@@ -261,6 +273,8 @@ async function makeApplyDb(args: {
   linkedRepos: Array<{ fullName: string }>
   workProduct: Record<string, unknown>
   issueTeamId?: string | null
+  linkedLogin?: string
+  bindingMetadata?: Record<string, unknown>
   savedFileHistoryId?: string
 }) {
   const { schema } = await import('./db')
@@ -327,7 +341,7 @@ async function makeApplyDb(args: {
               externalUrl: 'https://github.com/Flow-Research/garden/issues/375',
               displayRef: 'Flow-Research/garden#375',
               titleSnapshot: null,
-              metadata: {},
+              metadata: args.bindingMetadata ?? {},
               lastSyncedAt: null,
               createdAt: new Date('2026-01-01T00:00:00Z'),
               updatedAt: new Date('2026-01-01T00:00:00Z'),
@@ -338,7 +352,7 @@ async function makeApplyDb(args: {
           return queryRows([
             {
               installationId: 1,
-              accountLogin: 'Flow-Research',
+              accountLogin: args.linkedLogin ?? 'Flow-Research',
               status: 'active',
             },
           ])
@@ -404,6 +418,81 @@ async function runPrContract(pr: { title: string; body: string }) {
     { cwd: repoRoot, encoding: 'utf8' },
   )
 }
+
+describe('approved connector reply after a GitHub account rename', () => {
+  it.each([
+    [
+      'numeric identity',
+      { github_repo_id: 27 },
+      '/repositories/27',
+      'Renamed/garden',
+      27,
+      true,
+    ],
+    [
+      'legacy path',
+      {},
+      '/repos/Flow-Research/garden',
+      'Renamed/garden',
+      27,
+      true,
+    ],
+    [
+      'old name now owned elsewhere',
+      {},
+      '/repos/Flow-Research/garden',
+      'Elsewhere/garden',
+      27,
+      false,
+    ],
+    [
+      'mismatched repository ID',
+      { github_repo_id: 27 },
+      '/repositories/27',
+      'Renamed/garden',
+      99,
+      false,
+    ],
+  ] as const)('%s', async (_label, metadata, path, fullName, id, allowed) => {
+    githubCalls.length = 0
+    requestRepo
+      .mockReset()
+      .mockResolvedValue(Result.ok({ full_name: fullName, id }))
+    const { db } = await makeApplyDb({
+      linkedRepos: [],
+      linkedLogin: 'Renamed',
+      bindingMetadata: metadata,
+      workProduct: { ...approvedWorkProduct({}), type: 'connector_reply' },
+    })
+    state.db = db
+    const result = await reviewWorkProduct({
+      actorUserId: agentId,
+      env: {} as never,
+      input: { action: 'apply' },
+      workProductId,
+      workspaceId,
+    })
+    expect(requestRepo).toHaveBeenCalledWith({
+      operation: 'github.getRepository',
+      path,
+    })
+    expect(result.isOk()).toBe(allowed)
+    expect(githubCalls).toEqual(
+      allowed
+        ? [
+            {
+              name: 'add_issue_comment',
+              input: expect.objectContaining({
+                owner: 'Renamed',
+                repo: 'garden',
+                issue_number: 375,
+              }),
+            },
+          ]
+        : [],
+    )
+  })
+})
 
 describe('reviewWorkProduct apply_pr', () => {
   beforeEach(() => {
