@@ -1,5 +1,5 @@
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { canonicalJsonString } from '@garden/connectors/capabilities'
 import { schema, type Db } from './db'
 
@@ -11,6 +11,7 @@ type PermissionRequestRow = {
   capabilityId: string | null
   argsJson: unknown
   issueId: string | null
+  threadId: string | null
   toolCallId: string
 }
 
@@ -21,7 +22,11 @@ type ConnectorWritePermissionRequestRow = PermissionRequestRow & {
 export class PermissionRequestServiceError extends TaggedError(
   'PermissionRequestServiceError',
 )<{
-  code: 'database_failed' | 'hash_failed' | 'permission_request_not_found'
+  code:
+    | 'database_failed'
+    | 'hash_failed'
+    | 'permission_request_not_found'
+    | 'permission_request_changed'
   status: number
   message: string
   cause?: unknown
@@ -32,6 +37,7 @@ export type ResolveConnectorWritePermissionInput = {
   actorUserId: string
   db: ServerDb
   issueId?: string
+  threadId?: string
   permissionRequestId?: string
   toolCallId?: string
   /**
@@ -50,6 +56,48 @@ export type ResolveConnectorWritePermissionOutcome = {
     toolCallId: string
   }>
   toolCallIds: string[]
+}
+
+/** Read terminal connector decisions for this thread before forwarding them to the SDK. */
+export async function readChatToolDecisions(input: {
+  db: ServerDb
+  workspaceId: string
+  agentId: string
+  threadId: string
+  toolCallIds: string[]
+}) {
+  return Result.tryPromise({
+    try: async () => {
+      const currentResolver = sql`(${schema.permissionRequest.expiresAt} is null or ${schema.permissionRequest.expiresAt} > clock_timestamp())
+        and exists (select 1 from ${schema.member} where ${schema.member.userId} = ${schema.permissionRequest.resolvedBy}
+          and ${schema.member.organizationId} = ${input.workspaceId})`
+      const rows = await input.db
+        .select({
+          call: schema.permissionRequest.toolCallId,
+          count: sql<number>`count(*)::int`,
+          approved: sql<boolean>`bool_and(${schema.permissionRequest.status} = 'approved' and ${currentResolver})`,
+          denied: sql<boolean>`bool_or(${schema.permissionRequest.status} = 'denied' and ${currentResolver})`,
+        })
+        .from(schema.permissionRequest)
+        .where(
+          and(
+            eq(schema.permissionRequest.threadId, input.threadId),
+            eq(schema.permissionRequest.agentId, input.agentId),
+            eq(schema.permissionRequest.kind, 'connector_write'),
+            inArray(schema.permissionRequest.toolCallId, input.toolCallIds),
+          ),
+        )
+        .groupBy(schema.permissionRequest.toolCallId)
+      return new Map(rows.map((row) => [row.call, row]))
+    },
+    catch: (cause) =>
+      new PermissionRequestServiceError({
+        code: 'database_failed',
+        status: 500,
+        message: 'Failed to read the tool call decisions',
+        cause,
+      }),
+  })
 }
 
 async function hashToolArgs(value: unknown) {
@@ -107,6 +155,7 @@ async function loadReferenceRequest(
           capabilityId: schema.permissionRequest.capabilityId,
           argsJson: schema.permissionRequest.argsJson,
           issueId: schema.permissionRequest.issueId,
+          threadId: schema.permissionRequest.threadId,
           toolCallId: schema.permissionRequest.toolCallId,
         })
         .from(schema.permissionRequest)
@@ -122,6 +171,9 @@ async function loadReferenceRequest(
             eq(schema.permissionRequest.status, 'pending'),
             eq(schema.agent.workspaceId, input.workspaceId),
             issueFilter,
+            input.threadId
+              ? eq(schema.permissionRequest.threadId, input.threadId)
+              : undefined,
             teamFilter,
           ),
         )
@@ -184,6 +236,12 @@ async function loadMatchingPendingRequests(args: {
             isNotNull(schema.permissionRequest.capabilityId),
             eq(schema.permissionRequest.status, 'pending'),
             issueScope,
+            args.referenceRequest.threadId
+              ? eq(
+                  schema.permissionRequest.threadId,
+                  args.referenceRequest.threadId,
+                )
+              : isNull(schema.permissionRequest.threadId),
             args.teamId
               ? eq(schema.permissionRequest.teamId, args.teamId)
               : undefined,
@@ -305,12 +363,25 @@ export async function resolveConnectorWritePermissionRequests(
             resolvedBy: input.actorUserId,
             resolvedAt,
           })
-          .where(inArray(schema.permissionRequest.id, matchingRequestIds))
+          .where(
+            and(
+              inArray(schema.permissionRequest.id, matchingRequestIds),
+              eq(schema.permissionRequest.status, 'pending'),
+            ),
+          )
           .returning({
             argsJson: schema.permissionRequest.argsJson,
             capabilityId: schema.permissionRequest.capabilityId,
             toolCallId: schema.permissionRequest.toolCallId,
           })
+        if (updated.length !== matchingRequestIds.length) {
+          throw new PermissionRequestServiceError({
+            code: 'permission_request_changed',
+            status: 409,
+            message:
+              'A permission request already has a decision. Refresh to see its status.',
+          })
+        }
         if (auditRows.length > 0) {
           await tx.insert(schema.toolCallAudit).values(auditRows)
         }
@@ -359,6 +430,7 @@ export async function teamOwnerApprovalScope(input: {
   workspaceId: string
   actorUserId: string
   permissionRequestId?: string
+  threadId?: string
   toolCallId?: string
 }): Promise<ResultValue<string | null, PermissionRequestServiceError>> {
   const requestFilter = input.permissionRequestId
@@ -376,6 +448,9 @@ export async function teamOwnerApprovalScope(input: {
         .where(
           and(
             requestFilter,
+            input.threadId
+              ? eq(schema.permissionRequest.threadId, input.threadId)
+              : undefined,
             eq(schema.permissionRequest.kind, 'connector_write'),
             eq(schema.permissionRequest.status, 'pending'),
             eq(schema.team.workspaceId, input.workspaceId),

@@ -2,7 +2,7 @@ import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, desc, eq, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
 import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
@@ -239,6 +239,11 @@ export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
 
 export type ThreadRuntimeIdentity = {
   threadId: string
+  /**
+   * The `chat_thread` row behind a chat runtime. Run runtimes leave it unset,
+   * because their `threadId` names an issue or automation scope instead.
+   */
+  chatThreadId?: string
   workspaceId: string
   userId: string
   agentId: string
@@ -1361,6 +1366,9 @@ export class RuntimeMcpController {
     }
 
     const toolArgsSignature = canonicalJsonString(args.toolArgs)
+    const threadScope = identityResult.value.chatThreadId
+      ? eq(schema.permissionRequest.threadId, identityResult.value.chatThreadId)
+      : isNull(schema.permissionRequest.threadId)
     const existingRequestResult = await Result.tryPromise({
       try: async () =>
         db
@@ -1376,6 +1384,7 @@ export class RuntimeMcpController {
                 identityResult.value.agentId,
               ),
               eq(schema.permissionRequest.capabilityId, capability.id),
+              threadScope,
               eq(schema.permissionRequest.toolCallId, args.toolCallId),
             ),
           )
@@ -1489,6 +1498,7 @@ export class RuntimeMcpController {
                 identityResult.value.agentId,
               ),
               eq(schema.permissionRequest.capabilityId, capability.id),
+              threadScope,
             ),
           )
           .orderBy(desc(schema.permissionRequest.requestedAt))
@@ -1544,6 +1554,7 @@ export class RuntimeMcpController {
             ? null
             : (teamApproval?.team.teamId ?? null),
           issueId: identityResult.value.issueId ?? null,
+          threadId: identityResult.value.chatThreadId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,
           status: 'pending',
@@ -1690,6 +1701,7 @@ export class RuntimeMcpController {
 
     return Result.ok({
       threadId,
+      chatThreadId: threadId,
       workspaceId: thread.workspaceId,
       userId: thread.userId,
       agentId: thread.agentId,

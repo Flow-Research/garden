@@ -428,6 +428,7 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
     runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
   const trustedOrigins = Array.from(
     new Set([
+      'garden-mobile://',
       'http://localhost:3000',
       'http://localhost:3001',
       ...(env.BETTER_AUTH_URL ? [env.BETTER_AUTH_URL] : []),
@@ -661,6 +662,19 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
        * and its owned `accountId` input.
        */
       before: createAuthMiddleware(async (context) => {
+        // Better Auth 1.7.16 accepts any authority and path for a trusted
+        // custom scheme with no authority, such as `garden-mobile://`. This
+        // password-only native client needs one exact Origin, not callbacks.
+        const nativeOrigin = context.request?.headers.get('origin')
+        if (
+          nativeOrigin?.startsWith('garden-mobile:') &&
+          nativeOrigin !== 'garden-mobile://'
+        ) {
+          throw APIError.from('FORBIDDEN', {
+            code: 'INVALID_ORIGIN',
+            message: 'Native origin is not trusted',
+          })
+        }
         const providerId = context.body?.provider
         const connectorProvider = connectorConfigs.some(
           (config) => config.providerId === providerId,

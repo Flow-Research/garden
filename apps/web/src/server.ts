@@ -2,7 +2,6 @@ import { getChatFacetTarget, isAgentDoPath } from '@/lib/server/agent-do-path'
 import handler from '@tanstack/react-start/server-entry'
 import { routeAgentRequest } from 'agents'
 import {
-  AgentDO,
   AutomationRunSubAgent,
   AutomationTriggerDO,
   BrainAuditSubAgent,
@@ -12,6 +11,10 @@ import {
   RunWorkflow,
   WorkspaceRealtimeDO,
 } from '@garden/agent-runtime'
+import {
+  AgentDO,
+  stripBrowserAgentRoutingHeaders,
+} from '@/lib/server/browser-agent-do'
 import { DecideAnalysisWorkflow } from './decide-analysis-workflow'
 import { GitHubRepoImportWorkflow } from './github-repo-import-workflow'
 import { proxyToSandbox, Sandbox } from '@cloudflare/sandbox'
@@ -174,18 +177,8 @@ async function routeAgentDoRequest(request: Request, env: ServerEnv) {
   // The SDK trusts these headers for internal routing and facet restoration.
   // Public clients select a target only through the authorized URL; the SDK
   // generates its own metadata after this boundary.
-  const headers = new Headers(request.headers)
-  for (const name of [
-    'x-cf-agents-subagent-url',
-    'x-partykit-props',
-    'x-partykit-room',
-    'x-partykit-namespace',
-    'x-partykit-jurisdiction',
-  ]) {
-    headers.delete(name)
-  }
   const response = await routeAgentRequest(
-    new Request(request, { headers }),
+    stripBrowserAgentRoutingHeaders(request),
     env,
     {
       routingRetry: AGENT_ROUTING_RETRY,

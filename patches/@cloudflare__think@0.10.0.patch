@@ -1,0 +1,1163 @@
+diff --git a/dist/request-context.d.ts b/dist/request-context.d.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d9ac1d9a352adeb0daf893be82667e424c37b8bd
+--- /dev/null
++++ b/dist/request-context.d.ts
+@@ -0,0 +1,27 @@
++export type ChatRequestSource =
++  | Readonly<{ kind: "connection"; connectionId: string; connectionTags: readonly string[]; applicationContext?: Readonly<Record<string, unknown>> }>
++  | Readonly<{ kind: "submission"; submissionId: string; metadata: Readonly<Record<string, unknown>> }>
++  | Readonly<{ kind: "programmatic"; applicationContext: Readonly<Record<string, unknown>> }>
++  | Readonly<{ kind: "unattributed" }>;
++export type ChatRequestContext = Readonly<{
++  version: 1;
++  requestId: string;
++  rootRequestId: string;
++  parentRequestId?: string;
++  source: ChatRequestSource;
++  initiatingSources?: readonly ChatRequestSource[];
++}>;
++export type ChatActionContext = Readonly<{
++  request: ChatRequestContext;
++  action: "dispatch-client-tool" | "protocol-event" | "compact-context" | "persist-messages" | "prepare-turn" | "model-step" | "model-call" | "unsupported-model" | "execute-tool" | "apply-tool-result" | "apply-tool-approval" | "approve-execution" | "reject-execution";
++  toolCallId?: string;
++  toolName?: string;
++  input?: unknown;
++  approved?: boolean;
++  approval?: Readonly<{ approved: boolean; request: ChatRequestContext }>;
++  executionId?: string;
++  initiatingRequest?: ChatRequestContext;
++}>;
++export type ChatApplicationOptions = { applicationContext?: Readonly<Record<string, unknown>>; parentReference?: string };
++
++export declare function resultClientToolNames(result: object): readonly string[];
+diff --git a/dist/request-context.js b/dist/request-context.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..2652be58e04e407b8cf36d7cf0f826847564e8a5
+--- /dev/null
++++ b/dist/request-context.js
+@@ -0,0 +1,130 @@
++import { AsyncLocalStorage } from "node:async_hooks";
++const requestContextStorage = new AsyncLocalStorage();
++const MAX_CONTEXT_BYTES = 8192;
++const MAX_CONTEXT_NODES = 512;
++const MAX_CONTEXT_DEPTH = 8;
++const resultContexts = new WeakMap();
++const resultClientTools = new WeakMap();
++const issuedContexts = new WeakSet();
++
++function freezeJson(value, depth = 0, state = { nodes: 0 }) {
++  if (++state.nodes > MAX_CONTEXT_NODES || depth > MAX_CONTEXT_DEPTH) throw new Error('Chat request context exceeds its bound.');
++  if (value === null || typeof value === 'boolean') return value;
++  if (typeof value === 'string') {
++    if (value.length > 4096) throw new Error('Chat request context string exceeds its bound.');
++    return value;
++  }
++  if (typeof value === 'number' && Number.isFinite(value)) return value;
++  if (Array.isArray(value)) return Object.freeze(value.map((item) => freezeJson(item, depth + 1, state)));
++  if (typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype) throw new Error('Chat request context must contain plain JSON values.');
++  const entries = Object.entries(value);
++  if (entries.some(([key]) => key === '__proto__' || key === 'constructor' || key === 'prototype')) throw new Error('Chat request context contains a reserved key.');
++  return Object.freeze(Object.fromEntries(entries.map(([key, item]) => [key, freezeJson(item, depth + 1, state)])));
++}
++
++function boundedJson(value) {
++  const copy = freezeJson(value);
++  if (new TextEncoder().encode(JSON.stringify(copy)).byteLength > MAX_CONTEXT_BYTES) throw new Error('Chat request context exceeds its byte bound.');
++  return copy;
++}
++
++function identifier(value) {
++  return typeof value === 'string' && value.length > 0 && value.length <= 256;
++}
++
++export function readRequestContext(value) {
++  if (value === undefined || value === null) return newRequestContext({ kind: 'unattributed' });
++  if (typeof value !== 'object' || value.version !== 1 || !identifier(value.requestId) || !identifier(value.rootRequestId) || (value.parentRequestId !== undefined && !identifier(value.parentRequestId))) throw new Error('Chat request context is invalid.');
++  const sources = [value.source, ...(value.initiatingSources ?? [])];
++  if (!Array.isArray(value.initiatingSources ?? []) || sources.length > 16) throw new Error('Chat request lineage exceeds its bound.');
++  for (const source of sources) {
++    if (!source || typeof source !== 'object') throw new Error('Chat request source is invalid.');
++    switch (source.kind) {
++      case 'connection':
++        if (!identifier(source.connectionId) || !Array.isArray(source.connectionTags) || source.connectionTags.length > 16 || source.connectionTags.some((tag) => typeof tag !== 'string' || tag.length > 256)) throw new Error('Chat connection source is invalid.');
++        break;
++      case 'submission':
++        if (!identifier(source.submissionId) || !source.metadata || typeof source.metadata !== 'object' || Array.isArray(source.metadata)) throw new Error('Chat submission source is invalid.');
++        break;
++      case 'programmatic':
++        if (!source.applicationContext || typeof source.applicationContext !== 'object' || Array.isArray(source.applicationContext)) throw new Error('Chat programmatic source is invalid.');
++        break;
++      case 'unattributed': break;
++      default: throw new Error('Chat request source is invalid.');
++    }
++  }
++  const copy = boundedJson(value);
++  issuedContexts.add(copy);
++  return copy;
++}
++
++export function newRequestContext(source, parent) {
++  source = boundedJson(source);
++  const requestId = crypto.randomUUID();
++  const previous = parent ? [...parent.initiatingSources ?? [], parent.source] : [];
++  const seen = new Set([JSON.stringify(source)]);
++  const initiatingSources = previous.filter((item) => {
++    const key = JSON.stringify(item);
++    if (seen.has(key)) return false;
++    seen.add(key);
++    return true;
++  });
++  return readRequestContext({ version: 1, requestId, rootRequestId: parent?.rootRequestId ?? requestId, ...(parent ? { parentRequestId: parent.requestId } : {}), ...(initiatingSources.length ? { initiatingSources } : {}), source });
++}
++
++export function captureRequestContext(connection, applicationContext, parent) {
++  const source = connection
++    ? { kind: 'connection', connectionId: connection.id, connectionTags: [...connection.tags], ...(applicationContext === undefined ? {} : { applicationContext }) }
++    : applicationContext === undefined ? { kind: 'unattributed' } : { kind: 'programmatic', applicationContext };
++  return newRequestContext(source, parent);
++}
++
++export function bindResultContext(result, context, clientTools = []) {
++  if (result && typeof result === 'object') {
++    resultContexts.set(result, context);
++    resultClientTools.set(result, Object.freeze(clientTools.map((tool) => tool.name)));
++  }
++  return result;
++}
++
++export function resultRequestContext(result) {
++  return readRequestContext(resultContexts.get(result));
++}
++
++// A reconnect or a second tab changes the transport ID only. The server-bound
++// tags and application context identify the principal. PartyServer also lists
++// the connection ID among the platform tags.
++function sourcePrincipal(source) {
++  if (source.kind !== 'connection') return JSON.stringify(source);
++  const { connectionId, connectionTags, ...bound } = source;
++  return JSON.stringify({ ...bound, connectionTags: connectionTags.filter((tag) => tag !== connectionId) });
++}
++
++export function sameRequestSource(left, right) {
++  return sourcePrincipal(left.source) === sourcePrincipal(right.source);
++}
++
++export function isIssuedRequestContext(value) { return Boolean(value && typeof value === "object" && issuedContexts.has(value)); }
++
++// AsyncLocalStorage preserves per-invocation lineage across compaction and SDK
++// callbacks without sharing a mutable current-source variable between turns.
++export function currentRequestContext() { return requestContextStorage.getStore(); }
++export function runWithRequestContext(context, run) { return requestContextStorage.run(readRequestContext(context), run); }
++
++export function resultClientToolNames(result) { return resultClientTools.get(result) ?? Object.freeze([]); }
++
++// Merge only authority-compatible branches of one pending continuation.
++// Durable tool/application records retain their exact per-effect request IDs.
++export function mergeRequestContexts(left, right) {
++  left = readRequestContext(left);
++  right = readRequestContext(right);
++  if (left.rootRequestId !== right.rootRequestId || !sameRequestSource(left, right)) throw new Error('Chat continuation authority conflicts.');
++  const seen = new Set([JSON.stringify(left.source)]);
++  const initiatingSources = [...left.initiatingSources ?? [], right.source, ...right.initiatingSources ?? []].filter((source) => {
++    const key = JSON.stringify(source);
++    if (seen.has(key)) return false;
++    seen.add(key);
++    return true;
++  });
++  return readRequestContext({ ...left, initiatingSources });
++}
+diff --git a/dist/think-BYZXQ-vm.js b/dist/think-BYZXQ-vm.js
+index b55c8a39634199612c5169db6b4a925416bccba0..d7d20364a5a3c8b47ab7c572de262231fbfff9b8 100644
+--- a/dist/think-BYZXQ-vm.js
++++ b/dist/think-BYZXQ-vm.js
+@@ -2,7 +2,8 @@ import { a as _classPrivateFieldSet2, i as _classPrivateFieldGet2, n as sanitize
+ import { createWorkspaceTools } from "./tools/workspace.js";
+ import { truncatePausedExecutionOutput } from "./tools/execute.js";
+ import { t as ThinkMessengerRuntime } from "./chat-sdk-Bb93yaZh.js";
+-import { convertToModelMessages, hasToolCall, jsonSchema, stepCountIs, streamText, tool } from "ai";
++import { convertToModelMessages, hasToolCall, jsonSchema, stepCountIs, streamText, tool, wrapLanguageModel } from "ai";
++import { readRequestContext, newRequestContext, captureRequestContext, bindResultContext, resultRequestContext, resultClientToolNames, sameRequestSource, mergeRequestContexts, isIssuedRequestContext, runWithRequestContext, currentRequestContext } from "./request-context.js";
+ import * as skills from "agents/skills";
+ import { SkillRegistry } from "agents/skills";
+ import { Agent, __DO_NOT_USE_WILL_BREAK__agentContext, callable, getCurrentAgent, isPlatformTransientError } from "agents";
+@@ -1293,7 +1294,108 @@ var Think = class Think extends Agent {
+ 	* Task-local timezone declarations take precedence.
+ 	*/
+ 	getDefaultTimezone() {}
+-	async _runChatRecoveryFiber(requestId, continuation, fn) {
++	/** Runs immediately before a controlled chat effect. Applications supply current policy. */
++	async beforeChatAction(_context) {}
++	getCurrentChatRequest() { return currentRequestContext(); }
++	async admitCurrentChatAction(action) { return this._admitChatAction(action, this.getCurrentChatRequest() ?? this._captureChatRequest()); }
++	_captureChatRequest(options, parent) {
++		const { connection } = getCurrentAgent();
++		if (options?.parentReference !== undefined) parent = this._readChatSource("application", options.parentReference);
++		if (isIssuedRequestContext(options?.requestContext)) return options.requestContext;
++		if (connection) return captureRequestContext(connection, options?.applicationContext, parent);
++		return captureRequestContext(undefined, options?.applicationContext, parent);
++	}
++	async _admitChatAction(action, request, extra = {}) {
++		const context = readRequestContext(request);
++		if (context.source.kind === "submission") {
++			const row = this._readSubmission(context.source.submissionId);
++			if (!row || row.status !== "running" || JSON.stringify(this._parseJsonObject(row.metadata_json) ?? {}) !== JSON.stringify(context.source.metadata)) throw new Error("Chat submission authority does not match its exact current row.");
++		}
++		return runWithRequestContext(context, () => this.beforeChatAction(Object.freeze({ action, request: context, ...extra })));
++	}
++	/** Retains an issued tool/turn source for an exact server-owned application record. */
++	retainChatRequestReference(reference, request) {
++		if (!isIssuedRequestContext(request)) throw new Error("Chat reference requires an issued request.");
++		this._bindChatSource("application", reference, request);
++	}
++	/** Releases an application record after its server-owned effect reached a terminal state. */
++	releaseChatRequestReference(reference) {
++		this._releaseChatSource("application", reference);
++	}
++	_releaseChatSource(kind, id) {
++		if (typeof id !== "string" || id.length === 0 || id.length > 256) return;
++		this._configDelete(`__chat_source:${kind}:${id}`);
++	}
++	// A settled tool call cannot receive another result, approval or execution.
++	_releaseChatToolSource(id) {
++		this._releaseChatSource("tool", id);
++		this._releaseChatSource("decision", id);
++	}
++	// Server tools without an output cannot resume after their stream ends; execution binds them again.
++	_releaseOpenChatToolSources(open) {
++		for (const [id, pending] of open) if (!pending) this._releaseChatToolSource(id);
++		open.clear();
++	}
++	_readChatDecision(id) {
++		const raw = this._configGet(`__chat_source:decision:${id}`);
++		if (!raw) return undefined;
++		const decision = JSON.parse(raw);
++		if (typeof decision.approved !== "boolean") throw new Error("Chat decision is invalid.");
++		return Object.freeze({ approved: decision.approved, request: readRequestContext(decision.request) });
++	}
++	_recordChatDecision(id, approved, request) {
++		const key = `__chat_source:decision:${id}`;
++		const previous = this._readChatDecision(id);
++		if (previous && (previous.approved !== approved || !sameRequestSource(previous.request, request))) throw new Error("Chat decision conflicts.");
++		this._bindChatSource("tool", id, request);
++		if (!previous) {
++			const count = this.sql`SELECT count(*) AS total FROM think_config WHERE key GLOB '__chat_source:*'`[0]?.total ?? 0;
++			if (count >= 4096) throw new Error("Chat source storage is full. Clear retained history before more work.");
++		}
++		this._configSet(key, JSON.stringify({ approved, request }));
++	}
++	_readChatSource(kind, id) {
++		if (typeof id !== "string" || id.length === 0 || id.length > 256) return readRequestContext(undefined);
++		const json = this._configGet(`__chat_source:${kind}:${id}`);
++		return readRequestContext(json ? JSON.parse(json) : undefined);
++	}
++	_bindChatSource(kind, id, request) {
++		if (typeof id !== "string" || id.length === 0 || id.length > 256) throw new Error("Chat source identity is invalid.");
++		const key = `__chat_source:${kind}:${id}`;
++		const value = this._configGet(key);
++		if (value !== undefined) {
++			const existing = readRequestContext(JSON.parse(value));
++			if (existing.rootRequestId !== request.rootRequestId) throw new Error("Chat source identity conflicts.");
++			return existing;
++		}
++		// This bounded private index shares SDK history lifetime, not browser state.
++		const count = this.sql`SELECT count(*) AS total FROM think_config WHERE key GLOB '__chat_source:*'`[0]?.total ?? 0;
++		if (count >= 4096) throw new Error("Chat source storage is full. Clear retained history before more work.");
++		this._configSet(key, JSON.stringify(readRequestContext(request)));
++		return request;
++	}
++	async _bindChatChunkSource(chunk, request, clientToolNames, open) {
++		if (chunk.type === "tool-input-available" && clientToolNames.includes(chunk.toolName)) await this._admitChatAction("dispatch-client-tool", request, { toolCallId: chunk.toolCallId, toolName: chunk.toolName, input: chunk.input });
++		if (typeof chunk.toolCallId !== "string") return;
++		const paused = chunk.type === "tool-output-available" && chunk.output?.status === "paused" && typeof chunk.output.executionId === "string";
++		if (chunk.type === "tool-output-error" || chunk.type === "tool-output-denied" || chunk.type === "tool-output-available" && chunk.preliminary !== true && !paused) {
++			this._releaseChatToolSource(chunk.toolCallId);
++			open.delete(chunk.toolCallId);
++			return;
++		}
++		if (chunk.type === "tool-approval-request") {
++			open.set(chunk.toolCallId, true);
++			return;
++		}
++		if (chunk.type.startsWith("tool-input") || chunk.type === "tool-output-available") {
++			const original = this._bindChatSource("tool", chunk.toolCallId, request);
++			if (paused) this._bindChatSource("execution", chunk.output.executionId, original);
++			// Client results, approvals and paused executions arrive after this stream.
++			if (paused || typeof chunk.toolName === "string" && clientToolNames.includes(chunk.toolName)) open.set(chunk.toolCallId, true);
++			else if (!open.has(chunk.toolCallId)) open.set(chunk.toolCallId, false);
++		}
++	}
++	async _runChatRecoveryFiber(requestId, continuation, fn, requestContext) {
+ 		const snapshot = createChatFiberSnapshot({
+ 			kind: "think-chat-turn",
+ 			requestId,
+@@ -1301,7 +1403,8 @@ var Think = class Think extends Agent {
+ 			continuation,
+ 			messages: this.messages,
+ 			lastBody: this._lastBody,
+-			lastClientTools: this._lastClientTools
++			lastClientTools: this._lastClientTools,
++			requestContext
+ 		});
+ 		return this._runFiberWithStashWrapper(`${this.constructor.CHAT_FIBER_NAME}:${requestId}`, async () => fn(), {
+ 			initialSnapshot: wrapChatFiberSnapshot("__cfThinkChatFiberSnapshot", snapshot, null),
+@@ -1686,6 +1789,7 @@ var Think = class Think extends Agent {
+ 	* NOT emit it again.
+ 	*/
+ 	async _compactForContextOverflow(reason, extra) {
++		await this._admitChatAction("compact-context", this.getCurrentChatRequest());
+ 		try {
+ 			const result = await this.session.compact();
+ 			const shortened = Boolean(result);
+@@ -1829,6 +1933,8 @@ var Think = class Think extends Agent {
+ 	* for interception, and calls streamText.
+ 	*/
+ 	async _runInferenceLoop(input) {
++		const requestContext = readRequestContext(input.requestContext);
++		await this._admitChatAction("prepare-turn", requestContext);
+ 		this._activeStallTimeoutMs = void 0;
+ 		this._proactiveCompactionsThisRun = 0;
+ 		if (this.waitForMcpConnections) {
+@@ -1862,7 +1968,8 @@ var Think = class Think extends Agent {
+ 			tools,
+ 			model,
+ 			continuation: input.continuation,
+-			body: input.body
++			body: input.body,
++			request: requestContext
+ 		};
+ 		const subclassConfig = await this.beforeTurn(ctx) ?? {};
+ 		const config = await this._pipelineExtensionBeforeTurn(ctx, subclassConfig);
+@@ -1879,7 +1986,7 @@ var Think = class Think extends Agent {
+ 			...tools,
+ 			...config.tools
+ 		} : tools;
+-		const finalTools = this._wrapToolsWithDecision(mergedTools);
++		const finalTools = this._wrapToolsWithDecision(mergedTools, requestContext);
+ 		let finalAnswerToolName = THINK_FINAL_ANSWER_TOOL_NAME;
+ 		if (structuredOutputSchema) {
+ 			let suffix = 1;
+@@ -1907,8 +2014,32 @@ var Think = class Think extends Agent {
+ 			...wantsStructuredOutput ? [hasToolCall(finalAnswerToolName)] : [],
+ 			...Array.isArray(config.stopWhen) ? config.stopWhen : config.stopWhen ? [config.stopWhen] : []
+ 		];
++		const guardModel = async (candidate) => {
++			if (typeof candidate !== "object" || candidate === null || candidate.specificationVersion !== "v3") {
++				await this._admitChatAction("unsupported-model", requestContext);
++				return candidate;
++			}
++			return wrapLanguageModel({
++				model: candidate,
++				middleware: {
++					specificationVersion: "v3",
++					wrapStream: async ({ doStream }) => {
++						await this._admitChatAction("model-call", requestContext);
++						input.signal?.throwIfAborted();
++						return doStream();
++					},
++					wrapGenerate: async ({ doGenerate }) => {
++						await this._admitChatAction("model-call", requestContext);
++						input.signal?.throwIfAborted();
++						return doGenerate();
++					}
++				}
++			});
++		};
++		const guardedModel = await guardModel(finalModel);
+ 		const result = streamText({
+-			model: finalModel,
++			model: guardedModel,
++
+ 			system: turnSystem,
+ 			messages: finalMessages,
+ 			tools: finalTools,
+@@ -1940,15 +2071,17 @@ var Think = class Think extends Agent {
+ 					...base,
+ 					messages: guarded
+ 				} : base;
+-				if (wantsStructuredOutput && event.stepNumber >= finalMaxSteps - 1 && withMessages.toolChoice === void 0) return {
+-					...withMessages,
++				await this._admitChatAction("model-step", requestContext);
++				const admitted = withMessages.model === undefined ? withMessages : { ...withMessages, model: await guardModel(withMessages.model) };
++				if (wantsStructuredOutput && event.stepNumber >= finalMaxSteps - 1 && admitted.toolChoice === void 0) return {
++					...admitted,
+ 					toolChoice: {
+ 						type: "tool",
+ 						toolName: finalAnswerToolName
+ 					},
+ 					activeTools: [finalAnswerToolName]
+ 				};
+-				return withMessages;
++				return admitted;
+ 			}),
+ 			onChunk: async (event) => {
+ 				await this.onChunk(event);
+@@ -1962,6 +2095,7 @@ var Think = class Think extends Agent {
+ 				if (event.toolCall.toolName === finalAnswerToolName) return;
+ 				const base = {
+ 					...event.toolCall,
++					request: requestContext,
+ 					stepNumber: event.stepNumber,
+ 					messages: event.messages,
+ 					durationMs: event.durationMs
+@@ -1990,7 +2124,7 @@ var Think = class Think extends Agent {
+ 			toUIMessageStream: () => result.toUIMessageStream({ sendReasoning: finalSendReasoning }),
+ 			output: outputPromise
+ 		};
+-		return this._transformInferenceResult(streamResult);
++		return bindResultContext(this._transformInferenceResult(streamResult), requestContext, input.clientTools);
+ 	}
+ 	/** @internal Test seam — override in test agents to wrap the stream (e.g. error injection). */
+ 	_transformInferenceResult(result) {
+@@ -2123,7 +2257,7 @@ var Think = class Think extends Agent {
+ 	* `getTools()` to provide such tools and avoid using `beforeToolCall`
+ 	* for them (or accept the collapse).
+ 	*/
+-	_wrapToolsWithDecision(tools) {
++	_wrapToolsWithDecision(tools, requestContext) {
+ 		const wrapped = {};
+ 		for (const [toolName, originalTool] of Object.entries(tools)) {
+ 			const t = originalTool;
+@@ -2134,6 +2268,8 @@ var Think = class Think extends Agent {
+ 			}
+ 			const isDynamic = t.type === "dynamic";
+ 			const wrappedExecute = async (input, options) => {
++				const initiatingRequest = this._bindChatSource("tool", options.toolCallId, requestContext);
++				await this._admitChatAction("execute-tool", requestContext, { toolCallId: options.toolCallId, toolName, input, initiatingRequest, approval: this._readChatDecision(options.toolCallId) });
+ 				const toolCallBase = {
+ 					type: "tool-call",
+ 					toolCallId: options.toolCallId,
+@@ -2145,7 +2281,8 @@ var Think = class Think extends Agent {
+ 					...toolCallBase,
+ 					stepNumber: void 0,
+ 					messages: options.messages,
+-					abortSignal: options.abortSignal
++					abortSignal: options.abortSignal,
++					request: requestContext
+ 				};
+ 				const decision = await this.beforeToolCall(ctx);
+ 				const dispatchInput = decision && decision.action === "allow" && decision.input ? decision.input : input;
+@@ -2157,6 +2294,8 @@ var Think = class Think extends Agent {
+ 					stepNumber: void 0
+ 				});
+ 				if (!decision || decision.action === "allow") {
++					await this._admitChatAction("execute-tool", requestContext, { toolCallId: options.toolCallId, toolName, input: decision?.input ?? input, initiatingRequest, approval: this._readChatDecision(options.toolCallId) });
++					options.abortSignal?.throwIfAborted();
+ 					const result = await originalExecute(decision?.input ?? input, options);
+ 					if (result != null && typeof result === "object" && Symbol.asyncIterator in result) {
+ 						let last;
+@@ -2236,6 +2375,7 @@ var Think = class Think extends Agent {
+ 		}));
+ 	}
+ 	async _hostSendMessage(content) {
++		await this.admitCurrentChatAction("persist-messages");
+ 		const msg = {
+ 			id: crypto.randomUUID(),
+ 			role: "user",
+@@ -2259,6 +2399,8 @@ var Think = class Think extends Agent {
+ 	* @param options Optional chat options (e.g. AbortSignal)
+ 	*/
+ 	async chat(userMessage, callback, options) {
++		const requestContext = this._captureChatRequest({ applicationContext: options?.applicationContext, parentReference: options?.parentReference });
++		return runWithRequestContext(requestContext, async () => {
+ 		const requestId = crypto.randomUUID();
+ 		const abortSignal = this._aborts.getSignal(requestId);
+ 		const detachExternal = this._aborts.linkExternal(requestId, options?.signal);
+@@ -2270,6 +2412,7 @@ var Think = class Think extends Agent {
+ 			await callback.onStart({ requestId });
+ 			await this.keepAliveWhile(async () => {
+ 				await this._turnQueue.enqueue(requestId, async () => {
++					await this._admitChatAction("persist-messages", requestContext);
+ 					const userMsg = typeof userMessage === "string" ? {
+ 						id: crypto.randomUUID(),
+ 						role: "user",
+@@ -2290,6 +2433,7 @@ var Think = class Think extends Agent {
+ 									request: void 0,
+ 									email: void 0
+ 								}, () => this._runInferenceLoop({
++								requestContext,
+ 									signal: abortSignal,
+ 									clientTools,
+ 									clientToolExecutor,
+@@ -2323,7 +2467,7 @@ var Think = class Think extends Agent {
+ 							return;
+ 						}
+ 					};
+-					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, chatBody);
++					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, chatBody, requestContext);
+ 					else await chatBody();
+ 				});
+ 			});
+@@ -2331,6 +2475,8 @@ var Think = class Think extends Agent {
+ 			detachExternal();
+ 			this._aborts.remove(requestId);
+ 		}
++	
++		});
+ 	}
+ 	/** Get the conversation history as UIMessage[]. */
+ 	async getMessages() {
+@@ -2340,6 +2486,7 @@ var Think = class Think extends Agent {
+ 	async clearMessages() {
+ 		this.resetTurnState();
+ 		await this._clearHistory();
++		this.sql`DELETE FROM think_config WHERE key GLOB '__chat_source:*'`;
+ 		this._broadcast({ type: MSG_CHAT_CLEAR });
+ 	}
+ 	_ensureAgentToolChildRunTable() {
+@@ -3477,10 +3624,11 @@ var Think = class Think extends Agent {
+ 		this._submissionAbortControllers.set(row.submission_id, controller);
+ 		let output;
+ 		try {
+-			const messages = this._parseSubmissionMessages(row.messages_json);
+-			const metadata = this._parseJsonObject(row.metadata_json);
++			const messages = this._parseSubmissionMessages(claimed.messages_json);
++			const metadata = this._parseJsonObject(claimed.metadata_json);
+ 			const workflowPrompt = this._readWorkflowPromptContext(metadata);
+ 			const result = await this._runProgrammaticMessagesTurn(requestId, messages, {
++				requestContext: newRequestContext({ kind: "submission", submissionId: claimed.submission_id, metadata: metadata ?? {} }),
+ 				signal: controller.signal,
+ 				captureProgrammaticStreamError: true,
+ 				captureOutput: Boolean(workflowPrompt?.output),
+@@ -3727,7 +3875,8 @@ var Think = class Think extends Agent {
+ 	*/
+ 	async saveMessages(messages, options) {
+ 		const requestId = crypto.randomUUID();
+-		return this._runProgrammaticMessagesTurn(requestId, messages, options);
++		const requestContext = this._captureChatRequest({ applicationContext: options?.applicationContext, parentReference: options?.parentReference });
++		return this._runProgrammaticMessagesTurn(requestId, messages, { ...options, requestContext });
+ 	}
+ 	/**
+ 	* Add messages to history WITHOUT starting a model turn.
+@@ -3760,6 +3909,7 @@ var Think = class Think extends Agent {
+ 	*   durable and visible to the running turn's next sync.
+ 	*/
+ 	async addMessages(messages, options) {
++		await this.admitCurrentChatAction("persist-messages");
+ 		const resolved = typeof messages === "function" ? await messages(this.messages) : messages;
+ 		if (resolved.length === 0) return;
+ 		const mode = options?.mode ?? "append";
+@@ -3775,6 +3925,8 @@ var Think = class Think extends Agent {
+ 		if (options?.broadcast !== false) this._broadcastMessages();
+ 	}
+ 	async _runProgrammaticMessagesTurn(requestId, messages, options) {
++		const requestContext = this._captureChatRequest(options);
++		return runWithRequestContext(requestContext, async () => {
+ 		const clientTools = this._lastClientTools;
+ 		const body = options?.body ?? this._lastBody;
+ 		const epoch = this._turnQueue.generation;
+@@ -3801,7 +3953,11 @@ var Think = class Think extends Agent {
+ 					status = "aborted";
+ 					return;
+ 				}
+-				for (const msg of resolved) await this._appendMessageToHistory(msg);
++				await this._admitChatAction("persist-messages", requestContext);
++				for (const msg of resolved) {
++					await this._admitChatAction("persist-messages", requestContext);
++					await this._appendMessageToHistory(msg);
++				}
+ 				options?.onMessagesApplied?.();
+ 				this._broadcastMessages();
+ 				if (this._turnQueue.generation !== epoch) {
+@@ -3819,6 +3975,7 @@ var Think = class Think extends Agent {
+ 								request: void 0,
+ 								email: void 0
+ 							}, () => this._runInferenceLoop({
++								requestContext,
+ 								signal: abortSignal,
+ 								clientTools,
+ 								body,
+@@ -3854,7 +4011,7 @@ var Think = class Think extends Agent {
+ 							return;
+ 						}
+ 					};
+-					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, programmaticBody);
++					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, programmaticBody, requestContext);
+ 					else await programmaticBody();
+ 				} finally {
+ 					if (abortSignal?.aborted) wasAborted = true;
+@@ -3871,6 +4028,8 @@ var Think = class Think extends Agent {
+ 			...error !== void 0 && { error },
+ 			...output !== void 0 && { output }
+ 		};
++	
++		});
+ 	}
+ 	/**
+ 	* Run a new LLM call following the last assistant message.
+@@ -3890,6 +4049,8 @@ var Think = class Think extends Agent {
+ 	* matches the {@link saveMessages} contract.
+ 	*/
+ 	async continueLastTurn(body, options) {
++		const requestContext = this._captureChatRequest(options);
++		return runWithRequestContext(requestContext, async () => {
+ 		const lastLeaf = await this.session.getLatestLeaf();
+ 		if (!lastLeaf || lastLeaf.role !== "assistant") return {
+ 			requestId: "",
+@@ -3918,6 +4079,7 @@ var Think = class Think extends Agent {
+ 							request: void 0,
+ 							email: void 0
+ 						}, () => this._runInferenceLoop({
++								requestContext,
+ 							signal: abortSignal,
+ 							clientTools,
+ 							body: resolvedBody,
+@@ -3929,7 +4091,7 @@ var Think = class Think extends Agent {
+ 							error = streamResult.error;
+ 						}
+ 					};
+-					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, true, continueTurnBody);
++					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, true, continueTurnBody, requestContext);
+ 					else await continueTurnBody();
+ 				} finally {
+ 					if (abortSignal?.aborted) wasAborted = true;
+@@ -3945,8 +4107,12 @@ var Think = class Think extends Agent {
+ 			status,
+ 			...error !== void 0 && { error }
+ 		};
++	
++		});
+ 	}
+ 	async _retryLastUserTurn(clientTools, body, options) {
++		const requestContext = this._captureChatRequest(options);
++		return runWithRequestContext(requestContext, async () => {
+ 		const lastLeaf = await this.session.getLatestLeaf();
+ 		if (!lastLeaf || lastLeaf.role !== "user") return {
+ 			requestId: "",
+@@ -3973,6 +4139,7 @@ var Think = class Think extends Agent {
+ 							request: void 0,
+ 							email: void 0
+ 						}, () => this._runInferenceLoop({
++								requestContext,
+ 							signal: abortSignal,
+ 							clientTools,
+ 							body,
+@@ -3984,7 +4151,7 @@ var Think = class Think extends Agent {
+ 							error = streamResult.error;
+ 						}
+ 					};
+-					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, retryTurnBody);
++					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, retryTurnBody, requestContext);
+ 					else await retryTurnBody();
+ 				} finally {
+ 					if (abortSignal?.aborted) wasAborted = true;
+@@ -4000,6 +4167,8 @@ var Think = class Think extends Agent {
+ 			status,
+ 			...error !== void 0 && { error }
+ 		};
++	
++		});
+ 	}
+ 	_setupProtocolHandlers() {
+ 		const _onConnect = this.onConnect.bind(this);
+@@ -4037,6 +4206,7 @@ var Think = class Think extends Agent {
+ 		};
+ 	}
+ 	async _handleProtocolEvent(connection, event) {
++		if (event.type !== "chat-request") await this._admitChatAction("protocol-event", captureRequestContext(connection));
+ 		switch (event.type) {
+ 			case "stream-resume-request":
+ 				await this._handleStreamResumeRequest(connection);
+@@ -4047,20 +4217,36 @@ var Think = class Think extends Agent {
+ 			case "chat-request":
+ 				if (event.init?.method === "POST") await this._handleChatRequest(connection, event);
+ 				break;
+-			case "tool-result":
++			case "tool-result": {
++				const initiatingRequest = this._readChatSource("tool", event.toolCallId);
++				const requestContext = captureRequestContext(connection, undefined, initiatingRequest);
++				await this._admitChatAction("apply-tool-result", requestContext, { toolCallId: event.toolCallId, initiatingRequest });
+ 				if (event.clientTools && Array.isArray(event.clientTools) && event.clientTools.length > 0) {
+ 					this._lastClientTools = event.clientTools;
+ 					this._persistClientTools();
+ 				}
+-				this._enqueueInteractionApply(() => this._applyToolResult(event.toolCallId, event.output, event.state, event.errorText));
+-				if (event.autoContinue) this._scheduleAutoContinuation(connection);
++				this._enqueueInteractionApply(async () => {
++					await this._admitChatAction("apply-tool-result", requestContext, { toolCallId: event.toolCallId, initiatingRequest });
++					await this._applyToolResult(event.toolCallId, event.output, event.state, event.errorText);
++					this._releaseChatToolSource(event.toolCallId);
++				});
++				if (event.autoContinue) this._scheduleAutoContinuation(connection, requestContext);
+ 				else this._rearmPendingAutoContinuationForBatch();
+ 				break;
+-			case "tool-approval":
+-				this._enqueueInteractionApply(() => this._applyToolApproval(event.toolCallId, event.approved));
+-				if (event.autoContinue) this._scheduleAutoContinuation(connection);
++			}
++			case "tool-approval": {
++				const initiatingRequest = this._readChatSource("tool", event.toolCallId);
++				const requestContext = captureRequestContext(connection, undefined, initiatingRequest);
++				await this._admitChatAction("apply-tool-approval", requestContext, { toolCallId: event.toolCallId, approved: event.approved, initiatingRequest });
++				this._enqueueInteractionApply(async () => {
++					await this._admitChatAction("apply-tool-approval", requestContext, { toolCallId: event.toolCallId, approved: event.approved, initiatingRequest });
++					this._recordChatDecision(event.toolCallId, event.approved, requestContext);
++					return this._applyToolApproval(event.toolCallId, event.approved);
++				});
++				if (event.autoContinue) this._scheduleAutoContinuation(connection, requestContext);
+ 				else this._rearmPendingAutoContinuationForBatch();
+ 				break;
++			}
+ 			case "clear":
+ 				await this._handleClear(connection);
+ 				break;
+@@ -4090,6 +4276,8 @@ var Think = class Think extends Agent {
+ 		}));
+ 	}
+ 	async _handleChatRequest(connection, event) {
++		const requestContext = captureRequestContext(connection);
++		return runWithRequestContext(requestContext, async () => {
+ 		if (!event.init?.body) return;
+ 		let rawParsed;
+ 		try {
+@@ -4115,15 +4303,8 @@ var Think = class Think extends Agent {
+ 		const requestId = event.id;
+ 		let messagesPersisted = false;
+ 		let failureStage = "persist";
+-		const concurrencyDecision = this._getSubmitConcurrencyDecision(isSubmitMessage);
+-		if (concurrencyDecision.action === "drop") {
+-			this._rollbackDroppedSubmit(connection);
+-			this._completeSkippedRequest(connection, requestId);
+-			return;
+-		}
+-		await this._clearChatTerminal();
+-		const releasePendingEnqueue = this._submitConcurrency.beginEnqueue();
+-		let pendingEnqueue = true;
++		let releasePendingEnqueue = () => {};
++		let pendingEnqueue = false;
+ 		const epoch = this._turnQueue.generation;
+ 		const releaseIfPending = () => {
+ 			if (!pendingEnqueue) return;
+@@ -4131,6 +4312,16 @@ var Think = class Think extends Agent {
+ 			releasePendingEnqueue();
+ 		};
+ 		try {
++			await this._admitChatAction("persist-messages", requestContext);
++			const concurrencyDecision = this._getSubmitConcurrencyDecision(isSubmitMessage);
++			if (concurrencyDecision.action === "drop") {
++				this._rollbackDroppedSubmit(connection);
++				this._completeSkippedRequest(connection, requestId);
++				return;
++			}
++			await this._clearChatTerminal();
++			releasePendingEnqueue = this._submitConcurrency.beginEnqueue();
++			pendingEnqueue = true;
+ 			const requestClientTools = rawClientTools && rawClientTools.length > 0 ? rawClientTools : void 0;
+ 			if (requestClientTools) {
+ 				this._lastClientTools = requestClientTools;
+@@ -4144,6 +4335,7 @@ var Think = class Think extends Agent {
+ 			this._persistBody();
+ 			const clientToolsForTurn = this._lastClientTools;
+ 			const bodyForTurn = this._lastBody;
++			await this._admitChatAction("persist-messages", requestContext);
+ 			const serverMessages = await this._readMessagesFromStorage();
+ 			const reconciled = reconcileMessages(incomingMessages, serverMessages, sanitizeMessage);
+ 			let branchParentId;
+@@ -4157,6 +4349,7 @@ var Think = class Think extends Agent {
+ 					this._completeSkippedRequest(connection, requestId);
+ 					return;
+ 				}
++				await this._admitChatAction("persist-messages", requestContext);
+ 				await this._persistIncomingMessage(msg, serverMessages);
+ 			}
+ 			if (this._turnQueue.generation !== epoch) {
+@@ -4193,6 +4386,7 @@ var Think = class Think extends Agent {
+ 								request: void 0,
+ 								email: void 0
+ 							}, () => this._runInferenceLoop({
++								requestContext,
+ 								signal: abortSignal,
+ 								clientTools: clientToolsForTurn,
+ 								body: bodyForTurn,
+@@ -4236,7 +4430,7 @@ var Think = class Think extends Agent {
+ 							return;
+ 						}
+ 					};
+-					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, chatTurnBody);
++					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, false, chatTurnBody, requestContext);
+ 					else await chatTurnBody();
+ 				}, { generation: epoch });
+ 				releaseIfPending();
+@@ -4272,6 +4466,8 @@ var Think = class Think extends Agent {
+ 			releaseIfPending();
+ 			this._aborts.remove(requestId);
+ 		}
++	
++		});
+ 	}
+ 	/**
+ 	* Abort the active turn, invalidate queued turns, and reset
+@@ -4356,6 +4552,7 @@ var Think = class Think extends Agent {
+ 		this._lastBody = void 0;
+ 		this._persistBody();
+ 		await this._clearHistory();
++		this.sql`DELETE FROM think_config WHERE key GLOB '__chat_source:*'`;
+ 		this._broadcast({ type: MSG_CHAT_CLEAR }, connection ? [connection.id] : void 0);
+ 	}
+ 	/**
+@@ -4374,6 +4571,8 @@ var Think = class Think extends Agent {
+ 		if (action?.type === "start" && action.messageId == null && !continuation) chunk.messageId = accumulator.messageId;
+ 	}
+ 	async _streamResultToRpcCallback(requestId, result, callback, abortSignal, options) {
++		const requestContext = resultRequestContext(result);
++		const openChatTools = new Map();
+ 		const streamId = this._startResumableStream(requestId);
+ 		const accumulator = new StreamAccumulator({ messageId: crypto.randomUUID() });
+ 		this._streamingAssistant = accumulator;
+@@ -4406,6 +4605,8 @@ var Think = class Think extends Agent {
+ 						break;
+ 					}
+ 					const streamChunk = chunk;
++					await this._bindChatChunkSource(streamChunk, requestContext, resultClientToolNames(result), openChatTools);
++					if (abortSignal?.aborted) { aborted = true; break; }
+ 					const { action } = accumulator.applyChunk(streamChunk);
+ 					if (action?.type === "error") {
+ 						streamError = action.error;
+@@ -4442,6 +4643,7 @@ var Think = class Think extends Agent {
+ 				}
+ 			} finally {
+ 				this._insideInferenceLoop = false;
++				this._releaseOpenChatToolSources(openChatTools);
+ 			}
+ 			if (overflowRetry) {
+ 				this._completeResumableStream(streamId);
+@@ -4497,6 +4699,7 @@ var Think = class Think extends Agent {
+ 					this._broadcastMessages();
+ 				}
+ 				const outcome = await this._routeStallToBoundedRecovery({
++					requestContext,
+ 					requestId,
+ 					streamId,
+ 					partialParts: (assistantMsg ?? accumulator.toMessage()).parts,
+@@ -4657,6 +4860,8 @@ var Think = class Think extends Agent {
+ 		}
+ 	}
+ 	async _streamResult(requestId, result, abortSignal, options) {
++		const requestContext = resultRequestContext(result);
++		const openChatTools = new Map();
+ 		const clearGen = this._turnQueue.generation;
+ 		const streamId = this._startResumableStream(requestId);
+ 		const continuation = options?.continuation ?? false;
+@@ -4693,6 +4898,8 @@ var Think = class Think extends Agent {
+ 						break;
+ 					}
+ 					const streamChunk = chunk;
++					await this._bindChatChunkSource(streamChunk, requestContext, resultClientToolNames(result), openChatTools);
++					if (abortSignal?.aborted) { streamAborted = true; break; }
+ 					const { action } = accumulator.applyChunk(streamChunk);
+ 					if (action?.type === "cross-message-tool-update") await this._applyToolUpdateToMessages(crossMessageToolResultUpdate(action.toolCallId, action.updateType, action.output, action.errorText, action.preliminary));
+ 					if (action?.type === "error") {
+@@ -4732,6 +4939,7 @@ var Think = class Think extends Agent {
+ 				}
+ 			} finally {
+ 				this._insideInferenceLoop = false;
++				this._releaseOpenChatToolSources(openChatTools);
+ 			}
+ 			if (overflowRetry && options?.overflowRecovery) {
+ 				this._completeResumableStream(streamId);
+@@ -4762,6 +4970,7 @@ var Think = class Think extends Agent {
+ 					targetAssistantId = partialMsg.id;
+ 				}
+ 				const outcome = await this._routeStallToBoundedRecovery({
++					requestContext,
+ 					requestId,
+ 					streamId,
+ 					partialParts: partialMsg.parts,
+@@ -4975,6 +5184,7 @@ var Think = class Think extends Agent {
+ 	* class body).
+ 	*/
+ 	async pendingExecutions(executionId) {
++		await this._admitChatAction("protocol-event", this._captureChatRequest());
+ 		const runtime = this._codemodeRuntime();
+ 		if (!runtime) return [];
+ 		return runtime.pending(executionId);
+@@ -4993,14 +5203,18 @@ var Think = class Think extends Agent {
+ 	* Client-callable.
+ 	*/
+ 	async approveExecution(executionId) {
++		const initiatingRequest = this._readChatSource("execution", executionId);
++		const requestContext = this._captureChatRequest(undefined, initiatingRequest);
++		await this._admitChatAction("approve-execution", requestContext, { executionId, initiatingRequest });
+ 		const runtime = this._codemodeRuntime();
+ 		if (!runtime) return {
+ 			status: "error",
+ 			executionId,
+ 			error: "No codemode runtime is configured — the execute tool was never created on this agent."
+ 		};
++		await this._admitChatAction("approve-execution", requestContext, { executionId, initiatingRequest });
+ 		const output = truncatePausedExecutionOutput(await runtime.approve({ executionId }));
+-		await this._applyExecutionOutcome(executionId, output);
++		await this._applyExecutionOutcome(executionId, output, requestContext, initiatingRequest);
+ 		return output;
+ 	}
+ 	/**
+@@ -5012,6 +5226,9 @@ var Think = class Think extends Agent {
+ 	* Client-callable.
+ 	*/
+ 	async rejectExecution(executionId, reason) {
++		const initiatingRequest = this._readChatSource("execution", executionId);
++		const requestContext = this._captureChatRequest(undefined, initiatingRequest);
++		await this._admitChatAction("reject-execution", requestContext, { executionId, initiatingRequest });
+ 		const runtime = this._codemodeRuntime();
+ 		if (!runtime) return {
+ 			status: "error",
+@@ -5024,6 +5241,7 @@ var Think = class Think extends Agent {
+ 			executionId,
+ 			error: `Execution "${executionId}" is no longer pending.`
+ 		};
++		await this._admitChatAction("reject-execution", requestContext, { executionId, initiatingRequest });
+ 		if (!await runtime.reject({
+ 			executionId,
+ 			seq: pending[0].seq
+@@ -5037,7 +5255,7 @@ var Think = class Think extends Agent {
+ 			executionId,
+ 			reason: reason ?? "Rejected by user"
+ 		};
+-		await this._applyExecutionOutcome(executionId, output);
++		await this._applyExecutionOutcome(executionId, output, requestContext, initiatingRequest);
+ 		return output;
+ 	}
+ 	/**
+@@ -5051,7 +5269,7 @@ var Think = class Think extends Agent {
+ 	* must not be dropped: it is appended as a system note instead, and the
+ 	* continuation still fires so the model can act on it.
+ 	*/
+-	async _applyExecutionOutcome(executionId, output) {
++	async _applyExecutionOutcome(executionId, output, requestContext, initiatingRequest) {
+ 		const toolCallId = this._findPausedExecutionToolCall(executionId);
+ 		if (!toolCallId) {
+ 			if (this._findExecutionToolCall(executionId) != null) return false;
+@@ -5070,13 +5288,12 @@ var Think = class Think extends Agent {
+ 				}]
+ 			});
+ 		} else await this._enqueueInteractionApply(() => this._applyToolUpdateToMessages(pausedExecutionUpdate(toolCallId, executionId, output)));
+-		const { connection } = getCurrentAgent();
+-		let target = connection;
+-		if (!target) for (const open of this.getConnections()) {
+-			target = open;
+-			break;
++		if (output?.status !== "paused") {
++			this._releaseChatSource("execution", executionId);
++			if (toolCallId) this._releaseChatToolSource(toolCallId);
+ 		}
+-		if (target) this._scheduleAutoContinuation(target);
++		const { connection } = getCurrentAgent();
++		if (connection) this._scheduleAutoContinuation(connection, requestContext);
+ 		return true;
+ 	}
+ 	/**
+@@ -5471,6 +5688,7 @@ var Think = class Think extends Agent {
+ 		await this.schedule(0, "_chatRecoveryContinue", {
+ 			...input.targetAssistantId ? { targetAssistantId: input.targetAssistantId } : {},
+ 			originalRequestId: recoveryRootRequestId,
++			requestContext: input.requestContext,
+ 			incidentId: incident.incidentId,
+ 			lastBody: this._lastBody ?? null,
+ 			lastClientTools: this._lastClientTools ?? null,
+@@ -5567,6 +5785,7 @@ var Think = class Think extends Agent {
+ 				await this.schedule(0, "_chatRecoveryRetry", {
+ 					targetUserId: retryTargetUserId,
+ 					originalRequestId: recoveryRootRequestId,
++					requestContext: recoverySnapshot?.requestContext,
+ 					incidentId: incident.incidentId,
+ 					lastBody: recoverySnapshot?.lastBody ?? null,
+ 					lastClientTools: recoverySnapshot?.lastClientTools ?? null,
+@@ -5584,6 +5803,7 @@ var Think = class Think extends Agent {
+ 				await this.schedule(0, "_chatRecoveryContinue", {
+ 					...targetId ? { targetAssistantId: targetId } : {},
+ 					originalRequestId: recoveryRootRequestId,
++					requestContext: recoverySnapshot?.requestContext,
+ 					incidentId: incident.incidentId,
+ 					...recoverySnapshot ? {
+ 						lastBody: recoverySnapshot.lastBody ?? null,
+@@ -5868,6 +6088,8 @@ var Think = class Think extends Agent {
+ 		const controller = recoveredSubmission ? new AbortController() : null;
+ 		if (recoveredSubmission && controller) this._submissionAbortControllers.set(recoveredSubmission.submission_id, controller);
+ 		try {
++		const recoveredContext = readRequestContext(data?.requestContext);
++		if (data?.recoveredRequestId && (recoveredContext.source.kind !== "submission" || recoveredContext.source.submissionId !== this._readRunningSubmissionByRequestId(data.recoveredRequestId)?.submission_id)) throw new Error("Recovered submission context does not match its exact source.");
+ 			const recoveryConfig = this._resolveChatRecoveryConfig();
+ 			if (!await this.waitUntilStable({ timeout: recoveryConfig.stableTimeoutMs })) {
+ 				if (await this._parkRecoveryForPendingInteraction(data)) return;
+@@ -5887,7 +6109,7 @@ var Think = class Think extends Agent {
+ 				return;
+ 			}
+ 			this._applyRecoveredRequestContext(data);
+-			const result = await this._retryLastUserTurn(this._lastClientTools, this._lastBody, controller ? { signal: controller.signal } : void 0);
++			const result = await this._retryLastUserTurn(this._lastClientTools, this._lastBody, { signal: controller?.signal, requestContext: readRequestContext(data?.requestContext) });
+ 			await this._updateChatRecoveryIncident(data?.incidentId, result.status === "completed" ? "completed" : result.status === "skipped" ? "skipped" : "failed", result.error);
+ 			if (data?.recoveredRequestId) await this._completeRecoveredSubmission(data.recoveredRequestId, result.status, result.requestId || null, result.status === "completed" ? null : result.error ?? `Recovery retry ${result.status}.`);
+ 		} catch (error) {
+@@ -5975,6 +6197,8 @@ var Think = class Think extends Agent {
+ 		const controller = recoveredSubmission ? new AbortController() : null;
+ 		if (recoveredSubmission && controller) this._submissionAbortControllers.set(recoveredSubmission.submission_id, controller);
+ 		try {
++		const recoveredContext = readRequestContext(data?.requestContext);
++		if (data?.recoveredRequestId && (recoveredContext.source.kind !== "submission" || recoveredContext.source.submissionId !== this._readRunningSubmissionByRequestId(data.recoveredRequestId)?.submission_id)) throw new Error("Recovered submission context does not match its exact source.");
+ 			const recoveryConfig = this._resolveChatRecoveryConfig();
+ 			if (!await this.waitUntilStable({ timeout: recoveryConfig.stableTimeoutMs })) {
+ 				if (await this._parkRecoveryForPendingInteraction(data)) return;
+@@ -5992,7 +6216,7 @@ var Think = class Think extends Agent {
+ 				return;
+ 			}
+ 			this._applyRecoveredRequestContext(data);
+-			const result = await this.continueLastTurn(void 0, controller ? { signal: controller.signal } : void 0);
++			const result = await this.continueLastTurn(void 0, { signal: controller?.signal, requestContext: readRequestContext(data?.requestContext) });
+ 			await this._updateChatRecoveryIncident(data?.incidentId, result.status === "completed" ? "completed" : result.status === "skipped" ? "skipped" : "failed", result.error);
+ 			if (data?.recoveredRequestId) await this._completeRecoveredSubmission(data.recoveredRequestId, result.status, result.requestId || null, result.status === "completed" ? null : result.error ?? `Recovery ${result.status}.`);
+ 		} catch (error) {
+@@ -6046,10 +6270,12 @@ var Think = class Think extends Agent {
+ 			messages: this.messages
+ 		}));
+ 	}
+-	_scheduleAutoContinuation(connection) {
++	_scheduleAutoContinuation(connection, requestContext = captureRequestContext(connection)) {
+ 		if (this._continuation.pending?.pastCoalesce) {
++			if (this._continuation.deferred) requestContext = mergeRequestContexts(this._continuation.deferred.requestContext, requestContext);
+ 			this._continuation.deferred = {
+ 				connection,
++				requestContext,
+ 				connectionId: connection.id,
+ 				clientTools: this._lastClientTools,
+ 				body: void 0,
+@@ -6059,6 +6285,8 @@ var Think = class Think extends Agent {
+ 			return;
+ 		}
+ 		if (this._continuation.pending) {
++			const pending = this._continuation.pending;
++			this._continuation.pending.requestContext = mergeRequestContexts(pending.requestContext, requestContext);
+ 			this._continuation.pending.connection = connection;
+ 			this._continuation.pending.connectionId = connection.id;
+ 			this._continuation.pending.clientTools = this._lastClientTools;
+@@ -6070,6 +6298,7 @@ var Think = class Think extends Agent {
+ 			connection,
+ 			connectionId: connection.id,
+ 			requestId: crypto.randomUUID(),
++			requestContext,
+ 			clientTools: this._lastClientTools,
+ 			body: void 0,
+ 			errorPrefix: "[Think] Auto-continuation failed:",
+@@ -6223,6 +6452,8 @@ var Think = class Think extends Agent {
+ 			this._continuationTimer = null;
+ 		}
+ 		const { requestId, clientTools } = pending;
++		const requestContext = readRequestContext(pending.requestContext);
++		return runWithRequestContext(requestContext, () => {
+ 		const abortSignal = this._aborts.getSignal(requestId);
+ 		this.keepAliveWhile(async () => {
+ 			await this._turnQueue.enqueue(requestId, async () => {
+@@ -6236,6 +6467,7 @@ var Think = class Think extends Agent {
+ 							request: void 0,
+ 							email: void 0
+ 						}, () => this._runInferenceLoop({
++								requestContext,
+ 							signal: abortSignal,
+ 							clientTools,
+ 							body: this._lastBody,
+@@ -6246,7 +6478,7 @@ var Think = class Think extends Agent {
+ 							streamed = true;
+ 						}
+ 					};
+-					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, true, continuationBody);
++					if (this.chatRecovery) await this._runChatRecoveryFiber(requestId, true, continuationBody, requestContext);
+ 					else await continuationBody();
+ 				} finally {
+ 					this._aborts.remove(requestId);
+@@ -6259,6 +6491,8 @@ var Think = class Think extends Agent {
+ 			console.error("[Think] Auto-continuation failed:", error);
+ 			this._aborts.remove(requestId);
+ 		});
++	
++		});
+ 	}
+ 	_activateDeferredContinuation() {
+ 		const pending = this._continuation.activateDeferred(() => crypto.randomUUID());
+diff --git a/dist/think-i1Pkgb1R.d.ts b/dist/think-i1Pkgb1R.d.ts
+index 9245beff0e6474ca1f9c203cb759b92f9c73a53f..7327497ed7427c3a2db34e263d3cdddab3b5773a 100644
+--- a/dist/think-i1Pkgb1R.d.ts
++++ b/dist/think-i1Pkgb1R.d.ts
+@@ -1,3 +1,4 @@
++import type { ChatRequestContext, ChatActionContext, ChatApplicationOptions } from "./request-context.js";
+ import {
+   i as ExtensionManifest,
+   t as ExtensionManager
+@@ -556,7 +557,7 @@ interface StreamableResult {
+ /**
+  * Options for a chat turn (sub-agent RPC entry point).
+  */
+-interface ChatOptions {
++interface ChatOptions extends ChatApplicationOptions {
+   signal?: AbortSignal;
+   /**
+    * Client-defined tool schemas to expose to the model for this turn, mirroring
+@@ -747,6 +748,7 @@ type DeleteSubmissionsOptions = {
+  * to Think's inference loop.
+  */
+ interface TurnInput {
++  requestContext?: ChatRequestContext;
+   signal?: AbortSignal;
+   /** Client-provided tool schemas for dynamic tool registration. */
+   clientTools?: ClientToolSchema[];
+@@ -770,6 +772,7 @@ interface TurnInput {
+  */
+ interface TurnContext {
+   /** Assembled system prompt (from context blocks or getSystemPrompt fallback). */
++  readonly request: ChatRequestContext;
+   system: string;
+   /** Assembled model messages (truncated, pruned). */
+   messages: ModelMessage[];
+@@ -1045,6 +1048,7 @@ type StepConfig<TOOLS extends ToolSet = ToolSet> = PrepareStepResult<TOOLS>;
+  * ```
+  */
+ type ToolCallContext<TOOLS extends ToolSet = ToolSet> = TypedToolCall<TOOLS> & {
++  readonly request: ChatRequestContext;
+   /** Zero-based index of the current step where this tool call occurs. */ readonly stepNumber:
+     | number
+     | undefined /** The conversation messages available at tool execution time. */;
+@@ -1106,6 +1110,7 @@ type ToolCallDecision =
+  */
+ type ToolCallResultContext<TOOLS extends ToolSet = ToolSet> =
+   TypedToolCall<TOOLS> & {
++    readonly request: ChatRequestContext;
+     readonly stepNumber: number | undefined;
+     readonly messages: ReadonlyArray<ModelMessage> /** Wall-clock execution time in milliseconds. */;
+     readonly durationMs: number;
+@@ -1823,6 +1828,11 @@ declare class Think<
+    * }
+    * ```
+    */
++  retainChatRequestReference(reference: string, request: ChatRequestContext): void;
++  releaseChatRequestReference(reference: string): void;
++  getCurrentChatRequest(): ChatRequestContext | undefined;
++  admitCurrentChatAction(action: ChatActionContext["action"]): Promise<void>;
++  beforeChatAction(context: ChatActionContext): void | Promise<void>;
+   beforeTurn(_ctx: TurnContext): TurnConfig | void | Promise<TurnConfig | void>;
+   /**
+    * Called before each AI SDK step in the agentic loop. Backed by
+@@ -2367,7 +2377,7 @@ declare class Think<
+     messages:
+       | UIMessage[]
+       | ((currentMessages: UIMessage[]) => UIMessage[] | Promise<UIMessage[]>),
+-    options?: SaveMessagesOptions
++    options?: SaveMessagesOptions & ChatApplicationOptions
+   ): Promise<SaveMessagesResult>;
+   /**
+    * Add messages to history WITHOUT starting a model turn.
+@@ -2425,7 +2435,7 @@ declare class Think<
+    */
+   protected continueLastTurn(
+     body?: Record<string, unknown>,
+-    options?: SaveMessagesOptions
++    options?: SaveMessagesOptions & ChatApplicationOptions
+   ): Promise<SaveMessagesResult>;
+   private _retryLastUserTurn;
+   private _setupProtocolHandlers;
+diff --git a/dist/think.d.ts b/dist/think.d.ts
+index b78f0e558e82ace717825b8827e677286578f3c6..f1ef49d6c88f78587c1fc9ee42a3fd38d183a239 100644
+--- a/dist/think.d.ts
++++ b/dist/think.d.ts
+@@ -1,3 +1,4 @@
+ import { $ as TurnConfig, A as SkillSource, B as Think, C as PrepareStepFunction, D as SaveMessagesResult, E as SaveMessagesOptions, F as StreamCallback, G as ThinkScheduledTasks, H as ThinkScheduledTask, I as StreamableResult, J as ThinkTime, K as ThinkSubmissionInspection, L as SubmitMessagesOptions, M as StepContext, N as StepResult, O as Session, P as StopCondition, Q as ToolCallResultContext, R as SubmitMessagesResult, S as PrepareStepContext, T as ResolvedChatRecoveryConfig, U as ThinkScheduledTaskContext, V as ThinkIntervalSchedule, W as ThinkScheduledTaskSchedule, X as ToolCallContext, Y as ThinkWallClockSchedule, Z as ToolCallDecision, _ as FiberContext, a as ChatRecoveryConfig, at as defaultContextOverflowClassifier, b as MessageConcurrency, c as ChatRecoveryOptions, d as ChatStartEvent, et as TurnContext, f as ChunkContext, g as ExtensionConfig, h as DeleteSubmissionsOptions, i as ChatOptions, it as Workspace, j as StepConfig, k as SkillRunContext, l as ChatRecoveryProgressContext, m as ContextOverflowConfig, n as ChatErrorClassification, nt as TypedToolCall, o as ChatRecoveryContext, ot as defineScheduledTasks, p as ChunkPart, q as ThinkSubmissionStatus, r as ChatErrorContext, rt as TypedToolResult, s as ChatRecoveryExhaustedContext, sn as MediaEvictionConfig, st as skills, t as AddMessagesOptions, tt as TurnInput, u as ChatResponseResult, v as FiberRecoveryContext, w as PrepareStepResult, x as OnStartDegradation, y as ListSubmissionsOptions, z as TextStreamPart } from "./think-i1Pkgb1R.js";
+ import { h as WorkspaceLike } from "./workspace-BZXdZcuw.js";
+ export { AddMessagesOptions, ChatErrorClassification, ChatErrorContext, ChatOptions, type ChatRecoveryConfig, type ChatRecoveryContext, type ChatRecoveryExhaustedContext, type ChatRecoveryOptions, type ChatRecoveryProgressContext, type ChatResponseResult, ChatStartEvent, ChunkContext, ChunkPart, ContextOverflowConfig, DeleteSubmissionsOptions, ExtensionConfig, type FiberContext, type FiberRecoveryContext, ListSubmissionsOptions, type MediaEvictionConfig, type MessageConcurrency, OnStartDegradation, PrepareStepContext, type PrepareStepFunction, type PrepareStepResult, type ResolvedChatRecoveryConfig, type SaveMessagesOptions, type SaveMessagesResult, Session, type SkillRunContext, type SkillSource, StepConfig, StepContext, type StepResult, type StopCondition, StreamCallback, StreamableResult, SubmitMessagesOptions, SubmitMessagesResult, type TextStreamPart, Think, ThinkIntervalSchedule, ThinkScheduledTask, ThinkScheduledTaskContext, ThinkScheduledTaskSchedule, ThinkScheduledTasks, ThinkSubmissionInspection, ThinkSubmissionStatus, ThinkTime, ThinkWallClockSchedule, ToolCallContext, ToolCallDecision, ToolCallResultContext, TurnConfig, TurnContext, TurnInput, type TypedToolCall, type TypedToolResult, Workspace, type WorkspaceLike, defaultContextOverflowClassifier, defineScheduledTasks, skills };
++export type { ChatRequestSource, ChatRequestContext, ChatActionContext, ChatApplicationOptions } from "./request-context.js";

@@ -70,6 +70,31 @@ describe('createBetterAuth origin protection', () => {
 
     expect(response.status).not.toBe(403)
   })
+
+  it('allows the exact native password-sign-in origin', async () => {
+    const request = signInRequest('garden-mobile://')
+    const response = await authFor(request).handler(request)
+    expect(response.status).not.toBe(403)
+  })
+
+  it.each([
+    'garden-mobile-evil://',
+    'garden-mobile://attacker',
+    'https://garden-mobile.example',
+  ])('refuses an untrusted native origin %s', async (origin) => {
+    const request = signInRequest(origin)
+    const response = await authFor(request).handler(request)
+    expect(response.status).toBe(403)
+  })
+
+  it('does not expose the vulnerable Expo authorization proxy', async () => {
+    const request = new Request(
+      'https://garden.example/api/auth/expo-authorization-proxy?authorizationURL=https%3A%2F%2Fattacker.example%2F%3Fstate%3Dforged',
+    )
+    const response = await authFor(request).handler(request)
+    expect(response.status).toBe(404)
+    expect(response.headers.get('set-cookie')).toBeNull()
+  })
 })
 
 describe('createBetterAuth Google sign-in policy', () => {

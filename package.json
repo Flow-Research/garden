@@ -59,7 +59,8 @@
     "seroval": "1.6.11",
     "sharp": "0.35.5",
     "shell-quote": "1.11.0",
-    "turbo": "2.9.14"
+    "turbo": "2.9.14",
+    "vite": "8.2.4"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
@@ -129,6 +130,8 @@
       "@executor-js/plugin-graphql@1.5.40": "patches/@executor-js__plugin-graphql@1.5.40.patch",
       "@executor-js/plugin-mcp@1.5.40": "patches/@executor-js__plugin-mcp@1.5.40.patch",
       "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch",
+      "@react-native/gradle-plugin@0.83.10": "patches/@react-native__gradle-plugin@0.83.10.patch",
+      "@cloudflare/think@0.10.0": "patches/@cloudflare__think@0.10.0.patch",
       "better-auth@1.7.16": "patches/better-auth@1.7.16.patch"
     }
   }
