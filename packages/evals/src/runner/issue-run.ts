@@ -177,12 +177,14 @@ export async function runIssueRunTask(input: {
       })
     }
 
-    const { sessionCookie, fetch, ...publicConfig } = input.config
+    const {
+      sessionCookie,
+      fetch: fetchOverride,
+      ...publicConfig
+    } = input.config
     const configuration = evalConfigurationSchema.safeParse(publicConfig)
     const safeConfigurationResult =
-      !configuration.success ||
-      !sessionCookie ||
-      /[\r\n]/.test(sessionCookie)
+      !configuration.success || !sessionCookie || /[\r\n]/.test(sessionCookie)
         ? Result.err(
             new GardenEvalError({
               stage: 'fixture_setup',
@@ -201,7 +203,7 @@ export async function runIssueRunTask(input: {
     const api = createGardenApiClient({
       ...safeConfiguration,
       sessionCookie,
-      fetch,
+      fetch: fetchOverride?.bind(input.config),
     })
     yield* Result.await(
       api.verifyEvalTarget({

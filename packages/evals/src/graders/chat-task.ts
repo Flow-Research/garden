@@ -204,7 +204,7 @@ function includesExpectedFact(response: string, expected: string): boolean {
     if (index < 0) return false
     const before = normalizedResponse.slice(Math.max(0, index - 35), index)
     return (
-      /\blaunch(?:es|ed)?\b/.test(before) &&
+      /\b(?:launch(?:es|ed)?|scheduled\s+for)\b/.test(before) &&
       !/\b(?:not|wrong|incorrect)\b(?:\s+\w+){0,5}\s*$/.test(before)
     )
   })

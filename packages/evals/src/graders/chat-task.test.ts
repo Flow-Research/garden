@@ -67,6 +67,15 @@ describe('uploaded brief date facts', () => {
     })
   }
 
+  it('accepts a scheduled date stated without the word launch', () => {
+    assert.equal(
+      checkAnswer(
+        'Maya Okafor owns Project Lark. It is scheduled for December 14, 2026.',
+      ),
+      true,
+    )
+  })
+
   it('requires the owner even when the date is correct', () => {
     assert.equal(checkAnswer('Lark launches on December 14, 2026.'), false)
     assert.equal(

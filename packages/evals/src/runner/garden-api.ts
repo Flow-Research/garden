@@ -163,19 +163,21 @@ async function requestJson<TSchema extends z.ZodType>(
       )
     }
 
+    const signal = AbortSignal.timeout(remainingMs)
     const response = yield* Result.await(
       Result.tryPromise({
         try: () =>
           fetcher(input.url, {
             ...input.init,
             redirect: 'error',
-            signal: AbortSignal.timeout(remainingMs),
+            signal,
           }),
         catch: (cause) =>
           new GardenEvalError({
             stage: input.stage,
             code:
-              cause instanceof Error && cause.name === 'TimeoutError'
+              signal.aborted ||
+              (cause instanceof Error && cause.name === 'TimeoutError')
                 ? 'deadline_reached'
                 : 'network_error',
             message: `Garden API request failed during ${input.operation}.`,
