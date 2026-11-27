@@ -1,0 +1,91 @@
+diff --git a/lib/dom.js b/lib/dom.js
+index cfe1c2e353d1bcb304dcacc61c0e62d38cf3de4d..1e0f7cbed3ad8d8b03dec94cb46cc5a93e39123c 100644
+--- a/lib/dom.js
++++ b/lib/dom.js
+@@ -560,6 +560,11 @@ Node.prototype = {
+ 				// Merge adjacent text children of node before walkDOM schedules them.
+ 				// walkDOM reads lastChild/previousSibling after enter returns, so the
+ 				// surviving post-merge children are what it descends into.
++				// The merge loop follows sibling links only, so `childNodes` is
++				// re-indexed once per parent after it. Re-indexing per merged run is
++				// O(runs * children): malformed markup that leaves many short text runs
++				// between other nodes made this quadratic.
++				var merged = false;
+ 				var child = node.firstChild;
+ 				while (child) {
+ 					var next = child.nextSibling;
+@@ -594,12 +599,15 @@ Node.prototype = {
+ 							node.lastChild = child;
+ 						}
+ 						child.appendData(tail.join('')); // single O(K) string rebuild
+-						_onUpdateChild(node.ownerDocument, node); // single O(K) re-index
++						merged = true;
+ 						child = sibling;
+ 					} else {
+ 						child = next;
+ 					}
+ 				}
++				if (merged) {
++					_onUpdateChild(node.ownerDocument, node); // single O(K) re-index
++				}
+ 				return true; // descend into surviving children
+ 			},
+ 		});
+diff --git a/lib/sax.js b/lib/sax.js
+index 8b4d6edf1a2c13a3d9659237cce52cf3611ced79..98c79d26e79b62259f703d33a6368f1c51de0e81 100644
+--- a/lib/sax.js
++++ b/lib/sax.js
+@@ -161,7 +161,7 @@ function parse(source,defaultNSMapCopy,entityMap,domBuilder,errorHandler){
+ 				// end elment
+ 			case '?':// <?...?>
+ 				locator&&position(tagStart);
+-				end = parseInstruction(source,tagStart,domBuilder);
++				end = parseInstruction(source,tagStart,domBuilder,errorHandler);
+ 				break;
+ 			case '!':// <!doctype,<![CDATA,<!--
+ 				locator&&position(tagStart);
+@@ -582,6 +582,13 @@ function parseDCC(source,start,domBuilder,errorHandler){//sure start with '<!'
+ 	default:
+ 		if(source.substr(start+3,6) == 'CDATA['){
+ 			var end = source.indexOf(']]>',start+9);
++			// Without this check a missing `]]>` returns -1, so parsing resumed one
++			// character after `<![CDATA[` and every following unclosed section
++			// rescanned the rest of the input with no diagnostic: quadratic work.
++			if(end === -1){
++				errorHandler.error('Unclosed CDATA section');
++				return -1;
++			}
+ 			domBuilder.startCDATA();
+ 			domBuilder.characters(source,start+9,end-start-9);
+ 			domBuilder.endCDATA()
+@@ -615,17 +622,20 @@ function parseDCC(source,start,domBuilder,errorHandler){//sure start with '<!'
+ 
+ 
+ 
+-function parseInstruction(source,start,domBuilder){
++function parseInstruction(source,start,domBuilder,errorHandler){
+ 	var end = source.indexOf('?>',start);
+-	if(end){
+-		var match = source.substring(start,end).match(/^<\?(\S*)\s*([\s\S]*?)$/);
+-		if(match){
+-			var len = match[0].length;
+-			domBuilder.processingInstruction(match[1], match[2]) ;
+-			return end+2;
+-		}else{//error
+-			return -1;
+-		}
++	// A missing `?>` returns -1, which the former `if(end)` treated as found: it
++	// matched `source.substring(start,-1)`, the whole prefix before `<?`, and
++	// then resumed one character later. Every following `<?` repeated that
++	// prefix scan, which is quadratic, and no diagnostic was reported.
++	if(end === -1){
++		errorHandler.error('Unclosed processing instruction');
++		return -1;
++	}
++	var match = source.substring(start,end).match(/^<\?(\S*)\s*([\s\S]*?)$/);
++	if(match){
++		domBuilder.processingInstruction(match[1], match[2]) ;
++		return end+2;
+ 	}
+ 	return -1;
+ }

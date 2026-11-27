@@ -3,7 +3,7 @@ title: Authentication and server-function dependency security
 description: Patched dependency family, callback preservation, and required compatibility evidence.
 status: proposal
 owner: "@Umoren"
-last_reviewed: 2026-11-21
+last_reviewed: 2026-11-27
 ---
 
 ## Scope
@@ -42,8 +42,21 @@ The Executor OpenAPI importer reads YAML with the JSON schema of `js-yaml`, so i
 The empty-merge input therefore adds no merge work in the importer. The default `js-yaml` loader refuses that input.
 DOCX is a Word document format.
 The agent-runtime and brain document tests give Mammoth valid and malformed Word XML in a small archive.
-The malformed inputs have a repeated attribute, content after an end-tag name, or unterminated attribute values.
+The malformed inputs have a repeated attribute, content after an end-tag name, unterminated attribute values, or an unclosed processing instruction or CDATA section.
 Each malformed input returns the typed import or extraction error.
+
+Every DOCX read in Garden parses Word XML with Mammoth and `@xmldom/xmldom` 0.8.15.
+This covers the agent-runtime offline import, upload outline, and text extraction, and brain extraction.
+xmldom 0.8 recovers from a malformed tag by moving one character forward and parsing again.
+Crafted XML therefore made the parser do quadratic work. About 48 KB held a Worker for 16 seconds.
+Two [dependency patches](../../../patches/README.md) bound this work in the parser that every path shares.
+Mammoth stops at the first parser diagnostic. It previously rejected such a part only after the parse finished.
+xmldom reports an unclosed processing instruction or CDATA section, and its text-node merge is linear.
+Documents that parse without a diagnostic convert exactly as before.
+xmldom 0.9 is linear on these inputs, but Mammoth 1.12 declares `^0.8.6` and calls `parseFromString` without the MIME type that 0.9 requires.
+A timeout cannot stop this synchronous parse, and a size limit alone does not help because the crafted inputs are small.
+Regression tests run five crafted inputs through each DOCX path and require each import to finish within one second.
+The unpatched parser takes 5 to 25 seconds on each input.
 
 The HTTP fixtures bind only to loopback addresses and use synthetic header values.
 TLS encrypts a network connection.

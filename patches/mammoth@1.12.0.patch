@@ -1,0 +1,34 @@
+diff --git a/lib/xml/xmldom.js b/lib/xml/xmldom.js
+index 752c353f0c97f86280c96984fe963c8b6f6d0c6c..358031cbc4d49ce950fe538c12b795b782b3035a 100644
+--- a/lib/xml/xmldom.js
++++ b/lib/xml/xmldom.js
+@@ -1,22 +1,19 @@
+ var xmldom = require("@xmldom/xmldom");
+ var dom = require("@xmldom/xmldom/lib/dom");
++var ParseError = require("@xmldom/xmldom/lib/sax").ParseError;
+ 
+ function parseFromString(string) {
+-    var error = null;
+-
++    // Stop at the first diagnostic. A document with any diagnostic is rejected
++    // anyway, and xmldom 0.8 recovers from each malformed tag by advancing one
++    // character and rescanning, which is quadratic on crafted input. xmldom's
++    // parser loop rethrows ParseError instead of recovering from it.
+     var domParser = new xmldom.DOMParser({
+         errorHandler: function(level, message) {
+-            error = {level: level, message: message};
++            throw new ParseError(level + ": " + message);
+         }
+     });
+ 
+-    var document = domParser.parseFromString(string);
+-
+-    if (error === null) {
+-        return document;
+-    } else {
+-        throw new Error(error.level + ": " + error.message);
+-    }
++    return domParser.parseFromString(string);
+ }
+ 
+ exports.parseFromString = parseFromString;

@@ -125,7 +125,9 @@
       "@executor-js/plugin-graphql@1.5.40": "patches/@executor-js__plugin-graphql@1.5.40.patch",
       "@executor-js/plugin-mcp@1.5.40": "patches/@executor-js__plugin-mcp@1.5.40.patch",
       "@executor-js/plugin-openapi@1.5.40": "patches/@executor-js__plugin-openapi@1.5.40.patch",
-      "better-auth@1.7.16": "patches/better-auth@1.7.16.patch"
+      "better-auth@1.7.16": "patches/better-auth@1.7.16.patch",
+      "mammoth@1.12.0": "patches/mammoth@1.12.0.patch",
+      "@xmldom/xmldom@0.8.15": "patches/@xmldom__xmldom@0.8.15.patch"
     }
   }
 }

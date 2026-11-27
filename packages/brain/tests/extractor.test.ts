@@ -80,6 +80,46 @@ const malformedWordDocuments = [
     'unterminated attribute values',
     `<?xml version="1.0"?><w:document ${wordNamespace}><w:body>${'<w:p a="'.repeat(1000)}`,
   ],
+  ['an unclosed processing instruction', wordDocument('<w:p/><?x')],
+  ['an unclosed CDATA section', wordDocument('<w:p/><![CDATA[x')],
+] as const
+
+/**
+ * Upper bound for one DOCX extraction of a `pathologicalWordDocuments` input.
+ * Patched extractions take milliseconds. The unpatched parser took 5 to 25
+ * seconds on each input, so a slowdown that returns exceeds this bound.
+ */
+const XML_PARSE_BUDGET_MS = 1_000
+
+/**
+ * Crafted Word XML that made xmldom 0.8.15 do quadratic work, with the
+ * expected extraction outcome. See `patches/README.md`; agent-runtime's
+ * `fixtures/word-xml.ts` holds the same inputs. xmldom recovers from the
+ * final input's malformed markup without a diagnostic, so that extraction
+ * succeeds; the regression it guards is the bound on parse work.
+ */
+const pathologicalWordDocuments = [
+  [
+    '16,000 unterminated attribute values',
+    `<?xml version="1.0"?><w:document ${wordNamespace}><w:body>${'<w:p a="'.repeat(16_000)}`,
+    'rejected',
+  ],
+  ['32,000 unclosed comments', wordDocument('<!--'.repeat(32_000)), 'rejected'],
+  [
+    '16,000 unclosed processing instructions',
+    wordDocument('<?x'.repeat(16_000)),
+    'rejected',
+  ],
+  [
+    '250,000 unclosed CDATA sections',
+    wordDocument('<![CDATA['.repeat(250_000)),
+    'rejected',
+  ],
+  [
+    '16,000 text runs split by comments',
+    wordDocument('<!<!---->'.repeat(16_000)),
+    'extracted',
+  ],
 ] as const
 
 /** Verifies that CSV uploads keep their raw text while using a distinct file
@@ -125,6 +165,32 @@ layer(Layer.provide(ExtractorLive, NodeFileSystem.layer))('extractor', (it) => {
         expect(failure.message).toBe(
           'failed to extract text from malformed.docx',
         )
+      }),
+    )
+  }
+
+  for (const [label, documentXml, expected] of pathologicalWordDocuments) {
+    it.effect(`extracts word XML with ${label} within the parse budget`, () =>
+      Effect.gen(function* () {
+        const extractor = yield* Extractor
+        const bytes = storedDocx(documentXml)
+        // Load Mammoth first so the budget measures parsing, not module loading.
+        yield* Effect.promise(() => import('mammoth'))
+        const started = performance.now()
+        const outcome = yield* extractor
+          .extractFromBytes('crafted.docx', bytes)
+          .pipe(
+            Effect.match({
+              onFailure: (failure) => failure._tag,
+              onSuccess: () => 'extracted' as const,
+            }),
+          )
+        const elapsed = performance.now() - started
+
+        expect(outcome).toBe(
+          expected === 'rejected' ? 'ExtractError' : 'extracted',
+        )
+        expect(elapsed).toBeLessThan(XML_PARSE_BUDGET_MS)
       }),
     )
   }
