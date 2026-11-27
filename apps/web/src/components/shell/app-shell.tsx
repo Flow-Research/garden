@@ -52,6 +52,7 @@ import { ChatTabsStrip } from './chat-tabs'
 import { TaskTabsStrip } from './task-tabs'
 import { UserCard } from './user-card'
 import { WorkspaceMenu } from './workspace-menu'
+import { workspaceSwitchTarget } from './workspace-switch-target'
 
 /**
  * Mount-only prefetch for workspace-wide caches (agents, members, skills,
@@ -276,26 +277,30 @@ export function AppShell() {
       if (nextWorkspace.id === workspace?.id) return
       // Navigate first: a mounted entity route must never re-render against
       // the new workspace with foreign ids (doomed detail queries).
-      void navigate({ to: '/home' })
-      void Result.tryPromise(() => switchWorkspace(nextWorkspace)).then(
-        (result) =>
-          result.tapBoth({
-            ok: () => {
-              queryClient.invalidateQueries()
-              void router.invalidate()
-              toast.success(`Switched to ${nextWorkspace.name}`)
-            },
-            err: (error) => {
-              toast.error(
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to switch workspace',
-              )
-            },
-          }),
+      const leaf = router.state.matches.at(-1)
+      void Result.tryPromise(async () => {
+        await navigate({
+          href: leaf ? workspaceSwitchTarget(leaf.fullPath, pathname) : '/home',
+        })
+        await switchWorkspace(nextWorkspace)
+      }).then((result) =>
+        result.tapBoth({
+          ok: () => {
+            queryClient.invalidateQueries()
+            void router.invalidate()
+            toast.success(`Switched to ${nextWorkspace.name}`)
+          },
+          err: (error) => {
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : 'Failed to switch workspace',
+            )
+          },
+        }),
       )
     },
-    [navigate, queryClient, router, switchWorkspace, workspace?.id],
+    [navigate, pathname, queryClient, router, switchWorkspace, workspace?.id],
   )
 
   const handleLogout = useCallback(async () => {
@@ -413,7 +418,7 @@ export function AppShell() {
                 }
               />
               <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                <Outlet />
+                <Outlet key={workspaceId} />
               </main>
             </div>
             <SearchCommand />
