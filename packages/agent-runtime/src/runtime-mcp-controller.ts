@@ -1400,6 +1400,13 @@ export class RuntimeMcpController {
       return Result.ok(false)
     }
 
+    const requiredTeamId = teamApproval?.otherTeams.length
+      ? null
+      : (teamApproval?.team.teamId ?? null)
+    const requiredContext = permissionRequestContext(
+      `${args.connectorId}.${args.toolName}`,
+      teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
+    )
     const toolArgsSignature = canonicalJsonString(args.toolArgs)
     const existingRequestResult = await Result.tryPromise({
       try: async () =>
@@ -1408,6 +1415,8 @@ export class RuntimeMcpController {
             argsJson: schema.permissionRequest.argsJson,
             status: schema.permissionRequest.status,
             runId: schema.permissionRequest.runId,
+            teamId: schema.permissionRequest.teamId,
+            context: schema.permissionRequest.context,
           })
           .from(schema.permissionRequest)
           .where(
@@ -1436,6 +1445,8 @@ export class RuntimeMcpController {
     const existingRequest = existingRequestResult.value.find(
       (request) =>
         request.runId === (identityResult.value.runId ?? null) &&
+        request.teamId === requiredTeamId &&
+        request.context === requiredContext &&
         canonicalJsonString(request.argsJson) === toolArgsSignature,
     )
     if (existingRequest?.status === 'pending') {
@@ -1555,15 +1566,8 @@ export class RuntimeMcpController {
       if (request.runId !== (identityResult.value.runId ?? null)) return false
 
       return (
-        request.teamId ===
-          (teamApproval?.otherTeams.length
-            ? null
-            : (teamApproval?.team.teamId ?? null)) &&
-        request.context ===
-          permissionRequestContext(
-            `${args.connectorId}.${args.toolName}`,
-            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
-          ) &&
+        request.teamId === requiredTeamId &&
+        request.context === requiredContext &&
         Date.now() - request.resolvedAt.getTime() <=
           PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
         canonicalJsonString(request.argsJson) === toolArgsSignature
@@ -1581,13 +1585,8 @@ export class RuntimeMcpController {
           agentId: identityResult.value.agentId,
           capabilityId: capability.id,
           runId: identityResult.value.runId ?? null,
-          context: permissionRequestContext(
-            `${args.connectorId}.${args.toolName}`,
-            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
-          ),
-          teamId: teamApproval?.otherTeams.length
-            ? null
-            : (teamApproval?.team.teamId ?? null),
+          context: requiredContext,
+          teamId: requiredTeamId,
           issueId: identityResult.value.issueId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,

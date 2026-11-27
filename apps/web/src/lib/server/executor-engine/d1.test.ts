@@ -4,7 +4,7 @@ import { collectTables } from '@executor-js/sdk/core'
 import { Effect, Result } from 'effect'
 import { expect, it, onTestFinished } from 'vitest'
 import { sqliteD1 } from '@/test/executor-sqlite-d1'
-import { createD1ExecutorDb } from './d1'
+import { createD1ExecutorDb, pendingOAuthOwner } from './d1'
 
 it('removes only the revoked generation and rolls back the catalogue on batch failure', async () => {
   const sqlite = new DatabaseSync(':memory:')
@@ -207,4 +207,27 @@ it('publishes only the winning mint or refresh and rolls back ciphertext and cal
   )
   expect(current()).toBeUndefined()
   expect(inventory()).toEqual([])
+})
+
+it('reads the pending owner only within the workspace and personal subject', async () => {
+  const sqlite = new DatabaseSync(':memory:')
+  onTestFinished(() => sqlite.close())
+  const table = collectTables().oauth_session
+  if (!table) throw new Error('Missing Executor OAuth session table')
+  sqlite.exec(
+    `create table "${table.names.sql}" (tenant text, subject text, state text, owner text)`,
+  )
+  const insert = sqlite.prepare(
+    `insert into "${table.names.sql}" values (?, ?, ?, ?)`,
+  )
+  insert.run('team', '', 'org-pending', 'org')
+  insert.run('team', 'alice', 'personal-pending', 'user')
+  const load = (tenant: string, subject: string, state: string) =>
+    Effect.runPromise(
+      pendingOAuthOwner(sqliteD1(sqlite), { tenant, subject, state }),
+    )
+  expect(await load('team', 'alice', 'org-pending')).toBe('org')
+  expect(await load('team', 'alice', 'personal-pending')).toBe('user')
+  expect(await load('team', 'bob', 'personal-pending')).toBeUndefined()
+  expect(await load('other', 'alice', 'org-pending')).toBeUndefined()
 })

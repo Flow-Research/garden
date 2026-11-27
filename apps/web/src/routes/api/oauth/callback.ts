@@ -10,6 +10,11 @@ import {
 import { syncCapabilities } from '@/lib/server/capability-sync'
 import { mirrorExecutorConnection } from '@/lib/server/executor-engine/connection-mirror'
 import { executorProgram } from '@/lib/server/executor-runtime'
+import { pendingOAuthOwner } from '@/lib/server/executor-engine/d1'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 
 const logger = createGardenLogger({
@@ -168,16 +173,49 @@ export const Route = createFileRoute('/api/oauth/callback')({
           )
         }
 
+        const state = callbackState?.state ?? stateValue
+        const code = params.get('code')
+        const providerError = params.get('error')
+        const owner = await Effect.runPromise(
+          Effect.result(
+            pendingOAuthOwner(appContext.env.EXECUTOR_DB, {
+              tenant: resolvedWorkspaceId,
+              subject: workspaceContext.session.user.id,
+              state,
+            }),
+          ),
+        )
+        if (Result.isFailure(owner)) {
+          return Response.json(
+            { error: 'Cannot verify pending connection' },
+            { status: 503 },
+          )
+        }
+        if (owner.success === 'org') {
+          const denial = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: resolvedWorkspaceId,
+            permissions: workspacePermissions.connectionManage,
+          })
+          if (denial) return denial
+        } else if (owner.success !== 'user') {
+          return Response.json(
+            { error: 'Pending connection unavailable' },
+            { status: 400 },
+          )
+        }
+
         const result = await Effect.runPromise(
           settleOAuthCallback({
             identity: {
               tenant: resolvedWorkspaceId,
               subject: workspaceContext.session.user.id,
             },
-            state: callbackState?.state ?? stateValue,
-            providerError: params.get('error'),
+            state,
+            providerError,
             providerErrorDescription: params.get('error_description'),
-            code: params.get('code'),
+            code,
             callbackDomain:
               params.get('domain') ?? params.get('site') ?? undefined,
           }),

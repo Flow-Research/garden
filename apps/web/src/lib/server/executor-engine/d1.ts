@@ -10,6 +10,7 @@ import {
 } from '@executor-js/fumadb/adapters/drizzle'
 import {
   StorageError,
+  collectTables,
   type BlobStore,
   type ExecutorDb,
   type FumaTables,
@@ -20,6 +21,31 @@ import { makeR2BlobStore } from './r2'
 
 const DB_NAMESPACE = 'garden-executor-connectors'
 const DB_SCHEMA_VERSION = '1.0.0'
+
+/** Reads the stored owner before the callback exchanges a provider code. */
+export function pendingOAuthOwner(
+  database: D1Database,
+  input: { tenant: string; subject: string; state: string },
+) {
+  return Effect.tryPromise({
+    try: async () => {
+      const table = collectTables().oauth_session
+      if (!table) throw new Error('Executor OAuth session table is unavailable')
+      const rows = await drizzle(database).all<{ owner: string }>(
+        sql`select owner from ${sql.identifier(table.names.sql)}
+            where tenant = ${input.tenant} and state = ${input.state}
+            and (owner = 'org' or (owner = 'user' and subject = ${input.subject}))
+            limit 1`,
+      )
+      return rows[0]?.owner
+    },
+    catch: (cause) =>
+      new StorageError({
+        message: 'Failed to verify the pending OAuth owner',
+        cause,
+      }),
+  })
+}
 
 type WorkstreamOAuthStorage = NonNullable<ExecutorDb['workstreamOAuthStorage']>
 

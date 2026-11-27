@@ -165,6 +165,7 @@ async function insertPermissionRequest(input: {
     agentId: input.agentId ?? input.seeded.agentId,
     kind: 'connector_write',
     capabilityId: input.seeded.capabilityId,
+    context: `${CONNECTOR_ID}.${TOOL_NAME}`,
     argsJson: TOOL_ARGS,
     toolCallId: input.toolCallId,
     status: input.status,

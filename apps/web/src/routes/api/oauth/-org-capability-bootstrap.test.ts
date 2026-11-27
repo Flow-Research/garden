@@ -1,14 +1,33 @@
 // @vitest-environment node
 import { Effect } from 'effect'
 import { beforeEach, expect, it, vi } from 'vitest'
-import { settleOAuthCallback } from './callback'
+import { Route, settleOAuthCallback } from './callback'
+import type { AppRequestContext } from '@/lib/server/context'
 
 const mocks = vi.hoisted(() => ({
   complete: vi.fn(),
+  pendingOAuthOwner: vi.fn(),
+  requireWorkspacePermission: vi.fn(),
   syncCapabilities: vi.fn(),
   mirrorExecutorConnection: vi.fn(),
 }))
 
+vi.mock('@/lib/server/control-plane', () => ({
+  requireWorkspaceContext: async () => ({
+    workspaceId: 'workspace-a',
+    session: { user: { id: 'actor-a' } },
+  }),
+  requireWorkspaceAccess: async () => ({
+    session: { user: { id: 'actor-a' } },
+  }),
+}))
+vi.mock('@/lib/server/executor-engine/d1', () => ({
+  pendingOAuthOwner: mocks.pendingOAuthOwner,
+}))
+vi.mock('@/lib/server/workspace-permissions', () => ({
+  requireWorkspacePermission: mocks.requireWorkspacePermission,
+  workspacePermissions: { connectionManage: 'manage' },
+}))
 vi.mock('@/lib/server/executor-runtime', () => ({
   executorProgram: (
     _identity: unknown,
@@ -73,3 +92,30 @@ it('keeps the completed org connection when its tools need a resync', async () =
   })
   expect(mocks.complete).toHaveBeenCalledOnce()
 })
+
+it.each(['code=local', 'error=cancelled'])(
+  'checks organization permission before settling a callback (%s)',
+  async (query) => {
+    mocks.pendingOAuthOwner.mockReturnValue(Effect.succeed('org'))
+    mocks.requireWorkspacePermission.mockResolvedValue(
+      new Response('Forbidden', { status: 403 }),
+    )
+    const handler = Route.options.server?.handlers
+    if (!handler || typeof handler === 'function' || !handler.GET)
+      throw new Error('Missing callback GET')
+    const request = new Request(
+      `https://garden.test/api/oauth/callback?state=pending&${query}`,
+    )
+    const get = handler.GET as (args: {
+      context: AppRequestContext
+      request: Request
+    }) => Promise<Response>
+    const response = await get({
+      request,
+      context: { env: {} } as AppRequestContext,
+    })
+    expect(response.status).toBe(403)
+    expect(mocks.pendingOAuthOwner).toHaveBeenCalledOnce()
+    expect(mocks.complete).not.toHaveBeenCalled()
+  },
+)
