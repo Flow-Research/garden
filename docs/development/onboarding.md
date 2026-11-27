@@ -1,3 +1,11 @@
+---
+title: Set up Garden for local development
+description: Run Garden locally with Ollama, trace an issue run, and verify a change.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-27
+---
+
 # Set up Garden for local development
 
 Garden is an open-source workspace where people and AI agents manage shared

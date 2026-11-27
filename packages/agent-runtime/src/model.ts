@@ -168,8 +168,8 @@ export function resolveAgentModelProfile(
   const requested = env?.GARDEN_MODEL_PROVIDER?.trim()
   // Empty string means "unset": the wrangler `vars` block declares these keys
   // with "" defaults so process env can override them in local dev (wrangler
-  // only forwards declared keys). Only GARDEN_OFFLINE=1 enables offline mode.
-  const offline = env?.GARDEN_OFFLINE?.trim() === '1'
+  // only forwards declared keys). Existing chat setups use any non-empty flag for offline mode.
+  const offline = (env?.GARDEN_OFFLINE ?? '').trim() !== ''
   const provider: AgentModelProvider =
     requested === 'openai-compatible' || requested === 'workers-ai'
       ? requested

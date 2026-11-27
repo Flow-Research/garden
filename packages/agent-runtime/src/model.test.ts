@@ -163,21 +163,24 @@ describe('createAgentModel', () => {
     })
   })
 
-  it('uses the OpenAI-compatible provider with Ollama defaults in offline mode', () => {
-    const ai = {} as Ai
-    const modelSpy = vi.fn(() => ({ id: 'local' }))
-    createOpenAICompatibleSpy.mockReturnValue(modelSpy)
+  it.each(['1', 'true'])(
+    'uses the Ollama defaults for offline flag %s',
+    (offline) => {
+      const ai = {} as Ai
+      const modelSpy = vi.fn(() => ({ id: 'local' }))
+      createOpenAICompatibleSpy.mockReturnValue(modelSpy)
 
-    createAgentModel({ ai, env: { GARDEN_OFFLINE: '1' } })
+      createAgentModel({ ai, env: { GARDEN_OFFLINE: offline } })
 
-    expect(createWorkersAISpy).not.toHaveBeenCalled()
-    expect(createOpenAICompatibleSpy).toHaveBeenCalledWith({
-      name: 'garden-openai-compatible',
-      baseURL: 'http://localhost:11434/v1',
-      includeUsage: true,
-    })
-    expect(modelSpy).toHaveBeenCalledWith('qwen3:8b')
-  })
+      expect(createWorkersAISpy).not.toHaveBeenCalled()
+      expect(createOpenAICompatibleSpy).toHaveBeenCalledWith({
+        name: 'garden-openai-compatible',
+        baseURL: 'http://localhost:11434/v1',
+        includeUsage: true,
+      })
+      expect(modelSpy).toHaveBeenCalledWith('qwen3:8b')
+    },
+  )
 
   it('passes explicit endpoint, model id, and api key through unchanged', () => {
     const ai = {} as Ai
