@@ -71,6 +71,8 @@ A pull request moves the card of every issue its body closes. Garden reads GitHu
 
 **Open PRs are tracked on the binding.** A PR that closes unmerged leaves the card alone when another open PR still links the issue. GitHub does not send that fact, so the binding's `metadata.github_open_pull_requests` keeps the open PR numbers the webhook has seen. PRs opened before the App subscribed to `pull_request` events are not in that list.
 
+**Body edits reconcile links.** When an open PR changes its closing references, Garden adds the PR to newly linked issues and removes it from issues no longer named. A removed link moves an in-review card to in progress only when no other tracked open PR links it. Unchanged references do not move cards.
+
 **Moves use the issue path.** Each move goes through the delivery ledger in its own order scope per PR (`binding:<id>:pull_request:<n>`), so a redelivery is a no-op and a PR's `updated_at` never makes an issue edit stale. After commit, `applyIssueMutationSideEffects` runs, so a merge cancels live runs the same way a close does. Each move adds a GitHub connector comment to the timeline that names the PR number and URL and the old and new status.
 
 **Garden's own App bot is not skipped.** A PR an agent opens through the App is the work the card tracks, and Garden never writes PR state back, so nothing echoes.
