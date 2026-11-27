@@ -11,7 +11,7 @@ import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import type { Team, TeamMember } from '@garden/core/types'
 import { toast } from 'sonner'
 import { TeamOverview } from './team-overview'
-import { TeamDetail, membersToCsv } from './team-detail'
+import { TeamDetail, TeamDetailCard, membersToCsv } from './team-detail'
 import { TeamWorkPage } from './team-work-page'
 import { teamIssueViewStore } from '../view-store'
 import { AppSidebar } from '@garden/ui/components/shell/app-sidebar'
@@ -941,6 +941,38 @@ describe('teams UI', () => {
     expect(screen.getByText('Total Activity')).toBeInTheDocument()
     expect(screen.getAllByText('02')).toHaveLength(2)
     expect(screen.getByText('07')).toBeInTheDocument()
+  })
+
+  it('links Total Assigned Tasks to Issues only where the Issues tab exists', async () => {
+    apiMocks.getTeam.mockResolvedValue(makeTeam())
+    apiMocks.listTeamMembers.mockResolvedValue({
+      members: [makeMember()],
+      total: 1,
+    })
+    const onTabChange = vi.fn()
+
+    const withTabs = renderWithQuery(
+      <TeamDetail teamId="team-1" tab="members" onTabChange={onTabChange} />,
+    )
+    const menus = await screen.findAllByRole('button', {
+      name: 'Summary actions',
+    })
+    expect(menus).toHaveLength(3)
+    withTabs.unmount()
+
+    renderWithQuery(
+      <TeamDetailCard
+        teamId="team-1"
+        tab="members"
+        onTabChange={onTabChange}
+        onDeleted={() => {}}
+        showTabs={false}
+      />,
+    )
+    expect(
+      await screen.findAllByRole('button', { name: 'Summary actions' }),
+    ).toHaveLength(2)
+    expect(screen.getByText('Total Assigned Tasks')).toBeInTheDocument()
   })
 
   it('exports the visible member rows as CSV', () => {
