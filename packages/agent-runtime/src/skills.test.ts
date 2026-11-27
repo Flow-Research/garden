@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { SkillParseError, type SkillSource } from 'agents/skills'
+import { AgentPermissionsSchema } from '@garden/core/agents/permissions'
 import {
+  filterBuiltinSkillSource,
   filterSkillRowsByAllowedSlugs,
   isSkillAllowedBySlugs,
 } from './skills-filter'
@@ -61,4 +64,27 @@ describe('allowed_skills filtering', () => {
       isSkillAllowedBySlugs({ name: 'PDF', slug: 'report' }, new Set(['pdf'])),
     ).toBe(false)
   })
+})
+
+it('omits unverified skill paths from restricted lists', async () => {
+  const invalid = {
+    location: 'private/SKILL.md',
+    error: new SkillParseError('invalid-name', 'Unsupported name'),
+  }
+  const source: SkillSource = {
+    id: 'example',
+    list: async () => ({ ok: true, value: { skills: [], invalid: [invalid] } }),
+    readResource: async () => {
+      throw new Error('No resources')
+    },
+  }
+  const permissions = AgentPermissionsSchema.parse({
+    full_access: false,
+    allowed_skills: ['pdf'],
+  })
+  expect(await filterBuiltinSkillSource(source, permissions).list()).toEqual({
+    ok: true,
+    value: { skills: [], invalid: [] },
+  })
+  expect(filterBuiltinSkillSource(source, null)).toBe(source)
 })

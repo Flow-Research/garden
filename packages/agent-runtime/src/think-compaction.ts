@@ -3,7 +3,7 @@ import {
   type ContextOverflowConfig,
   type Session,
 } from '@cloudflare/think'
-import { createCompactFunction } from 'agents/experimental/memory/utils'
+import { createCompactFunction } from 'agents/sessions'
 import { generateText, type LanguageModel } from 'ai'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { getDefaultAgentModelProfile, type AgentModelProfile } from './model'
@@ -20,7 +20,7 @@ const compactionLogger = createGardenLogger({
  * algorithm itself comes from the Agents SDK helper, so tool-pair boundary
  * handling and iterative summaries stay SDK-owned. Sources: pi
  * `docs/compaction.md`, Cloudflare Think context-overflow docs, and
- * `agents/experimental/memory`.
+ * `agents/sessions`.
  */
 export function configureThinkCompaction(
   session: Session,
@@ -30,7 +30,7 @@ export function configureThinkCompaction(
   return session
     .onCompaction(
       createCompactFunction({
-        tailTokenBudget: profile.compaction.tailTokenBudgetTokens,
+        keepRecentTokens: profile.compaction.tailTokenBudgetTokens,
         summarize: async (prompt) => {
           const result = await generateText({
             model,

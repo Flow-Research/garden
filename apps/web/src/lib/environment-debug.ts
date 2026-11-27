@@ -142,7 +142,6 @@ export interface DebugPromptPayload {
   lineCount: number
   charCount: number
   contextBlocks: ContextBlockEntry[]
-  loadedSkillKeys: string[]
 }
 
 export interface LiveAgentStatePayload extends DebugMetaPayload {
@@ -159,49 +158,49 @@ export interface LiveAgentStatePayload extends DebugMetaPayload {
 export const DEBUG_SDK_STACK: readonly SdkVersionInfo[] = [
   {
     name: 'agents',
-    version: '0.11.9',
+    version: '0.34.0',
     channel: 'stable',
     role: 'Durable agent runtime, routeAgentRequest, useAgent, @callable RPCs',
   },
   {
     name: '@cloudflare/ai-chat',
-    version: '0.5.4',
+    version: '0.12.3',
     channel: 'stable',
     role: 'Chat transport hook on top of agents',
   },
   {
     name: '@cloudflare/think',
-    version: '0.4.2',
+    version: '0.24.0',
     channel: 'stable',
-    role: 'Think agent base, workspace tools, execute tool',
+    role: 'Think agent base, Computer workspace, execute tool',
   },
   {
     name: '@cloudflare/sandbox',
-    version: '0.9.4',
+    version: '0.12.4',
     channel: 'stable',
     role: 'Explicit Sandbox DO, fs/process API',
   },
   {
-    name: '@cloudflare/shell',
-    version: '0.3.5',
+    name: '@cloudflare/computer',
+    version: '0.10.0',
     channel: 'stable',
-    role: 'VFS over DO SQLite + R2 spillover',
+    role: 'Workspace filesystem on DO storage; createAITools surface',
   },
   {
     name: '@cloudflare/codemode',
-    version: '0.3.4',
+    version: '0.5.6',
     channel: 'stable',
     role: 'Worker-isolate executor behind createExecuteTool',
   },
   {
     name: 'ai',
-    version: '6.0.168',
+    version: '7.0.181',
     channel: 'stable',
     role: 'AI SDK core used by Think and chat types',
   },
 ]
 
 export const VIRTUAL_FS_BACKING_STORES = [
-  'Durable Object SQLite',
-  'R2 spillover via FILES binding',
+  'Durable Object storage via @cloudflare/computer Workspace',
+  'Facet-owned Computer execution files and separate Shell document storage with R2 spill',
 ] as const

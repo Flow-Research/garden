@@ -51,7 +51,7 @@ license is included at `third_party/material-icon-theme/LICENSE`.
 
 ## Cloudflare Agents
 
-Garden carries `patches/agents@0.17.3.patch`, which modifies Cloudflare Agents
+Garden carries `patches/agents@0.34.0.patch`, which modifies Cloudflare Agents
 distribution files used by the MCP session runtime. The patch changes replay,
 delivery acknowledgement, Durable Object storage handling, SSE rotation, and
 priming-event behavior.

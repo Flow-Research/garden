@@ -117,7 +117,7 @@ describe('runModelHealthCheck', () => {
     )
     expect(email.text).toContain(`Model: ${MODEL_ID}`)
     expect(email.text).toContain('Provider: workers-ai')
-    expect(email.text).toContain('Model request failed.')
+    expect(email.text).toContain('Model request failed (HTTP 429).')
     expect(email.text).toContain('Next step:')
     expect(email.text).not.toContain('re_test_secret')
     expect(logEvent('model_health_check.failed')).toMatchObject({

@@ -8,7 +8,8 @@ import {
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
-import { Workspace } from '@cloudflare/shell'
+import { Workspace } from '@cloudflare/computer'
+import { Workspace as ShellWorkspace } from '@cloudflare/shell'
 import type { Connection } from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
@@ -45,6 +46,7 @@ import {
 } from './model'
 import { createRetiredModelTracker } from './model-retirement'
 import { classifyRunFailure as classifyRuntimeFailure } from './run-failure-matchers'
+import { thinkTurnTelemetry } from './think-telemetry'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 import {
   classifyGardenContextOverflow,
@@ -237,7 +239,6 @@ export abstract class RunSubAgentBase<
     })
   }
 
-  override chatRecovery = true
   override contextOverflow = createGardenContextOverflow(
     // Field initializers run after super(), so this.env is populated: offline
     // local models need overflow bounds scaled to their context window, not
@@ -250,7 +251,10 @@ export abstract class RunSubAgentBase<
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
 
-  override workspace = new Workspace({
+  // Each facet owns its filesystem. The shared FILES bucket also holds
+  // documents from other facets and must never be mounted in its sandbox.
+  override workspace = new Workspace({ storage: this.ctx.storage })
+  protected readonly documentFiles = new ShellWorkspace({
     sql: this.ctx.storage.sql,
     r2: this.env.FILES,
     name: () => this.name,
@@ -452,6 +456,7 @@ export abstract class RunSubAgentBase<
     return this.name
   }
 
+  /** Run identity copied into AI SDK 7 runtimeContext via thinkTurnTelemetry. */
   protected telemetryMetadata(runId: string): Record<string, string> {
     return { agentClass: this.runConfig().agentClass, runId }
   }
@@ -617,13 +622,10 @@ export abstract class RunSubAgentBase<
         onModelRetired: this.retiredModel.observeTurn(runId),
         tracing: this.aiObservation.modelTracing(),
       }),
-      experimental_telemetry: {
+      experimental_telemetry: thinkTurnTelemetry({
         functionId: `garden.${config.kind}-run.turn`,
-        isEnabled: true,
         metadata: this.telemetryMetadata(runId),
-        recordInputs: false,
-        recordOutputs: false,
-      },
+      }),
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
       maxOutputTokens: resolveAgentModelProfile(this.env).maxOutputTokens,

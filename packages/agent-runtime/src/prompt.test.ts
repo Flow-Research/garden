@@ -1,27 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { Session } from 'agents/experimental/memory/session'
-import type { SessionProvider } from 'agents/experimental/memory/session'
+import { ContextBlocks } from 'agents/context'
 import { createPromptContextProviders, type AgentPromptCatalog } from './prompt'
-
-const stubProvider: SessionProvider = {
-  getMessage: () => null,
-  getHistory: () => [],
-  getLatestLeaf: () => null,
-  getBranches: () => [],
-  getPathLength: () => 0,
-  appendMessage: () => {},
-  updateMessage: () => {},
-  deleteMessages: () => {},
-  clearMessages: () => {},
-  addCompaction: () => ({
-    id: '',
-    summary: '',
-    fromMessageId: '',
-    toMessageId: '',
-    createdAt: '',
-  }),
-  getCompactions: () => [],
-}
 
 class MutablePromptCatalog implements AgentPromptCatalog {
   constructor(
@@ -51,6 +30,25 @@ class MutablePromptCatalog implements AgentPromptCatalog {
   }
 }
 
+function promptContextBlocks(
+  promptContexts: ReturnType<typeof createPromptContextProviders>,
+) {
+  return new ContextBlocks([
+    {
+      label: 'foundation',
+      ...promptContexts.foundation,
+    },
+    {
+      label: 'agent',
+      ...promptContexts.agent,
+    },
+    {
+      label: 'workspace',
+      ...promptContexts.workspace,
+    },
+  ])
+}
+
 describe('prompt assembly', () => {
   it('layers foundation, agent, and workspace blocks in stable order', async () => {
     const catalog = new MutablePromptCatalog({
@@ -64,22 +62,7 @@ describe('prompt assembly', () => {
       agentRuntimeName: 'primary.workspace.user',
       catalog,
     })
-    const session = new Session(stubProvider, {
-      context: [
-        {
-          label: 'foundation',
-          ...promptContexts.foundation,
-        },
-        {
-          label: 'agent',
-          ...promptContexts.agent,
-        },
-        {
-          label: 'workspace',
-          ...promptContexts.workspace,
-        },
-      ],
-    })
+    const session = promptContextBlocks(promptContexts)
 
     const prompt = await session.freezeSystemPrompt()
 
@@ -164,22 +147,7 @@ describe('prompt assembly', () => {
       agentRuntimeName: 'primary.workspace.user',
       catalog,
     })
-    const session = new Session(stubProvider, {
-      context: [
-        {
-          label: 'foundation',
-          ...promptContexts.foundation,
-        },
-        {
-          label: 'agent',
-          ...promptContexts.agent,
-        },
-        {
-          label: 'workspace',
-          ...promptContexts.workspace,
-        },
-      ],
-    })
+    const session = promptContextBlocks(promptContexts)
 
     const initial = await session.freezeSystemPrompt()
 
@@ -194,14 +162,20 @@ describe('prompt assembly', () => {
     const frozen = await session.freezeSystemPrompt()
     const refreshedWithoutReload = await session.refreshSystemPrompt()
 
-    session.removeContext('agent')
-    session.removeContext('workspace')
+    session.removeBlock('agent')
+    session.removeBlock('workspace')
     const reloadedPromptContexts = createPromptContextProviders({
       agentRuntimeName: 'primary.workspace.user',
       catalog,
     })
-    await session.addContext('agent', reloadedPromptContexts.agent)
-    await session.addContext('workspace', reloadedPromptContexts.workspace)
+    await session.addBlock({
+      label: 'agent',
+      ...reloadedPromptContexts.agent,
+    })
+    await session.addBlock({
+      label: 'workspace',
+      ...reloadedPromptContexts.workspace,
+    })
     const refreshed = await session.refreshSystemPrompt()
 
     expect(frozen).toBe(initial)

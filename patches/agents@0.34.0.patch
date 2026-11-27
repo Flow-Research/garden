@@ -1,47 +1,8 @@
-diff --git a/node_modules/agents/.bun-tag-c0c639aa2299e502 b/.bun-tag-c0c639aa2299e502
-new file mode 100644
-index 0000000000000000000000000000000000000000..e69de29bb2d1d6434b8b29ae775ad8c2e48c5391
-diff --git a/dist/agent-tool-types-CNyE1iz_.d.ts b/dist/agent-tool-types-CNyE1iz_.d.ts
-index 571eececebd5a1eaf7f2fbf5278801c4d34728ba..317e526489fcd3fd477a50525da0df666253bf0b 100644
---- a/dist/agent-tool-types-CNyE1iz_.d.ts
-+++ b/dist/agent-tool-types-CNyE1iz_.d.ts
-@@ -480,7 +480,10 @@ declare class DurableObjectEventStore implements EventStore {
-   private readonly seqByStream;
-   private readonly seqInit;
-   constructor(storage: DurableObjectStorage);
--  storeEvent(streamId: StreamId, message: JSONRPCMessage): Promise<EventId>;
-+  /** Resolves `undefined` for a message too large for DO storage's 128 KiB
-+   *  per-value cap: the event is delivered live without a replay id rather
-+   *  than failing the send. */
-+  storeEvent(streamId: StreamId, message: JSONRPCMessage): Promise<EventId | undefined>;
-   getStreamIdForEventId(eventId: EventId): Promise<StreamId | undefined>;
-   replayEventsAfter(
-     lastEventId: EventId,
-diff --git a/dist/mcp/index.d.ts b/dist/mcp/index.d.ts
-index c8fad448e8797b89690a99d93490d1363851b225..77f9fe3f6f2375eadc9f7a2974f0d202fe75b3bd 100644
---- a/dist/mcp/index.d.ts
-+++ b/dist/mcp/index.d.ts
-@@ -29,6 +29,7 @@ import {
-   xt as MCPClientOAuthCallbackConfig,
-   zt as ElicitResult
- } from "../agent-tool-types-CNyE1iz_.js";
-+declare const MAX_SSE_AGE_MS = 1800000;
- export {
-   type ClearableEventStore,
-   type CreateMcpHandlerOptions,
-@@ -41,6 +42,7 @@ export {
-   type MCPConnectionResult,
-   type MCPDiscoverResult,
-   type MCPServerOptions,
-+  MAX_SSE_AGE_MS,
-   MCP_SERVER_ID_MAX_LENGTH,
-   McpAgent,
-   type McpAuthContext,
 diff --git a/dist/mcp/index.js b/dist/mcp/index.js
-index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756cd72faef 100644
+index 0000000..1111111 100644
 --- a/dist/mcp/index.js
 +++ b/dist/mcp/index.js
-@@ -28,13 +28,17 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
+@@ -23,13 +23,17 @@
  const KEEPALIVE_INTERVAL_MS = 25e3;
  /** SSE comment frame the parser drops before any event dispatch. */
  const KEEPALIVE_FRAME = ": keepalive\n\n";
@@ -61,7 +22,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  	}, KEEPALIVE_INTERVAL_MS);
  	return handle;
  }
-@@ -180,10 +184,15 @@ const createStreamingHttpHandler = (basePath, namespace, options = {}) => {
+@@ -191,10 +195,15 @@
  					});
  					return new Response(body, { status: 404 });
  				}
@@ -81,7 +42,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  				request.headers.forEach((value, key) => {
  					existingHeaders[key] = value;
  				});
-@@ -206,45 +215,99 @@ const createStreamingHttpHandler = (basePath, namespace, options = {}) => {
+@@ -217,45 +226,99 @@
  						jsonrpc: "2.0"
  					});
  					return new Response(body, { status: 500 });
@@ -207,10 +168,10 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  					}
  					onClose().catch(console.error);
  				});
-@@ -279,10 +342,16 @@ const createStreamingHttpHandler = (basePath, namespace, options = {}) => {
- 					id: null,
- 					jsonrpc: "2.0"
+@@ -292,10 +355,16 @@
  				}), { status: 400 });
+ 				const unsupportedVersion = unsupportedProtocolVersionResponse(request);
+ 				if (unsupportedVersion) return unsupportedVersion;
 -				const { readable, writable } = new TransformStream();
 -				const writer = writable.getWriter();
 -				const encoder = new TextEncoder();
@@ -228,7 +189,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  					props: ctx.props,
  					jurisdiction: options.jurisdiction
  				});
-@@ -306,27 +375,116 @@ const createStreamingHttpHandler = (basePath, namespace, options = {}) => {
+@@ -319,27 +388,116 @@
  				if (!ws) {
  					await writer.close();
  					return new Response("Failed to establish WS to DO", { status: 500 });
@@ -360,7 +321,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  				return new Response(readable, {
  					headers: {
  						"Cache-Control": "no-cache",
-@@ -389,10 +547,16 @@ const createLegacySseHandler = (basePath, namespace, options = {}) => {
+@@ -404,10 +562,16 @@
  		const url = new URL(request.url);
  		if (request.method === "GET" && basePattern.test(url)) {
  			const sessionId = url.searchParams.get("sessionId") || namespace.newUniqueId().toString();
@@ -381,7 +342,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  			endpointUrl.pathname = encodeURI(`${basePath}/message`);
  			endpointUrl.searchParams.set("sessionId", sessionId);
  			const endpointMessage = `event: endpoint\ndata: ${endpointUrl.pathname + endpointUrl.search + endpointUrl.hash}\n\n`;
-@@ -414,35 +578,94 @@ const createLegacySseHandler = (basePath, namespace, options = {}) => {
+@@ -429,35 +593,94 @@
  				console.error("Failed to establish WebSocket connection");
  				await writer.close();
  				return new Response("Failed to establish WebSocket connection", { status: 500 });
@@ -494,7 +455,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  						console.error("Error closing SSE connection:", error);
  					}
  				}
-@@ -634,7 +857,23 @@ var StreamableHTTPServerTransport = class {
+@@ -646,7 +869,23 @@
  				}
  				this.supersedePriorStreamConnections(agent, connection.id, resumedStreamId);
  				connection.setState(resumeState);
@@ -519,7 +480,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  				return;
  			}
  		}
-@@ -644,6 +883,26 @@ var StreamableHTTPServerTransport = class {
+@@ -656,8 +895,28 @@
  			_standaloneSse: true
  		};
  		connection.setState(standaloneState);
@@ -528,8 +489,8 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +		// nothing was replayed no close frame is sent and this connection stays
 +		// open as the session's long-lived standalone listener.
 +		if (replayedStreamIds.length > 0) this.sendReplayComplete(connection, replayedStreamIds);
-+	}
-+	/**
+ 	}
+ 	/**
 +	* Ask the Worker bridge to flush everything queued on `connection`,
 +	* close the client-facing SSE response, and, only if the writer close
 +	* completed with the client still attached, echo one
@@ -543,10 +504,12 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +			ackStreamIds,
 +			close: true
 +		}));
- 	}
- 	/**
++	}
++	/**
  	* Close any connection (other than `selfId`) currently bound to
-@@ -664,12 +923,14 @@ var StreamableHTTPServerTransport = class {
+ 	* `streamId`, so at most one live connection serves a given stream.
+ 	* Closing rather than mutating sibling state mirrors how the SDK's
+@@ -676,12 +935,14 @@
  	* Only used when resumability is enabled
  	*/
  	async replayEvents(lastEventId) {
@@ -562,13 +525,13 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  					this.writeSSEEvent(connection, message, eventId);
  				} catch (error) {
  					this.onerror?.(error);
-@@ -678,6 +939,33 @@ var StreamableHTTPServerTransport = class {
+@@ -690,8 +951,35 @@
  		} catch (error) {
  			this.onerror?.(error);
  		}
 +		return replayedResponse;
-+	}
-+	/**
+ 	}
+ 	/**
 +	* Enqueue every undelivered stream's events on `connection` and return
 +	* the stream ids whose replay included a response. Deliberately does
 +	* NOT clear storage: the caller sends a replay-complete close frame and
@@ -593,10 +556,12 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +			if (replayedResponse) replayedStreamIds.push(streamId);
 +		}
 +		return replayedStreamIds;
- 	}
- 	/**
++	}
++	/**
  	* Writes an event to the SSE stream with proper formatting
-@@ -689,10 +977,65 @@ var StreamableHTTPServerTransport = class {
+ 	*/
+ 	writeSSEEvent(connection, message, eventId, close) {
+@@ -701,10 +989,65 @@
  		return connection.send(JSON.stringify({
  			type: "cf_mcp_agent_event",
  			event: eventData,
@@ -662,7 +627,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  	* Handles POST requests containing JSON-RPC messages
  	*/
  	async handlePostRequest(req, parsedBody) {
-@@ -733,6 +1076,22 @@ var StreamableHTTPServerTransport = class {
+@@ -745,6 +1088,22 @@
  			};
  			connection.setState(postState);
  			if (this._eventStore) await agent.setStreamRequestIds(streamId, requestIds);
@@ -685,7 +650,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  			for (const message of messages) {
  				if (this.messageInterceptor) {
  					if (await this.messageInterceptor(message, {
-@@ -760,7 +1119,22 @@ var StreamableHTTPServerTransport = class {
+@@ -772,7 +1131,22 @@
  	* when the originating WS has dropped.
  	*/
  	async sendOnStream(agent, streamId, relatedIds, liveConnection, message, requestId) {
@@ -709,21 +674,21 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  		let shouldClose = false;
  		if (isJSONRPCResultResponse(message) || isJSONRPCErrorResponse(message)) {
  			let responseIds = this._streamResponseIds.get(streamId);
-@@ -777,9 +1151,11 @@ var StreamableHTTPServerTransport = class {
+@@ -789,9 +1163,11 @@
  		} catch (error) {
  			this.onerror?.(error);
  		}
 -		if (shouldClose) {
 +		if (shouldClose && !this._eventStore) {
-+			await agent.deleteStreamRequestIds(streamId);
-+		} else if (shouldClose) {
-+			await agent.markStreamUndelivered(streamId);
  			await agent.deleteStreamRequestIds(streamId);
 -			if (this._eventStore && isClearableEventStore(this._eventStore)) await this._eventStore.clearStream(streamId);
++		} else if (shouldClose) {
++			await agent.markStreamUndelivered(streamId);
++			await agent.deleteStreamRequestIds(streamId);
  		}
  	}
  	async send(message, options) {
-@@ -861,12 +1237,10 @@ var StreamableHTTPServerTransport = class {
+@@ -873,12 +1249,10 @@
  *
  * ## Lifecycle
  *
@@ -740,7 +705,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  *
  * Standalone GET stream events (`_GET_stream`) are *not* cleared
  * automatically; they accumulate for the lifetime of the DO. Bounded
-@@ -893,12 +1267,34 @@ var DurableObjectEventStore = class DurableObjectEventStore {
+@@ -905,12 +1279,34 @@
  	}
  	async storeEvent(streamId, message) {
  		if (streamId.includes(":")) throw new Error(`DurableObjectEventStore: streamId must not contain ':' (got ${JSON.stringify(streamId)})`);
@@ -775,7 +740,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  		return eventId;
  	}
  	async getStreamIdForEventId(eventId) {
-@@ -915,9 +1311,59 @@ var DurableObjectEventStore = class DurableObjectEventStore {
+@@ -927,8 +1323,58 @@
  			start: startKey,
  			limit: DurableObjectEventStore.REPLAY_LIMIT
  		});
@@ -783,7 +748,7 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +		for (const [key, message] of rows) try {
 +			await send(key.slice(DurableObjectEventStore.EVENT_KEY_PREFIX.length), message);
 +		} catch {}
-+		return streamId;
+ 		return streamId;
 +	}
 +	async replayEventsForStream(streamId, { send }) {
 +		const prefix = `${DurableObjectEventStore.EVENT_KEY_PREFIX}${streamId}:`;
@@ -794,8 +759,8 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +		for (const [key, message] of rows) try {
 +			await send(key.slice(DurableObjectEventStore.EVENT_KEY_PREFIX.length), message);
 +		} catch {}
- 		return streamId;
- 	}
++		return streamId;
++	}
 +	async trimStream(streamId) {
 +		const prefix = `${DurableObjectEventStore.EVENT_KEY_PREFIX}${streamId}:`;
 +		const rows = await this.storage.list({
@@ -832,11 +797,10 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +			}));
 +			for (let i = 0; i < deleteKeys.length; i += DurableObjectEventStore.DELETE_CHUNK) await this.storage.delete(deleteKeys.slice(i, i + DurableObjectEventStore.DELETE_CHUNK));
 +		}
-+	}
+ 	}
  	/**
  	* Drop the event log for a single stream. Called by the transport
- 	* immediately after a POST's final response has been written to the
-@@ -973,6 +1419,13 @@ DurableObjectEventStore.EVENT_KEY_PREFIX = "__mcp_event__:";
+@@ -985,6 +1431,13 @@
  DurableObjectEventStore.SEQ_PAD = 16;
  DurableObjectEventStore.DELETE_CHUNK = 128;
  DurableObjectEventStore.REPLAY_LIMIT = 1e3;
@@ -848,15 +812,16 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
 +// below it absorbs the difference. Anything larger is delivered live only.
 +DurableObjectEventStore.MAX_STORABLE_EVENT_BYTES = 120 * 1024;
  //#endregion
- //#region src/mcp/client-transports.ts
- /**
-@@ -1381,6 +1834,47 @@ var McpAgent = class McpAgent extends Agent {
+ //#region src/mcp/rpc-server.ts
+ function makeInvalidRequestError(id) {
+@@ -1507,7 +1960,48 @@
+ 	/** Drop the persisted `requestIds` for a POST stream. @internal */
  	async deleteStreamRequestIds(streamId) {
  		await this.ctx.storage.delete(`${McpAgent.STREAM_REQS_KEY_PREFIX}${streamId}`);
- 	}
++	}
 +	async markStreamUndelivered(streamId) {
 +		await this.ctx.storage.put(`${McpAgent.UNDELIVERED_STREAM_KEY_PREFIX}${streamId}`, true);
-+	}
+ 	}
 +	async deleteUndeliveredStream(streamId) {
 +		await this.ctx.storage.delete(`${McpAgent.UNDELIVERED_STREAM_KEY_PREFIX}${streamId}`);
 +	}
@@ -898,14 +863,46 @@ index 1edcf0c8c9e67aa211ae515e7672cdf79912101e..444312ff41fbcff60e2ea681a9d5c756
  	/**
  	* Reverse lookup: find which POST stream a given `requestId` belongs
  	* to, and return the stream's full `requestIds` list in the same
-@@ -1697,7 +2191,8 @@ var McpAgent = class McpAgent extends Agent {
+@@ -1825,7 +2319,8 @@
  	}
  };
  McpAgent.STREAM_REQS_KEY_PREFIX = "__mcp_stream_reqs__:";
 +McpAgent.UNDELIVERED_STREAM_KEY_PREFIX = "__mcp_undelivered_stream__:";
  //#endregion
--export { DurableObjectEventStore, ElicitRequestSchema, MCP_SERVER_ID_MAX_LENGTH, McpAgent, RPCClientTransport, RPCServerTransport, RPC_DO_PREFIX, SSEEdgeClientTransport, StreamableHTTPEdgeClientTransport, WorkerTransport, createMcpHandler, experimental_createMcpHandler, getMcpAuthContext, normalizeServerId };
-+export { DurableObjectEventStore, ElicitRequestSchema, MAX_SSE_AGE_MS, MCP_SERVER_ID_MAX_LENGTH, McpAgent, RPCClientTransport, RPCServerTransport, RPC_DO_PREFIX, SSEEdgeClientTransport, StreamableHTTPEdgeClientTransport, WorkerTransport, createMcpHandler, experimental_createMcpHandler, getMcpAuthContext, normalizeServerId };
+-export { DurableObjectEventStore, ElicitRequestSchema, MCP_SERVER_ID_MAX_LENGTH, McpAgent, RPCClientTransport, RPCServerTransport, RPC_DO_PREFIX, SSEEdgeClientTransport, StreamableHTTPEdgeClientTransport, WorkerTransport, createLegacyMcpHandler, createMcpHandler, experimental_createMcpHandler, getMcpAuthContext, normalizeServerId };
++export { DurableObjectEventStore, ElicitRequestSchema, MAX_SSE_AGE_MS, MCP_SERVER_ID_MAX_LENGTH, McpAgent, RPCClientTransport, RPCServerTransport, RPC_DO_PREFIX, SSEEdgeClientTransport, StreamableHTTPEdgeClientTransport, WorkerTransport, createLegacyMcpHandler, createMcpHandler, experimental_createMcpHandler, getMcpAuthContext, normalizeServerId };
  
  //# sourceMappingURL=index.js.map
 \ No newline at end of file
+diff --git a/dist/mcp/index.d.ts b/dist/mcp/index.d.ts
+index 0000000..1111111 100644
+--- a/dist/mcp/index.d.ts
++++ b/dist/mcp/index.d.ts
+@@ -346,7 +346,10 @@
+   private readonly seqByStream;
+   private readonly seqInit;
+   constructor(storage: DurableObjectStorage);
+-  storeEvent(streamId: StreamId, message: JSONRPCMessage$1): Promise<EventId>;
++  /** Resolves `undefined` for a message too large for DO storage's 128 KiB
++   *  per-value cap: the event is delivered live without a replay id rather
++   *  than failing the send. */
++  storeEvent(streamId: StreamId, message: JSONRPCMessage$1): Promise<EventId | undefined>;
+   getStreamIdForEventId(eventId: EventId): Promise<StreamId | undefined>;
+   replayEventsAfter(
+     lastEventId: EventId,
+@@ -574,6 +577,7 @@
+   };
+ }
+ //#endregion
++declare const MAX_SSE_AGE_MS = 1800000;
+ export {
+   type ClearableEventStore,
+   type CreateLegacyMcpHandlerOptions,
+@@ -594,6 +598,7 @@
+   type MCPElicitationHandlers,
+   type MCPServerOptions,
+   type MCPStorageApi,
++  MAX_SSE_AGE_MS,
+   MCP_SERVER_ID_MAX_LENGTH,
+   McpAgent,
+   type McpAuthContext,

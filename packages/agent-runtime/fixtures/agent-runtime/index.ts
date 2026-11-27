@@ -73,24 +73,4 @@ if (target === 'chat') {
       'GitHub repository routing prompt is missing from chat agent',
     )
   }
-  const slashSkills = Array.from(
-    new Set(
-      message
-        .split(/\s+/)
-        .flatMap((token) => /^\/([a-zA-Z0-9_-]+)$/.exec(token)?.[1] ?? []),
-    ),
-  )
-  if (mode === 'run' && slashSkills.length > 0) {
-    const loadedSkillKeys = Array.isArray(data.afterTurn?.loadedSkillKeys)
-      ? data.afterTurn.loadedSkillKeys
-      : []
-    for (const slug of slashSkills) {
-      if (
-        !loadedSkillKeys.includes(slug) &&
-        !loadedSkillKeys.includes(`skills:${slug}`)
-      ) {
-        throw new Error(`slash skill ${slug} was not loaded in runtime`)
-      }
-    }
-  }
 }
