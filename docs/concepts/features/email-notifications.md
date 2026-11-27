@@ -6,7 +6,7 @@ owner: "@Umoren"
 last_reviewed: 2026-11-27
 ---
 
-Related issue: [#335](https://github.com/Flow-Research/garden/issues/335).
+Related issues: [#335](https://github.com/Flow-Research/garden/issues/335) and [#350](https://github.com/Flow-Research/garden/issues/350).
 
 ## What members receive
 
@@ -20,6 +20,37 @@ Self mentions do not create notifications.
 Emails link to the issue, or to the workspace inbox when no issue is attached.
 Chats remain owner-only. A chat mention creates a generic inbox notice without
 copying the private conversation or granting access to it.
+
+## Member preferences
+
+Each workspace member controls email for four categories in Settings. The
+categories are mentions, assignments, approvals, and input requests. Email is
+on for every category by default, for existing and new members. A member who
+belongs to two workspaces has separate settings in each workspace.
+
+| Category | Inbox types |
+| --- | --- |
+| Mentions | `mentioned` |
+| Assignments | `issue_assigned`, `assignee_changed`, `unassigned` |
+| Approvals | `review_requested`, `wp_review`, `brain_proposal` |
+| Input requests | `waiting_for_input`, `connector_needed` |
+
+An inbox type that is not in this table has no category. The toggles do not
+change its delivery, so items such as `new_comment` keep sending email. A
+preference controls email only. The inbox item still appears in Garden.
+
+`member.notification_preferences` stores only the opt-outs, in the shape
+`{ category: { channel: boolean } }`. A missing key means enabled, so `{}` is
+the default. `email` is the only channel today. A future channel, for example
+Discord, adds one value to `notificationChannelValues` in
+`packages/db/src/schema/notification-preferences.ts`. Stored rows stay valid,
+so that change needs no data migration.
+
+`GET` and `PATCH /api/workspaces/$id/notification-preferences` read and change
+the settings of the caller only. The server takes the member from the session.
+The request body names a category, a channel, and a value, and it cannot name a
+member. Users outside the workspace get `403`. One `PATCH` changes one toggle
+in one SQL statement, so concurrent toggles do not overwrite each other.
 
 ## Delivery and failure
 
@@ -46,7 +77,11 @@ the limit expires. Permanent message rejections also record `failed`.
 Email bodies show mention labels without editor link markup.
 
 Delivery rechecks workspace membership and Team issue visibility. Removed members,
-self notifications, and inaccessible issues are skipped. A private chat notice
+self notifications, and inaccessible issues are skipped. The dispatcher also
+reads the preferences of the recipient before each attempt. This includes items
+that were queued or retried before the member turned the category off. These
+items record `skipped` with the reason `preference_disabled`. If the member turns
+the category on again before the next attempt, the item sends. A private chat notice
 contains no conversation title or message body. The sender uses the same verified
 Garden domain as invitations.
 
@@ -61,4 +96,5 @@ See the [verification path](../../../.agents/skills/verify/features/email-notifi
 for member actions, permission refusal, and delivery checks. Database integration
 tests exercise the real inbox writers and dispatcher with a simulated Resend
 boundary. Real mailbox delivery requires a deployed cron and verified Resend
-sender. Preferences, digests, and email replies are outside this change.
+sender. Digests, email replies, and channels other than email are outside this
+feature.

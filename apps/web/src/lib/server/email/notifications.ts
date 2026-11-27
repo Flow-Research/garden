@@ -4,6 +4,7 @@ import { Resend } from 'resend'
 import type { GardenDatabase } from '@garden/db'
 import * as schema from '@garden/db/schema'
 import type { NotificationEmail } from '@garden/db/schema/notification-email'
+import { isNotificationDeliveryEnabled } from '@garden/db/schema/notification-preferences'
 import { canReceiveIssueNotification } from '@garden/db/inbox'
 import { buildIssueDeepLink } from '@garden/core/issues/deep-link'
 import { createLogger } from '@garden/observability/console'
@@ -183,6 +184,7 @@ export async function dispatchNotificationEmails(args: {
           .select({
             email: schema.user.email,
             workspaceName: schema.organization.name,
+            preferences: schema.member.notificationPreferences,
           })
           .from(schema.member)
           .innerJoin(schema.user, eq(schema.user.id, schema.member.userId))
@@ -224,6 +226,29 @@ export async function dispatchNotificationEmails(args: {
             .update(schema.inboxItem)
             .set({
               emailDelivery: { kind: 'skipped', reason: 'recipient_access' },
+            })
+            .where(
+              and(
+                eq(schema.inboxItem.id, item.id),
+                sql`${schema.inboxItem.emailDelivery}->>'kind' in ('pending', 'sending')`,
+              ),
+            )
+          report.skipped++
+          continue
+        }
+        // Read per attempt, so an opt-out also stops mail queued or retried
+        // before the member changed the setting.
+        if (
+          !isNotificationDeliveryEnabled(
+            recipient.preferences,
+            item.type,
+            'email',
+          )
+        ) {
+          await args.db
+            .update(schema.inboxItem)
+            .set({
+              emailDelivery: { kind: 'skipped', reason: 'preference_disabled' },
             })
             .where(
               and(

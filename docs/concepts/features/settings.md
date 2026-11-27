@@ -3,7 +3,7 @@ title: Settings page rollout
 description: The routed Settings shell, its sections, User Management's Members and Team sub-tabs, and the separate modal entry during design rollout.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-27
 ---
 
 Settings has an authenticated page at `/settings` for direct-link review during the staging rollout. Existing account and workspace menu entries still open the Settings modal. The page is not linked from application navigation yet.
@@ -18,10 +18,10 @@ The page follows the supplied All settings design: heading and description, hori
 | --------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Profile         | `/settings/profile`                                                    | Redesigned; see [Profile](#profile)                                      |
 | User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins |
-| Preferences     | `/settings/preferences`                                                | Appearance and theme selection                                           |
+| Preferences     | `/settings/preferences`                                                | Appearance and theme selection; email notification toggles               |
 | General         | `/settings/general`                                                    | Workspace settings                                                       |
 
-User Management, Preferences and General reuse the same components, queries and mutations as the modal and the Teams page. Notifications has no tab or route until its behavior is implemented. Settings adds no new account operations, APIs or permissions.
+User Management, Preferences and General reuse the same components, queries and mutations as the modal and the Teams page. Preferences also shows the email notification toggles of the signed-in member for the active workspace. The modal shows the same component in its Notifications tab. The toggles use the member preference API that [Email notifications](./email-notifications.md#member-preferences) describes. Settings adds no other account operations, APIs or permissions.
 
 ## Profile
 

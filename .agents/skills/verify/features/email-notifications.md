@@ -19,9 +19,22 @@
 9. Advance beyond the provider's 24-hour idempotency window after an ambiguous
    send. Expect failed state and no second provider call.
 
+10. As member B, open Settings > Preferences, or the Notifications tab of the
+    Settings modal. Expect four switches that are on, each with a name and a
+    description for screen readers.
+11. Queue an assignment for B, then turn off Assignments. Run the dispatcher.
+    Expect `skipped` with `preference_disabled` and no provider call. Repeat
+    after a failed attempt. Expect the same result.
+12. Turn off Mentions only. Expect assignments to still send. Expect the same
+    user in a second workspace to still get assignment email. Expect
+    `new_comment` email with all four switches off.
+13. Send a `PATCH` for B with an extra member field or an unknown category.
+    Expect `400`. Send one as a user outside the workspace. Expect `403`.
+
 Database integration tests automate writer and dispatch checks against isolated
 Postgres. Use `pnpm --filter @garden/web exec vitest run
-src/lib/server/email/notifications.integration.test.ts`.
+src/lib/server/email/notifications.integration.test.ts` and
+`'src/routes/api/workspaces/$id/-notification-preferences.integration.test.ts'`.
 
 A live mailbox check requires the deployed minute cron, `RESEND_API_KEY`,
 `BETTER_AUTH_URL`, and a verified sender. Record that proof separately from the

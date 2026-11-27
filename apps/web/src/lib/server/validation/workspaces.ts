@@ -11,6 +11,7 @@ import {
 } from './common'
 
 export { parseJsonBody }
+export { notificationPreferenceUpdateSchema } from '@garden/db/schema/notification-preferences'
 
 export const createWorkspaceBodySchema = z
   .object({

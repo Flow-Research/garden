@@ -22,7 +22,13 @@ import {
   upsertIssueAssignmentInbox,
   upsertWaitingForInputInbox,
   upsertPermissionRequestInbox,
+  upsertAgentCommentInbox,
 } from '@garden/db/inbox'
+import type { NotificationCategory } from '@garden/db/schema/notification-preferences'
+import {
+  readMemberNotificationPreferences,
+  updateMemberNotificationPreference,
+} from '../queries/workspaces/notification-preferences'
 import { createIssue, postIssueComment } from '@garden/server/issues/server'
 import { updateIssueCommentBody } from '../queries/issues/comments'
 import {
@@ -522,6 +528,199 @@ describe('workspace notification email delivery', () => {
     await dispatch()
     expect(send).not.toHaveBeenCalled()
     expect((await items())[0]?.emailDelivery.kind).toBe('skipped')
+  })
+
+  describe('member notification preferences', () => {
+    const setEmail = (
+      category: NotificationCategory,
+      enabled: boolean,
+      inWorkspace = workspaceId,
+    ) =>
+      updateMemberNotificationPreference({
+        db: testDb.db,
+        workspaceId: inWorkspace,
+        userId: recipientId,
+        update: { category, channel: 'email', enabled },
+      })
+    const recipientItems = async () =>
+      (await items()).filter((item) => item.recipientId === recipientId)
+
+    it('emails every category by default for an existing member', async () => {
+      expect(
+        await readMemberNotificationPreferences({
+          db: testDb.db,
+          workspaceId,
+          userId: recipientId,
+        }),
+      ).toEqual(
+        ['mentions', 'assignments', 'approvals', 'input_requests'].map(
+          (category) => ({ category, channels: { email: true } }),
+        ),
+      )
+      await assignment()
+      await upsertIssueMentionInbox({
+        db: testDb.db,
+        workspaceId,
+        issueId,
+        content: mention(recipientId),
+        actorType: 'member',
+        actorId: authorId,
+      })
+      await upsertWaitingForInputInbox({
+        db: testDb.db,
+        workspaceId,
+        issueId,
+        runId: randomUUID(),
+        agentId,
+      })
+      await dispatch()
+      expect(
+        (await recipientItems()).map((item) => item.emailDelivery.kind),
+      ).toEqual(['sent', 'sent', 'sent'])
+    })
+
+    it('rechecks the preference at send time for mail queued before the opt-out', async () => {
+      await assignment()
+      expect((await recipientItems())[0]?.emailDelivery).toEqual({
+        kind: 'pending',
+      })
+      await setEmail('assignments', false)
+      expect(await dispatch()).toMatchObject({ value: { skipped: 1 } })
+      expect(send).not.toHaveBeenCalled()
+      expect((await recipientItems())[0]?.emailDelivery).toEqual({
+        kind: 'skipped',
+        reason: 'preference_disabled',
+      })
+    })
+
+    it('stops a claimed retry when the member opts out before the next attempt', async () => {
+      await assignment()
+      send.mockResolvedValueOnce(
+        Result.err(
+          new NotificationEmailError({ message: 'network', retryable: true }),
+        ),
+      )
+      await dispatch()
+      expect((await recipientItems())[0]?.emailDelivery.kind).toBe('sending')
+      await setEmail('assignments', false)
+      await dispatch()
+      expect(send).toHaveBeenCalledTimes(1)
+      expect((await recipientItems())[0]?.emailDelivery).toEqual({
+        kind: 'skipped',
+        reason: 'preference_disabled',
+      })
+    })
+
+    it('sends again after the member turns the category back on before delivery', async () => {
+      await assignment()
+      await setEmail('assignments', false)
+      await setEmail('assignments', true)
+      await dispatch()
+      expect((await recipientItems())[0]?.emailDelivery.kind).toBe('sent')
+    })
+
+    it('applies a toggle to its own category only', async () => {
+      await setEmail('mentions', false)
+      await assignment()
+      await upsertIssueMentionInbox({
+        db: testDb.db,
+        workspaceId,
+        issueId,
+        content: mention(recipientId),
+        actorType: 'member',
+        actorId: authorId,
+      })
+      await dispatch()
+      const byType = Object.fromEntries(
+        (await recipientItems()).map((item) => [
+          item.type,
+          item.emailDelivery.kind,
+        ]),
+      )
+      expect(byType).toEqual({ issue_assigned: 'sent', mentioned: 'skipped' })
+      expect(
+        await readMemberNotificationPreferences({
+          db: testDb.db,
+          workspaceId,
+          userId: recipientId,
+        }),
+      ).toContainEqual({ category: 'assignments', channels: { email: true } })
+    })
+
+    it('keeps the opt-out inside one workspace for a user in two workspaces', async () => {
+      const otherWorkspaceId = randomUUID()
+      const otherIssueId = randomUUID()
+      await testDb.db.insert(schema.organization).values({
+        id: otherWorkspaceId,
+        name: 'Other',
+        slug: otherWorkspaceId,
+      })
+      await testDb.db.insert(schema.member).values([
+        { organizationId: otherWorkspaceId, userId: authorId, role: 'owner' },
+        {
+          organizationId: otherWorkspaceId,
+          userId: recipientId,
+          role: 'member',
+        },
+      ])
+      await testDb.db.insert(schema.issue).values({
+        id: otherIssueId,
+        workspaceId: otherWorkspaceId,
+        number: 1,
+        title: 'Other issue',
+        createdBy: authorId,
+        assigneeType: 'user',
+        assigneeId: recipientId,
+      })
+      await setEmail('assignments', false)
+      await assignment()
+      await upsertIssueAssignmentInbox({
+        db: testDb.db,
+        workspaceId: otherWorkspaceId,
+        issueId: otherIssueId,
+        actorType: 'member',
+        actorId: authorId,
+      })
+      await dispatch()
+      const [other] = await testDb.db
+        .select()
+        .from(schema.inboxItem)
+        .where(eq(schema.inboxItem.workspaceId, otherWorkspaceId))
+      expect((await recipientItems())[0]?.emailDelivery.kind).toBe('skipped')
+      expect(other?.emailDelivery.kind).toBe('sent')
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(
+        await updateMemberNotificationPreference({
+          db: testDb.db,
+          workspaceId: randomUUID(),
+          userId: recipientId,
+          update: { category: 'mentions', channel: 'email', enabled: false },
+        }),
+      ).toBeNull()
+    })
+
+    it('keeps emailing inbox types outside the four categories', async () => {
+      for (const category of [
+        'mentions',
+        'assignments',
+        'approvals',
+        'input_requests',
+      ] as const) {
+        await setEmail(category, false)
+      }
+      await upsertAgentCommentInbox({
+        db: testDb.db,
+        workspaceId,
+        issueId,
+        commentId: randomUUID(),
+        agentId,
+        body: 'Agent update',
+      })
+      await dispatch()
+      const [comment] = await recipientItems()
+      expect(comment?.type).toBe('new_comment')
+      expect(comment?.emailDelivery.kind).toBe('sent')
+    })
   })
 
   it('uses the actual Resend SDK with the durable key at the HTTP boundary', async () => {
