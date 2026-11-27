@@ -43,6 +43,12 @@ It does not prove a live signed-host or WorkStream callback.
 `pnpm test:dependency-security` checks the patched serialization, proxy trust and shell quoting behaviors.
 It does not execute generated shell text.
 
+`apps/web/src/features/editor/content-editor.dependencies.test.tsx` renders the actual `ContentEditor` with the installed Tiptap and ProseMirror packages.
+It covers Markdown load and save, typing with input rules, marks, links, paste paths, mentions and file cards.
+Four cases check the patched advisories: Markdown attribute parse time, the `mergeAttributes` prototype and slice-context attribute validation.
+These four cases fail with Tiptap `3.22.4` and ProseMirror View `1.41.8`. The other cases pass with both versions.
+The tests run in JSDOM. They do not prove browser selection, IME input or a real clipboard.
+
 ## Environment evidence
 
 Local handler checks do not prove an actual Google or Slack provider round trip.
@@ -59,3 +65,16 @@ The Think CLI reads valid and incomplete TOML from disposable project directorie
 OpenSSL creates only temporary local TLS fixtures. The tests remove those files and close their listeners.
 `document-artifact-projection.test.ts` in agent-runtime and `extractor.test.ts` in brain cover Mammoth DOCX conversion with valid and malformed Word XML.
 These cases do not establish a live provider, native device, or deployed Worker result.
+
+## Build tools and same-branch packages
+
+`scripts/build-tooling-dependencies.test.mjs` runs with `pnpm test:dependency-security`.
+It resolves `minimatch` from ExcelJS archive tooling, TypeORM and just-bash, then checks valid brace expansion and the nested brace inputs from the advisories.
+It resolves Browserslist from Babel and checks target resolution and custom usage statistics with inherited key names.
+It resolves `nanoid` and `source-map-js` from PostCSS and checks zero-size identifiers, a previous source map, and refusal of extreme indexed section offsets.
+It runs `scripts/screenshot-webp.mjs` on generated PNG and SVG files in a temporary directory, and checks refusal of a truncated PNG.
+It checks that Miniflare and `@xenova/transformers` load the same Sharp, and reads an image through `@xenova/transformers`.
+`packages/agent-runtime/src/workspace-git-symlink-checkout.test.ts` uses the `@cloudflare/shell` Git commands on its in-memory file system.
+It checks a normal branch switch and the refusal to write below a directory symlink that leaves the working tree.
+The production build and the Vitest suites are the Vite evidence. The Vite advisory applies to Windows and has no local exploit test.
+These cases do not establish a deployed Worker result or an image result on Linux.
