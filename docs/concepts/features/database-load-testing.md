@@ -61,7 +61,7 @@ The suite writes only to generated temporary databases. It does not write to Gar
 
 ## How to verify it
 
-Run the database typecheck, lint, schema check, and load suite. Review the generated `report.md` for errors and the paired result witnesses. Confirm that the candidate index appears in the treatment plan before interpreting the latency comparison. Open the generated `report.svg` to compare medians across scales.
+Run the database typecheck, lint, schema check, and load suite. Read `report.json` for errors and paired result witnesses. Read `report.md` for timing and plan summaries. Confirm that the candidate index appears in the treatment plan before interpreting the latency comparison. Open the generated `report.svg` to compare medians across scales.
 
 ```bash
 pnpm --filter @garden/db typecheck

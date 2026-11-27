@@ -98,6 +98,7 @@ type ScenarioMeasurement = {
   statistics: Statistics
   beforeProfile: PlanSummary | null
   afterProfile: PlanSummary | null
+  profileErrors: string[]
 }
 
 type Statistics = {
@@ -163,8 +164,9 @@ function parseOptions(argv: readonly string[]): Options {
     const arg = argv[index] ?? ''
     if (arg === '--') continue
     if (!arg.startsWith('--')) throw new Error(`Unknown argument ${arg}.`)
-    const [rawKey, inlineValue] = arg.slice(2).split('=', 2)
-    const key = rawKey ?? ''
+    const separator = arg.indexOf('=')
+    const key = arg.slice(2, separator < 0 ? undefined : separator)
+    const inlineValue = separator < 0 ? undefined : arg.slice(separator + 1)
     const next = inlineValue ?? argv[index + 1]
     if (inlineValue === undefined) {
       if (!next || next.startsWith('--')) {
@@ -661,7 +663,7 @@ async function seedDatabase(
   await pool.query(
     `insert into issue_work_product (
        id, workspace_id, issue_id, run_id, agent_id, type, status,
-       review_state, is_primary, title, body, payload
+       review_state, is_primary, title, body, payload, updated_at
      )
      select md5('load:work-product:' || i::text)::uuid,
             $1::uuid,
@@ -674,7 +676,8 @@ async function seedDatabase(
             true,
             'Load report ' || i::text,
             'Load report body for issue ' || i::text,
-            jsonb_build_object('scale', $3::int)
+            jsonb_build_object('scale', $3::int),
+            timestamptz '2026-01-01 00:00:00+00' - i * interval '1 second'
      from generate_series(1, $4::int) as issues(i)`,
     [ids.workspaceId, counts.agents, scale, counts.issues],
   )
@@ -1040,17 +1043,29 @@ function queryScenarios(): QueryScenario[] {
           [ids.workspaceId, '%needle%'],
         )
         const issueMatches = await pool.query(
-          `select id, number, title, description, updated_at, created_at
+          `select *
            from issue
            where workspace_id = $1
              and (title ilike $2 or description ilike $2)
            order by updated_at desc, created_at desc`,
           [ids.workspaceId, '%needle%'],
         )
-        return [commentMatches.rows, issueMatches.rows]
+        const issueIds = [
+          ...new Set(commentMatches.rows.map((row) => row.issue_id)),
+        ]
+        const matchedIssues = issueIds.length
+          ? (
+              await pool.query(
+                `select * from issue where workspace_id = $1 and id = any($2::uuid[])
+            order by updated_at desc, created_at desc`,
+                [ids.workspaceId, issueIds],
+              )
+            ).rows
+          : []
+        return [issueMatches.rows, matchedIssues]
       },
       profile: (ids) => ({
-        sql: `select id, number, title, description, updated_at, created_at
+        sql: `select *
               from issue
               where workspace_id = $1
                 and (title ilike $2 or description ilike $2)
@@ -1140,7 +1155,7 @@ function queryScenarios(): QueryScenario[] {
                where permission_request.kind = 'connector_write'
                  and permission_request.status = 'pending'
                  and agent.workspace_id = $1
-               order by permission_request.requested_at desc
+               order by permission_request.requested_at desc, permission_request.id desc
                limit 50`,
             [ids.workspaceId],
           ),
@@ -1325,6 +1340,7 @@ function stableSerialize(value: unknown): string {
   if (value === null) return 'null'
   if (typeof value === 'bigint') return JSON.stringify(value.toString())
   if (typeof value !== 'object') return JSON.stringify(value)
+  if (value instanceof Date) return JSON.stringify(value.toISOString())
   if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`
 
   const entries = Object.entries(value as Record<string, unknown>)
@@ -1524,12 +1540,15 @@ function calculateStatistics(
     Number.isFinite(beforeMedianMs) && beforeMedianMs > 0
       ? ((afterMedianMs - beforeMedianMs) / beforeMedianMs) * 100
       : Number.NaN
+  const meanDifferenceMs = differences.length
+    ? differences.reduce((sum, delta) => sum + delta, 0) / differences.length
+    : Number.NaN
   const verdict =
     errors > 0 || pairs.length < 5
       ? 'inconclusive'
       : !hasSignificantChange
         ? 'no measurable difference'
-        : afterMedianMs < beforeMedianMs
+        : meanDifferenceMs < 0
           ? 'faster'
           : 'slower'
 
@@ -1542,9 +1561,7 @@ function calculateStatistics(
     afterRangeMs: [Math.min(...afterDurations), Math.max(...afterDurations)],
     changePercent,
     speedup: beforeMedianMs / afterMedianMs,
-    meanDifferenceMs:
-      differences.reduce((sum, value) => sum + value, 0) /
-      Math.max(differences.length, 1),
+    meanDifferenceMs,
     confidenceIntervalMs,
     signFlipPValue: signFlipP,
     verdict,
@@ -1655,10 +1672,8 @@ async function provisionFixturePair(
      on issue using btree
        (workspace_id, updated_at desc, created_at desc, number desc)`,
   )
-  await treatmentPool.query('ANALYZE')
   const beforePool = createBenchmarkPool(sourceUrl, MAX_CONCURRENCY * 6)
   state.pools.add(beforePool)
-  await beforePool.query('ANALYZE')
 
   return {
     beforePool,
@@ -1690,12 +1705,17 @@ async function measureScale(
     if (state.interrupted) throw new Error('Load test interrupted.')
     await timeScenario(scenario, pair.beforePool, pair.ids, 1)
     await timeScenario(scenario, pair.afterPool, pair.ids, 1)
-    const beforeProfile = scenario.profile
-      ? await captureProfile(pair.beforePool, scenario.profile(pair.ids))
-      : null
-    const afterProfile = scenario.profile
-      ? await captureProfile(pair.afterPool, scenario.profile(pair.ids))
-      : null
+    const profileErrors: string[] = []
+    const profile = scenario.profile?.(pair.ids)
+    const readProfile = async (pool: Pool, side: string) => {
+      if (!profile) return null
+      return captureProfile(pool, profile).catch((cause: unknown) => {
+        profileErrors.push(`${side}: ${errorMessage(cause)}`)
+        return null
+      })
+    }
+    const beforeProfile = await readProfile(pair.beforePool, 'baseline')
+    const afterProfile = await readProfile(pair.afterPool, 'treatment')
 
     const before: TimedSample[] = []
     const after: TimedSample[] = []
@@ -1753,8 +1773,9 @@ async function measureScale(
     }
     const statistics = calculateStatistics(before, after, errors)
     if (
-      scenario.id === 'issues:list' &&
-      afterProfile?.indexName !== CANDIDATE_INDEX
+      profileErrors.length > 0 ||
+      (scenario.id === 'issues:list' &&
+        afterProfile?.indexName !== CANDIDATE_INDEX)
     ) {
       statistics.verdict = 'inconclusive'
     }
@@ -1771,6 +1792,7 @@ async function measureScale(
       statistics,
       beforeProfile,
       afterProfile,
+      profileErrors,
     })
     process.stdout.write(
       `${scale}x ${scenario.id} ${statistics.verdict} ` +
@@ -1918,8 +1940,12 @@ function renderSvg(report: BenchmarkReport): string {
       const y = top + index * rowHeight
       const beforeX = xFor(row.statistics.beforeMedianMs)
       const afterX = xFor(row.statistics.afterMedianMs)
-      const beforeWidth = Math.max(beforeX - left, 1)
-      const afterWidth = Math.max(afterX - left, 1)
+      const beforeWidth = Number.isFinite(beforeX)
+        ? Math.max(beforeX - left, 1)
+        : 0
+      const afterWidth = Number.isFinite(afterX)
+        ? Math.max(afterX - left, 1)
+        : 0
       const status = `${row.statistics.verdict}, p=${formatNumber(row.statistics.signFlipPValue)}`
       return `<g><text x="12" y="${y + 14}" font-size="12" font-weight="600" fill="#0f172a">${row.scale}x ${escapeXml(row.label)}</text><text x="12" y="${y + 31}" font-size="10" fill="#64748b">${escapeXml(status)}</text><rect x="${left}" y="${y}" width="${beforeWidth}" height="10" rx="4" fill="#f59e0b"/><rect x="${left}" y="${y + 15}" width="${afterWidth}" height="10" rx="4" fill="#10b981"/><text x="${width - right + 12}" y="${y + 9}" font-size="10" fill="#92400e">before ${escapeXml(formatMs(row.statistics.beforeMedianMs))}</text><text x="${width - right + 12}" y="${y + 24}" font-size="10" fill="#047857">after ${escapeXml(formatMs(row.statistics.afterMedianMs))}</text></g>`
     })
@@ -1941,7 +1967,7 @@ function renderMarkdown(report: BenchmarkReport): string {
   const rows = report.measurements
     .map((row) => {
       const stats = row.statistics
-      return `| ${row.scale}x | ${row.label} | ${formatMs(stats.beforeMedianMs)} | ${formatMs(stats.afterMedianMs)} | ${stats.changePercent.toFixed(1)}% | ${formatNumber(stats.signFlipPValue)} | ${stats.verdict} |`
+      return `| ${row.scale}x | ${row.label} | ${formatMs(stats.beforeMedianMs)} | ${formatMs(stats.afterMedianMs)} | ${Number.isFinite(stats.changePercent) ? `${stats.changePercent.toFixed(1)}%` : 'n/a'} | ${formatNumber(stats.signFlipPValue)} | ${stats.verdict} |`
     })
     .join('\n')
   const profileRows = report.measurements

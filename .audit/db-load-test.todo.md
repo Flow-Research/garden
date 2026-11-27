@@ -25,7 +25,7 @@ Measurement contract:
 
 - Warm each query once before timed samples.
 - Run seven paired samples per query and scale.
-- Randomize before or after order inside each pair with a deterministic seed.
+- Alternate which database runs first between consecutive pairs, using a deterministic first side.
 - Consume row counts and full row-multiset checksums. Count failures.
 - Record median, p95, range, paired bootstrap confidence interval, and a
   two-sided sign-flip p-value.
