@@ -43,11 +43,7 @@ const clients: QueryClient[] = []
  * Connects the real account menu to its production workspace query. The menu
  * previously displayed the indefinitely cached snapshot without any refresh.
  */
-function AccountMenu({
-  onInviteMembers,
-}: {
-  onInviteMembers?: () => void
-}) {
+function AccountMenu({ onInviteMembers }: { onInviteMembers?: () => void }) {
   const query = useQuery(workspaceListOptions())
   const memberRole: MemberRole = 'member'
   return (

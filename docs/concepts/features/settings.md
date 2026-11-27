@@ -8,7 +8,7 @@ last_reviewed: 2026-11-27
 
 Select **Settings** in the account menu to open the authenticated `/settings` page. The workspace menu opens the Settings modal.
 
-**Invite members** in the workspace menu and the account menu opens the Add a Team Member dialog directly, without the Settings modal behind it. Only owners and admins see it, because only they can create invitations.
+**Invite members** in the workspace menu and the account menu opens the Add a Team Member dialog directly, without the Settings modal behind it. Only owners and admins see it, because only they can create invitations. If the workspace changes or the inviter loses that role, Garden closes the dialog and discards its unsent rows.
 
 ## Page shell
 

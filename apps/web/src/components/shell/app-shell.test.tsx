@@ -29,6 +29,9 @@ vi.mock('@/lib/api', async (importActual) => ({
 }))
 vi.mock('@/features/settings', () => ({
   SettingsDialog: () => null,
+  InviteMembersDialog: ({ workspaceId }: { workspaceId: string }) => (
+    <div role="dialog">{workspaceId}</div>
+  ),
   useSettingsDialogStore: (select: (state: object) => unknown) =>
     select({ openSettings: vi.fn() }),
 }))
@@ -176,4 +179,29 @@ it('finishes leaving the item page before it changes workspace', async () => {
     useWorkspaceStore.setState({ switchWorkspace: original })
     client.clear()
   }
+})
+
+it('closes the invite dialog on workspace change and discards the prior invitation', async () => {
+  const first = { id: 'north', name: 'North' } as Workspace
+  const second = { id: 'south', name: 'South' } as Workspace
+  const client = new QueryClient()
+  client.setQueryData(workspaceKeys.members(first.id), [
+    { user_id: 'inviter', role: 'owner' },
+  ])
+  client.setQueryData(workspaceKeys.members(second.id), [
+    { user_id: 'inviter', role: 'member' },
+  ])
+  useAuthStore.setState({ user: { id: 'inviter', name: 'Inviter' } as User })
+  useWorkspaceStore.setState({ workspace: first })
+  renderShell(client)
+  fireEvent.click(screen.getByRole('button', { name: 'Account' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Invite members' }))
+  expect(screen.getByRole('dialog')).toHaveTextContent(first.id)
+  act(() => useWorkspaceStore.setState({ workspace: second }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  fireEvent.click(screen.getByRole('button', { name: 'Account' }))
+  expect(screen.queryByRole('button', { name: 'Invite members' })).toBeNull()
+  act(() => useWorkspaceStore.setState({ workspace: first }))
+  expect(screen.queryByRole('dialog')).toBeNull()
+  client.clear()
 })

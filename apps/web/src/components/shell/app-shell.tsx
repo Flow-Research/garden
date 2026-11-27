@@ -152,7 +152,9 @@ export function AppShell() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [drawerOpen])
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
-  const [inviteOpen, setInviteOpen] = useState(false)
+  const [inviteWorkspaceId, setInviteWorkspaceId] = useState<string | null>(
+    null,
+  )
   const [expandedNavIds, setExpandedNavIds] = useState<string[]>(() =>
     pathname.startsWith('/teams/') ? ['teams'] : [],
   )
@@ -173,13 +175,19 @@ export function AppShell() {
         ?.role ?? null,
     [memberListQuery.data, user?.id],
   )
-  const openInviteMembers =
+  const canManageTeams =
     currentMemberRole === 'owner' || currentMemberRole === 'admin'
-      ? () => {
-          setMobileNavOpen(false)
-          setInviteOpen(true)
-        }
-      : undefined
+  const inviteOpen =
+    inviteWorkspaceId !== null &&
+    inviteWorkspaceId === workspaceId &&
+    canManageTeams
+  if (inviteWorkspaceId !== null && !inviteOpen) setInviteWorkspaceId(null)
+  const openInviteMembers = canManageTeams
+    ? () => {
+        setMobileNavOpen(false)
+        setInviteWorkspaceId(workspaceId)
+      }
+    : undefined
 
   const unreadInboxItems = useMemo(
     () => deduplicateInboxItems(rawInboxItems).filter((item) => !item.read),
@@ -242,8 +250,6 @@ export function AppShell() {
     [tabbedNav, surfaceTabs, tabStep.current, openChatSession, openIssue],
   )
 
-  const canManageTeams =
-    currentMemberRole === 'owner' || currentMemberRole === 'admin'
   const activeTeamChildId = teamNavChildForPathname(pathname)?.id ?? null
 
   const navItems = useMemo(
@@ -436,8 +442,12 @@ export function AppShell() {
             <SettingsDialog />
             {inviteOpen ? (
               <InviteMembersDialog
-                workspaceId={activeWorkspaceId}
-                onClose={() => setInviteOpen(false)}
+                workspaceId={inviteWorkspaceId}
+                onClose={() =>
+                  setInviteWorkspaceId((current) =>
+                    current === inviteWorkspaceId ? null : current,
+                  )
+                }
               />
             ) : null}
           </ChatRuntimeProvider>
