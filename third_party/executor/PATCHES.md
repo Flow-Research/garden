@@ -49,6 +49,26 @@ documented compatibility changes:
    installation requires successful OAuth discovery and reports unavailability
    without offering a manual token template or registering an integration.
 
+10. The SDK's MCP template has no caller-specific scope option. For the exact
+    Flow issuer and Workstream resource, a dedicated `garden-` authorization-code
+    client additionally requests `offline_access`. Other clients and providers
+    keep discovered scopes unchanged. The issuer bounds the retained grant.
+11. SDK connection projection prioritizes its durable reauthorization marker over
+    later catalogue health observations. Removing a Workstream connection revokes
+    its refresh credential at the pinned issuer before deleting connection state;
+    provider failure or a missing issuer binding retains the connection. Revocation
+    uses Worker-supported manual redirect handling; the hosted fetch guard honors
+    that mode from request initialization or a `Request` (explicit initialization
+    takes precedence), so a redirect is refused without forwarding the refresh
+    credential. Mint,
+    reconnect, and refresh prepare ciphertext through the existing encrypted
+    provider and publish new credential IDs with the connection in one D1 batch.
+    The batch matches the exact previous credential IDs and removes the obsolete
+    ciphertext. The request-scoped Executor and hibernatable MCP session both
+    receive this D1 capability. Disconnect batches credential and catalogue
+    deletion after issuer revocation. A database rollback retains local custody for
+    retry. A competing grant change leaves the current connection intact.
+
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's
 duplicate Cloudflare R2 adapter are not reachable from Garden's Worker and are

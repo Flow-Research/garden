@@ -1,22 +1,11 @@
 import { wrapLanguageModel } from 'ai'
+import { isRetiredModelError } from './run-failure-matchers'
 
 type WrappableLanguageModel = Parameters<typeof wrapLanguageModel>[0]['model']
-
-/** Safe run failure reason for a model its provider has retired. */
-export const RETIRED_AGENT_MODEL_MESSAGE =
-  'The configured AI model was retired by its provider. An admin must update the Garden agent model.'
 
 // AI SDK replaces stream errors with this text when Think calls
 // toUIMessageStream without onError.
 const SDK_MASKED_ERROR = 'An error occurred.'
-
-function isRetiredModelError(error: unknown) {
-  const message = error instanceof Error ? error.message : ''
-  return (
-    /^(?:\w*Error:\s*)?(?:5028\b|Model has been deprecated:)/.test(message) ||
-    (/API error \(410\b/.test(message) && /"code":\s*5028\b/.test(message))
-  )
-}
 
 /** Reports a provider retirement before AI SDK masks the stream error. */
 export function observeRetiredAgentModel(
@@ -51,10 +40,8 @@ export function createRetiredModelTracker() {
         retiredRunId = runId
       }
     },
-    failureReason(runId: string, reason: string) {
+    wasRetired(runId: string, reason: string) {
       return retiredRunId === runId && reason === SDK_MASKED_ERROR
-        ? RETIRED_AGENT_MODEL_MESSAGE
-        : reason
     },
   }
 }

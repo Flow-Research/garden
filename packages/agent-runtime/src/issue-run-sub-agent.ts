@@ -16,6 +16,12 @@ import { hasToolCall, type ToolSet, type UIMessage } from 'ai'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, asc, desc, eq, inArray } from 'drizzle-orm'
 import { classifyConnectorError } from '@garden/core/connectors/errors'
+import {
+  runFailure,
+  runFailureEventPayloadSchema,
+  toPublicRunFailure,
+  type RunFailure,
+} from '@garden/core/runs/failure'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import {
   GARDEN_ANALYTICS_EVENTS,
@@ -727,7 +733,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     if (outputAuthority.isErr()) {
       const closed = await this.forceCloseFailed(
         runId,
-        'brain_output_authority_denied',
+        runFailure('brain_output_authority_denied'),
       )
       if (closed.isErr())
         this.logRunWarning('close_failed', {
@@ -1524,7 +1530,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       return Result.ok()
     }
 
-    return await this.forceCloseFailed(runId, 'no_resolution')
+    return await this.forceCloseFailed(runId, runFailure('no_resolution'))
   }
 
   private hasTerminalResolutionAction() {
@@ -1789,8 +1795,13 @@ export class IssueRunSubAgent extends RunSubAgentBase<
 
   protected async forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
   ): Promise<ResultValue<void, RunSubAgentError>> {
+    this.logRunWarning('failed', {
+      runId,
+      cause: failure.cause,
+      ...(failure.diagnostic ? { diagnostic: failure.diagnostic } : {}),
+    })
     const runStateResult = await this.loadRunState(runId)
     if (runStateResult.isErr()) return Result.err(runStateResult.error)
 
@@ -1805,8 +1816,11 @@ export class IssueRunSubAgent extends RunSubAgentBase<
             .update(schema.issueRun)
             .set({
               status: 'failed',
-              error: reason,
-              resultJson: { resolution: 'failed', reason },
+              error: failure.cause,
+              resultJson: {
+                resolution: 'failed',
+                failure: toPublicRunFailure(failure),
+              },
               finishedAt: now,
               updatedAt: now,
             })
@@ -1843,9 +1857,9 @@ export class IssueRunSubAgent extends RunSubAgentBase<
       stream: 'system',
       level: 'error',
       message: 'Run failed',
-      payload: {
-        reason,
-      },
+      payload: runFailureEventPayloadSchema.parse({
+        failure: toPublicRunFailure(failure),
+      }),
     })
     if (eventResult.isErr()) {
       return Result.err(
@@ -1858,7 +1872,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
     }
 
     this.captureRunProduct(run, GARDEN_ANALYTICS_EVENTS.issueRunFailed, {
-      reason,
+      cause: failure.cause,
     })
     return Result.ok()
   }
