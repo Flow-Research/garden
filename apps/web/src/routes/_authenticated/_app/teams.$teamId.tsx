@@ -2,7 +2,7 @@ import { Suspense } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   TeamDetail,
-  type TeamTab,
+  validateTeamSearch,
 } from '@/features/teams/components/team-detail'
 import {
   teamDetailOptions,
@@ -14,17 +14,7 @@ import { TeamRouteError } from '@/features/teams/components/team-route-error'
 import { prefetchActiveWorkspace } from '@/lib/navigation/prefetch'
 
 export const Route = createFileRoute('/_authenticated/_app/teams/$teamId')({
-  validateSearch: (search) => {
-    const out: { tab?: TeamTab } = {}
-    if (
-      search.tab === 'members' ||
-      search.tab === 'issues' ||
-      search.tab === 'repositories'
-    ) {
-      out.tab = search.tab
-    }
-    return out
-  },
+  validateSearch: validateTeamSearch,
   loader: ({ context, params }) =>
     prefetchActiveWorkspace(context.queryClient, (workspaceId) => [
       teamDetailOptions(workspaceId, params.teamId),
