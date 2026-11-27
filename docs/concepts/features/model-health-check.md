@@ -83,7 +83,7 @@ The separate alert event reports delivery status. The Worker waits up to ten sec
 - `packages/agent-runtime/src/model-health.ts`: `probeAgentModel` runs the probe and classifies the result.
 - `apps/web/src/lib/server/model-health-check.ts`: `runModelHealthCheck` logs the result and sends the alert. `MODEL_HEALTH_CHECK_CRON` and `MODEL_HEALTH_PROBE_TIMEOUT_MS` set the schedule and bound.
 - `apps/web/src/lib/server/email/model-health-alert.ts`: `sendModelHealthAlertEmail` writes and sends the email through Resend.
-- `apps/web/src/server.ts`: `scheduledJobs` maps each Cron pattern to one job. Cloudflare sends one `scheduled` event for each pattern, so the reconciler and the health check fail independently.
+- `apps/web/src/server.ts`: `scheduledJobs` maps each Cron pattern to one job. Cloudflare sends one `scheduled` event for each pattern, so failures in the reconciler or the email dispatcher do not interrupt the health check.
 - `apps/web/wrangler.jsonc` and `alchemy.run.ts`: both list `0 8 * * *` in their crons. `apps/web/src/server.test.ts` fails if either list differs from the jobs.
 
 ## Data and permissions
