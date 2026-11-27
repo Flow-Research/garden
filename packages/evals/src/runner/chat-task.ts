@@ -112,6 +112,7 @@ export async function runChatTask(input: {
 
   const observedRuns: ObservedDecideRuns = new Map()
   let trialThread: string | undefined
+  let turnFinished = false
   const result = await Result.gen(async function* () {
     yield* Result.await(
       api.verifyEvalTarget({
@@ -173,6 +174,7 @@ export async function runChatTask(input: {
       }),
     )
 
+    turnFinished = true
     const expectsDecide =
       input.task.definition.capabilities.connectors.includes('decide')
     const decideAnalysis = yield* Result.await(
@@ -228,24 +230,37 @@ export async function runChatTask(input: {
     return Result.ok({ report: report.data, response: turn.text })
   })
   if (trialThread && (result.isErr() || hasLiveDecideRuns(observedRuns))) {
-    const cleanup = await cancelTrialAnalyses(api, trialThread, observedRuns)
-    if (cleanup.isErr()) return cleanup
+    const cleanup = await cancelTrialAnalyses(
+      api,
+      trialThread,
+      observedRuns,
+      configuration.pollIntervalMs,
+    )
     if (result.isErr()) {
       const error = result.error
       const [knownRunId] = observedRuns.keys()
       const runId =
-        error.runId ?? (observedRuns.size === 1 ? knownRunId : undefined)
+        error.runId ??
+        (cleanup.isErr() ? cleanup.error.runId : undefined) ??
+        (observedRuns.size === 1 ? knownRunId : undefined)
+      const cleanupNotes = [
+        cleanup.isErr() ? cleanup.error.message : undefined,
+        !turnFinished
+          ? 'Garden did not confirm that the chat turn ended. Check the thread for later analyses.'
+          : undefined,
+      ].filter(Boolean)
       return Result.err(
         new GardenEvalError({
           stage: error.stage,
           code: error.code,
-          message: error.message,
+          message: [error.message, ...cleanupNotes].join(' '),
           invalidReason: error.invalidReason,
           threadId: trialThread,
           ...(runId ? { runId } : {}),
         }),
       )
     }
+    if (cleanup.isErr()) return cleanup
   }
   return result
 }

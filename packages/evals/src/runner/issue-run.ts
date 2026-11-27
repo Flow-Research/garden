@@ -267,10 +267,7 @@ export async function runIssueRunTask(input: {
       deadlineAt,
       pollIntervalMs: input.config.pollIntervalMs,
     })
-    if (
-      observedResult.isErr() &&
-      observedResult.error.code === 'deadline_reached'
-    ) {
+    if (observedResult.isErr()) {
       const cancelled = await api.cancelIssueRun({
         issueId: issue.id,
         deadlineAt: Date.now() + safeConfiguration.pollIntervalMs,
@@ -278,11 +275,12 @@ export async function runIssueRunTask(input: {
       if (cancelled.isErr()) {
         return Result.err(
           new GardenEvalError({
-            stage: 'garden_execution',
-            code: 'trial_cleanup_unconfirmed',
+            stage: observedResult.error.stage,
+            code: observedResult.error.code,
             message:
-              'The issue trial reached its deadline. Garden did not confirm its cancellation request.',
-            invalidReason: 'garden_execution_failed',
+              observedResult.error.message +
+              ' Garden did not confirm the issue cancellation request.',
+            invalidReason: observedResult.error.invalidReason,
             issueId: issue.id,
             runId: start.runId,
           }),

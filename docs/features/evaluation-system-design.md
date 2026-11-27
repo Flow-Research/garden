@@ -242,7 +242,7 @@ record the cookie or raw API responses.
 The deadline is the total trial budget. Each API request uses the remaining
 budget. A live run at the deadline is invalid. The runner requests cancellation
 through the public API and keeps the run ID for follow-up. The cancellation
-request for an issue uses one poll interval. After a chat trial fails, the runner checks the trial thread for active Decide analyses. It requests cancellation for each active analysis it finds. It allows five seconds for the check and five seconds for the requests. If Garden cannot confirm cleanup, the report records that error. Check the thread for work that started after the last check. A cancellation request does not establish that the run stopped.
+request for an issue uses one poll interval. If a chat trial fails or leaves an active analysis, the runner checks the trial thread for active Decide analyses. It requests cancellation for each active analysis it finds. Each cleanup step uses one poll interval. If Garden cannot confirm cleanup, the report records that error. If the chat turn did not end cleanly, the report identifies the thread for follow-up. A cancellation request does not establish that the run stopped.
 
 The first evidence adapter stores the run ID, issue ID, workspace ID, status,
 timestamps, and safe usage fields. Garden returns events and work products

@@ -29,16 +29,17 @@ export async function cancelTrialAnalyses(
   >,
   threadId: string,
   observed: ObservedDecideRuns,
+  pollIntervalMs: number,
 ) {
   const latest = await api.listDecideAnalyses({
     threadId,
-    deadlineAt: Date.now() + 5000,
+    deadlineAt: Date.now() + pollIntervalMs,
   })
   if (latest.isOk()) recordDecideRuns(observed, latest.value)
   const live = [...observed].filter(
     ([, status]) => status === 'queued' || status === 'running',
   )
-  const deadlineAt = Date.now() + 5000
+  const deadlineAt = Date.now() + pollIntervalMs
   const requests = await Promise.all(
     live.map(async ([runId]) => {
       const result = await api.cancelDecideAnalysis({ runId, deadlineAt })
