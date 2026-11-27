@@ -243,6 +243,7 @@ export async function ensureBrainRunHistory(input: {
   identity: string
   permissions: AgentPermissions
   exposeTool?: string
+  readOnly?: boolean
   marker: unknown
   readDurableHistory: () => Promise<readonly unknown[]>
   persist: (marker: { identity: string; tools: string[] }) => void
@@ -300,6 +301,7 @@ export async function ensureBrainRunHistory(input: {
           'Retained history may contain Brain context whose grant is unavailable. A fresh context session with reviewed content is required.',
       }),
     )
+  if (input.readOnly) return Result.ok(undefined)
   return Result.try({
     try: () => input.persist({ identity: input.identity, tools }),
     catch: (cause) =>
@@ -310,11 +312,50 @@ export async function ensureBrainRunHistory(input: {
   })
 }
 
-/** Binds entry RPCs before cancellation/failure handlers can mutate a run ledger. */
+const historyQueues = new WeakMap<object, Promise<unknown>>()
+
+/**
+ * Parallel Brain tools previously read the same marker and lost one grant in
+ * the last config write. Serialize the facet's full read and write operation;
+ * the next tool reads the marker saved by the prior tool.
+ */
+export async function serializeBrainRunHistory<T>(
+  facet: object,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const previous = historyQueues.get(facet) ?? Promise.resolve()
+  const current = previous.then(operation, operation)
+  const settled = current.then(
+    () => undefined,
+    () => undefined,
+  )
+  historyQueues.set(facet, settled)
+  void settled.then(() => {
+    if (historyQueues.get(facet) === settled) historyQueues.delete(facet)
+  })
+  return current
+}
+
+/**
+ * Lifecycle entry checks previously parsed Brain permissions before cancellation
+ * and terminal cleanup. Bind the run, agent, workspace, and facet name only;
+ * Brain operations still use loadBrainRunAuthority for fresh grants.
+ */
 export async function verifyBrainRunBinding(
   databaseUrl: string,
   input: Pick<BrainRunOrigin, 'runId' | 'runKind' | 'runtimeName' | 'objectId'>,
 ) {
+  if (!input.runtimeName || !input.objectId)
+    return Result.err(
+      new BrainRunAuthorityError({
+        message: 'Brain runtime principal is unavailable.',
+      }),
+    )
+  const principal = await resolveBrainRuntimeAgentId(
+    databaseUrl,
+    input.runtimeName,
+  )
+  if (principal.isErr()) return Result.err(principal.error)
   const table =
     input.runKind === 'issue' ? schema.issueRun : schema.automationRun
   const loaded = await queryBrainAuthority(
@@ -326,17 +367,33 @@ export async function verifyBrainRunBinding(
           workspaceId: table.workspaceId,
           agentId: table.agentId,
           ownerUserId: schema.agent.ownerUserId,
+          objectId:
+            input.runKind === 'issue'
+              ? schema.issueRun.issueId
+              : schema.automationRun.id,
         })
         .from(table)
         .innerJoin(schema.agent, eq(schema.agent.id, table.agentId))
-        .where(eq(table.id, input.runId))
+        .where(
+          and(
+            eq(table.id, input.runId),
+            eq(table.agentId, principal.value),
+            eq(schema.agent.workspaceId, table.workspaceId),
+          ),
+        )
         .limit(1)
       return row
     },
   )
-  return await loaded.andThenAsync(async (row) =>
-    row
-      ? loadBrainRunAuthority(databaseUrl, { ...input, ...row })
+  return loaded.andThen((row) =>
+    row && row.objectId === input.objectId
+      ? Result.ok({
+          context: {
+            workspaceId: row.workspaceId,
+            agentId: row.agentId,
+            userId: row.ownerUserId,
+          },
+        })
       : Result.err(
           new BrainRunAuthorityError({
             message: 'Brain run binding is unavailable.',

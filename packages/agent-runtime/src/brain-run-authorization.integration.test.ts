@@ -971,6 +971,41 @@ describe.skipIf(process.env.GARDEN_ITEST_HELIX !== '1')(
       return { agentId, runId: automationRunId }
     }
 
+    for (const kind of ['issue', 'automation'] as const)
+      it(`closes a cancelled ${kind} run with denied Brain permissions`, async () => {
+        const input =
+          kind === 'issue'
+            ? await seedIssue('G08 denied cancellation')
+            : await seedAutomation()
+        const table = kind === 'issue' ? schema.issueRun : schema.automationRun
+        await database!.db
+          .update(schema.agent)
+          .set({ permissions: 'invalid-permissions' })
+          .where(eq(schema.agent.id, agentId))
+        await database!.db
+          .update(table)
+          .set({ cancelRequestedAt: new Date() })
+          .where(eq(table.id, input.runId))
+
+        const response = await harness!.fetch(
+          kind === 'issue' ? '/issue-turn' : '/automation-turn',
+          {
+            method: 'POST',
+            body: JSON.stringify({ ...input, mode: 'start', turn: 0 }),
+          },
+        )
+        expect(response.status).toBe(200)
+        expect(await response.json()).toMatchObject({
+          ok: true,
+          value: { kind: 'run_status', status: 'cancelled' },
+        })
+        const [run] = await database!.db
+          .select({ status: table.status })
+          .from(table)
+          .where(eq(table.id, input.runId))
+        expect(run?.status).toBe('cancelled')
+      }, 90_000)
+
     for (const kind of ['issue', 'automation'] as const) {
       for (const policy of [
         'denied',

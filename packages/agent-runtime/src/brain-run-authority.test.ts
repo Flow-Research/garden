@@ -3,6 +3,7 @@ import { AgentPermissionsSchema } from '@garden/core/agents/permissions'
 import {
   ensureBrainRunHistory,
   isBrainRunToolAllowed,
+  serializeBrainRunHistory,
 } from './brain-run-authority'
 
 describe('Brain run grant semantics', () => {
@@ -35,6 +36,58 @@ describe('durable Brain history provenance', () => {
   const denied = AgentPermissionsSchema.parse({
     full_access: false,
     allowed_tools: ['post_comment'],
+  })
+  it('keeps both grants when first exposures run concurrently', async () => {
+    const facet = {}
+    let marker: unknown
+    let releaseRead!: () => void
+    const firstRead = new Promise<void>((resolve) => {
+      releaseRead = resolve
+    })
+    let reads = 0
+    const expose = (tool: string) =>
+      serializeBrainRunHistory(facet, () =>
+        ensureBrainRunHistory({
+          identity,
+          permissions: allowed,
+          exposeTool: tool,
+          marker,
+          readDurableHistory: async () => {
+            reads++
+            if (reads === 1) await firstRead
+            return []
+          },
+          persist: (next) => {
+            marker = next
+          },
+        }),
+      )
+    const first = expose('brain_search')
+    const second = expose('add_to_brain')
+    await Promise.resolve()
+    expect(reads).toBe(1)
+    releaseRead()
+    expect((await first).isOk()).toBe(true)
+    expect((await second).isOk()).toBe(true)
+    expect(marker).toEqual({
+      identity,
+      tools: ['brain_search', 'add_to_brain'],
+    })
+    expect(reads).toBe(1)
+  })
+
+  it('validates an empty session without writing provenance', async () => {
+    const persist = vi.fn()
+    const result = await ensureBrainRunHistory({
+      identity,
+      permissions: allowed,
+      marker: undefined,
+      readOnly: true,
+      readDurableHistory: async () => [],
+      persist,
+    })
+    expect(result.isOk()).toBe(true)
+    expect(persist).not.toHaveBeenCalled()
   })
   it('records possible exposure before a permitted turn and blocks revoked history', async () => {
     let marker: unknown

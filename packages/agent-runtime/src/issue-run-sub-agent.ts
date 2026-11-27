@@ -1,8 +1,9 @@
 import {
-  verifyBrainRunBinding,
   authorizeBrainRunTool,
   ensureBrainRunHistory,
   loadBrainRunAuthority,
+  serializeBrainRunHistory,
+  verifyBrainRunBinding,
   type BrainRunOrigin,
 } from './brain-run-authority'
 import { ensureIssueBrainAudience } from './issue-brain-audience'
@@ -988,15 +989,19 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
       },
     )
     if (binding.isErr()) throw binding.error
-    const access = await this.ensureBrainGrantHistory({
-      runKind: 'issue',
-      runId,
-      runtimeName,
-      objectId: this.name,
-      workspaceId: binding.value.context.workspaceId,
-      agentId: binding.value.context.agentId,
-      ownerUserId: binding.value.context.userId,
-    })
+    const access = await this.ensureBrainGrantHistory(
+      {
+        runKind: 'issue',
+        runId,
+        runtimeName,
+        objectId: this.name,
+        workspaceId: binding.value.context.workspaceId,
+        agentId: binding.value.context.agentId,
+        ownerUserId: binding.value.context.userId,
+      },
+      undefined,
+      true,
+    )
     if (access.isErr()) throw access.error
   }
 
@@ -1213,41 +1218,45 @@ export class IssueRunSubAgent extends Think<AgentRuntimeEnv> {
   private async ensureBrainGrantHistory(
     origin: BrainRunOrigin,
     exposeTool?: string,
+    readOnly = false,
   ) {
-    const authority = await loadBrainRunAuthority(
-      this.env.HYPERDRIVE.connectionString,
-      origin,
-    )
-    if (authority.isErr())
-      return Result.err(
-        new IssueRunSubAgentError({
-          code: 'runtime_failed',
-          message: authority.error.message,
-          cause: authority.error,
-        }),
+    return serializeBrainRunHistory(this, async () => {
+      const authority = await loadBrainRunAuthority(
+        this.env.HYPERDRIVE.connectionString,
+        origin,
       )
-    return (
-      await ensureBrainRunHistory({
-        identity: `${origin.runKind}:${origin.workspaceId}:${origin.agentId}:${origin.ownerUserId}`,
-        permissions: authority.value.permissions,
-        exposeTool,
-        marker: this.getConfig<{ brainGrantHistory?: unknown }>()
-          ?.brainGrantHistory,
-        readDurableHistory: () => this.session.getHistory(),
-        persist: (brainGrantHistory) =>
-          this.configure({
-            ...this.getConfig<Record<string, unknown>>(),
-            brainGrantHistory,
+      if (authority.isErr())
+        return Result.err(
+          new IssueRunSubAgentError({
+            code: 'runtime_failed',
+            message: authority.error.message,
+            cause: authority.error,
           }),
-      })
-    ).mapError(
-      (error) =>
-        new IssueRunSubAgentError({
-          code: 'runtime_failed',
-          message: error.message,
-          cause: error,
-        }),
-    )
+        )
+      return (
+        await ensureBrainRunHistory({
+          identity: `${origin.runKind}:${origin.workspaceId}:${origin.agentId}:${origin.ownerUserId}`,
+          permissions: authority.value.permissions,
+          exposeTool,
+          readOnly,
+          marker: this.getConfig<{ brainGrantHistory?: unknown }>()
+            ?.brainGrantHistory,
+          readDurableHistory: () => this.session.getHistory(),
+          persist: (brainGrantHistory) =>
+            this.configure({
+              ...this.getConfig<Record<string, unknown>>(),
+              brainGrantHistory,
+            }),
+        })
+      ).mapError(
+        (error) =>
+          new IssueRunSubAgentError({
+            code: 'runtime_failed',
+            message: error.message,
+            cause: error,
+          }),
+      )
+    })
   }
 
   private async driveTurn(
