@@ -94,6 +94,9 @@ export function createMobileController(ports: MobilePorts) {
     cacheStatus: 'none',
     message: 'Sign in to Garden',
   }
+  let retryChat: { scope: string; id: string } | null = null
+  const chatScope = () =>
+    JSON.stringify([state.origin, state.accountId, state.workspaceId])
   let generation = 0
   let chatSelection = 0
   let auth: MobileAuth | null = null
@@ -651,11 +654,13 @@ export function createMobileController(ports: MobilePorts) {
       err: (error) => failed(error, turn),
     })
     if (threads.isErr()) return
-    if (
-      state.pendingChatId &&
-      threads.value.some((row) => row.id === state.pendingChatId)
-    )
+    if (state.pendingChatId) {
+      const pendingId = state.pendingChatId
+      retryChat = threads.value.some((row) => row.id === pendingId)
+        ? null
+        : { scope: chatScope(), id: pendingId }
       publish({ pendingChatId: null })
+    }
     const skillList = await Result.tryPromise({
       try: () => currentSkills.listSkills(),
       catch: () =>
@@ -806,7 +811,9 @@ export function createMobileController(ports: MobilePorts) {
   /** Creates one chat without retrying an unknown server acknowledgement. */
   async function createChat() {
     if (state.phase !== 'ready' || state.pendingChatId) return
-    const id = ports.createRequestId()
+    const id =
+      retryChat?.scope === chatScope() ? retryChat.id : ports.createRequestId()
+    retryChat = null
     const creationTurn = generation
     const selection = ++chatSelection
     publish({
@@ -961,6 +968,7 @@ export function createMobileController(ports: MobilePorts) {
   /** Removes local private state even when remote sign-out cannot be reached. */
   async function signOut() {
     const currentAuth = auth
+    retryChat = null
     invalidate()
     const turn = generation
     cleanupRequired = true

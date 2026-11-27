@@ -23,6 +23,8 @@ async function fixture() {
   let runReads = 0
   let requests = 0
   let threadHost = 'host'
+  let dropBeforeCreation = false
+  const attemptedChats: string[] = []
   let dropChatAcknowledgement = false
   const createdChats: string[] = []
   let activeRunId = 'run'
@@ -38,6 +40,12 @@ async function fixture() {
       })
       request.on('end', () => {
         const body = JSON.parse(raw)
+        attemptedChats.push(body.id)
+        if (dropBeforeCreation) {
+          dropBeforeCreation = false
+          response.destroy()
+          return
+        }
         createdChats.push(body.id)
         if (dropChatAcknowledgement) {
           response.destroy()
@@ -194,6 +202,10 @@ async function fixture() {
       expiresAt = value
     },
     createdChats: () => createdChats,
+    attemptedChats: () => attemptedChats,
+    failBeforeChatCreation: () => {
+      dropBeforeCreation = true
+    },
     dropChatAcknowledgement: () => {
       dropChatAcknowledgement = true
     },
@@ -693,6 +705,21 @@ describe('native session controller', () => {
       app.createdChats()[0],
     )
     expect(app.controller.getSnapshot().pendingChatId).toBeNull()
+  })
+
+  it('retries an absent chat with its original identity after an authorized refresh', async () => {
+    const app = await fixture()
+    await app.controller.connect(app.origin)
+    await app.controller.selectWorkspace('a')
+    app.failBeforeChatCreation()
+    await app.controller.createChat()
+    const pending = app.controller.getSnapshot().pendingChatId
+    expect(pending).toBeTruthy()
+    await app.controller.refresh()
+    expect(app.createdChats()).toEqual([])
+    await app.controller.createChat()
+    expect(app.attemptedChats()).toEqual([pending, pending])
+    expect(app.createdChats()).toEqual([pending])
   })
 
   it('reconciles unknown creation acknowledgement by reads without repeating the POST', async () => {
