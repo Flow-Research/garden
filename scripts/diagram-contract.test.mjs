@@ -27,7 +27,7 @@ test('watched change without its diagram fails and names both ways out', () => {
   assert.match(failures[0], /garden-issue-run/)
   assert.match(failures[0], /run-workflow\.ts/)
   assert.match(failures[0], /docs\/diagrams\/garden-issue-run\.drawio\.svg/)
-  assert.match(failures[0], /Diagrams: not affected/)
+  assert.match(failures[0], /Diagrams: not affected \(garden-issue-run\)/)
 })
 
 test('directory prefixes match files below them', () => {
@@ -42,15 +42,48 @@ test('watched change with its diagram updated passes', () => {
   )
 })
 
-test('stated reason in the body passes', () => {
+test('an excuse that names the diagram and gives a reason passes', () => {
   assert.deepEqual(
-    check([workflow], 'Diagrams: not affected — renames a local variable'),
+    check(
+      [workflow],
+      'Diagrams: not affected (garden-issue-run) — renames a local variable',
+    ),
     [],
   )
 })
 
-test('excuse without a reason still fails', () => {
-  assert.equal(check([workflow], 'Diagrams: not affected').length, 1)
+test('an excuse without a reason still fails', () => {
+  assert.equal(
+    check([workflow], 'Diagrams: not affected (garden-issue-run)').length,
+    1,
+  )
+})
+
+test('an excuse that names no diagram does not excuse', () => {
+  assert.equal(
+    check([workflow], 'Diagrams: not affected — renames a local variable')
+      .length,
+    1,
+  )
+})
+
+test('an excuse for one diagram does not excuse another', () => {
+  const files = [workflow, 'apps/web/src/lib/server/executor-engine/engine.ts']
+  const failures = check(
+    files,
+    'Diagrams: not affected (garden-issue-run) — renames a local variable',
+  )
+  assert.equal(failures.length, 1)
+  assert.match(failures[0], /garden-member-connector/)
+})
+
+test('each affected diagram can be excused on its own line', () => {
+  const files = [workflow, 'apps/web/src/lib/server/executor-engine/engine.ts']
+  const body = [
+    '- Diagrams: not affected (garden-issue-run) — renames a local variable',
+    '- Diagrams: not affected (garden-member-connector): log wording only',
+  ].join('\n')
+  assert.deepEqual(check(files, body), [])
 })
 
 test('a sentence that quotes the excuse mid-line does not excuse', () => {

@@ -11,7 +11,7 @@ the handbook show the picture. draw.io opens the source.
 
 `docs/diagrams/manifest.json` maps each diagram to the code paths it shows. The
 PR contract fails when a pull request changes one of those paths and neither
-updates the diagram nor states `Diagrams: not affected` with a reason.
+updates the diagram nor states `Diagrams: not affected (<name>) — <reason>`.
 
 ## Decide whether the diagram changed
 
@@ -19,8 +19,10 @@ updates the diagram nor states `Diagrams: not affected` with a reason.
    files you changed.
 2. Read each diagram's labels against your change. A diagram is affected when a
    box, arrow, step, or footnote no longer describes the code.
-3. If no label is wrong, add `Diagrams: not affected` and one sentence of
-   reason to the PR body's Documentation section. Stop here.
+3. If no label is wrong, add one line per diagram to the PR body's
+   Documentation section, such as
+   `Diagrams: not affected (garden-issue-run) — renames a local variable`.
+   Stop here.
 
 ## Update a diagram
 
