@@ -787,7 +787,7 @@ importers:
     devDependencies:
       '@cloudflare/think':
         specifier: 'catalog:'
-        version: 0.10.0(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=f8a0c4465c3386d8ad820ec5087772e412388e5641ad97558ae79d3bc521e825)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)
+        version: 0.10.0(patch_hash=74fc7b1e5418a5c5c091c251a6e66867370420b8de55b387511b365cb4cac1b7)(@modelcontextprotocol/sdk@1.32.0(@cfworker/json-schema@4.1.1)(zod@4.6.6))(agents@0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6))(ai@6.0.208(zod@4.6.6))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)
       '@cloudflare/vitest-pool-workers':
         specifier: 0.23.0
         version: 0.23.0(@cloudflare/workers-types@5.20260808.1)(@vitest/runner@4.1.4)(@vitest/snapshot@4.1.4)(vitest@4.1.4)
@@ -802,7 +802,7 @@ importers:
         version: typescript@7.0.2
       agents:
         specifier: 'catalog:'
-        version: 0.17.3(patch_hash=f8a0c4465c3386d8ad820ec5087772e412388e5641ad97558ae79d3bc521e825)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)
+        version: 0.17.3(patch_hash=e04d65aa99428484dcacdb4b300aa00ea30e4b4d1d00ad9db0c0270e2d3bd1d2)(@ai-sdk/react@3.0.210(react@19.2.3)(zod@4.6.6))(@babel/core@7.29.6)(@babel/runtime@8.1.0)(@cloudflare/workers-types@5.20260808.1)(ai@6.0.208(zod@4.6.6))(chat@4.30.0(ai@6.0.208(zod@4.6.6))(zod@4.6.6))(just-bash@3.0.1)(react@19.2.3)(rolldown@1.2.3)(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))(zod@4.6.6)
       ai:
         specifier: 6.0.208
         version: 6.0.208(zod@4.6.6)
@@ -1830,7 +1830,6 @@ packages:
 
   '@cloudflare/shell@0.4.0':
     resolution: {integrity: sha512-C4Ey9PyQEPHXJvU+V72JuxFLziRAj7c+oVDgj0aDMRTf+B6icnSCDPuiTA6vKjPp60LxkFbRQq7pMTy3v+TlPQ==}
-    deprecated: 'Deprecated: use @cloudflare/computer. Migration guide: https://github.com/cloudflare/agents/blob/main/docs/shell/migrating-to-computer.md'
 
   '@cloudflare/think@0.10.0':
     resolution: {integrity: sha512-fJjCskRISNIBL+Q2BKF4OWwZijvyDy0H/CWtbhGw1E9y3lVOhHgfDZwUvA5KJ6FjpMf2XUyL04jrA0FEIboOiQ==}
@@ -1865,7 +1864,6 @@ packages:
 
   '@cloudflare/vitest-pool-workers@0.23.0':
     resolution: {integrity: sha512-4giZR3fuY9GcTx6Jb7gZX33SUOgeY7rQSm9qSdf9TPfI8i3fP+P1ZA8BM9rMOSoMtLpwo+Zw5zy3v2Ux7iAvNA==}
-    deprecated: '@cloudflare/vitest-pool-workers has been renamed to @cloudflare/vitest-plugin. This package will not receive future updates.'
     peerDependencies:
       '@vitest/runner': ^4.1.0
       '@vitest/snapshot': ^4.1.0
@@ -2192,11 +2190,9 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.28.1':
     resolution: {integrity: sha512-Svl7tq8k/08+p6CXPpRjQ1fKX+1odH/BQbb48fV6fj3CWHhsoIOoY87w1oHXm0qEpkIK3ZfVgp0hed3XBXzXMQ==}
@@ -4545,16 +4541,10 @@ packages:
   '@smithy/core@3.29.5':
     resolution: {integrity: sha512-i0dk2t5B+CwV/dcJdUHILYkOQF5lof8f44dFCfDWToGCxjT9YQ+CgHqTAvJxzc3+zqQwm2QtVoJ5IqiNar/CnQ==}
     engines: {node: '>=18.0.0'}
-    deprecated: |-
-      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
-        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/core@3.33.3':
     resolution: {integrity: sha512-CsOeKq/9kA3y6VJHt+/+VTCtBaxJ4OTFpgrjIUhPpDIKxBci1k2bJaQASF2h/ELWrulGp+t97DZ0mevfAD8idg==}
     engines: {node: '>=18.0.0'}
-    deprecated: |-
-      Deprecated due to a bug in custom logger data redaction. Upgrade to the latest version. If you used a custom logger with this
-        version, review your logs and rotate any credentials or other secrets. See https://github.com/aws/aws-sdk-js-v3/issues/8393.
 
   '@smithy/credential-provider-imds@4.4.10':
     resolution: {integrity: sha512-MJenAe4OKRZUo1LdYYFDCsSHxaHvInIU/z52GsheO9vl1/VSySVCr0zkyKD6TFiGkSUaWGxvKZ/70OvgUZR5HQ==}
@@ -5673,7 +5663,6 @@ packages:
 
   '@ungap/structured-clone@1.3.0':
     resolution: {integrity: sha512-WmoN8qaIAo7WTYWbAZuG8PYEhn5fkz7dZrqTBZ7dtt//lL2Gwms1IcnQ5yHqjDfX8Ft5j4YzDM23f87zBfDe9g==}
-    deprecated: Potential CWE-502 - Update to 1.3.1 or higher
 
   '@upsetjs/venn.js@2.0.0':
     resolution: {integrity: sha512-WbBhLrooyePuQ1VZxrJjtLvTc4NVfpOyKx0sKqioq9bX1C1m7Jgykkn8gLrtwumBioXIqam8DLxp88Adbue6Hw==}
@@ -5918,9 +5907,6 @@ packages:
 
   ai-gateway-provider@3.1.3:
     resolution: {integrity: sha512-QtJ+mh6tNXUh3V1u7zdBdggQLwpqreDeCHcDCPmZzYeEU/UeHsfsja36lQUi5cGqjUUpmV/Cf/w7RCjOw4m6qQ==}
-    deprecated: |-
-      Deprecated. Use createAI from agents/models/ai-sdk:
-       https://developers.cloudflare.com/agents/models/ai-sdk/
     peerDependencies:
       '@ai-sdk/openai-compatible': ^2.0.0
       '@ai-sdk/provider': ^3.0.0
@@ -7446,7 +7432,6 @@ packages:
   fstream@1.0.12:
     resolution: {integrity: sha512-WvJ193OHa0GHPEL+AycEJgxvBEwyfRkN1vhjca23OaPVMCaLCXTd5qAu82AjTcgP1UJmytkOKb63Ypde7raDIg==}
     engines: {node: '>=0.6'}
-    deprecated: This package is no longer supported.
 
   fumadocs-core@16.17.10:
     resolution: {integrity: sha512-PU/G7T7rNBOnyvzjKKA5FlbokjtVMrTOurFSf4deFfIBMHsdvRol8m7rmVZMsviu5Ia9BfYby7A55znpv7UR0w==}
@@ -7610,12 +7595,10 @@ packages:
 
   glob@10.5.0:
     resolution: {integrity: sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg==}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
     hasBin: true
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
   goober@2.1.18:
     resolution: {integrity: sha512-2vFqsaDVIT9Gz7N6kAL++pLpp41l3PfDuusHcjnGLfR6+huZkl6ziX+zgVC3ZxpqWhzH6pyDdGrCeDhMIvwaxw==}
@@ -7825,7 +7808,6 @@ packages:
 
   inflight@1.0.6:
     resolution: {integrity: sha512-k92I/b08q4wvFscXCLvqfsHCrjrF7yiXsQuIVvVE7N82W3+aqpzuUdBbfhWcy/FZR3/4IgflMgKLOsvPDrGCJA==}
-    deprecated: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
@@ -8311,7 +8293,6 @@ packages:
 
   lodash.isequal@4.5.0:
     resolution: {integrity: sha512-pDo3lu8Jhfjqls6GkMgpahsF9kCyayhgykjyLMNFTKWrpVdAQtYyB4muAMWozBB4ig/dtWAmsMxLEI8wuz+DYQ==}
-    deprecated: This package is deprecated. Use require('node:util').isDeepStrictEqual instead.
 
   lodash.isfunction@3.0.9:
     resolution: {integrity: sha512-AirXNj15uRIMMPihnkInB4i3NHeb4iBtNg9WRWuK2o31S+ePwwNmDPaTL3o7dTJ+VXNZim7rFs4rxN4YU1oUJw==}
@@ -8836,7 +8817,6 @@ packages:
   node-domexception@1.0.0:
     resolution: {integrity: sha512-/jKZoMpw0F8GRwl4/eLROPA3cfcXtLApP0QzLmUT/HuPCZWyB7IY9ZrMeKw2O/nFIqPQB3PVM9aYm0F312AXDQ==}
     engines: {node: '>=10.5.0'}
-    deprecated: Use your platform's native DOMException instead
 
   node-fetch@3.3.2:
     resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
@@ -9164,7 +9144,6 @@ packages:
   prebuild-install@7.1.3:
     resolution: {integrity: sha512-8Mf2cbV7x1cXPUILADGI3wuhfqWvtiLA1iclTDbFRZkgRQS0NqsPZphna9V+HyTEadheuPmjaJMsbzKQFOzLug==}
     engines: {node: '>=10'}
-    deprecated: No longer maintained. Please contact the author of the relevant native addon; alternatives are available.
     hasBin: true
 
   prettier@3.10.1:
@@ -9522,7 +9501,6 @@ packages:
 
   rimraf@2.7.1:
     resolution: {integrity: sha512-uWjbaKIK3T1OSVptzX7Nl6PvQ3qAGtKEtVRjRuazjfL3Bx5eI409VZSqgND+4UNnmzLVdPj9FqFJNPqBZFve4w==}
-    deprecated: Rimraf versions prior to v4 are no longer supported
     hasBin: true
 
   robust-predicates@3.0.3:
@@ -10319,7 +10297,6 @@ packages:
 
   uuid@8.3.2:
     resolution: {integrity: sha512-+NYs2QeMWy+GWFOEm9xnn6HCDp0l7QBD7ml8zLUmJ+93Q5NF0NocErnwkTkXVFNiX3/fpC6afS8Dhb/gz7R7eg==}
-    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   valibot@1.2.0:
@@ -10550,9 +10527,6 @@ packages:
 
   workers-ai-provider@3.1.13:
     resolution: {integrity: sha512-tKXXBxTKhFGBa4h5fEF7MWsduhkZklEQAAxZwn4znHY0DExTHKO1j4es15QHsPVEKp2chZoCxmoQCyHI46wv5g==}
-    deprecated: |-
-      Deprecated. Use createAI from agents/models/ai-sdk, or
-       ai-search-provider for AI Search: https://developers.cloudflare.com/agents/models/ai-sdk/
     peerDependencies:
       '@ai-sdk/provider': ^3.0.0
       ai: ^6.0.0
@@ -10682,11 +10656,9 @@ packages:
 
   yuku-analyzer@0.9.5:
     resolution: {integrity: sha512-wUPmylpfXlJAIOQ6F73kPbWii7LEeyPWx++NWlJ+6NihQbO/D1YeQQjMY4Lwqg2o1RKDCHQqBfgc4ZLs0eYs5A==}
-    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-ast@0.9.5:
     resolution: {integrity: sha512-Q8qW8WwQnN5Cm0ZZivdRIfv0sRLTjUq0YumXJkw8CYN1aCdICH9rk4C47/4n6kA5EqDtlj+F608twoTSV2MwdQ==}
-    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   zbsearch@4.0.1:
     resolution: {integrity: sha512-lmnEEnb93QQcNv7qARDr7jBVPxYdZbZ9XdZ0dbZ0qaOvGne4jJMW4fjwPfVaUKQXv3FNWvGbDwRDgyaSb1pc8w==}
@@ -15023,7 +14995,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(jsdom@29.0.2(@noble/hashes@2.2.0))(vite@8.0.16(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.0))
+      vitest: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@25.6.0)(@vitest/coverage-v8@4.1.4)(jsdom@29.0.2(@noble/hashes@2.2.0))(vite@8.2.1(@types/node@25.6.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.46.1)(tsx@4.21.0)(yaml@2.9.1))
 
   '@vitest/expect@4.1.4':
     dependencies:
