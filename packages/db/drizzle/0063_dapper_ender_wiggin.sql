@@ -1,0 +1,9 @@
+DROP INDEX "decide_analysis_run_thread_active_idx";--> statement-breakpoint
+ALTER TABLE "decide_analysis_run" ALTER COLUMN "thread_id" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "decide_analysis_run" ADD COLUMN "owner_kind" text DEFAULT 'chat' NOT NULL;--> statement-breakpoint
+ALTER TABLE "decide_analysis_run" ADD COLUMN "automation_run_id" uuid;--> statement-breakpoint
+ALTER TABLE "decide_analysis_run" ADD CONSTRAINT "decide_analysis_run_automation_run_id_automation_run_id_fk" FOREIGN KEY ("automation_run_id") REFERENCES "public"."automation_run"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE UNIQUE INDEX "decide_analysis_run_chat_active_idx" ON "decide_analysis_run" USING btree ("thread_id") WHERE "decide_analysis_run"."thread_id" is not null and "decide_analysis_run"."status" in ('queued', 'running', 'cancel_requested');--> statement-breakpoint
+CREATE UNIQUE INDEX "decide_analysis_run_automation_run_active_idx" ON "decide_analysis_run" USING btree ("automation_run_id") WHERE "decide_analysis_run"."automation_run_id" is not null and "decide_analysis_run"."status" in ('queued', 'running', 'cancel_requested');--> statement-breakpoint
+CREATE INDEX "decide_analysis_run_automation_run_updated_idx" ON "decide_analysis_run" USING btree ("automation_run_id","updated_at");--> statement-breakpoint
+ALTER TABLE "decide_analysis_run" ADD CONSTRAINT "decide_analysis_run_owner_check" CHECK (("decide_analysis_run"."owner_kind" = 'chat' and "decide_analysis_run"."thread_id" is not null and "decide_analysis_run"."automation_run_id" is null) or ("decide_analysis_run"."owner_kind" = 'automation_run' and "decide_analysis_run"."automation_run_id" is not null and "decide_analysis_run"."thread_id" is null));

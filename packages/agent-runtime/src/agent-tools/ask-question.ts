@@ -1,19 +1,21 @@
 import { Result } from 'better-result'
 import { tool } from 'ai'
 import { z } from 'zod'
+import { and, eq, inArray } from 'drizzle-orm'
 import type { StructuredQuestion } from '@garden/app-state/chat/structured-input'
 import * as schema from '@garden/db/schema'
 import { upsertWaitingForInputInbox } from '@garden/db/inbox'
+import { LIVE_RUN_STATUSES } from '@garden/core/issues/run-sync'
 import {
   appendIssueRunEvent,
   dbError,
   getIssueRunDb,
+  IssueRunToolError,
   requireRunState,
   toolErrorResult,
   toolOkResult,
   type IssueRunToolContext,
 } from './issue-run-tool-context'
-import { eq } from 'drizzle-orm'
 
 export const askQuestionInputSchema = z
   .object({
@@ -57,10 +59,17 @@ export function createAskQuestionTool(context: IssueRunToolContext) {
       const writeResult = await Result.tryPromise({
         try: async () => {
           const activityAt = new Date()
-          await db
+          const [updatedRun] = await db
             .update(schema.issueRun)
             .set({ status: 'waiting_for_input', updatedAt: activityAt })
-            .where(eq(schema.issueRun.id, run.runId))
+            .where(
+              and(
+                eq(schema.issueRun.id, run.runId),
+                inArray(schema.issueRun.status, LIVE_RUN_STATUSES),
+              ),
+            )
+            .returning({ id: schema.issueRun.id })
+          if (!updatedRun) return false
           await upsertWaitingForInputInbox({
             db,
             workspaceId: run.workspaceId,
@@ -70,10 +79,19 @@ export function createAskQuestionTool(context: IssueRunToolContext) {
             error: question.question,
             activityAt,
           })
+          return true
         },
         catch: (cause) => dbError('mark issue run waiting for input', cause),
       })
       if (writeResult.isErr()) return toolErrorResult(writeResult.error)
+      if (!writeResult.value) {
+        return toolErrorResult(
+          new IssueRunToolError({
+            code: 'invalid_state',
+            message: 'Issue run is no longer active.',
+          }),
+        )
+      }
 
       const eventResult = await appendIssueRunEvent({
         db,

@@ -1,44 +1,67 @@
-import { createFileRoute } from '@tanstack/react-router'
-import { WorkspaceLayout } from '@/components/shell/workspace-layout'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { getRouteSession } from '@/lib/server/route-session'
+import { sanitizeRedirectTarget } from '@/lib/redirect'
 
 /**
- * The workspace renders the FlexLayout dock, which is client-only by
- * construction: FlexLayout's `TabNode` constructor calls
- * `document.createElement('div')` unconditionally, so `Model.fromJson` (run in
- * the dock provider's `useState` initializer) throws `document is not defined`
- * during SSR. The dashboard has no SSR/SEO requirement, so we opt this route
- * out of server rendering with TanStack Start's per-route `ssr: false`. The
- * parent `/_authenticated` route keeps server-side auth (its loader runs the
- * auth bootstrap + redirect on the server); only this child renders
- * client-only. There is no loader here, so nothing server-side is lost.
- * Ref: TanStack Start selective SSR — `ssr: false` renders the route component
- * on the client (start-core execution-model / server-components docs).
+ * Back-compat redirect from the retired dock route. The FlexLayout workspace
+ * dock was removed in the shell rebuild (2026-09 redesign): surfaces are
+ * routed pages now. Old links land on /home; issue deep links (?issue=<id>,
+ * e.g. from assignment emails) forward to the task detail route; connector
+ * flow links forward to the connectors surface.
+ *
+ * Unauthenticated visitors are sent to /login with the FULL original URL as
+ * the post-login redirect — beforeLoad children run before the parent auth
+ * loader, so without this check an emailed ?issue= link opened while logged
+ * out would lose the issue target.
  */
 export const Route = createFileRoute('/_authenticated/workspace')({
-  // DO NOT flip to true: FlexLayout's model construction touches `document`, so
-  // SSR of this route crashes with "document is not defined". See JSDoc above.
-  ssr: false,
-  validateSearch: (search) => ({
-    connector_flow:
-      typeof search.connector_flow === 'string'
-        ? search.connector_flow
-        : undefined,
-    connector_id:
-      typeof search.connector_id === 'string' ? search.connector_id : undefined,
-    workspace_id:
-      typeof search.workspace_id === 'string' ? search.workspace_id : undefined,
-    issue: typeof search.issue === 'string' ? search.issue : undefined,
-  }),
-  component: WorkspaceRoute,
+  validateSearch: (search) => {
+    const out: {
+      connector_flow?: string
+      connector_id?: string
+      workspace_id?: string
+      issue?: string
+    } = {}
+    if (typeof search.connector_flow === 'string')
+      out.connector_flow = search.connector_flow
+    if (typeof search.connector_id === 'string')
+      out.connector_id = search.connector_id
+    if (typeof search.workspace_id === 'string')
+      out.workspace_id = search.workspace_id
+    if (typeof search.issue === 'string') out.issue = search.issue
+    return out
+  },
+  beforeLoad: async ({ search, location }) => {
+    const session = await getRouteSession()
+    if (!session) {
+      throw redirect({
+        to: '/login',
+        search: { redirect: sanitizeRedirectTarget(location.href, '/home') },
+      })
+    }
+    if (search.issue) {
+      throw redirect({
+        to: '/tasks/$issueId',
+        params: { issueId: search.issue },
+        search: search.workspace_id
+          ? { workspace_id: search.workspace_id }
+          : {},
+      })
+    }
+    if (search.connector_flow || search.connector_id) {
+      throw redirect({
+        to: '/connectors',
+        search: {
+          connector_flow: search.connector_flow,
+          connector_id: search.connector_id,
+        },
+      })
+    }
+    // Forward workspace_id — bootstrap reads it at SSR and persists it as the active org.
+    throw redirect({
+      to: '/home',
+      search: search.workspace_id ? { workspace_id: search.workspace_id } : {},
+    })
+  },
+  component: () => null,
 })
-
-function WorkspaceRoute() {
-  const search = Route.useSearch()
-  return (
-    <WorkspaceLayout
-      connectorFlowId={search.connector_flow ?? null}
-      connectorId={search.connector_id ?? null}
-      issueId={search.issue ?? null}
-    />
-  )
-}

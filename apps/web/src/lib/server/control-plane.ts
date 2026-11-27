@@ -3,6 +3,7 @@ import { getDb, schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import type { AppRequestContext } from '@/lib/server/context'
 import { formatIssueIdentifier } from '@garden/core/issues/identifier'
+import type { AgentPermissions } from '@garden/core/agents/permissions'
 import { getAuthSession, toCoreUser } from '@/lib/server/session'
 import type { MemberRole } from '@garden/core/types'
 
@@ -24,6 +25,15 @@ export function forbidden(message = 'Forbidden') {
 
 export function notFound(message = 'Not found') {
   return json({ error: message }, 404)
+}
+
+/**
+ * For infrastructure failures (database, storage). Callers pass a generic
+ * message: provider error text must not reach the client, and a 5xx is what
+ * request logging alerts on.
+ */
+export function serviceUnavailable(message = 'Service unavailable') {
+  return json({ error: message }, 503)
 }
 
 type RequestBoundary = Request | AppRequestContext
@@ -274,48 +284,29 @@ export function toInvitation(record: InvitationRecord) {
   }
 }
 
-export function toIssue(
-  record: typeof schema.issue.$inferSelect,
-  options: { issuePrefix?: string } = {},
-) {
-  const sourceSummary = record.sourceSummary
-    ? {
-        connector_id: 'manual',
-        display_ref: record.sourceSummary,
-        external_url: null,
-      }
-    : null
-  const prefix = options.issuePrefix ?? 'ISS'
-
-  return {
-    id: record.id,
-    workspace_id: record.workspaceId,
-    number: record.number,
-    identifier: formatIssueIdentifier(prefix, record.number),
-    title: record.title,
-    description: record.description ?? null,
-    status: record.status,
-    priority: record.priority,
-    assignee_type:
-      record.assigneeType === 'user' ? 'member' : record.assigneeType,
-    assignee_id: record.assigneeId ?? null,
-    creator_type: 'member',
-    creator_id: record.createdBy,
-    parent_issue_id: record.parentId ?? null,
-    project_id: record.projectId ?? null,
-    position: record.position,
-    due_date: record.dueDate ? new Date(record.dueDate).toISOString() : null,
-    active_run_id: record.activeRunId ?? null,
-    source_summary: sourceSummary,
-    reactions: [],
-    created_at: record.createdAt
-      ? new Date(record.createdAt).toISOString()
-      : new Date().toISOString(),
-    updated_at: record.updatedAt
-      ? new Date(record.updatedAt).toISOString()
-      : new Date().toISOString(),
-  }
+/**
+ * Resolves the workspace's issue identifier prefix for response mapping.
+ * `toIssue` falls back to 'ISS' when the prefix is omitted, which made list,
+ * detail, and update responses disagree with create responses (the issue
+ * service resolves the real prefix internally). Routes that map issue rows
+ * must pass this value through.
+ */
+export async function getWorkspaceIssuePrefix(
+  db: Db,
+  workspaceId: string,
+): Promise<string> {
+  const [row] = await db
+    .select({ issuePrefix: schema.organization.issuePrefix })
+    .from(schema.organization)
+    .where(eq(schema.organization.id, workspaceId))
+    .limit(1)
+  return row && typeof row.issuePrefix === 'string' && row.issuePrefix
+    ? row.issuePrefix
+    : 'ISS'
 }
+
+/** The issue DTO mapper lives with the issue services; re-exported for routes. */
+export { toIssue } from '@garden/server/issues/server'
 
 export function toAgent(record: typeof schema.agent.$inferSelect) {
   const created = record.createdAt
@@ -342,6 +333,7 @@ export function toAgent(record: typeof schema.agent.$inferSelect) {
     max_concurrent_tasks: 1,
     owner_id: record.ownerUserId ?? null,
     skills: [],
+    permissions: (record.permissions ?? null) as AgentPermissions | null,
     created_at: created,
     updated_at: created,
     archived_at: record.status === 'archived' ? created : null,
@@ -357,6 +349,8 @@ export function toChatThread(
     number: number
     title: string
     status: string | null
+    /** The workspace's prefix; see `getWorkspaceIssuePrefix`. */
+    issuePrefix: string
   } | null,
 ) {
   const createdAt = record.createdAt
@@ -379,7 +373,10 @@ export function toChatThread(
     primaryIssue: primaryIssue
       ? {
           id: primaryIssue.id,
-          identifier: formatIssueIdentifier('ISS', primaryIssue.number),
+          identifier: formatIssueIdentifier(
+            primaryIssue.issuePrefix,
+            primaryIssue.number,
+          ),
           title: primaryIssue.title,
           status: primaryIssue.status ?? 'todo',
         }

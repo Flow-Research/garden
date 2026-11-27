@@ -45,6 +45,7 @@ export interface ApprovalCardProps {
   onEditApprove?: () => void
   /** Disabled while a previous click is still resolving. */
   pending?: boolean
+  disabled?: boolean
   /** Override the primary button label (default "Approve"). */
   approveLabel?: string
   /** Override the deny button label (default "Deny"). */
@@ -69,6 +70,7 @@ export function ApprovalCard({
   onDeny,
   onEditApprove,
   pending = false,
+  disabled = false,
   approveLabel = 'Approve',
   denyLabel = 'Deny',
   standalone = false,
@@ -102,7 +104,7 @@ export function ApprovalCard({
           size="sm"
           className="h-7"
           onClick={onApprove}
-          disabled={pending}
+          disabled={pending || disabled}
         >
           {approveLabel}
         </Button>
@@ -112,7 +114,7 @@ export function ApprovalCard({
             variant="outline"
             className="h-7"
             onClick={onEditApprove}
-            disabled={pending}
+            disabled={pending || disabled}
           >
             Edit &amp; approve
           </Button>
@@ -122,7 +124,7 @@ export function ApprovalCard({
           variant="ghost"
           className="h-7 text-muted-foreground"
           onClick={onDeny}
-          disabled={pending}
+          disabled={pending || disabled}
         >
           {denyLabel}
         </Button>

@@ -4,19 +4,16 @@ import {
   parseJsonBody,
   reactionBodySchema,
 } from '@/lib/server/validation/issues'
-import {
-  badRequest,
-  requireSession,
-  unauthorized,
-} from '@/lib/server/control-plane'
+import { badRequest } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 
 export const Route = createFileRoute('/api/issues/$id/reactions')({
   server: {
     handlers: {
       POST: async ({ context, request, params }) => {
         const appContext = requireAppRequestContext(context)
-        const session = await requireSession(appContext)
-        if (!session) return unauthorized()
+        const access = await requireIssueAccess(appContext, params.id)
+        if (access instanceof Response) return access
 
         const bodyResult = await parseJsonBody(
           request,
@@ -30,15 +27,15 @@ export const Route = createFileRoute('/api/issues/$id/reactions')({
           id: crypto.randomUUID(),
           issue_id: params.id,
           actor_type: 'member',
-          actor_id: session.user.id,
+          actor_id: access.session.user.id,
           emoji: body.emoji,
           created_at: new Date().toISOString(),
         })
       },
-      DELETE: async ({ context }) => {
+      DELETE: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const session = await requireSession(appContext)
-        if (!session) return unauthorized()
+        const access = await requireIssueAccess(appContext, params.id)
+        if (access instanceof Response) return access
         return new Response(null, { status: 204 })
       },
     },

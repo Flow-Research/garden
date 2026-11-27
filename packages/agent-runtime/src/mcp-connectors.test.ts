@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Result } from 'better-result'
+import { createGardenLogger } from '@garden/observability/logger'
 import type { ToolSet } from 'ai'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
 import {
@@ -14,6 +15,7 @@ import {
   RuntimeMcpController,
   RuntimeMcpConnectionPreparer,
   RuntimeMcpError,
+  buildExecutorMcpServerName,
   type McpHost,
 } from './runtime-mcp-controller'
 
@@ -87,6 +89,36 @@ describe('extractThreadIdFromAgentName', () => {
 
   it('returns null for blank names', () => {
     expect(extractThreadIdFromAgentName('   ')).toBeNull()
+  })
+})
+
+describe('buildExecutorMcpServerName', () => {
+  it('keeps runtime names stable while separating runtime identities', () => {
+    const first = buildExecutorMcpServerName({
+      threadId: 'thread-1',
+      workspaceId: 'workspace-1',
+      userId: 'user-1',
+      agentId: 'agent-1',
+    })
+    const second = buildExecutorMcpServerName({
+      threadId: 'thread-1',
+      workspaceId: 'workspace-1',
+      userId: 'user-2',
+      agentId: 'agent-1',
+    })
+
+    expect(first).toBe(
+      'executor:workspace-1:user-1:agent-1:thread-1:chat:session',
+    )
+    expect(
+      buildExecutorMcpServerName({
+        threadId: 'thread-1',
+        workspaceId: 'workspace-1',
+        userId: 'user-1',
+        agentId: 'agent-1',
+      }),
+    ).toBe(first)
+    expect(second).not.toBe(first)
   })
 })
 
@@ -245,6 +277,8 @@ describe('isMcpFailedConnectionStateMessage', () => {
 describe('RuntimeMcpController native installations', () => {
   it('activates Discord tools with the persisted workspace guild binding', async () => {
     let registeredServerId: string | undefined
+    let registeredRemoteName: string | undefined
+    let removedServerId: string | undefined
     const host: McpHost = {
       name: 'chat:thread-1',
       env: {
@@ -259,14 +293,18 @@ describe('RuntimeMcpController native installations', () => {
       mcp: {
         getAITools: () => ({}),
         listTools: () => [],
-        listServers: () => [],
+        listServers: () => [{ id: 'executor', name: 'executor' }],
+        callTool: async () => ({}),
         discoverIfConnected: async () => ({ success: true }),
       },
-      addExecutorMcpServer: async ({ id }) => {
+      addExecutorMcpServer: async ({ id, remoteName }) => {
         registeredServerId = id
+        registeredRemoteName = remoteName
         return { state: 'connected' }
       },
-      removeMcpServer: async () => undefined,
+      removeMcpServer: async (id) => {
+        removedServerId = id
+      },
       resolveRuntimeIdentity: async () =>
         Result.ok({
           threadId: 'thread-1',
@@ -291,6 +329,10 @@ describe('RuntimeMcpController native installations', () => {
     const ready = await controller.ensureProxyMcpConnections()
     expect(ready.isOk()).toBe(true)
     expect(registeredServerId).toBe('executor')
+    expect(registeredRemoteName).toBe(
+      'executor:workspace-1:user-1:agent-1:thread-1:chat:session',
+    )
+    expect(removedServerId).toBe('executor')
 
     const aiTools = controller.wrapGetAITools(() => ({}))
     expect(
@@ -316,6 +358,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         getAITools: () => ({}),
         listTools: () => [],
         listServers: () => [],
+        callTool: async () => ({}),
         discoverIfConnected: async () => ({ success: true }),
       },
       githubHostedMcp: {
@@ -406,6 +449,7 @@ describe('RuntimeMcpController GitHub tools', () => {
           },
         ],
         listServers: () => [],
+        callTool: async () => ({}),
         waitForConnections: async () => undefined,
         discoverIfConnected: async () => ({ success: true }),
       },
@@ -460,6 +504,7 @@ describe('RuntimeMcpController GitHub tools', () => {
         getAITools: () => ({}),
         listTools: () => [],
         listServers: () => [],
+        callTool: async () => ({}),
         waitForConnections: async () => undefined,
         discoverIfConnected: async () => ({ success: false }),
       },
@@ -492,9 +537,7 @@ describe('RuntimeMcpController GitHub tools', () => {
     const preparer = new RuntimeMcpConnectionPreparer({
       getController: () => controller,
       fullSyncIntervalMs: 60_000,
-      backgroundRefreshFailedMessage: 'background failed',
-      refreshFailedMessage: 'refresh failed',
-      continuingWithoutReadyMessage: 'required failed',
+      logger: createGardenLogger({ service: 'test', component: 'test' }),
       readinessPolicy: 'required',
     })
 
@@ -502,5 +545,58 @@ describe('RuntimeMcpController GitHub tools', () => {
       name: RuntimeMcpError.name,
       code: 'mcp_readiness_failed',
     })
+  })
+
+  it('skips the remote readiness wait when the turn does not need tools', async () => {
+    let waits = 0
+    const host: McpHost = {
+      name: 'chat:thread-1',
+      env: {
+        BETTER_AUTH_SECRET: 'secret',
+        BETTER_AUTH_URL: 'https://garden.test',
+        HYPERDRIVE: {
+          connectionString: 'postgres://garden.test/db',
+        } as unknown as Hyperdrive,
+      },
+      ctx: { storage: { sql: createSqlStorageStub() } },
+      mcp: {
+        getAITools: () => ({}),
+        listTools: () => [],
+        listServers: () => [{ id: 'executor', name: 'executor' }],
+        callTool: async () => ({}),
+        waitForConnections: async () => {
+          waits += 1
+        },
+        discoverIfConnected: async () => ({ success: true }),
+      },
+      addRpcMcpServer: async () => ({ state: 'connected' }),
+      addExecutorMcpServer: async () => ({ state: 'connected' }),
+      removeMcpServer: async () => undefined,
+      resolveRuntimeIdentity: async () =>
+        Result.ok({
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          userId: 'user-1',
+          agentId: 'agent-1',
+        }),
+    }
+    const controller = new RuntimeMcpController(host)
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: 60_000,
+      logger: createGardenLogger({ service: 'test', component: 'test' }),
+      waitForConnections: async () => {
+        waits += 1
+      },
+      getServerStates: () => ({
+        executor: { state: 'ready' },
+      }),
+    })
+    ;(preparer as unknown as { lastFullSyncAt: number }).lastFullSyncAt =
+      Date.now()
+
+    await preparer.ensureForTurn('chat-turn', { waitForReadiness: false })
+
+    expect(waits).toBe(0)
   })
 })

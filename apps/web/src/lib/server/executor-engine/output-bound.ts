@@ -8,7 +8,7 @@ import type * as Cause from 'effect/Cause'
 
 export const MAX_EXECUTOR_OUTPUT_CHARACTERS = 30_000
 
-export class ExecutorOutputEncodingError extends Schema.TaggedErrorClass<ExecutorOutputEncodingError>()(
+export class ExecutorOutputEncodingError extends Schema.TaggedError<ExecutorOutputEncodingError>()(
   'ExecutorOutputEncodingError',
   {},
 ) {}

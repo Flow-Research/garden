@@ -7,9 +7,10 @@ import {
   useState,
 } from 'react'
 import { toast } from 'sonner'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, ListChecks, Plus } from 'lucide-react'
 import type { IssueStatus } from '@garden/core/types'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
+import { Button } from '@garden/ui/components/ui/button'
 import { useQuery, useSuspenseQueries } from '@tanstack/react-query'
 import {
   useIssueViewStore,
@@ -41,9 +42,9 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       <PageHeader className="gap-1.5">
-        <Skeleton className="h-6 w-6 rounded-md" />
+        <Skeleton className="size-6 rounded-md" />
         <Skeleton className="h-4 w-24" />
-        <ChevronRight className="h-3 w-3 text-muted-foreground/50" />
+        <ChevronRight className="size-3 text-muted-foreground/50" />
         <Skeleton className="h-4 w-12" />
       </PageHeader>
 
@@ -82,7 +83,7 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
                     <Skeleton className="mt-1.5 h-3 w-2/3" />
                     <div className="mt-4 flex items-center justify-between">
                       <Skeleton className="h-5 w-16 rounded" />
-                      <Skeleton className="h-6 w-6 rounded-full" />
+                      <Skeleton className="size-6 rounded-full" />
                     </div>
                   </div>
                 ),
@@ -95,7 +96,7 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
           {Array.from({ length: 5 }).map((_, groupIndex) => (
             <div key={groupIndex} className="rounded-lg">
               <div className="flex h-10 items-center gap-3 rounded-lg bg-muted/40 px-3">
-                <Skeleton className="h-4 w-4 rounded" />
+                <Skeleton className="size-4 rounded" />
                 <Skeleton className="h-5 w-28 rounded" />
                 <Skeleton className="h-4 w-6 rounded" />
               </div>
@@ -105,10 +106,10 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
                     key={rowIndex}
                     className="mt-1 flex h-12 items-center gap-3 rounded-md border bg-card px-3"
                   >
-                    <Skeleton className="h-4 w-4 rounded" />
+                    <Skeleton className="size-4 rounded" />
                     <Skeleton className="h-4 flex-1" />
                     <Skeleton className="h-5 w-16 rounded" />
-                    <Skeleton className="h-6 w-6 rounded-full" />
+                    <Skeleton className="size-6 rounded-full" />
                   </div>
                 ),
               )}
@@ -116,6 +117,42 @@ function IssuesPageSkeleton({ viewMode }: { viewMode: 'board' | 'list' }) {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * The design's empty state for the Tasks (issues) surface: a centered gray
+ * rounded container with an icon, copy, and the New Issue CTA. Shown whenever
+ * the visible issue set is empty — wording reflects whether filters/search
+ * are hiding existing issues versus the workspace genuinely having none.
+ */
+function TasksEmptyState({
+  filtered,
+  onCreateIssue,
+}: {
+  filtered: boolean
+  onCreateIssue: () => void
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 items-center justify-center p-4">
+      <div className="flex min-h-[374px] w-full max-w-[83rem] flex-col items-center justify-center gap-6 rounded-xl bg-background-main-secondary px-6">
+        <ListChecks className="size-8 text-icon-secondary" />
+        <div className="flex flex-col items-center gap-2 text-center">
+          <p className="text-base font-medium">
+            {filtered ? 'No issues match' : 'No issues yet'}
+          </p>
+          <p className="text-sm text-text-secondary">
+            {filtered
+              ? 'Try a different search or filters.'
+              : 'You don’t have any active issues at the moment.'}
+          </p>
+        </div>
+        <Button className="h-10 gap-2 rounded-md px-3" onClick={onCreateIssue}>
+          <Plus className="size-4" />
+          New issue
+        </Button>
+      </div>
     </div>
   )
 }
@@ -279,7 +316,7 @@ function IssuesPageContent() {
 
   const updateIssueMutation = useUpdateIssue()
   const handleMoveIssue = useCallback(
-    (issueId: string, newStatus: IssueStatus, newPosition?: number) => {
+    (issueId: string, newStatus: IssueStatus, newPosition?: string) => {
       // Auto-switch to manual sort so drag ordering is preserved
       const viewState = useIssueViewStore.getState()
       if (viewState.sortBy !== 'position') {
@@ -287,7 +324,7 @@ function IssuesPageContent() {
         viewState.setSortDirection('asc')
       }
 
-      const updates: Partial<{ status: IssueStatus; position: number }> = {
+      const updates: Partial<{ status: IssueStatus; position: string }> = {
         status: newStatus,
       }
       if (newPosition !== undefined) updates.position = newPosition
@@ -308,7 +345,7 @@ function IssuesPageContent() {
         <span className="text-sm text-muted-foreground">
           {workspace?.name ?? 'Workspace'}
         </span>
-        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <ChevronRight className="size-3 text-muted-foreground" />
         <span className="text-sm font-medium">Issues</span>
       </PageHeader>
 
@@ -321,10 +358,15 @@ function IssuesPageContent() {
           onCreateIssue={openCreateIssue}
         />
 
-        {/* Content — kanban/list always renders; per-column "No issues"
-            placeholders carry the empty state so the board still shows. */}
+        {/* Content — when nothing is visible the design swaps the kanban/list
+            for a centered empty state with the New Issue CTA. */}
         <div className="flex flex-col flex-1 min-h-0">
-          {viewMode === 'board' ? (
+          {issues.length === 0 ? (
+            <TasksEmptyState
+              filtered={Boolean(searchQuery.trim()) || hasClientFilters}
+              onCreateIssue={() => openCreateIssue()}
+            />
+          ) : viewMode === 'board' ? (
             <BoardView
               issues={issues}
               allIssues={searchedIssues}
@@ -345,7 +387,7 @@ function IssuesPageContent() {
             />
           )}
         </div>
-        {viewMode === 'list' && <BatchActionToolbar />}
+        {viewMode === 'list' && issues.length > 0 && <BatchActionToolbar />}
       </ViewStoreProvider>
       {createIssueOpen ? (
         <CreateIssueModal onClose={closeCreateIssue} data={createIssueData} />

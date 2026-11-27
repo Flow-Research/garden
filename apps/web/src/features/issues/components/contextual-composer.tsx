@@ -49,7 +49,7 @@ export function ContextualComposer({
   openChatPending = false,
 }: {
   issueId: string
-  onSubmit: (content: string, attachmentIds?: string[]) => Promise<void>
+  onSubmit: (content: string, attachmentIds?: string[]) => Promise<boolean>
   /** When provided, renders an inline "Open chat" CTA next to the composer. */
   onOpenChat?: () => void
   openChatPending?: boolean
@@ -61,7 +61,7 @@ export function ContextualComposer({
   if (mode === 'answer') {
     return (
       <div className="flex items-center gap-2 rounded-lg border border-dashed bg-muted/30 px-3 py-3 text-xs text-muted-foreground">
-        <Icon className="h-3.5 w-3.5" />
+        <Icon className="size-3.5" />
         <span>{caption}</span>
       </div>
     )
@@ -77,7 +77,7 @@ export function ContextualComposer({
         accent={mode === 'redirect' ? 'redirect' : 'default'}
       />
       <div className="flex items-center gap-1.5 px-1 text-[11px] text-muted-foreground">
-        <Icon className="h-3 w-3" />
+        <Icon className="size-3" />
         <span>{caption}</span>
         {onOpenChat ? (
           <Button
@@ -88,7 +88,7 @@ export function ContextualComposer({
             disabled={openChatPending}
             className="ml-auto h-5 gap-1 px-1.5 text-[11px] text-info hover:bg-info/10 hover:text-info"
           >
-            <MessageSquare className="h-3 w-3" />
+            <MessageSquare className="size-3" />
             {openChatPending ? 'Opening…' : 'Open in chat'}
           </Button>
         ) : null}

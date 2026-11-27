@@ -15,9 +15,7 @@
  *      `DocumentCitationAnnotation` and the `DocumentPanelView` union).
  */
 
-import { useEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
-import { Result } from 'better-result'
+import { useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Braces,
@@ -28,7 +26,6 @@ import {
   File as FileIcon,
   FileSpreadsheet,
   FileText,
-  Loader2,
   Paperclip,
   X,
 } from 'lucide-react'
@@ -56,12 +53,14 @@ import {
   DropdownMenuTrigger,
 } from '@garden/ui/components/ui/dropdown-menu'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import {
   GardenArtifact,
   type GardenArtifactData,
   type GardenCitationQuote,
 } from '@/features/artifacts/artifact-renderer'
 import type { ChatUiMessage } from '../chat-runtime-provider'
+import { chatDocumentKeys } from '../queries'
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -101,10 +100,24 @@ export function isImageAttachment(file: FileMessagePart) {
   return file.mediaType?.startsWith('image/') ?? false
 }
 
+/** File-kind discriminant shared by `getFileKind`, `FileKindIcon`, and any
+ * caller (e.g. `composer-tools-menu.tsx`) that needs to type a value as
+ * "one of the kinds this module knows how to render an icon for" without
+ * importing `getFileKind` just for its return type. */
+export type FileKind =
+  | 'image'
+  | 'pdf'
+  | 'word'
+  | 'csv'
+  | 'spreadsheet'
+  | 'json'
+  | 'text'
+  | 'other'
+
 export function getFileKind(file: {
   mediaType?: string | null
   filename?: string | null
-}): 'image' | 'pdf' | 'word' | 'csv' | 'json' | 'text' | 'other' {
+}): FileKind {
   const media = file.mediaType ?? ''
   const name = (file.filename ?? '').toLowerCase()
   if (media.startsWith('image/')) return 'image'
@@ -119,6 +132,13 @@ export function getFileKind(file: {
     return 'word'
   }
   if (media === 'text/csv' || name.endsWith('.csv')) return 'csv'
+  if (
+    media ===
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+    name.endsWith('.xlsx')
+  ) {
+    return 'spreadsheet'
+  }
   if (media === 'application/json' || name.endsWith('.json')) return 'json'
   if (
     media.startsWith('text/') ||
@@ -141,12 +161,42 @@ export function getFileKindLabel(kind: ReturnType<typeof getFileKind>) {
       return 'DOC'
     case 'csv':
       return 'CSV'
+    case 'spreadsheet':
+      return 'XLSX'
     case 'json':
       return 'JSON'
     case 'text':
       return 'TEXT'
     default:
       return 'FILE'
+  }
+}
+
+/**
+ * Tile colours for the attachment card's icon square.
+ *
+ * Before: every attachment rendered the same grey `FileTextIcon`, so a chat
+ * full of files was a wall of identical tiles. The design calls for a filled
+ * red square behind the PDF glyph; extending that to the other kinds we already
+ * classify keeps the row scannable without inventing new colours — each case
+ * reuses an existing semantic token.
+ *
+ * Images fall through to the neutral tile because `AttachmentPreview` paints a
+ * real thumbnail over it.
+ */
+export function getFileKindAccentClassName(kind: FileKind) {
+  switch (kind) {
+    case 'pdf':
+      return 'bg-destructive text-white'
+    case 'word':
+      return 'bg-info text-white'
+    case 'csv':
+    case 'spreadsheet':
+      return 'bg-success text-white'
+    case 'json':
+      return 'bg-warning text-white'
+    default:
+      return 'bg-background text-muted-foreground'
   }
 }
 
@@ -164,6 +214,7 @@ export function FileKindIcon({
     case 'text':
       return <FileText className={common} />
     case 'csv':
+    case 'spreadsheet':
       return <FileSpreadsheet className={common} />
     case 'json':
       return <Braces className={common} />
@@ -189,92 +240,84 @@ export function ImageLightbox({
 }) {
   const file = files[index]
 
-  useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onClose()
-        return
-      }
-      if (event.key === 'ArrowLeft' && files.length > 1) {
-        event.preventDefault()
-        onChangeIndex((index - 1 + files.length) % files.length)
-        return
-      }
-      if (event.key === 'ArrowRight' && files.length > 1) {
-        event.preventDefault()
-        onChangeIndex((index + 1) % files.length)
-      }
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [files.length, index, onChangeIndex, onClose])
-
   if (!file) return null
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 supports-backdrop-filter:backdrop-blur-sm"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label={file.filename ?? 'Image preview'}
-    >
-      <button
-        type="button"
-        onClick={onClose}
-        className="absolute right-4 top-4 rounded-full bg-background/20 p-2 text-white transition-colors hover:bg-background/40"
-        aria-label="Close"
+  const step = (delta: number) =>
+    onChangeIndex((index + delta + files.length) % files.length)
+
+  // Dialog owns Escape, focus trapping and focus restore; arrow keys page
+  // through the attachments while focus is inside the viewer.
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="bg-black/80 supports-backdrop-filter:backdrop-blur-sm"
+        className="inset-0 top-0 left-0 flex h-full w-full max-w-none translate-x-0 translate-y-0 items-center justify-center rounded-none bg-transparent p-0 ring-0 sm:max-w-none"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) onClose()
+        }}
+        onKeyDown={(event) => {
+          if (files.length < 2) return
+          if (event.key === 'ArrowLeft') {
+            event.preventDefault()
+            step(-1)
+          } else if (event.key === 'ArrowRight') {
+            event.preventDefault()
+            step(1)
+          }
+        }}
       >
-        <X className="size-5" />
-      </button>
+        <DialogTitle className="sr-only">
+          {file.filename ?? 'Image preview'}
+        </DialogTitle>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 rounded-full bg-background/20 p-2 text-white transition-colors hover:bg-background/40"
+          aria-label="Close"
+        >
+          <X className="size-5" />
+        </button>
 
-      {files.length > 1 ? (
-        <>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onChangeIndex((index - 1 + files.length) % files.length)
-            }}
-            className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-background/20 p-2 text-white transition-colors hover:bg-background/40"
-            aria-label="Previous image"
-          >
-            <ChevronLeft className="size-6" />
-          </button>
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation()
-              onChangeIndex((index + 1) % files.length)
-            }}
-            className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-background/20 p-2 text-white transition-colors hover:bg-background/40"
-            aria-label="Next image"
-          >
-            <ChevronRight className="size-6" />
-          </button>
-        </>
-      ) : null}
-
-      <img
-        src={file.url}
-        alt={file.filename ?? 'Attachment'}
-        className="max-h-[90vh] max-w-[92vw] rounded-lg object-contain shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      />
-
-      <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-background/20 px-4 py-1.5 text-xs text-white">
-        <span className="truncate max-w-[60vw]">
-          {file.filename ?? 'Image'}
-        </span>
         {files.length > 1 ? (
-          <span className="tabular-nums opacity-80">
-            {index + 1} / {files.length}
-          </span>
+          <>
+            <button
+              type="button"
+              onClick={() => step(-1)}
+              className="absolute left-4 top-1/2 -translate-y-1/2 rounded-full bg-background/20 p-2 text-white transition-colors hover:bg-background/40"
+              aria-label="Previous image"
+            >
+              <ChevronLeft className="size-6" />
+            </button>
+            <button
+              type="button"
+              onClick={() => step(1)}
+              className="absolute right-4 top-1/2 -translate-y-1/2 rounded-full bg-background/20 p-2 text-white transition-colors hover:bg-background/40"
+              aria-label="Next image"
+            >
+              <ChevronRight className="size-6" />
+            </button>
+          </>
         ) : null}
-      </div>
-    </div>,
-    document.body,
+
+        <img
+          src={file.url}
+          alt={file.filename ?? 'Attachment'}
+          className="max-h-[90vh] max-w-[92vw] rounded-lg object-contain shadow-2xl"
+        />
+
+        <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-background/20 px-4 py-1.5 text-xs text-white">
+          <span className="truncate max-w-[60vw]">
+            {file.filename ?? 'Image'}
+          </span>
+          {files.length > 1 ? (
+            <span className="tabular-nums opacity-80">
+              {index + 1} / {files.length}
+            </span>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -368,40 +411,38 @@ function DocumentTextPreview({
   file: FileMessagePart
   kind: 'text' | 'json' | 'csv'
 }) {
-  const [content, setContent] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let cancelled = false
-    void Result.tryPromise(() =>
-      fetch(file.url).then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}`)
-        }
-        return response.text()
-      }),
-    ).then((result) => {
-      if (cancelled) return
-      if (Result.isError(result)) {
-        setError(
-          result.error instanceof Error
-            ? result.error.message
-            : 'Failed to load document',
-        )
-        return
-      }
-      setContent(result.value)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [file.url])
+  // A query rather than a fetch in an effect: the old content no longer
+  // shows after the URL changes, an error clears on retry, and the text is
+  // cached when the same document is reopened.
+  const textQuery = useQuery({
+    queryKey: chatDocumentKeys.text(file.url),
+    queryFn: async ({ signal }) => {
+      const response = await fetch(file.url, { signal })
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      return response.text()
+    },
+    staleTime: 60_000,
+  })
+  const content = textQuery.data ?? null
+  const error = textQuery.isError
+    ? textQuery.error instanceof Error
+      ? textQuery.error.message
+      : 'Failed to load document'
+    : null
 
   if (error) {
     return (
       <div className="flex min-h-[30vh] flex-col items-center justify-center gap-2 p-8 text-center text-sm">
         <p className="text-destructive">Failed to load document</p>
         <p className="text-xs text-muted-foreground">{error}</p>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={textQuery.isFetching}
+          onClick={() => void textQuery.refetch()}
+        >
+          {textQuery.isFetching ? 'Trying…' : 'Try again'}
+        </Button>
       </div>
     )
   }
@@ -409,7 +450,7 @@ function DocumentTextPreview({
   if (content === null) {
     return (
       <div className="flex min-h-[30vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
+        <Spinner />
         Loading…
       </div>
     )
@@ -498,9 +539,13 @@ export function DocumentSidePanel({
       ? Math.round((window.innerWidth - DOCUMENT_PANEL_MAX_OFFSET) / 2)
       : 600,
   )
-  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
-    null,
-  )
+  // The chosen version belongs to the view it was chosen in, so switching
+  // documents shows the new one's latest version without an effect to reset
+  // it (which rendered the old selection against the new view first).
+  const [versionChoice, setVersionChoice] = useState<{
+    viewKey: string
+    versionId: string | null
+  } | null>(null)
   const dragStartX = useRef(0)
   const dragStartWidth = useRef(0)
   const viewKey =
@@ -510,12 +555,13 @@ export function DocumentSidePanel({
         ? `${view.kind}:${view.artifact.id ?? view.artifact.filename}`
         : 'none'
 
-  useEffect(() => {
-    setSelectedVersionId(null)
-  }, [viewKey])
+  const selectedVersionId =
+    versionChoice?.viewKey === viewKey ? versionChoice.versionId : null
+  const setSelectedVersionId = (versionId: string | null) =>
+    setVersionChoice({ viewKey, versionId })
 
   const versionsQuery = useQuery({
-    queryKey: ['document-versions', view?.artifact.id],
+    queryKey: chatDocumentKeys.versions(view?.artifact.id),
     queryFn: () => fetchDocumentVersions(view?.artifact.id ?? ''),
     enabled: Boolean(
       view?.artifact.id && !isCanonicalDocxArtifact(view.artifact),
@@ -524,7 +570,7 @@ export function DocumentSidePanel({
   })
 
   const metadataQuery = useQuery({
-    queryKey: ['document-metadata', view?.artifact.id],
+    queryKey: chatDocumentKeys.metadata(view?.artifact.id),
     queryFn: () => fetchDocumentMetadata(view?.artifact.id ?? ''),
     enabled: Boolean(view?.artifact.id),
     staleTime: 60_000,
@@ -584,7 +630,7 @@ export function DocumentSidePanel({
     >
       <div
         onMouseDown={handleMouseDown}
-        className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-blue-400"
+        className="absolute left-0 top-0 z-10 h-full w-1 cursor-col-resize transition-colors hover:bg-info"
         style={{ marginLeft: -2 }}
       />
 
@@ -594,7 +640,7 @@ export function DocumentSidePanel({
         className="absolute right-2 top-2 z-20 shrink-0 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
         title="Close panel"
       >
-        <X className="h-4 w-4" />
+        <X className="size-4" />
       </button>
 
       <div className="relative min-h-0 flex-1">
@@ -771,7 +817,7 @@ function DocumentVersionMenu({
     <DropdownMenu>
       <DropdownMenuTrigger className="inline-flex items-center gap-1 rounded-lg border border-border px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
         {label}
-        <ChevronDown className="h-3.5 w-3.5" />
+        <ChevronDown className="size-3.5" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel>Versions</DropdownMenuLabel>

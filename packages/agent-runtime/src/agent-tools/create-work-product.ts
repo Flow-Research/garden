@@ -10,6 +10,7 @@ import {
   appendIssueRunEvent,
   dbError,
   getIssueRunDb,
+  IssueRunToolError,
   requireRunState,
   toolErrorResult,
   toolOkResult,
@@ -112,6 +113,14 @@ export function createCreateWorkProductTool(context: IssueRunToolContext) {
         },
       })
       if (statusResult.isErr()) return toolErrorResult(statusResult.error)
+      if (!statusResult.value) {
+        return toolErrorResult(
+          new IssueRunToolError({
+            code: 'invalid_state',
+            message: 'Issue run is no longer active.',
+          }),
+        )
+      }
 
       const succeededEventResult = await appendIssueRunEvent({
         db,

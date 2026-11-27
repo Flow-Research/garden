@@ -1,0 +1,11 @@
+Cabinet Grotesk
+===============
+
+Designed by Mathieu Desjardins / Pangram Pangram, published by the Indian
+Type Foundry via Fontshare (https://www.fontshare.com/fonts/cabinet-grotesk).
+
+Fontshare fonts are free for personal and commercial use under the ITF Free
+Font License: https://www.fontshare.com/licenses/itf-ffl
+
+Vendored file: cabinet-grotesk-700.woff2 (weight 700, woff2), downloaded from
+the Fontshare CDN (api.fontshare.com) on 2026-09-02.

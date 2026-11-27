@@ -3,7 +3,10 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // drizzle's Postgres column types (via the @garden/db type imports)
+    // reference Node's Buffer; TypeScript no longer loads @types by default.
+    "types": ["node"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]

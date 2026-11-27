@@ -17,7 +17,7 @@ const RegistryQuery = Schema.Struct({
   featured: Schema.Boolean,
 })
 
-class RegistryQueryError extends Schema.ErrorClass<RegistryQueryError>(
+class RegistryQueryError extends Schema.Error<RegistryQueryError>(
   'RegistryQueryError',
 )({
   status: Schema.Number,

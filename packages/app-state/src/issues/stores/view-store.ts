@@ -6,6 +6,7 @@ import { ALL_STATUSES } from '@garden/core/issues/config/status'
 import {
   createWorkspaceAwareStorage,
   registerForWorkspaceRehydration,
+  workspaceScopedMerge,
 } from '../../platform/workspace-storage'
 import { defaultStorage } from '../../platform/storage'
 
@@ -78,9 +79,8 @@ export interface IssueViewState {
   toggleListCollapsed: (status: IssueStatus) => void
 }
 
-export const viewStoreSlice = (
-  set: StoreApi<IssueViewState>['setState'],
-): IssueViewState => ({
+/** Initial data slice, shared by the store creator and the persist merge (workspaceScopedMerge resets to it on a cold-key switch). */
+const initialViewData = {
   viewMode: 'board',
   statusFilters: [],
   priorityFilters: [],
@@ -98,6 +98,12 @@ export const viewStoreSlice = (
     dueDate: true,
   },
   listCollapsedStatuses: [],
+} satisfies Partial<IssueViewState>
+
+export const viewStoreSlice = (
+  set: StoreApi<IssueViewState>['setState'],
+): IssueViewState => ({
+  ...initialViewData,
 
   setViewMode: (mode) => set({ viewMode: mode }),
   toggleStatusFilter: (status) =>
@@ -208,6 +214,7 @@ export const viewStorePersistOptions = (name: string) => ({
     cardProperties: state.cardProperties,
     listCollapsedStatuses: state.listCollapsedStatuses,
   }),
+  merge: workspaceScopedMerge<IssueViewState>(initialViewData),
 })
 
 /** Factory: creates a vanilla StoreApi for use with React Context. */

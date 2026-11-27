@@ -56,7 +56,7 @@ export const DiscordInstallConfig = Schema.Struct({
 })
 export type DiscordInstallConfig = typeof DiscordInstallConfig.Type
 
-export class DiscordInstallConfigError extends Schema.ErrorClass<DiscordInstallConfigError>(
+export class DiscordInstallConfigError extends Schema.Error<DiscordInstallConfigError>(
   'DiscordInstallConfigError',
 )({
   kind: Schema.Literal('config'),
@@ -64,7 +64,7 @@ export class DiscordInstallConfigError extends Schema.ErrorClass<DiscordInstallC
   message: Schema.String,
 }) {}
 
-export class DiscordInstallStateError extends Schema.ErrorClass<DiscordInstallStateError>(
+export class DiscordInstallStateError extends Schema.Error<DiscordInstallStateError>(
   'DiscordInstallStateError',
 )({
   kind: Schema.Literal('state'),
@@ -72,7 +72,7 @@ export class DiscordInstallStateError extends Schema.ErrorClass<DiscordInstallSt
   message: Schema.String,
 }) {}
 
-export class DiscordInstallHttpError extends Schema.ErrorClass<DiscordInstallHttpError>(
+export class DiscordInstallHttpError extends Schema.Error<DiscordInstallHttpError>(
   'DiscordInstallHttpError',
 )({
   kind: Schema.Literal('http'),
@@ -81,7 +81,7 @@ export class DiscordInstallHttpError extends Schema.ErrorClass<DiscordInstallHtt
   status: Schema.NullOr(Schema.Number),
 }) {}
 
-export class DiscordInstallDecodeError extends Schema.ErrorClass<DiscordInstallDecodeError>(
+export class DiscordInstallDecodeError extends Schema.Error<DiscordInstallDecodeError>(
   'DiscordInstallDecodeError',
 )({
   kind: Schema.Literal('decode'),

@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useRouterState } from '@tanstack/react-router'
 import { Result } from 'better-result'
 import { useAgent } from 'agents/react'
 import { useAgentChat } from '@cloudflare/ai-chat/react'
@@ -127,9 +128,23 @@ function ChatRuntimeWarmConnection({ session }: { session: AgentChatSession }) {
 export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
   const userId = useAuthStore((state) => state.user?.id ?? null)
   const workspaceId = useWorkspaceStore((state) => state.workspace?.id ?? null)
-  const visibleChatSessionIds = useChatStore(
-    (state) => state.visibleChatSessionIds,
-  )
+  // The visible chat thread is the mounted /chats/$threadId route — the
+  // router is the source of truth now that the dock is gone. On the /chats
+  // index the composer visibly mounts the warm session itself, so it counts
+  // as visible too — otherwise the hidden warmer double-connects it (the
+  // reconnect storm the old dock-era guard prevented; smoke-observed 2026-09).
+  const visibleChatThreadId = useRouterState({
+    select: (s) => {
+      // Normalize trailing slashes: route matching trims them, but
+      // location.pathname keeps the raw value and '/chats/'.split('/')[2]
+      // is '' — defeating the composer sentinel and double-connecting.
+      const pathname = s.location.pathname.replace(/\/+$/, '')
+      if (pathname === '/chats') return 'composer'
+      return pathname.startsWith('/chats/')
+        ? (pathname.split('/')[2] ?? null)
+        : null
+    },
+  })
   const { claimWarmSession, sessionsQuery, warmSession } = useAgentSessions()
   const warmSessionQuery = useQuery({
     queryKey: [
@@ -158,7 +173,9 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
    * checked: local Agents SDK `useAgent` / `useAgentChat` connection lifecycle.
    */
   const sessionToWarm =
-    warmCandidate && !visibleChatSessionIds.includes(warmCandidate.id)
+    warmCandidate &&
+    warmCandidate.id !== visibleChatThreadId &&
+    visibleChatThreadId !== 'composer'
       ? warmCandidate
       : null
 
@@ -169,6 +186,47 @@ export function ChatRuntimeProvider({ children }: { children: ReactNode }) {
       ) : null}
       {children}
     </>
+  )
+}
+
+/**
+ * Holds chat sends until the ChatSubAgent socket delivers its first connect
+ * frame.
+ *
+ * Why: Think sends `cf_agent_chat_messages` on connect, before it reads any
+ * queued client request (`@cloudflare/think/dist/think-BYZXQ-vm.js`
+ * `_buildIdleConnectMessages`), and `useAgentChat` applies that frame with a
+ * wholesale `setMessages` (`@cloudflare/ai-chat/dist/react.js` ~1125).
+ * Before: a first message sent on a brand-new thread before connect was
+ * replaced by the empty connect history, and the server rebroadcast excludes
+ * the sender, so the message vanished. After: sends wait for the first
+ * `cf_agent_chat_messages` or `cf_agent_stream_resuming` frame, then pass
+ * straight through. Only the first sync per hook instance is gated.
+ */
+function createHistorySyncGate() {
+  let resolve: () => void = () => {}
+  const ready = new Promise<void>((settle) => {
+    resolve = settle
+  })
+  const gate = {
+    ready,
+    synced: false,
+    markSynced: () => {
+      gate.synced = true
+      resolve()
+    },
+  }
+  return gate
+}
+
+/** True when a raw socket frame is Think's connect-time sync frame. */
+function isConnectSyncFrame(data: unknown) {
+  if (typeof data !== 'string') return false
+  const parsed = Result.try(() => JSON.parse(data) as { type?: unknown } | null)
+  if (Result.isError(parsed)) return false
+  const type = parsed.value?.type
+  return (
+    type === 'cf_agent_chat_messages' || type === 'cf_agent_stream_resuming'
   )
 }
 
@@ -188,6 +246,11 @@ export function useChatRuntimeConnection({
   >['updateSessionPreview']
 }) {
   const pendingTurnRef = useRef<PendingTurn | null>(null)
+  const historySyncRef = useRef<ReturnType<
+    typeof createHistorySyncGate
+  > | null>(null)
+  historySyncRef.current ??= createHistorySyncGate()
+  const historySync = historySyncRef.current
 
   const parentAgent = useAgent({
     agent: 'AgentDO',
@@ -203,6 +266,11 @@ export function useChatRuntimeConnection({
     name: session.hostName,
     onError: (event) => {
       console.warn('[chat.runtime] websocket connection error', event)
+    },
+    onMessage: (event) => {
+      if (!historySync.synced && isConnectSyncFrame(event.data)) {
+        historySync.markSynced()
+      }
     },
     sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }],
   })
@@ -235,7 +303,7 @@ export function useChatRuntimeConnection({
     isServerStreaming,
     isStreaming,
     messages,
-    sendMessage,
+    sendMessage: sendChatMessage,
     status,
     stop,
     error,
@@ -261,6 +329,14 @@ export function useChatRuntimeConnection({
     },
     onError: markTurnError,
   })
+
+  const sendMessage = useCallback<AgentChatApi['sendMessage']>(
+    async (...args) => {
+      if (!historySync.synced) await historySync.ready
+      return await sendChatMessage(...args)
+    },
+    [historySync, sendChatMessage],
+  )
 
   const warmInFlightRef = useRef<Promise<void> | null>(null)
   const warmRuntime = useCallback(() => {

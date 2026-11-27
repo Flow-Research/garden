@@ -28,7 +28,7 @@ export const agent = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     ownerUserId: uuid('owner_user_id')
       .notNull()
       .references(() => user.id),
@@ -46,7 +46,12 @@ export const agent = pgTable(
     status: text('status').notNull().default('active'),
     hostName: text('host_name'),
     runTimeoutSec: integer('run_timeout_sec').notNull().default(7200),
-    createdAt: timestamp('created_at', { mode: 'date' }).default(sql`now()`),
+    createdAt: timestamp('created_at', {
+      withTimezone: true,
+      mode: 'date',
+    })
+      .notNull()
+      .default(sql`now()`),
   },
   (table) => [
     index('agent_workspace_owner_idx').on(table.workspaceId, table.ownerUserId),

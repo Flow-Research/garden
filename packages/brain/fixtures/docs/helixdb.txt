@@ -1,0 +1,2 @@
+A garden journal records planting dates and harvest yields for each crop.
+Compost improves soil drainage and adds nutrients back to the beds.

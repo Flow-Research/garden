@@ -7,12 +7,16 @@ import {
   createAgentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/agents'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import {
   badRequest,
   requireWorkspaceContext,
   toAgent,
 } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 
@@ -38,6 +42,13 @@ export const Route = createFileRoute('/api/agents')({
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
         const { session, workspaceId } = workspaceContext
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId,
+          permissions: workspacePermissions.agentManage,
+        })
+        if (permission) return permission
 
         const bodyResult = await parseJsonBody(
           request,
@@ -66,10 +77,10 @@ export const Route = createFileRoute('/api/agents')({
           permissions: DEFAULT_AGENT_PERMISSIONS,
         } as typeof schema.agent.$inferInsert
         const db = await appContext.db()
-        const [agent] = await db
-          .insert(schema.agent)
-          .values(agentValues)
-          .returning()
+        const agent = requireReturnedRow(
+          await db.insert(schema.agent).values(agentValues).returning(),
+          'agent',
+        )
         await bindExistingCapabilitiesToAgent({
           db,
           schema,

@@ -35,12 +35,12 @@ export const agentProposalRequest = pgTable(
       onDelete: 'set null',
     }),
     argsJson: jsonb('args_json'),
-    requestedAt: timestamp('requested_at', { mode: 'date' })
+    requestedAt: timestamp('requested_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
     status: text('status').notNull().default('pending'),
     resolvedBy: uuid('resolved_by'),
-    resolvedAt: timestamp('resolved_at', { mode: 'date' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, mode: 'date' }),
   },
   (table) => [
     check(

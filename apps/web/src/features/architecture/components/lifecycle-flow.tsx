@@ -18,7 +18,7 @@ export function LifecycleFlow() {
 
   return (
     <div>
-      <div className="mb-5 inline-flex rounded-lg border border-[color:var(--hairline)] bg-[color:var(--parchment-deep)] p-1">
+      <div className="mb-5 inline-flex rounded-lg border border-border bg-muted p-1">
         {flows.map((f) => (
           <button
             key={f.id}
@@ -27,7 +27,7 @@ export function LifecycleFlow() {
             className={cn(
               'rounded-md px-3 py-1.5 text-[13px] font-medium transition-colors',
               f.id === active
-                ? 'bg-[color:var(--bone)] text-foreground shadow-[var(--shadow-hairline)]'
+                ? 'bg-card text-foreground shadow-1'
                 : 'text-muted-foreground hover:text-foreground',
             )}
           >
@@ -58,7 +58,7 @@ export function LifecycleFlow() {
               >
                 <div className="flex justify-center pt-1.5">
                   <span
-                    className="arch-node-dot size-2.5 rounded-full border border-[color:var(--moss)] bg-[color:var(--parchment-solid)]"
+                    className="arch-node-dot size-2.5 rounded-full border border-success bg-background"
                     style={{
                       animationDelay: `${(i / flow.steps.length) * 3.6}s`,
                     }}
@@ -67,7 +67,7 @@ export function LifecycleFlow() {
                 </div>
                 <div>
                   <div className="flex flex-wrap items-baseline gap-x-2.5">
-                    <span className="font-mono text-[11px] uppercase tracking-wider text-[color:var(--amber)]">
+                    <span className="font-mono text-[11px] uppercase tracking-wider text-text-warning-tertiary">
                       {step.actor}
                     </span>
                     <span className="font-mono text-[13px] text-foreground">

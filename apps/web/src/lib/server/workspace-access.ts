@@ -12,6 +12,7 @@ import {
 import { schema } from './db'
 import { Database } from './effect-database'
 import { AppRequest } from './effect-context'
+import type { WorkspacePermission } from './workspace-permissions'
 
 export type SkillWorkspaceContext = {
   readonly workspaceId: string
@@ -31,6 +32,13 @@ export interface WorkspaceAccessService {
     workspaceId: string,
   ) => Effect.Effect<
     SkillWorkspaceContext,
+    SkillUnauthorizedError | SkillForbiddenError | SkillOperationError
+  >
+  readonly requirePermission: (
+    workspaceId: string,
+    permissions: WorkspacePermission,
+  ) => Effect.Effect<
+    void,
     SkillUnauthorizedError | SkillForbiddenError | SkillOperationError
   >
   readonly targetForAgent: (
@@ -155,6 +163,46 @@ export const workspaceAccessLayer = Layer.effect(
       return { workspaceId, userId: activeSession.user.id }
     })
 
+    const requirePermission = Effect.fn('WorkspaceAccess.requirePermission')(
+      function* (workspaceId: string, permissions: WorkspacePermission) {
+        const activeSession = yield* session()
+        if (!(yield* membership(workspaceId, activeSession.user.id))) {
+          return yield* new SkillForbiddenError({
+            message: 'Workspace access denied',
+          })
+        }
+        const auth = yield* Effect.tryPromise({
+          try: () => request.auth.getAuth(),
+          catch: (cause) =>
+            new SkillOperationError({
+              operation: 'load auth',
+              message: 'Failed to load auth service.',
+              cause,
+            }),
+        })
+        const allowed = yield* Effect.tryPromise({
+          try: async () => {
+            const result = await auth.api.hasPermission({
+              headers: request.request.headers,
+              body: { organizationId: workspaceId, permissions },
+            })
+            return Boolean(result.success)
+          },
+          catch: (cause) =>
+            new SkillOperationError({
+              operation: 'check workspace permission',
+              message: 'Failed to check workspace permission.',
+              cause,
+            }),
+        })
+        if (!allowed) {
+          return yield* new SkillForbiddenError({
+            message: 'Workspace permission denied',
+          })
+        }
+      },
+    )
+
     const targetForAgent = Effect.fn('WorkspaceAccess.targetForAgent')(
       function* (agentId: string) {
         const workspace = yield* current()
@@ -195,6 +243,7 @@ export const workspaceAccessLayer = Layer.effect(
       currentOptional,
       current,
       require: requireWorkspace,
+      requirePermission,
       targetForAgent,
     })
   }),

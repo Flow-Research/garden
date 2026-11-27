@@ -93,4 +93,47 @@ describe('password recovery', () => {
       })
     })
   })
+
+  it('threads the invitation redirect through the whole recovery detour', async () => {
+    const user = userEvent.setup()
+    const inviteRedirect = '/invitations/9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d'
+    const { unmount } = render(
+      <RequestPasswordResetPage
+        initialEmail="ada@example.com"
+        redirectTarget={inviteRedirect}
+      />,
+    )
+
+    await user.click(screen.getByRole('button', { name: /send reset link/i }))
+
+    await waitFor(() => {
+      expect(mockRequestPasswordReset).toHaveBeenCalledWith({
+        email: 'ada@example.com',
+        redirectTo: `http://localhost:3000/reset-password?redirect=${encodeURIComponent(inviteRedirect)}`,
+      })
+    })
+    unmount()
+
+    render(
+      <ResetPasswordPage
+        token="valid-token"
+        invalidToken={false}
+        redirectTarget={inviteRedirect}
+      />,
+    )
+    await user.type(screen.getByLabelText(/^new password$/i), 'password-new')
+    await user.type(
+      screen.getByLabelText(/confirm new password/i),
+      'password-new',
+    )
+    await user.click(screen.getByRole('button', { name: /update password/i }))
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({
+        to: '/login',
+        search: { redirect: inviteRedirect },
+        replace: true,
+      })
+    })
+  })
 })

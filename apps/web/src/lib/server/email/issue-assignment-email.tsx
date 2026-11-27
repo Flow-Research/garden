@@ -24,9 +24,9 @@ const colors = {
  * invitation email (same palette, one wide reading column, single CTA) because
  * the `react-email` bundle breaks workerd SSR locally. The task title is the
  * serif headline so the recipient sees what they own before any chrome; the CTA
- * lands them in the assignee's workspace, where the assignment inbox item
- * (written alongside this send) surfaces the task — there is no per-issue route
- * to deep-link yet, only `/workspace?workspace_id=`.
+ * lands them in the assignee's workspace on the task's own route — the CTA
+ * deep-links to `/tasks/<id>?workspace_id=` (see buildIssueDeepLinkPath), and
+ * the assignment inbox item (written alongside this send) also surfaces it.
  */
 export function renderIssueAssignmentEmailHtml(
   props: IssueAssignmentEmailProps,

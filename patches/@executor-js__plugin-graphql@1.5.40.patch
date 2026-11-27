@@ -1,0 +1,21 @@
+diff --git a/dist/chunk-6267LJRW.js b/dist/chunk-6267LJRW.js
+index 9f052d543d1ecb8d6321c4706854aab01f5932d9..ecdbd0f50401e98b6748bbf8618a92e64895bd19 100644
+--- a/dist/chunk-6267LJRW.js
++++ b/dist/chunk-6267LJRW.js
+@@ -1,6 +1,6 @@
+ // src/sdk/errors.ts
+ import { Data, Schema } from "effect";
+-var GraphqlIntrospectionError = class extends Schema.TaggedErrorClass()(
++var GraphqlIntrospectionError = class extends Schema.TaggedError()(
+   "GraphqlIntrospectionError",
+   {
+     message: Schema.String,
+@@ -19,7 +19,7 @@ var GraphqlIntrospectionError = class extends Schema.TaggedErrorClass()(
+   }
+ ) {
+ };
+-var GraphqlExtractionError = class extends Schema.TaggedErrorClass()(
++var GraphqlExtractionError = class extends Schema.TaggedError()(
+   "GraphqlExtractionError",
+   {
+     message: Schema.String

@@ -39,9 +39,15 @@
 .rich-text-editor .is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
-  color: var(--muted-foreground);
   pointer-events: none;
   height: 0;
+  color: var(--text-disabled-default);
+  font-size: var(--font-size-sm);
+  font-weight: 400;
+  font-style: normal;
+  line-height: 1.6;
+  letter-spacing: var(--letter-spacing-wider);
+  font-family: var(--font-sans);
 }
 
 /* Headings — compact but with clear visual hierarchy */
@@ -462,6 +468,7 @@
   100% {
     opacity: 0.5;
   }
+
   50% {
     opacity: 0.3;
   }

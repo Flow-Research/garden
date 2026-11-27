@@ -5,6 +5,11 @@ import { requireAppRequestContext } from '@/lib/server/context'
 import { and, desc, eq } from 'drizzle-orm'
 import { uploadChatThreadDocument } from '@/lib/server/chat-agents'
 import { badRequest } from '@/lib/server/control-plane'
+import {
+  multipartErrorResponse,
+  readMultipartForm,
+} from '@/lib/server/multipart'
+import { MAX_FILE_SIZE } from '@garden/core/constants/upload'
 import { documentDownloadUrl } from '@garden/agent-runtime'
 import { schema } from '@/lib/server/db'
 import { getThreadAccess } from '@/lib/server/chat-threads'
@@ -71,17 +76,17 @@ export const Route = createFileRoute('/api/chat/threads/$id/documents')({
         const access = await getThreadAccess(appContext, routeParams.id)
         if (access instanceof Response) return access
 
-        const formResult = await Result.tryPromise({
-          try: async () => await request.formData(),
-          catch: (error) =>
-            new DocumentUploadError({
-              message: error instanceof Error ? error.message : String(error),
-            }),
-        })
-        if (formResult.isErr()) return badRequest(formResult.error.message)
+        const formResult = await readMultipartForm(request, MAX_FILE_SIZE)
+        if (formResult.isErr()) return multipartErrorResponse(formResult.error)
 
         const file = formResult.value.get('file')
         if (!(file instanceof File)) return badRequest('Missing document file')
+        if (file.size > MAX_FILE_SIZE) {
+          return Response.json(
+            { error: 'File exceeds 100 MB limit' },
+            { status: 413 },
+          )
+        }
 
         const bytesResult = await Result.tryPromise({
           try: async () => Buffer.from(await file.arrayBuffer()),

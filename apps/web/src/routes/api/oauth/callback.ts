@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Option, Result } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import { decodeOAuthCallbackState, OAuthState } from '@executor-js/sdk/core'
 import { requireAppRequestContext } from '@/lib/server/context'
@@ -6,7 +6,15 @@ import {
   requireWorkspaceAccess,
   requireWorkspaceContext,
 } from '@/lib/server/control-plane'
+import { syncCapabilities } from '@/lib/server/capability-sync'
+import { mirrorExecutorConnection } from '@/lib/server/executor-engine/connection-mirror'
 import { executorProgram } from '@/lib/server/executor-runtime'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
+
+const logger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'oauth-callback',
+})
 
 const callbackHtml = (result: {
   readonly ok: boolean
@@ -18,7 +26,7 @@ if (window.opener) {
   window.opener.postMessage({ type: 'executor-oauth', ...result }, window.location.origin);
   window.close();
 } else {
-  window.location.replace('/workspace');
+  window.location.replace('/home');
 }
 </script></body></html>`
 
@@ -47,7 +55,7 @@ export const settleOAuthCallback = Effect.fn('ExecutorOAuth.settleCallback')(
     }
 
     const code = input.code
-    yield* executorProgram(input.identity, (executor) =>
+    const connection = yield* executorProgram(input.identity, (executor) =>
       executor.oauth.complete({
         state,
         code,
@@ -56,6 +64,46 @@ export const settleOAuthCallback = Effect.fn('ExecutorOAuth.settleCallback')(
           : { callbackDomain: input.callbackDomain }),
       }),
     )
+    if (connection.owner !== 'org') {
+      const mirrorResult = yield* Effect.result(
+        mirrorExecutorConnection({
+          executorSlug: String(connection.integration),
+          connectionName: String(connection.name),
+          userId: input.identity.subject,
+          workspaceId: input.identity.tenant,
+          identityLabel: connection.identityLabel ?? null,
+          scopes: connection.oauthScope?.split(' ').filter(Boolean) ?? null,
+          expiresAtMs: connection.expiresAt ?? null,
+        }),
+      )
+      if (Result.isFailure(mirrorResult)) {
+        yield* Effect.sync(() =>
+          logger.warn('connection.mirror_failed', {
+            integration: String(connection.integration),
+            workspaceId: input.identity.tenant,
+            ...errorFields(mirrorResult.failure),
+          }),
+        )
+      } else if (Option.isSome(mirrorResult.success)) {
+        const connectorId = mirrorResult.success.value
+        const syncResult = yield* Effect.result(
+          syncCapabilities(
+            connectorId,
+            input.identity.subject,
+            input.identity.tenant,
+          ),
+        )
+        if (Result.isFailure(syncResult)) {
+          yield* Effect.sync(() =>
+            logger.warn('connection.capability_sync_failed', {
+              connectorId,
+              workspaceId: input.identity.tenant,
+              ...errorFields(syncResult.failure),
+            }),
+          )
+        }
+      }
+    }
     return { ok: true as const }
   },
 )

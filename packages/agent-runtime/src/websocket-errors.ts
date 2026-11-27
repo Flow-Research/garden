@@ -1,13 +1,10 @@
 import type { Connection } from 'agents'
 import { errorFields, type GardenLogger } from '@garden/observability/logger'
+import { errorMessage } from './runtime-utils'
 
 function connectionId(connection: Connection | null) {
   const candidate = connection as { id?: unknown } | null
   return typeof candidate?.id === 'string' ? candidate.id : null
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error)
 }
 
 function isExpectedWebSocketDisconnect(error: unknown) {

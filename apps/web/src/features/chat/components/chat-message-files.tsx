@@ -25,14 +25,17 @@ import { cn } from '@garden/ui/lib/utils'
 import {
   Attachments,
   Attachment,
+  AttachmentInfo,
   AttachmentPreview,
 } from '@/components/ai-elements/attachments'
 import type { AttachmentData } from '@/components/ai-elements/attachments'
 import type { ChatUiMessage } from '../chat-runtime-provider'
 import {
   DocumentViewerDialog,
+  FileKindIcon,
   ImageLightbox,
   getFileKind,
+  getFileKindAccentClassName,
   getFileKindLabel,
   isImageAttachment,
   type FileMessagePart,
@@ -41,7 +44,7 @@ import {
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
   COMPOSER_INLINE_CHIP_LABEL_CLASS_NAME,
   COMPOSER_INLINE_SKILL_CHIP_CLASS_NAME,
-} from './chat-composer'
+} from './composer'
 
 // ─── Shared types ────────────────────────────────────────────────────────────
 
@@ -100,6 +103,22 @@ export function filePartToAttachmentData(
   } as AttachmentData
 }
 
+/**
+ * Attachments shown above a message bubble.
+ *
+ * Before: files rendered as `grid` tiles — 96px squares that showed a bare
+ * `FileTextIcon` for anything that wasn't an image, so a PDF was an anonymous
+ * grey box with its filename nowhere on screen. They also lived *inside* the
+ * user bubble.
+ *
+ * After: the compact `card` variant — a coloured kind tile plus the filename
+ * and its short kind label ("PDF") — rendered as a sibling above the bubble by
+ * the timeline, matching the design. Images keep a thumbnail inside the tile.
+ *
+ * The card opens the same viewers as before, now reachable by keyboard: it is a
+ * div rather than a button because `Attachment` composes arbitrary children,
+ * so it carries explicit `role`/`tabIndex`/Enter+Space handling instead.
+ */
 export function MessageFiles({ message }: { message: ChatUiMessage }) {
   const files = message.parts.filter(
     (part): part is FileMessagePart => part.type === 'file',
@@ -111,30 +130,43 @@ export function MessageFiles({ message }: { message: ChatUiMessage }) {
 
   return (
     <>
-      <Attachments variant="grid">
+      <Attachments variant="card">
         {files.map((file, index) => {
           const kind = getFileKind(file)
           const data = filePartToAttachmentData(file, message.id, index)
+          const open = () => {
+            if (kind === 'image') {
+              setViewer({
+                kind: 'image',
+                files: imageFiles,
+                index: imageFiles.indexOf(file),
+              })
+            } else {
+              setViewer({ kind: 'document', file })
+            }
+          }
 
           return (
             <Attachment
               key={data.id}
               data={data}
-              className="cursor-pointer"
-              onClick={() => {
-                if (kind === 'image') {
-                  const imageIndex = imageFiles.indexOf(file)
-                  setViewer({
-                    kind: 'image',
-                    files: imageFiles,
-                    index: imageIndex,
-                  })
-                } else {
-                  setViewer({ kind: 'document', file })
-                }
+              className="cursor-pointer transition-colors hover:bg-accent"
+              onClick={open}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                open()
               }}
+              role="button"
+              tabIndex={0}
             >
-              <AttachmentPreview />
+              <AttachmentPreview
+                className={getFileKindAccentClassName(kind)}
+                fallbackIcon={
+                  <FileKindIcon kind={kind} className="text-current" />
+                }
+              />
+              <AttachmentInfo description={getFileKindLabel(kind)} />
             </Attachment>
           )
         })}

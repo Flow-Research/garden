@@ -1,0 +1,22 @@
+diff --git a/dist/index.js b/dist/index.js
+index bc3287419e6afe947e21f55d4af17bc47025a68f..cb848e259c8d8770e441ca192949791c21aeb044 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -90,7 +90,7 @@ var ExecutorFileConfig = Schema.Struct({
+ import { Effect, Schema as Schema2 } from "effect";
+ import { FileSystem } from "effect";
+ import * as jsonc from "jsonc-parser";
+-var ConfigParseError = class extends Schema2.TaggedErrorClass()(
++var ConfigParseError = class extends Schema2.TaggedError()(
+   "ConfigParseError",
+   {
+     path: Schema2.String,
+@@ -127,7 +127,7 @@ import { pathToFileURL } from "url";
+ import * as fs from "fs";
+ import * as jsonc2 from "jsonc-parser";
+ import { Effect as Effect2, Schema as Schema3 } from "effect";
+-var LoadPluginsError = class extends Schema3.TaggedErrorClass()(
++var LoadPluginsError = class extends Schema3.TaggedError()(
+   "LoadPluginsError",
+   {
+     message: Schema3.String,

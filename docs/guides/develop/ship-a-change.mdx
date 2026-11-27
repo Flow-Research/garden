@@ -1,0 +1,126 @@
+---
+title: Ship a change to dev
+description: Take one focused change from a new branch to a merged pull request.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-03
+---
+
+Every change reaches `dev` through a pull request. GitHub blocks the merge until the `Verify` and `PR contract` checks pass. These steps get a change through both checks and through review. They apply to people and agents alike.
+
+## Create a branch from dev
+
+```bash
+git switch dev
+git pull --ff-only origin dev
+git switch -c feat/short-name
+```
+
+Keep one user or maintainer outcome per branch. Put unrelated cleanup on its own branch.
+
+## Read the rules for the area you change
+
+Before you edit code, read these files:
+
+1. [`AGENTS.md`](../../../AGENTS.md)
+2. [`.agents/skills/contribute/SKILL.md`](../../../.agents/skills/contribute/SKILL.md)
+3. [`docs/README.md`](../../README.md), the reading guide
+4. The feature document in [`docs/concepts/features/`](../../concepts/features/issues.md)
+5. The architecture document in [`docs/concepts/architecture/`](../../concepts/architecture/how-garden-is-built.mdx)
+6. [Design direction](../../concepts/design/design-direction.md) and [Design tokens](../../reference/design-tokens.md), if you change UI
+7. The verification map in [`.agents/skills/verify/features/`](../../../.agents/skills/verify/features/README.md), if your change touches a user flow
+
+## Write the feature document first
+
+To add a feature, copy the template:
+
+```bash
+cp docs/templates/feature.md docs/concepts/features/feature-name.md
+```
+
+Fill in the outcome, scope, user-visible states, permissions, external services, and verification steps. Update the document in the same pull request as the code. A bug fix that changes no behavior needs no feature document. For the full steps, see [Write a feature doc](./write-a-feature-doc.md).
+
+## Run the checks that cover your change
+
+Run the checks for the files you changed first. Before a broad change merges, run the full set:
+
+```bash
+pnpm format
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm verify:docs
+pnpm verify:deploy-config
+```
+
+`pnpm format` only checks formatting. To fix formatting, run `pnpm format:write`.
+
+If you change a connector, also run the following. For more ways to run tests, see [Run the tests](./run-tests.md).
+
+```bash
+pnpm verify:connectors
+pnpm --filter @garden/connectors test
+```
+
+CI runs on each pull request to `dev` or `main` and on each push to `dev` or `main`. CI does not run on a push to a feature branch. To get CI results before the work is done, open a draft pull request.
+
+## Prove the user flow
+
+Passing tests do not prove that a user can complete a flow. If you change UI, a connector, an agent, a Workflow, or deployment, run the flow in a browser.
+
+1. Check that your machine is ready:
+
+   ```bash
+   pnpm doctor
+   ```
+
+2. Start the local services and Garden:
+
+   ```bash
+   pnpm offline:up
+   pnpm --filter @garden/db db:migrate
+   pnpm dev:offline
+   ```
+
+3. Open `http://localhost:3000` and run the flow.
+4. Save the evidence in `~/.garden/evidence/TIMESTAMP-SCENARIO/`, where `TIMESTAMP` is a UTC timestamp. Include `report.md`, `report.json`, and a `screenshots/` folder.
+
+Each report states the action, the expected result, the observed result, and a status of `PASS`, `FAIL`, or `INCONCLUSIVE`. If you could not prove the flow, the status is `INCONCLUSIVE`.
+
+<Callout title="Prompt and tool changes">
+  Garden has no automated evals yet. See FLO-37 in [Known gaps](../../reference/known-gaps.md). If you change a prompt, a skill,
+  or a tool definition, record an agent run that shows the new behavior.
+</Callout>
+
+## Review your own diff
+
+```bash
+git diff --check
+git status
+git diff
+```
+
+Confirm that the diff holds only the intended change, that the documents match the code, and that no credentials or local files are staged.
+
+## Open the pull request
+
+Stage only the files for this change:
+
+```bash
+git add path/to/changed-file.ts
+git commit -m "feat: short description"
+git push -u origin feat/short-name
+```
+
+Open the pull request against `dev`. Fill in every section of the template. The `PR contract` check fails the pull request if a required section or checklist item is missing. For the full list, see [Pull request contract](../../reference/pr-contract.mdx).
+
+## Stop what you started
+
+When verification is done, stop the local services:
+
+```bash
+pnpm offline:down
+```
+
+Do not reset the local database unless the team agrees.

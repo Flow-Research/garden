@@ -43,21 +43,21 @@ export function LiveDot({
     <span
       aria-label={`status: ${variant}`}
       className={cn(
-        'relative inline-flex h-1.5 w-1.5 shrink-0 items-center justify-center',
+        'relative inline-flex size-1.5 shrink-0 items-center justify-center',
         className,
       )}
     >
       {shouldPulse && (
         <span
           className={cn(
-            'absolute inset-0 m-auto h-1.5 w-1.5 rounded-full opacity-75 animate-ping',
+            'absolute inset-0 m-auto size-1.5 rounded-full opacity-75 animate-ping',
             variantClass[variant],
           )}
         />
       )}
       <span
         className={cn(
-          'relative inline-flex h-1.5 w-1.5 rounded-full',
+          'relative inline-flex size-1.5 rounded-full',
           variantClass[variant],
         )}
       />

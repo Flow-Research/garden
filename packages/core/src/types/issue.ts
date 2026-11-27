@@ -22,6 +22,7 @@ export interface IssueReaction {
 export interface Issue {
   id: string
   workspace_id: string
+  team_id: string | null
   number: number
   identifier: string
   title: string
@@ -34,7 +35,8 @@ export interface Issue {
   creator_id: string
   parent_issue_id: string | null
   project_id: string | null
-  position: number
+  /** Fractional-indexing order key; compare with compareOrderKeys. */
+  position: string
   due_date: string | null
   active_run_id?: string | null
   source_summary?: {

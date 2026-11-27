@@ -10,11 +10,31 @@ const CapabilitySyncBody = Schema.Struct({
   workspaceId: Schema.String,
 })
 
-function isAuthorized(request: Request) {
-  return (
-    request.headers.get('x-garden-internal-secret') ===
-    appEnv.BETTER_AUTH_SECRET
+async function sha256(value: string) {
+  return new Uint8Array(
+    await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
   )
+}
+
+/**
+ * Compares digests rather than the raw strings so the check takes the same time
+ * whatever the header holds. An unset secret (wrangler defaults secrets to "")
+ * never authorizes.
+ */
+async function isAuthorized(request: Request) {
+  const expected = appEnv.BETTER_AUTH_SECRET
+  const provided = request.headers.get('x-garden-internal-secret')
+  if (!expected || !provided) return false
+
+  const [expectedDigest, providedDigest] = await Promise.all([
+    sha256(expected),
+    sha256(provided),
+  ])
+  let difference = 0
+  expectedDigest.forEach((byte, index) => {
+    difference |= byte ^ (providedDigest.at(index) ?? 0)
+  })
+  return difference === 0
 }
 
 const capabilitySyncErrorStatus = (code: string) => {
@@ -33,7 +53,7 @@ export const Route = createFileRoute('/api/internal/capability-sync')({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        if (!isAuthorized(request)) {
+        if (!(await isAuthorized(request))) {
           return Response.json({ error: 'Unauthorized' }, { status: 401 })
         }
 

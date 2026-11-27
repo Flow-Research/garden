@@ -34,7 +34,7 @@ export type AttachmentMediaCategory =
   | 'source'
   | 'unknown'
 
-export type AttachmentVariant = 'grid' | 'inline' | 'list'
+export type AttachmentVariant = 'card' | 'grid' | 'inline' | 'list'
 
 const mediaCategoryIcons: Record<AttachmentMediaCategory, typeof ImageIcon> = {
   audio: Music2Icon,
@@ -162,7 +162,7 @@ export const Attachments = ({
         className={cn(
           'flex items-start',
           variant === 'list' ? 'flex-col gap-2' : 'flex-wrap gap-2',
-          variant === 'grid' && 'ml-auto w-fit',
+          (variant === 'card' || variant === 'grid') && 'ml-auto w-fit',
           className,
         )}
         {...props}
@@ -202,6 +202,10 @@ export const Attachment = ({
       <div
         className={cn(
           'group relative',
+          variant === 'card' && [
+            'flex max-w-56 items-center gap-2.5',
+            'rounded-lg border border-border bg-muted px-2 py-0.5',
+          ],
           variant === 'grid' && 'size-24 overflow-hidden rounded-lg',
           variant === 'inline' && [
             'flex h-8 cursor-pointer select-none items-center gap-1.5',
@@ -239,6 +243,7 @@ export const AttachmentPreview = ({
   const { data, mediaCategory, variant } = useAttachmentContext()
 
   const iconSize = variant === 'inline' ? 'size-3' : 'size-4'
+  const isThumbnail = variant === 'card' || variant === 'grid'
 
   const renderIcon = (Icon: typeof ImageIcon) => (
     <Icon className={cn(iconSize, 'text-muted-foreground')} />
@@ -246,7 +251,7 @@ export const AttachmentPreview = ({
 
   const renderContent = () => {
     if (mediaCategory === 'image' && data.type === 'file' && data.url) {
-      return renderAttachmentImage(data.url, data.filename, variant === 'grid')
+      return renderAttachmentImage(data.url, data.filename, isThumbnail)
     }
 
     if (mediaCategory === 'video' && data.type === 'file' && data.url) {
@@ -261,6 +266,7 @@ export const AttachmentPreview = ({
     <div
       className={cn(
         'flex shrink-0 items-center justify-center overflow-hidden',
+        variant === 'card' && 'size-7 rounded bg-background',
         variant === 'grid' && 'size-full bg-muted',
         variant === 'inline' && 'size-5 rounded bg-background',
         variant === 'list' && 'size-12 rounded bg-muted',
@@ -278,10 +284,18 @@ export const AttachmentPreview = ({
 // ============================================================================
 
 export type AttachmentInfoProps = HTMLAttributes<HTMLDivElement> & {
+  /**
+   * Secondary line shown under the filename, replacing the raw `mediaType`.
+   * Callers that already classify a file (the chat timeline maps parts to a
+   * `FileKind`) pass the short human label — "PDF" reads better in a 224px
+   * card than "application/pdf", which truncates to noise.
+   */
+  description?: ReactNode
   showMediaType?: boolean
 }
 
 export const AttachmentInfo = ({
+  description,
   showMediaType = false,
   className,
   ...props
@@ -293,12 +307,22 @@ export const AttachmentInfo = ({
     return null
   }
 
+  const secondary =
+    description ?? (showMediaType ? data.mediaType : undefined) ?? null
+
   return (
-    <div className={cn('min-w-0 flex-1', className)} {...props}>
+    <div
+      className={cn(
+        'min-w-0 flex-1',
+        variant === 'card' && 'text-xs leading-relaxed',
+        className,
+      )}
+      {...props}
+    >
       <span className="block truncate">{label}</span>
-      {showMediaType && data.mediaType && (
+      {secondary && (
         <span className="block truncate text-muted-foreground text-xs">
-          {data.mediaType}
+          {secondary}
         </span>
       )}
     </div>

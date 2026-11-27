@@ -1,5 +1,5 @@
 import { parseServerEnv } from '@garden/env'
-import { db } from '@garden/db'
+import { createNodeDb } from '@garden/db'
 import { createBetterAuth } from './lib/auth/instance'
 
 const env = parseServerEnv({
@@ -12,6 +12,8 @@ const env = parseServerEnv({
   GITHUB_APP_SLUG: process.env.GITHUB_APP_SLUG,
   GITHUB_APP_PRIVATE_KEY: process.env.GITHUB_APP_PRIVATE_KEY,
   GITHUB_WEBHOOK_SECRET: process.env.GITHUB_WEBHOOK_SECRET,
+  GOOGLE_AUTH_CLIENT_ID: process.env.GOOGLE_AUTH_CLIENT_ID,
+  GOOGLE_AUTH_CLIENT_SECRET: process.env.GOOGLE_AUTH_CLIENT_SECRET,
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
   SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID,
@@ -26,8 +28,10 @@ if (!env.BETTER_AUTH_SECRET || !env.BETTER_AUTH_URL) {
   )
 }
 
-export const auth = createBetterAuth(db, {
+export const auth = createBetterAuth(createNodeDb(), {
   BETTER_AUTH_SECRET: env.BETTER_AUTH_SECRET,
   BETTER_AUTH_URL: env.BETTER_AUTH_URL,
+  GOOGLE_AUTH_CLIENT_ID: env.GOOGLE_AUTH_CLIENT_ID,
+  GOOGLE_AUTH_CLIENT_SECRET: env.GOOGLE_AUTH_CLIENT_SECRET,
   RESEND_API_KEY: env.RESEND_API_KEY,
 })

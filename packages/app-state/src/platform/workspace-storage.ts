@@ -40,3 +40,21 @@ export function createWorkspaceAwareStorage(
     removeItem: (key) => adapter.removeItem(resolve(key)),
   }
 }
+
+/**
+ * Merge for workspace-scoped persist stores. Zustand's default merge
+ * (`{...current, ...persisted}`) is a silent no-op when the new workspace has
+ * no stored key, so the previous workspace's data survived rehydration and
+ * bled into the new namespace on the next write (observed 2026-09; zustand
+ * middleware.js hydrate). The initial data slice resets first, then any
+ * persisted data overrides it; actions ride along via the current spread.
+ */
+export function workspaceScopedMerge<S extends object>(
+  initialData: Partial<S>,
+): (persistedState: unknown, currentState: S) => S {
+  return (persistedState, currentState) => ({
+    ...currentState,
+    ...initialData,
+    ...((persistedState ?? {}) as Partial<S>),
+  })
+}

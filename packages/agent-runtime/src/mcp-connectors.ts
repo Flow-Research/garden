@@ -1,6 +1,11 @@
 export type ActiveConnectorBinding = {
   connectorId: string
   accountId: string | null
+  /**
+   * Install health from `listAvailableConnectorBindings`. Degraded installs
+   * still expose tools so calls return a repair hint (#163 phase 3).
+   */
+  status?: 'connected' | 'degraded'
 }
 
 export type StoredConnectorServerRow = {

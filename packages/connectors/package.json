@@ -7,7 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "verify:coverage": "node --experimental-strip-types scripts/verify-connector-coverage.ts"
   },
@@ -32,6 +32,7 @@
     "./sdk": "./src/sdk.ts"
   },
   "dependencies": {
+    "better-result": "^2.9.2",
     "effect": "catalog:"
   },
   "devDependencies": {

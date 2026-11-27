@@ -2,6 +2,33 @@ export type GardenLogLevel = 'debug' | 'info' | 'warn' | 'error'
 
 export type GardenLogFields = Record<string, unknown>
 
+/**
+ * A record written by `createGardenLogger`, as a log consumer such as the
+ * tail observer sees it. Consumers read these back from untrusted log output,
+ * so only `source` and `schemaVersion` are checked and every other field is
+ * optional.
+ */
+export type GardenStructuredLog = {
+  source: 'garden'
+  schemaVersion: number
+  timestamp?: string
+  level?: string
+  service?: string
+  component?: string
+  event?: string
+  requestId?: string
+  userId?: string
+  workspaceId?: string
+  agentId?: string
+  threadId?: string
+  issueId?: string
+  automationId?: string
+  runId?: string
+  connectorId?: string
+  status?: number
+  durationMs?: number
+}
+
 export type GardenLoggerOptions = {
   service: string
   component: string
@@ -140,6 +167,17 @@ export function createGardenLogger(options: GardenLoggerOptions): GardenLogger {
         },
       }),
   }
+}
+
+/** True for records emitted by `createGardenLogger`. */
+export function isGardenStructuredLog(
+  value: unknown,
+): value is GardenStructuredLog {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as { source?: unknown; schemaVersion?: unknown }
+  return (
+    candidate.source === SOURCE && typeof candidate.schemaVersion === 'number'
+  )
 }
 
 export function errorFields(error: unknown) {

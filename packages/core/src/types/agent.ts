@@ -1,4 +1,5 @@
 import type { agentSelectSchema } from '@garden/db/validation'
+import type { AgentPermissions } from '../agents/permissions'
 import type { Skill } from '../skills/effect-schemas'
 import type { z } from 'zod'
 
@@ -44,6 +45,7 @@ export interface Agent {
   max_concurrent_tasks: number
   owner_id: string | null
   skills: Skill[]
+  permissions: AgentPermissions | null
   created_at: string
   updated_at: string
   archived_at: string | null

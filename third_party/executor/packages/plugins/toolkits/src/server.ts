@@ -18,7 +18,7 @@ import {
 } from "@executor-js/sdk/core";
 import { generateKeyBetween } from "fractional-indexing";
 
-export class ToolkitError extends Schema.TaggedErrorClass<ToolkitError>()(
+export class ToolkitError extends Schema.TaggedError<ToolkitError>()(
   "ToolkitError",
   { message: Schema.String },
   { httpApiStatus: 400 },

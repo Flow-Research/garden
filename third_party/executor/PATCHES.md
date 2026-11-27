@@ -24,8 +24,9 @@ documented compatibility changes:
    not register that separately exported migration, so retaining it would add
    unreachable boot-repair code to a greenfield D1 deployment.
 5. The workspace pins Effect and its companion packages to
-   `4.0.0-beta.102`. Vite dedupes `effect`, and pnpm overrides Executor
-   v1.5.40's beta.59 peer pins so the Garden Worker has one Effect runtime.
+   `4.0.0-rc.111` (the pnpm catalog and root overrides must agree). Vite
+   dedupes `effect`, and pnpm overrides Executor v1.5.40's beta.59 peer pins
+   so the Garden Worker has one Effect runtime.
 6. The exact upstream OpenAPI, MCP, and GraphQL preset catalogs are retained
    because v1.5.40's published package exports omit their source-declared
    `/presets` subpaths. The OpenAPI catalog's relative `SpecOverrides` type

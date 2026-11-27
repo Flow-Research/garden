@@ -23,6 +23,7 @@ import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiWorkspacesRouteImport } from './routes/api/workspaces'
 import { Route as ApiUploadFileRouteImport } from './routes/api/upload-file'
+import { Route as ApiTeamsRouteImport } from './routes/api/teams'
 import { Route as ApiProjectsRouteImport } from './routes/api/projects'
 import { Route as ApiMeRouteImport } from './routes/api/me'
 import { Route as ApiIssuesRouteImport } from './routes/api/issues'
@@ -33,8 +34,11 @@ import { Route as ApiAutomationsRouteImport } from './routes/api/automations'
 import { Route as ApiAgentsRouteImport } from './routes/api/agents'
 import { Route as ApiSplatRouteImport } from './routes/api/$'
 import { Route as AuthenticatedWorkspaceRouteImport } from './routes/_authenticated/workspace'
-import { Route as AuthenticatedAutomationsIndexRouteImport } from './routes/_authenticated/automations/index'
+import { Route as AuthenticatedConnectionsRouteImport } from './routes/_authenticated/connections'
+import { Route as AuthenticatedAutomationsRouteImport } from './routes/_authenticated/automations'
+import { Route as AuthenticatedAppRouteImport } from './routes/_authenticated/_app'
 import { Route as ApiWorkspacesIdRouteImport } from './routes/api/workspaces/$id'
+import { Route as ApiTeamsTeamIdRouteImport } from './routes/api/teams/$teamId'
 import { Route as ApiRunsIdRouteImport } from './routes/api/runs/$id'
 import { Route as ApiOauthCallbackRouteImport } from './routes/api/oauth/callback'
 import { Route as ApiIssuesSearchRouteImport } from './routes/api/issues/search'
@@ -46,6 +50,10 @@ import { Route as ApiInboxMarkAllReadRouteImport } from './routes/api/inbox/mark
 import { Route as ApiInboxArchiveCompletedRouteImport } from './routes/api/inbox/archive-completed'
 import { Route as ApiInboxArchiveAllReadRouteImport } from './routes/api/inbox/archive-all-read'
 import { Route as ApiInboxArchiveAllRouteImport } from './routes/api/inbox/archive-all'
+import { Route as ApiGmailSendRouteImport } from './routes/api/gmail/send'
+import { Route as ApiGmailMessagesRouteImport } from './routes/api/gmail/messages'
+import { Route as ApiGmailDraftsRouteImport } from './routes/api/gmail/drafts'
+import { Route as ApiGithubWebhookRouteImport } from './routes/api/github/webhook'
 import { Route as ApiGithubSetupRouteImport } from './routes/api/github/setup'
 import { Route as ApiGithubInstallRouteImport } from './routes/api/github/install'
 import { Route as ApiGithubCallbackRouteImport } from './routes/api/github/callback'
@@ -55,19 +63,41 @@ import { Route as ApiExecutorInstallRouteImport } from './routes/api/executor/in
 import { Route as ApiDiscordSetupRouteImport } from './routes/api/discord/setup'
 import { Route as ApiDiscordInstallRouteImport } from './routes/api/discord/install'
 import { Route as ApiDevIssueRunPlanRouteImport } from './routes/api/dev/issue-run-plan'
+import { Route as ApiDecideAnalysesRunIdRouteImport } from './routes/api/decide-analyses/$runId'
 import { Route as ApiConnectionsCallbackEventsRouteImport } from './routes/api/connections/callback-events'
 import { Route as ApiConnectionsConnectorIdRouteImport } from './routes/api/connections/$connectorId'
 import { Route as ApiCommentsIdRouteImport } from './routes/api/comments/$id'
 import { Route as ApiChatThreadsRouteImport } from './routes/api/chat/threads'
+import { Route as ApiBrainFoldersRouteImport } from './routes/api/brain/folders'
+import { Route as ApiBrainFilesRouteImport } from './routes/api/brain/files'
 import { Route as ApiAutomationsIdRouteImport } from './routes/api/automations/$id'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiAttachmentsIdRouteImport } from './routes/api/attachments/$id'
 import { Route as ApiAgentsIdRouteImport } from './routes/api/agents/$id'
 import { Route as AuthenticatedInvitationsIdRouteImport } from './routes/_authenticated/invitations/$id'
-import { Route as AuthenticatedAutomationsIdRouteImport } from './routes/_authenticated/automations/$id'
+import { Route as AuthenticatedHandbookSplatRouteImport } from './routes/_authenticated/handbook.$'
+import { Route as AuthenticatedAutomationsIdRouteImport } from './routes/_authenticated/automations.$id'
+import { Route as AuthenticatedAppWorkflowsRouteImport } from './routes/_authenticated/_app/workflows'
+import { Route as AuthenticatedAppTeamsRouteImport } from './routes/_authenticated/_app/teams'
+import { Route as AuthenticatedAppTasksRouteImport } from './routes/_authenticated/_app/tasks'
+import { Route as AuthenticatedAppSkillsRouteImport } from './routes/_authenticated/_app/skills'
+import { Route as AuthenticatedAppInboxRouteImport } from './routes/_authenticated/_app/inbox'
+import { Route as AuthenticatedAppHomeRouteImport } from './routes/_authenticated/_app/home'
+import { Route as AuthenticatedAppFilesRouteImport } from './routes/_authenticated/_app/files'
+import { Route as AuthenticatedAppConnectorsRouteImport } from './routes/_authenticated/_app/connectors'
+import { Route as AuthenticatedAppChatsRouteImport } from './routes/_authenticated/_app/chats'
+import { Route as AuthenticatedAppAgentsRouteImport } from './routes/_authenticated/_app/agents'
+import { Route as AuthenticatedAppWorkflowsIndexRouteImport } from './routes/_authenticated/_app/workflows.index'
+import { Route as AuthenticatedAppTeamsIndexRouteImport } from './routes/_authenticated/_app/teams.index'
+import { Route as AuthenticatedAppTasksIndexRouteImport } from './routes/_authenticated/_app/tasks.index'
+import { Route as AuthenticatedAppChatsIndexRouteImport } from './routes/_authenticated/_app/chats.index'
+import { Route as AuthenticatedAppAgentsIndexRouteImport } from './routes/_authenticated/_app/agents.index'
 import { Route as ApiWorkspacesIdMembersRouteImport } from './routes/api/workspaces/$id/members'
 import { Route as ApiWorkspacesIdInvitationsRouteImport } from './routes/api/workspaces/$id/invitations'
 import { Route as ApiWorkProductsIdReviewRouteImport } from './routes/api/work-products/$id/review'
+import { Route as ApiTeamsTeamIdRepositoriesRouteImport } from './routes/api/teams/$teamId/repositories'
+import { Route as ApiTeamsTeamIdOwnerRouteImport } from './routes/api/teams/$teamId/owner'
+import { Route as ApiTeamsTeamIdMembersRouteImport } from './routes/api/teams/$teamId/members'
 import { Route as ApiPermissionRequestsIdResolveRouteImport } from './routes/api/permission-requests/$id/resolve'
 import { Route as ApiIssuesIdWorkProductsRouteImport } from './routes/api/issues/$id/work-products'
 import { Route as ApiIssuesIdUsageRouteImport } from './routes/api/issues/$id/usage'
@@ -78,33 +108,57 @@ import { Route as ApiIssuesIdSubscribeRouteImport } from './routes/api/issues/$i
 import { Route as ApiIssuesIdSourceBindingsRouteImport } from './routes/api/issues/$id/source-bindings'
 import { Route as ApiIssuesIdRunsRouteImport } from './routes/api/issues/$id/runs'
 import { Route as ApiIssuesIdReactionsRouteImport } from './routes/api/issues/$id/reactions'
+import { Route as ApiIssuesIdPendingApprovalRouteImport } from './routes/api/issues/$id/pending-approval'
 import { Route as ApiIssuesIdEventsRouteImport } from './routes/api/issues/$id/events'
 import { Route as ApiIssuesIdCommentsRouteImport } from './routes/api/issues/$id/comments'
 import { Route as ApiIssuesIdCancelRouteImport } from './routes/api/issues/$id/cancel'
 import { Route as ApiIssuesIdActiveRunRouteImport } from './routes/api/issues/$id/active-run'
+import { Route as ApiInternalExecutorCatalogRouteImport } from './routes/api/internal/executor/catalog'
 import { Route as ApiInboxIdReadRouteImport } from './routes/api/inbox/$id/read'
 import { Route as ApiInboxIdArchiveRouteImport } from './routes/api/inbox/$id/archive'
+import { Route as ApiGmailDraftsDraftIdRouteImport } from './routes/api/gmail/drafts/$draftId'
 import { Route as ApiExecutorOauthStartRouteImport } from './routes/api/executor/oauth/start'
+import { Route as ApiExecutorDecideDiagnoseRouteImport } from './routes/api/executor/decide/diagnose'
 import { Route as ApiDocumentsIdVersionsRouteImport } from './routes/api/documents/$id/versions'
 import { Route as ApiDocumentsIdMetadataRouteImport } from './routes/api/documents/$id/metadata'
 import { Route as ApiDocumentsIdDocxRouteImport } from './routes/api/documents/$id/docx'
 import { Route as ApiDocumentsIdDisplayRouteImport } from './routes/api/documents/$id/display'
+import { Route as ApiConnectionsConnectorIdGrantRouteImport } from './routes/api/connections/$connectorId/grant'
 import { Route as ApiConnectionsConnectorIdActivityRouteImport } from './routes/api/connections/$connectorId/activity'
 import { Route as ApiCommentsIdReactionsRouteImport } from './routes/api/comments/$id/reactions'
 import { Route as ApiChatThreadsIdRouteImport } from './routes/api/chat/threads/$id'
+import { Route as ApiBrainFoldersIdRouteImport } from './routes/api/brain/folders/$id'
+import { Route as ApiBrainFilesIdRouteImport } from './routes/api/brain/files/$id'
 import { Route as ApiAutomationsIdTriggersRouteImport } from './routes/api/automations/$id/triggers'
 import { Route as ApiAutomationsIdTriggerRouteImport } from './routes/api/automations/$id/trigger'
 import { Route as ApiAutomationsIdRunsRouteImport } from './routes/api/automations/$id/runs'
 import { Route as ApiAgentsIdRestoreRouteImport } from './routes/api/agents/$id/restore'
 import { Route as ApiAgentsIdArchiveRouteImport } from './routes/api/agents/$id/archive'
+import { Route as ApiAgentsIdActivityRouteImport } from './routes/api/agents/$id/activity'
+import { Route as ApiAgentsIdAccessRouteImport } from './routes/api/agents/$id/access'
+import { Route as AuthenticatedAppWorkflowsIdRouteImport } from './routes/_authenticated/_app/workflows.$id'
+import { Route as AuthenticatedAppTeamsIssuesRouteImport } from './routes/_authenticated/_app/teams.issues'
+import { Route as AuthenticatedAppTeamsTeamIdRouteImport } from './routes/_authenticated/_app/teams.$teamId'
+import { Route as AuthenticatedAppTasksIssueIdRouteImport } from './routes/_authenticated/_app/tasks.$issueId'
+import { Route as AuthenticatedAppChatsThreadIdRouteImport } from './routes/_authenticated/_app/chats.$threadId'
+import { Route as AuthenticatedAppAgentsAgentIdRouteImport } from './routes/_authenticated/_app/agents.$agentId'
 import { Route as ApiWorkspacesIdMembersMemberIdRouteImport } from './routes/api/workspaces/$id/members/$memberId'
 import { Route as ApiWorkspacesIdInvitationsInvitationIdRouteImport } from './routes/api/workspaces/$id/invitations/$invitationId'
+import { Route as ApiTeamsTeamIdRepositoriesAvailableRouteImport } from './routes/api/teams/$teamId/repositories/available'
+import { Route as ApiTeamsTeamIdRepositoriesRepositoryIdRouteImport } from './routes/api/teams/$teamId/repositories/$repositoryId'
+import { Route as ApiTeamsTeamIdMembersMembershipIdRouteImport } from './routes/api/teams/$teamId/members/$membershipId'
 import { Route as ApiIssuesIdSourceBindingsBindingIdRouteImport } from './routes/api/issues/$id/source-bindings/$bindingId'
+import { Route as ApiChatThreadsThreadIdDecideAnalysesRouteImport } from './routes/api/chat/threads/$threadId/decide-analyses'
 import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/chat/threads/$id/tool-approval'
 import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/chat/threads/$id/primary-issue'
 import { Route as ApiChatThreadsIdPermissionRequestsRouteImport } from './routes/api/chat/threads/$id/permission-requests'
 import { Route as ApiChatThreadsIdDocumentsRouteImport } from './routes/api/chat/threads/$id/documents'
+import { Route as ApiBrainProposalsIdResolveRouteImport } from './routes/api/brain/proposals/$id/resolve'
+import { Route as ApiBrainFoldersIdFilesRouteImport } from './routes/api/brain/folders/$id/files'
+import { Route as ApiBrainFilesIdTextRouteImport } from './routes/api/brain/files/$id/text'
+import { Route as ApiBrainFilesIdContentRouteImport } from './routes/api/brain/files/$id/content'
 import { Route as ApiAutomationsIdTriggersTriggerIdRouteImport } from './routes/api/automations/$id/triggers/$triggerId'
+import { Route as ApiTeamsTeamIdRepositoriesRepositoryIdRetryRouteImport } from './routes/api/teams/$teamId/repositories/$repositoryId/retry'
 import { Route as ApiConnectionsConnectorIdToolsNameGrantRouteImport } from './routes/api/connections/$connectorId/tools/$name/grant'
 
 const TermsRoute = TermsRouteImport.update({
@@ -176,6 +230,11 @@ const ApiUploadFileRoute = ApiUploadFileRouteImport.update({
   path: '/api/upload-file',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiTeamsRoute = ApiTeamsRouteImport.update({
+  id: '/api/teams',
+  path: '/api/teams',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiProjectsRoute = ApiProjectsRouteImport.update({
   id: '/api/projects',
   path: '/api/projects',
@@ -226,16 +285,31 @@ const AuthenticatedWorkspaceRoute = AuthenticatedWorkspaceRouteImport.update({
   path: '/workspace',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
-const AuthenticatedAutomationsIndexRoute =
-  AuthenticatedAutomationsIndexRouteImport.update({
-    id: '/automations/',
-    path: '/automations/',
+const AuthenticatedConnectionsRoute =
+  AuthenticatedConnectionsRouteImport.update({
+    id: '/connections',
+    path: '/connections',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedAutomationsRoute =
+  AuthenticatedAutomationsRouteImport.update({
+    id: '/automations',
+    path: '/automations',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
+const AuthenticatedAppRoute = AuthenticatedAppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const ApiWorkspacesIdRoute = ApiWorkspacesIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => ApiWorkspacesRoute,
+} as any)
+const ApiTeamsTeamIdRoute = ApiTeamsTeamIdRouteImport.update({
+  id: '/$teamId',
+  path: '/$teamId',
+  getParentRoute: () => ApiTeamsRoute,
 } as any)
 const ApiRunsIdRoute = ApiRunsIdRouteImport.update({
   id: '/api/runs/$id',
@@ -294,6 +368,26 @@ const ApiInboxArchiveAllRoute = ApiInboxArchiveAllRouteImport.update({
   path: '/archive-all',
   getParentRoute: () => ApiInboxRoute,
 } as any)
+const ApiGmailSendRoute = ApiGmailSendRouteImport.update({
+  id: '/api/gmail/send',
+  path: '/api/gmail/send',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGmailMessagesRoute = ApiGmailMessagesRouteImport.update({
+  id: '/api/gmail/messages',
+  path: '/api/gmail/messages',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGmailDraftsRoute = ApiGmailDraftsRouteImport.update({
+  id: '/api/gmail/drafts',
+  path: '/api/gmail/drafts',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiGithubWebhookRoute = ApiGithubWebhookRouteImport.update({
+  id: '/api/github/webhook',
+  path: '/api/github/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiGithubSetupRoute = ApiGithubSetupRouteImport.update({
   id: '/api/github/setup',
   path: '/api/github/setup',
@@ -339,6 +433,11 @@ const ApiDevIssueRunPlanRoute = ApiDevIssueRunPlanRouteImport.update({
   path: '/api/dev/issue-run-plan',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiDecideAnalysesRunIdRoute = ApiDecideAnalysesRunIdRouteImport.update({
+  id: '/api/decide-analyses/$runId',
+  path: '/api/decide-analyses/$runId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiConnectionsCallbackEventsRoute =
   ApiConnectionsCallbackEventsRouteImport.update({
     id: '/callback-events',
@@ -359,6 +458,16 @@ const ApiCommentsIdRoute = ApiCommentsIdRouteImport.update({
 const ApiChatThreadsRoute = ApiChatThreadsRouteImport.update({
   id: '/api/chat/threads',
   path: '/api/chat/threads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBrainFoldersRoute = ApiBrainFoldersRouteImport.update({
+  id: '/api/brain/folders',
+  path: '/api/brain/folders',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiBrainFilesRoute = ApiBrainFilesRouteImport.update({
+  id: '/api/brain/files',
+  path: '/api/brain/files',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiAutomationsIdRoute = ApiAutomationsIdRouteImport.update({
@@ -387,11 +496,99 @@ const AuthenticatedInvitationsIdRoute =
     path: '/invitations/$id',
     getParentRoute: () => AuthenticatedRoute,
   } as any)
+const AuthenticatedHandbookSplatRoute =
+  AuthenticatedHandbookSplatRouteImport.update({
+    id: '/handbook/$',
+    path: '/handbook/$',
+    getParentRoute: () => AuthenticatedRoute,
+  } as any)
 const AuthenticatedAutomationsIdRoute =
   AuthenticatedAutomationsIdRouteImport.update({
-    id: '/automations/$id',
-    path: '/automations/$id',
-    getParentRoute: () => AuthenticatedRoute,
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedAutomationsRoute,
+  } as any)
+const AuthenticatedAppWorkflowsRoute =
+  AuthenticatedAppWorkflowsRouteImport.update({
+    id: '/workflows',
+    path: '/workflows',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppTeamsRoute = AuthenticatedAppTeamsRouteImport.update({
+  id: '/teams',
+  path: '/teams',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppTasksRoute = AuthenticatedAppTasksRouteImport.update({
+  id: '/tasks',
+  path: '/tasks',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppSkillsRoute = AuthenticatedAppSkillsRouteImport.update({
+  id: '/skills',
+  path: '/skills',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppInboxRoute = AuthenticatedAppInboxRouteImport.update({
+  id: '/inbox',
+  path: '/inbox',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppHomeRoute = AuthenticatedAppHomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppFilesRoute = AuthenticatedAppFilesRouteImport.update({
+  id: '/files',
+  path: '/files',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppConnectorsRoute =
+  AuthenticatedAppConnectorsRouteImport.update({
+    id: '/connectors',
+    path: '/connectors',
+    getParentRoute: () => AuthenticatedAppRoute,
+  } as any)
+const AuthenticatedAppChatsRoute = AuthenticatedAppChatsRouteImport.update({
+  id: '/chats',
+  path: '/chats',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppAgentsRoute = AuthenticatedAppAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => AuthenticatedAppRoute,
+} as any)
+const AuthenticatedAppWorkflowsIndexRoute =
+  AuthenticatedAppWorkflowsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppWorkflowsRoute,
+  } as any)
+const AuthenticatedAppTeamsIndexRoute =
+  AuthenticatedAppTeamsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppTeamsRoute,
+  } as any)
+const AuthenticatedAppTasksIndexRoute =
+  AuthenticatedAppTasksIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppTasksRoute,
+  } as any)
+const AuthenticatedAppChatsIndexRoute =
+  AuthenticatedAppChatsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppChatsRoute,
+  } as any)
+const AuthenticatedAppAgentsIndexRoute =
+  AuthenticatedAppAgentsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedAppAgentsRoute,
   } as any)
 const ApiWorkspacesIdMembersRoute = ApiWorkspacesIdMembersRouteImport.update({
   id: '/members',
@@ -408,6 +605,22 @@ const ApiWorkProductsIdReviewRoute = ApiWorkProductsIdReviewRouteImport.update({
   id: '/api/work-products/$id/review',
   path: '/api/work-products/$id/review',
   getParentRoute: () => rootRouteImport,
+} as any)
+const ApiTeamsTeamIdRepositoriesRoute =
+  ApiTeamsTeamIdRepositoriesRouteImport.update({
+    id: '/repositories',
+    path: '/repositories',
+    getParentRoute: () => ApiTeamsTeamIdRoute,
+  } as any)
+const ApiTeamsTeamIdOwnerRoute = ApiTeamsTeamIdOwnerRouteImport.update({
+  id: '/owner',
+  path: '/owner',
+  getParentRoute: () => ApiTeamsTeamIdRoute,
+} as any)
+const ApiTeamsTeamIdMembersRoute = ApiTeamsTeamIdMembersRouteImport.update({
+  id: '/members',
+  path: '/members',
+  getParentRoute: () => ApiTeamsTeamIdRoute,
 } as any)
 const ApiPermissionRequestsIdResolveRoute =
   ApiPermissionRequestsIdResolveRouteImport.update({
@@ -461,6 +674,12 @@ const ApiIssuesIdReactionsRoute = ApiIssuesIdReactionsRouteImport.update({
   path: '/reactions',
   getParentRoute: () => ApiIssuesIdRoute,
 } as any)
+const ApiIssuesIdPendingApprovalRoute =
+  ApiIssuesIdPendingApprovalRouteImport.update({
+    id: '/pending-approval',
+    path: '/pending-approval',
+    getParentRoute: () => ApiIssuesIdRoute,
+  } as any)
 const ApiIssuesIdEventsRoute = ApiIssuesIdEventsRouteImport.update({
   id: '/events',
   path: '/events',
@@ -481,6 +700,12 @@ const ApiIssuesIdActiveRunRoute = ApiIssuesIdActiveRunRouteImport.update({
   path: '/active-run',
   getParentRoute: () => ApiIssuesIdRoute,
 } as any)
+const ApiInternalExecutorCatalogRoute =
+  ApiInternalExecutorCatalogRouteImport.update({
+    id: '/api/internal/executor/catalog',
+    path: '/api/internal/executor/catalog',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiInboxIdReadRoute = ApiInboxIdReadRouteImport.update({
   id: '/$id/read',
   path: '/$id/read',
@@ -491,11 +716,22 @@ const ApiInboxIdArchiveRoute = ApiInboxIdArchiveRouteImport.update({
   path: '/$id/archive',
   getParentRoute: () => ApiInboxRoute,
 } as any)
+const ApiGmailDraftsDraftIdRoute = ApiGmailDraftsDraftIdRouteImport.update({
+  id: '/$draftId',
+  path: '/$draftId',
+  getParentRoute: () => ApiGmailDraftsRoute,
+} as any)
 const ApiExecutorOauthStartRoute = ApiExecutorOauthStartRouteImport.update({
   id: '/api/executor/oauth/start',
   path: '/api/executor/oauth/start',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiExecutorDecideDiagnoseRoute =
+  ApiExecutorDecideDiagnoseRouteImport.update({
+    id: '/api/executor/decide/diagnose',
+    path: '/api/executor/decide/diagnose',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiDocumentsIdVersionsRoute = ApiDocumentsIdVersionsRouteImport.update({
   id: '/api/documents/$id/versions',
   path: '/api/documents/$id/versions',
@@ -516,6 +752,12 @@ const ApiDocumentsIdDisplayRoute = ApiDocumentsIdDisplayRouteImport.update({
   path: '/api/documents/$id/display',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiConnectionsConnectorIdGrantRoute =
+  ApiConnectionsConnectorIdGrantRouteImport.update({
+    id: '/grant',
+    path: '/grant',
+    getParentRoute: () => ApiConnectionsConnectorIdRoute,
+  } as any)
 const ApiConnectionsConnectorIdActivityRoute =
   ApiConnectionsConnectorIdActivityRouteImport.update({
     id: '/activity',
@@ -531,6 +773,16 @@ const ApiChatThreadsIdRoute = ApiChatThreadsIdRouteImport.update({
   id: '/$id',
   path: '/$id',
   getParentRoute: () => ApiChatThreadsRoute,
+} as any)
+const ApiBrainFoldersIdRoute = ApiBrainFoldersIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiBrainFoldersRoute,
+} as any)
+const ApiBrainFilesIdRoute = ApiBrainFilesIdRouteImport.update({
+  id: '/$id',
+  path: '/$id',
+  getParentRoute: () => ApiBrainFilesRoute,
 } as any)
 const ApiAutomationsIdTriggersRoute =
   ApiAutomationsIdTriggersRouteImport.update({
@@ -558,6 +810,52 @@ const ApiAgentsIdArchiveRoute = ApiAgentsIdArchiveRouteImport.update({
   path: '/archive',
   getParentRoute: () => ApiAgentsIdRoute,
 } as any)
+const ApiAgentsIdActivityRoute = ApiAgentsIdActivityRouteImport.update({
+  id: '/activity',
+  path: '/activity',
+  getParentRoute: () => ApiAgentsIdRoute,
+} as any)
+const ApiAgentsIdAccessRoute = ApiAgentsIdAccessRouteImport.update({
+  id: '/access',
+  path: '/access',
+  getParentRoute: () => ApiAgentsIdRoute,
+} as any)
+const AuthenticatedAppWorkflowsIdRoute =
+  AuthenticatedAppWorkflowsIdRouteImport.update({
+    id: '/$id',
+    path: '/$id',
+    getParentRoute: () => AuthenticatedAppWorkflowsRoute,
+  } as any)
+const AuthenticatedAppTeamsIssuesRoute =
+  AuthenticatedAppTeamsIssuesRouteImport.update({
+    id: '/issues',
+    path: '/issues',
+    getParentRoute: () => AuthenticatedAppTeamsRoute,
+  } as any)
+const AuthenticatedAppTeamsTeamIdRoute =
+  AuthenticatedAppTeamsTeamIdRouteImport.update({
+    id: '/$teamId',
+    path: '/$teamId',
+    getParentRoute: () => AuthenticatedAppTeamsRoute,
+  } as any)
+const AuthenticatedAppTasksIssueIdRoute =
+  AuthenticatedAppTasksIssueIdRouteImport.update({
+    id: '/$issueId',
+    path: '/$issueId',
+    getParentRoute: () => AuthenticatedAppTasksRoute,
+  } as any)
+const AuthenticatedAppChatsThreadIdRoute =
+  AuthenticatedAppChatsThreadIdRouteImport.update({
+    id: '/$threadId',
+    path: '/$threadId',
+    getParentRoute: () => AuthenticatedAppChatsRoute,
+  } as any)
+const AuthenticatedAppAgentsAgentIdRoute =
+  AuthenticatedAppAgentsAgentIdRouteImport.update({
+    id: '/$agentId',
+    path: '/$agentId',
+    getParentRoute: () => AuthenticatedAppAgentsRoute,
+  } as any)
 const ApiWorkspacesIdMembersMemberIdRoute =
   ApiWorkspacesIdMembersMemberIdRouteImport.update({
     id: '/$memberId',
@@ -570,11 +868,35 @@ const ApiWorkspacesIdInvitationsInvitationIdRoute =
     path: '/$invitationId',
     getParentRoute: () => ApiWorkspacesIdInvitationsRoute,
   } as any)
+const ApiTeamsTeamIdRepositoriesAvailableRoute =
+  ApiTeamsTeamIdRepositoriesAvailableRouteImport.update({
+    id: '/available',
+    path: '/available',
+    getParentRoute: () => ApiTeamsTeamIdRepositoriesRoute,
+  } as any)
+const ApiTeamsTeamIdRepositoriesRepositoryIdRoute =
+  ApiTeamsTeamIdRepositoriesRepositoryIdRouteImport.update({
+    id: '/$repositoryId',
+    path: '/$repositoryId',
+    getParentRoute: () => ApiTeamsTeamIdRepositoriesRoute,
+  } as any)
+const ApiTeamsTeamIdMembersMembershipIdRoute =
+  ApiTeamsTeamIdMembersMembershipIdRouteImport.update({
+    id: '/$membershipId',
+    path: '/$membershipId',
+    getParentRoute: () => ApiTeamsTeamIdMembersRoute,
+  } as any)
 const ApiIssuesIdSourceBindingsBindingIdRoute =
   ApiIssuesIdSourceBindingsBindingIdRouteImport.update({
     id: '/$bindingId',
     path: '/$bindingId',
     getParentRoute: () => ApiIssuesIdSourceBindingsRoute,
+  } as any)
+const ApiChatThreadsThreadIdDecideAnalysesRoute =
+  ApiChatThreadsThreadIdDecideAnalysesRouteImport.update({
+    id: '/$threadId/decide-analyses',
+    path: '/$threadId/decide-analyses',
+    getParentRoute: () => ApiChatThreadsRoute,
   } as any)
 const ApiChatThreadsIdToolApprovalRoute =
   ApiChatThreadsIdToolApprovalRouteImport.update({
@@ -600,11 +922,38 @@ const ApiChatThreadsIdDocumentsRoute =
     path: '/documents',
     getParentRoute: () => ApiChatThreadsIdRoute,
   } as any)
+const ApiBrainProposalsIdResolveRoute =
+  ApiBrainProposalsIdResolveRouteImport.update({
+    id: '/api/brain/proposals/$id/resolve',
+    path: '/api/brain/proposals/$id/resolve',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiBrainFoldersIdFilesRoute = ApiBrainFoldersIdFilesRouteImport.update({
+  id: '/files',
+  path: '/files',
+  getParentRoute: () => ApiBrainFoldersIdRoute,
+} as any)
+const ApiBrainFilesIdTextRoute = ApiBrainFilesIdTextRouteImport.update({
+  id: '/text',
+  path: '/text',
+  getParentRoute: () => ApiBrainFilesIdRoute,
+} as any)
+const ApiBrainFilesIdContentRoute = ApiBrainFilesIdContentRouteImport.update({
+  id: '/content',
+  path: '/content',
+  getParentRoute: () => ApiBrainFilesIdRoute,
+} as any)
 const ApiAutomationsIdTriggersTriggerIdRoute =
   ApiAutomationsIdTriggersTriggerIdRouteImport.update({
     id: '/$triggerId',
     path: '/$triggerId',
     getParentRoute: () => ApiAutomationsIdTriggersRoute,
+  } as any)
+const ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute =
+  ApiTeamsTeamIdRepositoriesRepositoryIdRetryRouteImport.update({
+    id: '/retry',
+    path: '/retry',
+    getParentRoute: () => ApiTeamsTeamIdRepositoriesRepositoryIdRoute,
   } as any)
 const ApiConnectionsConnectorIdToolsNameGrantRoute =
   ApiConnectionsConnectorIdToolsNameGrantRouteImport.update({
@@ -625,6 +974,8 @@ export interface FileRoutesByFullPath {
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/automations': typeof AuthenticatedAutomationsRouteWithChildren
+  '/connections': typeof AuthenticatedConnectionsRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/$': typeof ApiSplatRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
@@ -635,18 +986,33 @@ export interface FileRoutesByFullPath {
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
+  '/api/teams': typeof ApiTeamsRouteWithChildren
   '/api/upload-file': typeof ApiUploadFileRoute
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
+  '/agents': typeof AuthenticatedAppAgentsRouteWithChildren
+  '/chats': typeof AuthenticatedAppChatsRouteWithChildren
+  '/connectors': typeof AuthenticatedAppConnectorsRoute
+  '/files': typeof AuthenticatedAppFilesRoute
+  '/home': typeof AuthenticatedAppHomeRoute
+  '/inbox': typeof AuthenticatedAppInboxRoute
+  '/skills': typeof AuthenticatedAppSkillsRoute
+  '/tasks': typeof AuthenticatedAppTasksRouteWithChildren
+  '/teams': typeof AuthenticatedAppTeamsRouteWithChildren
+  '/workflows': typeof AuthenticatedAppWorkflowsRouteWithChildren
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/handbook/$': typeof AuthenticatedHandbookSplatRoute
   '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/attachments/$id': typeof ApiAttachmentsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
+  '/api/brain/files': typeof ApiBrainFilesRouteWithChildren
+  '/api/brain/folders': typeof ApiBrainFoldersRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/connections/callback-events': typeof ApiConnectionsCallbackEventsRoute
+  '/api/decide-analyses/$runId': typeof ApiDecideAnalysesRunIdRoute
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/discord/setup': typeof ApiDiscordSetupRoute
@@ -656,6 +1022,10 @@ export interface FileRoutesByFullPath {
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/gmail/drafts': typeof ApiGmailDraftsRouteWithChildren
+  '/api/gmail/messages': typeof ApiGmailMessagesRoute
+  '/api/gmail/send': typeof ApiGmailSendRoute
   '/api/inbox/archive-all': typeof ApiInboxArchiveAllRoute
   '/api/inbox/archive-all-read': typeof ApiInboxArchiveAllReadRoute
   '/api/inbox/archive-completed': typeof ApiInboxArchiveCompletedRoute
@@ -667,27 +1037,42 @@ export interface FileRoutesByFullPath {
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/runs/$id': typeof ApiRunsIdRoute
+  '/api/teams/$teamId': typeof ApiTeamsTeamIdRouteWithChildren
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
-  '/automations/': typeof AuthenticatedAutomationsIndexRoute
+  '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
+  '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
+  '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
+  '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
+  '/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
+  '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
+  '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
   '/api/automations/$id/trigger': typeof ApiAutomationsIdTriggerRoute
   '/api/automations/$id/triggers': typeof ApiAutomationsIdTriggersRouteWithChildren
+  '/api/brain/files/$id': typeof ApiBrainFilesIdRouteWithChildren
+  '/api/brain/folders/$id': typeof ApiBrainFoldersIdRouteWithChildren
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/connections/$connectorId/grant': typeof ApiConnectionsConnectorIdGrantRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
+  '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
+  '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
+  '/api/internal/executor/catalog': typeof ApiInternalExecutorCatalogRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
   '/api/issues/$id/events': typeof ApiIssuesIdEventsRoute
+  '/api/issues/$id/pending-approval': typeof ApiIssuesIdPendingApprovalRoute
   '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
   '/api/issues/$id/runs': typeof ApiIssuesIdRunsRoute
   '/api/issues/$id/source-bindings': typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -698,18 +1083,35 @@ export interface FileRoutesByFullPath {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
+  '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
+  '/api/teams/$teamId/repositories': typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/agents/': typeof AuthenticatedAppAgentsIndexRoute
+  '/chats/': typeof AuthenticatedAppChatsIndexRoute
+  '/tasks/': typeof AuthenticatedAppTasksIndexRoute
+  '/teams/': typeof AuthenticatedAppTeamsIndexRoute
+  '/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
+  '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
+  '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
+  '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
+  '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
+  '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
+  '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
+  '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
+  '/api/teams/$teamId/repositories/available': typeof ApiTeamsTeamIdRepositoriesAvailableRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
+  '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -723,6 +1125,8 @@ export interface FileRoutesByTo {
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/automations': typeof AuthenticatedAutomationsRouteWithChildren
+  '/connections': typeof AuthenticatedConnectionsRoute
   '/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/$': typeof ApiSplatRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
@@ -733,18 +1137,28 @@ export interface FileRoutesByTo {
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
+  '/api/teams': typeof ApiTeamsRouteWithChildren
   '/api/upload-file': typeof ApiUploadFileRoute
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
+  '/connectors': typeof AuthenticatedAppConnectorsRoute
+  '/files': typeof AuthenticatedAppFilesRoute
+  '/home': typeof AuthenticatedAppHomeRoute
+  '/inbox': typeof AuthenticatedAppInboxRoute
+  '/skills': typeof AuthenticatedAppSkillsRoute
   '/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/handbook/$': typeof AuthenticatedHandbookSplatRoute
   '/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/attachments/$id': typeof ApiAttachmentsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
+  '/api/brain/files': typeof ApiBrainFilesRouteWithChildren
+  '/api/brain/folders': typeof ApiBrainFoldersRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/connections/callback-events': typeof ApiConnectionsCallbackEventsRoute
+  '/api/decide-analyses/$runId': typeof ApiDecideAnalysesRunIdRoute
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/discord/setup': typeof ApiDiscordSetupRoute
@@ -754,6 +1168,10 @@ export interface FileRoutesByTo {
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/gmail/drafts': typeof ApiGmailDraftsRouteWithChildren
+  '/api/gmail/messages': typeof ApiGmailMessagesRoute
+  '/api/gmail/send': typeof ApiGmailSendRoute
   '/api/inbox/archive-all': typeof ApiInboxArchiveAllRoute
   '/api/inbox/archive-all-read': typeof ApiInboxArchiveAllReadRoute
   '/api/inbox/archive-completed': typeof ApiInboxArchiveCompletedRoute
@@ -765,27 +1183,42 @@ export interface FileRoutesByTo {
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/runs/$id': typeof ApiRunsIdRoute
+  '/api/teams/$teamId': typeof ApiTeamsTeamIdRouteWithChildren
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
-  '/automations': typeof AuthenticatedAutomationsIndexRoute
+  '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
+  '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
+  '/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
+  '/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
+  '/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
+  '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
+  '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
   '/api/automations/$id/trigger': typeof ApiAutomationsIdTriggerRoute
   '/api/automations/$id/triggers': typeof ApiAutomationsIdTriggersRouteWithChildren
+  '/api/brain/files/$id': typeof ApiBrainFilesIdRouteWithChildren
+  '/api/brain/folders/$id': typeof ApiBrainFoldersIdRouteWithChildren
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/connections/$connectorId/grant': typeof ApiConnectionsConnectorIdGrantRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
+  '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
+  '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
+  '/api/internal/executor/catalog': typeof ApiInternalExecutorCatalogRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
   '/api/issues/$id/events': typeof ApiIssuesIdEventsRoute
+  '/api/issues/$id/pending-approval': typeof ApiIssuesIdPendingApprovalRoute
   '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
   '/api/issues/$id/runs': typeof ApiIssuesIdRunsRoute
   '/api/issues/$id/source-bindings': typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -796,18 +1229,35 @@ export interface FileRoutesByTo {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
+  '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
+  '/api/teams/$teamId/repositories': typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/agents': typeof AuthenticatedAppAgentsIndexRoute
+  '/chats': typeof AuthenticatedAppChatsIndexRoute
+  '/tasks': typeof AuthenticatedAppTasksIndexRoute
+  '/teams': typeof AuthenticatedAppTeamsIndexRoute
+  '/workflows': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
+  '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
+  '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
+  '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
+  '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
+  '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
+  '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
+  '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
+  '/api/teams/$teamId/repositories/available': typeof ApiTeamsTeamIdRepositoriesAvailableRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
+  '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -823,6 +1273,9 @@ export interface FileRoutesById {
   '/roadmap': typeof RoadmapRoute
   '/signup': typeof SignupRoute
   '/terms': typeof TermsRoute
+  '/_authenticated/_app': typeof AuthenticatedAppRouteWithChildren
+  '/_authenticated/automations': typeof AuthenticatedAutomationsRouteWithChildren
+  '/_authenticated/connections': typeof AuthenticatedConnectionsRoute
   '/_authenticated/workspace': typeof AuthenticatedWorkspaceRoute
   '/api/$': typeof ApiSplatRoute
   '/api/agents': typeof ApiAgentsRouteWithChildren
@@ -833,18 +1286,33 @@ export interface FileRoutesById {
   '/api/issues': typeof ApiIssuesRouteWithChildren
   '/api/me': typeof ApiMeRoute
   '/api/projects': typeof ApiProjectsRoute
+  '/api/teams': typeof ApiTeamsRouteWithChildren
   '/api/upload-file': typeof ApiUploadFileRoute
   '/api/workspaces': typeof ApiWorkspacesRouteWithChildren
+  '/_authenticated/_app/agents': typeof AuthenticatedAppAgentsRouteWithChildren
+  '/_authenticated/_app/chats': typeof AuthenticatedAppChatsRouteWithChildren
+  '/_authenticated/_app/connectors': typeof AuthenticatedAppConnectorsRoute
+  '/_authenticated/_app/files': typeof AuthenticatedAppFilesRoute
+  '/_authenticated/_app/home': typeof AuthenticatedAppHomeRoute
+  '/_authenticated/_app/inbox': typeof AuthenticatedAppInboxRoute
+  '/_authenticated/_app/skills': typeof AuthenticatedAppSkillsRoute
+  '/_authenticated/_app/tasks': typeof AuthenticatedAppTasksRouteWithChildren
+  '/_authenticated/_app/teams': typeof AuthenticatedAppTeamsRouteWithChildren
+  '/_authenticated/_app/workflows': typeof AuthenticatedAppWorkflowsRouteWithChildren
   '/_authenticated/automations/$id': typeof AuthenticatedAutomationsIdRoute
+  '/_authenticated/handbook/$': typeof AuthenticatedHandbookSplatRoute
   '/_authenticated/invitations/$id': typeof AuthenticatedInvitationsIdRoute
   '/api/agents/$id': typeof ApiAgentsIdRouteWithChildren
   '/api/attachments/$id': typeof ApiAttachmentsIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/automations/$id': typeof ApiAutomationsIdRouteWithChildren
+  '/api/brain/files': typeof ApiBrainFilesRouteWithChildren
+  '/api/brain/folders': typeof ApiBrainFoldersRouteWithChildren
   '/api/chat/threads': typeof ApiChatThreadsRouteWithChildren
   '/api/comments/$id': typeof ApiCommentsIdRouteWithChildren
   '/api/connections/$connectorId': typeof ApiConnectionsConnectorIdRouteWithChildren
   '/api/connections/callback-events': typeof ApiConnectionsCallbackEventsRoute
+  '/api/decide-analyses/$runId': typeof ApiDecideAnalysesRunIdRoute
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/discord/setup': typeof ApiDiscordSetupRoute
@@ -854,6 +1322,10 @@ export interface FileRoutesById {
   '/api/github/callback': typeof ApiGithubCallbackRoute
   '/api/github/install': typeof ApiGithubInstallRoute
   '/api/github/setup': typeof ApiGithubSetupRoute
+  '/api/github/webhook': typeof ApiGithubWebhookRoute
+  '/api/gmail/drafts': typeof ApiGmailDraftsRouteWithChildren
+  '/api/gmail/messages': typeof ApiGmailMessagesRoute
+  '/api/gmail/send': typeof ApiGmailSendRoute
   '/api/inbox/archive-all': typeof ApiInboxArchiveAllRoute
   '/api/inbox/archive-all-read': typeof ApiInboxArchiveAllReadRoute
   '/api/inbox/archive-completed': typeof ApiInboxArchiveCompletedRoute
@@ -865,27 +1337,42 @@ export interface FileRoutesById {
   '/api/issues/search': typeof ApiIssuesSearchRoute
   '/api/oauth/callback': typeof ApiOauthCallbackRoute
   '/api/runs/$id': typeof ApiRunsIdRoute
+  '/api/teams/$teamId': typeof ApiTeamsTeamIdRouteWithChildren
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
-  '/_authenticated/automations/': typeof AuthenticatedAutomationsIndexRoute
+  '/_authenticated/_app/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
+  '/_authenticated/_app/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/_authenticated/_app/tasks/$issueId': typeof AuthenticatedAppTasksIssueIdRoute
+  '/_authenticated/_app/teams/$teamId': typeof AuthenticatedAppTeamsTeamIdRoute
+  '/_authenticated/_app/teams/issues': typeof AuthenticatedAppTeamsIssuesRoute
+  '/_authenticated/_app/workflows/$id': typeof AuthenticatedAppWorkflowsIdRoute
+  '/api/agents/$id/access': typeof ApiAgentsIdAccessRoute
+  '/api/agents/$id/activity': typeof ApiAgentsIdActivityRoute
   '/api/agents/$id/archive': typeof ApiAgentsIdArchiveRoute
   '/api/agents/$id/restore': typeof ApiAgentsIdRestoreRoute
   '/api/automations/$id/runs': typeof ApiAutomationsIdRunsRoute
   '/api/automations/$id/trigger': typeof ApiAutomationsIdTriggerRoute
   '/api/automations/$id/triggers': typeof ApiAutomationsIdTriggersRouteWithChildren
+  '/api/brain/files/$id': typeof ApiBrainFilesIdRouteWithChildren
+  '/api/brain/folders/$id': typeof ApiBrainFoldersIdRouteWithChildren
   '/api/chat/threads/$id': typeof ApiChatThreadsIdRouteWithChildren
   '/api/comments/$id/reactions': typeof ApiCommentsIdReactionsRoute
   '/api/connections/$connectorId/activity': typeof ApiConnectionsConnectorIdActivityRoute
+  '/api/connections/$connectorId/grant': typeof ApiConnectionsConnectorIdGrantRoute
   '/api/documents/$id/display': typeof ApiDocumentsIdDisplayRoute
   '/api/documents/$id/docx': typeof ApiDocumentsIdDocxRoute
   '/api/documents/$id/metadata': typeof ApiDocumentsIdMetadataRoute
   '/api/documents/$id/versions': typeof ApiDocumentsIdVersionsRoute
+  '/api/executor/decide/diagnose': typeof ApiExecutorDecideDiagnoseRoute
   '/api/executor/oauth/start': typeof ApiExecutorOauthStartRoute
+  '/api/gmail/drafts/$draftId': typeof ApiGmailDraftsDraftIdRoute
   '/api/inbox/$id/archive': typeof ApiInboxIdArchiveRoute
   '/api/inbox/$id/read': typeof ApiInboxIdReadRoute
+  '/api/internal/executor/catalog': typeof ApiInternalExecutorCatalogRoute
   '/api/issues/$id/active-run': typeof ApiIssuesIdActiveRunRoute
   '/api/issues/$id/cancel': typeof ApiIssuesIdCancelRoute
   '/api/issues/$id/comments': typeof ApiIssuesIdCommentsRoute
   '/api/issues/$id/events': typeof ApiIssuesIdEventsRoute
+  '/api/issues/$id/pending-approval': typeof ApiIssuesIdPendingApprovalRoute
   '/api/issues/$id/reactions': typeof ApiIssuesIdReactionsRoute
   '/api/issues/$id/runs': typeof ApiIssuesIdRunsRoute
   '/api/issues/$id/source-bindings': typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -896,18 +1383,35 @@ export interface FileRoutesById {
   '/api/issues/$id/usage': typeof ApiIssuesIdUsageRoute
   '/api/issues/$id/work-products': typeof ApiIssuesIdWorkProductsRoute
   '/api/permission-requests/$id/resolve': typeof ApiPermissionRequestsIdResolveRoute
+  '/api/teams/$teamId/members': typeof ApiTeamsTeamIdMembersRouteWithChildren
+  '/api/teams/$teamId/owner': typeof ApiTeamsTeamIdOwnerRoute
+  '/api/teams/$teamId/repositories': typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
   '/api/work-products/$id/review': typeof ApiWorkProductsIdReviewRoute
   '/api/workspaces/$id/invitations': typeof ApiWorkspacesIdInvitationsRouteWithChildren
   '/api/workspaces/$id/members': typeof ApiWorkspacesIdMembersRouteWithChildren
+  '/_authenticated/_app/agents/': typeof AuthenticatedAppAgentsIndexRoute
+  '/_authenticated/_app/chats/': typeof AuthenticatedAppChatsIndexRoute
+  '/_authenticated/_app/tasks/': typeof AuthenticatedAppTasksIndexRoute
+  '/_authenticated/_app/teams/': typeof AuthenticatedAppTeamsIndexRoute
+  '/_authenticated/_app/workflows/': typeof AuthenticatedAppWorkflowsIndexRoute
   '/api/automations/$id/triggers/$triggerId': typeof ApiAutomationsIdTriggersTriggerIdRoute
+  '/api/brain/files/$id/content': typeof ApiBrainFilesIdContentRoute
+  '/api/brain/files/$id/text': typeof ApiBrainFilesIdTextRoute
+  '/api/brain/folders/$id/files': typeof ApiBrainFoldersIdFilesRoute
+  '/api/brain/proposals/$id/resolve': typeof ApiBrainProposalsIdResolveRoute
   '/api/chat/threads/$id/documents': typeof ApiChatThreadsIdDocumentsRoute
   '/api/chat/threads/$id/permission-requests': typeof ApiChatThreadsIdPermissionRequestsRoute
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
+  '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
+  '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
+  '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
+  '/api/teams/$teamId/repositories/available': typeof ApiTeamsTeamIdRepositoriesAvailableRoute
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
+  '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -923,6 +1427,8 @@ export interface FileRouteTypes {
     | '/roadmap'
     | '/signup'
     | '/terms'
+    | '/automations'
+    | '/connections'
     | '/workspace'
     | '/api/$'
     | '/api/agents'
@@ -933,18 +1439,33 @@ export interface FileRouteTypes {
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
+    | '/api/teams'
     | '/api/upload-file'
     | '/api/workspaces'
+    | '/agents'
+    | '/chats'
+    | '/connectors'
+    | '/files'
+    | '/home'
+    | '/inbox'
+    | '/skills'
+    | '/tasks'
+    | '/teams'
+    | '/workflows'
     | '/automations/$id'
+    | '/handbook/$'
     | '/invitations/$id'
     | '/api/agents/$id'
     | '/api/attachments/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
+    | '/api/brain/files'
+    | '/api/brain/folders'
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
     | '/api/connections/callback-events'
+    | '/api/decide-analyses/$runId'
     | '/api/dev/issue-run-plan'
     | '/api/discord/install'
     | '/api/discord/setup'
@@ -954,6 +1475,10 @@ export interface FileRouteTypes {
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
+    | '/api/github/webhook'
+    | '/api/gmail/drafts'
+    | '/api/gmail/messages'
+    | '/api/gmail/send'
     | '/api/inbox/archive-all'
     | '/api/inbox/archive-all-read'
     | '/api/inbox/archive-completed'
@@ -965,27 +1490,42 @@ export interface FileRouteTypes {
     | '/api/issues/search'
     | '/api/oauth/callback'
     | '/api/runs/$id'
+    | '/api/teams/$teamId'
     | '/api/workspaces/$id'
-    | '/automations/'
+    | '/agents/$agentId'
+    | '/chats/$threadId'
+    | '/tasks/$issueId'
+    | '/teams/$teamId'
+    | '/teams/issues'
+    | '/workflows/$id'
+    | '/api/agents/$id/access'
+    | '/api/agents/$id/activity'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/automations/$id/runs'
     | '/api/automations/$id/trigger'
     | '/api/automations/$id/triggers'
+    | '/api/brain/files/$id'
+    | '/api/brain/folders/$id'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/connections/$connectorId/grant'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
     | '/api/documents/$id/versions'
+    | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
+    | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
+    | '/api/internal/executor/catalog'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
     | '/api/issues/$id/events'
+    | '/api/issues/$id/pending-approval'
     | '/api/issues/$id/reactions'
     | '/api/issues/$id/runs'
     | '/api/issues/$id/source-bindings'
@@ -996,18 +1536,35 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/members'
+    | '/api/teams/$teamId/owner'
+    | '/api/teams/$teamId/repositories'
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/agents/'
+    | '/chats/'
+    | '/tasks/'
+    | '/teams/'
+    | '/workflows/'
     | '/api/automations/$id/triggers/$triggerId'
+    | '/api/brain/files/$id/content'
+    | '/api/brain/files/$id/text'
+    | '/api/brain/folders/$id/files'
+    | '/api/brain/proposals/$id/resolve'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
+    | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/issues/$id/source-bindings/$bindingId'
+    | '/api/teams/$teamId/members/$membershipId'
+    | '/api/teams/$teamId/repositories/$repositoryId'
+    | '/api/teams/$teamId/repositories/available'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/api/connections/$connectorId/tools/$name/grant'
+    | '/api/teams/$teamId/repositories/$repositoryId/retry'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -1021,6 +1578,8 @@ export interface FileRouteTypes {
     | '/roadmap'
     | '/signup'
     | '/terms'
+    | '/automations'
+    | '/connections'
     | '/workspace'
     | '/api/$'
     | '/api/agents'
@@ -1031,18 +1590,28 @@ export interface FileRouteTypes {
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
+    | '/api/teams'
     | '/api/upload-file'
     | '/api/workspaces'
+    | '/connectors'
+    | '/files'
+    | '/home'
+    | '/inbox'
+    | '/skills'
     | '/automations/$id'
+    | '/handbook/$'
     | '/invitations/$id'
     | '/api/agents/$id'
     | '/api/attachments/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
+    | '/api/brain/files'
+    | '/api/brain/folders'
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
     | '/api/connections/callback-events'
+    | '/api/decide-analyses/$runId'
     | '/api/dev/issue-run-plan'
     | '/api/discord/install'
     | '/api/discord/setup'
@@ -1052,6 +1621,10 @@ export interface FileRouteTypes {
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
+    | '/api/github/webhook'
+    | '/api/gmail/drafts'
+    | '/api/gmail/messages'
+    | '/api/gmail/send'
     | '/api/inbox/archive-all'
     | '/api/inbox/archive-all-read'
     | '/api/inbox/archive-completed'
@@ -1063,27 +1636,42 @@ export interface FileRouteTypes {
     | '/api/issues/search'
     | '/api/oauth/callback'
     | '/api/runs/$id'
+    | '/api/teams/$teamId'
     | '/api/workspaces/$id'
-    | '/automations'
+    | '/agents/$agentId'
+    | '/chats/$threadId'
+    | '/tasks/$issueId'
+    | '/teams/$teamId'
+    | '/teams/issues'
+    | '/workflows/$id'
+    | '/api/agents/$id/access'
+    | '/api/agents/$id/activity'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/automations/$id/runs'
     | '/api/automations/$id/trigger'
     | '/api/automations/$id/triggers'
+    | '/api/brain/files/$id'
+    | '/api/brain/folders/$id'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/connections/$connectorId/grant'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
     | '/api/documents/$id/versions'
+    | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
+    | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
+    | '/api/internal/executor/catalog'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
     | '/api/issues/$id/events'
+    | '/api/issues/$id/pending-approval'
     | '/api/issues/$id/reactions'
     | '/api/issues/$id/runs'
     | '/api/issues/$id/source-bindings'
@@ -1094,18 +1682,35 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/members'
+    | '/api/teams/$teamId/owner'
+    | '/api/teams/$teamId/repositories'
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/agents'
+    | '/chats'
+    | '/tasks'
+    | '/teams'
+    | '/workflows'
     | '/api/automations/$id/triggers/$triggerId'
+    | '/api/brain/files/$id/content'
+    | '/api/brain/files/$id/text'
+    | '/api/brain/folders/$id/files'
+    | '/api/brain/proposals/$id/resolve'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
+    | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/issues/$id/source-bindings/$bindingId'
+    | '/api/teams/$teamId/members/$membershipId'
+    | '/api/teams/$teamId/repositories/$repositoryId'
+    | '/api/teams/$teamId/repositories/available'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/api/connections/$connectorId/tools/$name/grant'
+    | '/api/teams/$teamId/repositories/$repositoryId/retry'
   id:
     | '__root__'
     | '/'
@@ -1120,6 +1725,9 @@ export interface FileRouteTypes {
     | '/roadmap'
     | '/signup'
     | '/terms'
+    | '/_authenticated/_app'
+    | '/_authenticated/automations'
+    | '/_authenticated/connections'
     | '/_authenticated/workspace'
     | '/api/$'
     | '/api/agents'
@@ -1130,18 +1738,33 @@ export interface FileRouteTypes {
     | '/api/issues'
     | '/api/me'
     | '/api/projects'
+    | '/api/teams'
     | '/api/upload-file'
     | '/api/workspaces'
+    | '/_authenticated/_app/agents'
+    | '/_authenticated/_app/chats'
+    | '/_authenticated/_app/connectors'
+    | '/_authenticated/_app/files'
+    | '/_authenticated/_app/home'
+    | '/_authenticated/_app/inbox'
+    | '/_authenticated/_app/skills'
+    | '/_authenticated/_app/tasks'
+    | '/_authenticated/_app/teams'
+    | '/_authenticated/_app/workflows'
     | '/_authenticated/automations/$id'
+    | '/_authenticated/handbook/$'
     | '/_authenticated/invitations/$id'
     | '/api/agents/$id'
     | '/api/attachments/$id'
     | '/api/auth/$'
     | '/api/automations/$id'
+    | '/api/brain/files'
+    | '/api/brain/folders'
     | '/api/chat/threads'
     | '/api/comments/$id'
     | '/api/connections/$connectorId'
     | '/api/connections/callback-events'
+    | '/api/decide-analyses/$runId'
     | '/api/dev/issue-run-plan'
     | '/api/discord/install'
     | '/api/discord/setup'
@@ -1151,6 +1774,10 @@ export interface FileRouteTypes {
     | '/api/github/callback'
     | '/api/github/install'
     | '/api/github/setup'
+    | '/api/github/webhook'
+    | '/api/gmail/drafts'
+    | '/api/gmail/messages'
+    | '/api/gmail/send'
     | '/api/inbox/archive-all'
     | '/api/inbox/archive-all-read'
     | '/api/inbox/archive-completed'
@@ -1162,27 +1789,42 @@ export interface FileRouteTypes {
     | '/api/issues/search'
     | '/api/oauth/callback'
     | '/api/runs/$id'
+    | '/api/teams/$teamId'
     | '/api/workspaces/$id'
-    | '/_authenticated/automations/'
+    | '/_authenticated/_app/agents/$agentId'
+    | '/_authenticated/_app/chats/$threadId'
+    | '/_authenticated/_app/tasks/$issueId'
+    | '/_authenticated/_app/teams/$teamId'
+    | '/_authenticated/_app/teams/issues'
+    | '/_authenticated/_app/workflows/$id'
+    | '/api/agents/$id/access'
+    | '/api/agents/$id/activity'
     | '/api/agents/$id/archive'
     | '/api/agents/$id/restore'
     | '/api/automations/$id/runs'
     | '/api/automations/$id/trigger'
     | '/api/automations/$id/triggers'
+    | '/api/brain/files/$id'
+    | '/api/brain/folders/$id'
     | '/api/chat/threads/$id'
     | '/api/comments/$id/reactions'
     | '/api/connections/$connectorId/activity'
+    | '/api/connections/$connectorId/grant'
     | '/api/documents/$id/display'
     | '/api/documents/$id/docx'
     | '/api/documents/$id/metadata'
     | '/api/documents/$id/versions'
+    | '/api/executor/decide/diagnose'
     | '/api/executor/oauth/start'
+    | '/api/gmail/drafts/$draftId'
     | '/api/inbox/$id/archive'
     | '/api/inbox/$id/read'
+    | '/api/internal/executor/catalog'
     | '/api/issues/$id/active-run'
     | '/api/issues/$id/cancel'
     | '/api/issues/$id/comments'
     | '/api/issues/$id/events'
+    | '/api/issues/$id/pending-approval'
     | '/api/issues/$id/reactions'
     | '/api/issues/$id/runs'
     | '/api/issues/$id/source-bindings'
@@ -1193,18 +1835,35 @@ export interface FileRouteTypes {
     | '/api/issues/$id/usage'
     | '/api/issues/$id/work-products'
     | '/api/permission-requests/$id/resolve'
+    | '/api/teams/$teamId/members'
+    | '/api/teams/$teamId/owner'
+    | '/api/teams/$teamId/repositories'
     | '/api/work-products/$id/review'
     | '/api/workspaces/$id/invitations'
     | '/api/workspaces/$id/members'
+    | '/_authenticated/_app/agents/'
+    | '/_authenticated/_app/chats/'
+    | '/_authenticated/_app/tasks/'
+    | '/_authenticated/_app/teams/'
+    | '/_authenticated/_app/workflows/'
     | '/api/automations/$id/triggers/$triggerId'
+    | '/api/brain/files/$id/content'
+    | '/api/brain/files/$id/text'
+    | '/api/brain/folders/$id/files'
+    | '/api/brain/proposals/$id/resolve'
     | '/api/chat/threads/$id/documents'
     | '/api/chat/threads/$id/permission-requests'
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
+    | '/api/chat/threads/$threadId/decide-analyses'
     | '/api/issues/$id/source-bindings/$bindingId'
+    | '/api/teams/$teamId/members/$membershipId'
+    | '/api/teams/$teamId/repositories/$repositoryId'
+    | '/api/teams/$teamId/repositories/available'
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/api/connections/$connectorId/tools/$name/grant'
+    | '/api/teams/$teamId/repositories/$repositoryId/retry'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1229,12 +1888,16 @@ export interface RootRouteChildren {
   ApiIssuesRoute: typeof ApiIssuesRouteWithChildren
   ApiMeRoute: typeof ApiMeRoute
   ApiProjectsRoute: typeof ApiProjectsRoute
+  ApiTeamsRoute: typeof ApiTeamsRouteWithChildren
   ApiUploadFileRoute: typeof ApiUploadFileRoute
   ApiWorkspacesRoute: typeof ApiWorkspacesRouteWithChildren
   ApiAttachmentsIdRoute: typeof ApiAttachmentsIdRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiBrainFilesRoute: typeof ApiBrainFilesRouteWithChildren
+  ApiBrainFoldersRoute: typeof ApiBrainFoldersRouteWithChildren
   ApiChatThreadsRoute: typeof ApiChatThreadsRouteWithChildren
   ApiCommentsIdRoute: typeof ApiCommentsIdRouteWithChildren
+  ApiDecideAnalysesRunIdRoute: typeof ApiDecideAnalysesRunIdRoute
   ApiDevIssueRunPlanRoute: typeof ApiDevIssueRunPlanRoute
   ApiDiscordInstallRoute: typeof ApiDiscordInstallRoute
   ApiDiscordSetupRoute: typeof ApiDiscordSetupRoute
@@ -1244,6 +1907,10 @@ export interface RootRouteChildren {
   ApiGithubCallbackRoute: typeof ApiGithubCallbackRoute
   ApiGithubInstallRoute: typeof ApiGithubInstallRoute
   ApiGithubSetupRoute: typeof ApiGithubSetupRoute
+  ApiGithubWebhookRoute: typeof ApiGithubWebhookRoute
+  ApiGmailDraftsRoute: typeof ApiGmailDraftsRouteWithChildren
+  ApiGmailMessagesRoute: typeof ApiGmailMessagesRoute
+  ApiGmailSendRoute: typeof ApiGmailSendRoute
   ApiInternalCapabilitySyncRoute: typeof ApiInternalCapabilitySyncRoute
   ApiOauthCallbackRoute: typeof ApiOauthCallbackRoute
   ApiRunsIdRoute: typeof ApiRunsIdRoute
@@ -1251,9 +1918,12 @@ export interface RootRouteChildren {
   ApiDocumentsIdDocxRoute: typeof ApiDocumentsIdDocxRoute
   ApiDocumentsIdMetadataRoute: typeof ApiDocumentsIdMetadataRoute
   ApiDocumentsIdVersionsRoute: typeof ApiDocumentsIdVersionsRoute
+  ApiExecutorDecideDiagnoseRoute: typeof ApiExecutorDecideDiagnoseRoute
   ApiExecutorOauthStartRoute: typeof ApiExecutorOauthStartRoute
+  ApiInternalExecutorCatalogRoute: typeof ApiInternalExecutorCatalogRoute
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
   ApiWorkProductsIdReviewRoute: typeof ApiWorkProductsIdReviewRoute
+  ApiBrainProposalsIdResolveRoute: typeof ApiBrainProposalsIdResolveRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -1356,6 +2026,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiUploadFileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/teams': {
+      id: '/api/teams'
+      path: '/api/teams'
+      fullPath: '/api/teams'
+      preLoaderRoute: typeof ApiTeamsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/projects': {
       id: '/api/projects'
       path: '/api/projects'
@@ -1426,11 +2103,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedWorkspaceRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
-    '/_authenticated/automations/': {
-      id: '/_authenticated/automations/'
+    '/_authenticated/connections': {
+      id: '/_authenticated/connections'
+      path: '/connections'
+      fullPath: '/connections'
+      preLoaderRoute: typeof AuthenticatedConnectionsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/automations': {
+      id: '/_authenticated/automations'
       path: '/automations'
-      fullPath: '/automations/'
-      preLoaderRoute: typeof AuthenticatedAutomationsIndexRouteImport
+      fullPath: '/automations'
+      preLoaderRoute: typeof AuthenticatedAutomationsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
+    '/_authenticated/_app': {
+      id: '/_authenticated/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthenticatedAppRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
     '/api/workspaces/$id': {
@@ -1439,6 +2130,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/workspaces/$id'
       preLoaderRoute: typeof ApiWorkspacesIdRouteImport
       parentRoute: typeof ApiWorkspacesRoute
+    }
+    '/api/teams/$teamId': {
+      id: '/api/teams/$teamId'
+      path: '/$teamId'
+      fullPath: '/api/teams/$teamId'
+      preLoaderRoute: typeof ApiTeamsTeamIdRouteImport
+      parentRoute: typeof ApiTeamsRoute
     }
     '/api/runs/$id': {
       id: '/api/runs/$id'
@@ -1517,6 +2215,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInboxArchiveAllRouteImport
       parentRoute: typeof ApiInboxRoute
     }
+    '/api/gmail/send': {
+      id: '/api/gmail/send'
+      path: '/api/gmail/send'
+      fullPath: '/api/gmail/send'
+      preLoaderRoute: typeof ApiGmailSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/gmail/messages': {
+      id: '/api/gmail/messages'
+      path: '/api/gmail/messages'
+      fullPath: '/api/gmail/messages'
+      preLoaderRoute: typeof ApiGmailMessagesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/gmail/drafts': {
+      id: '/api/gmail/drafts'
+      path: '/api/gmail/drafts'
+      fullPath: '/api/gmail/drafts'
+      preLoaderRoute: typeof ApiGmailDraftsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/github/webhook': {
+      id: '/api/github/webhook'
+      path: '/api/github/webhook'
+      fullPath: '/api/github/webhook'
+      preLoaderRoute: typeof ApiGithubWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/github/setup': {
       id: '/api/github/setup'
       path: '/api/github/setup'
@@ -1580,6 +2306,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDevIssueRunPlanRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/decide-analyses/$runId': {
+      id: '/api/decide-analyses/$runId'
+      path: '/api/decide-analyses/$runId'
+      fullPath: '/api/decide-analyses/$runId'
+      preLoaderRoute: typeof ApiDecideAnalysesRunIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/connections/callback-events': {
       id: '/api/connections/callback-events'
       path: '/callback-events'
@@ -1606,6 +2339,20 @@ declare module '@tanstack/react-router' {
       path: '/api/chat/threads'
       fullPath: '/api/chat/threads'
       preLoaderRoute: typeof ApiChatThreadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/brain/folders': {
+      id: '/api/brain/folders'
+      path: '/api/brain/folders'
+      fullPath: '/api/brain/folders'
+      preLoaderRoute: typeof ApiBrainFoldersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/brain/files': {
+      id: '/api/brain/files'
+      path: '/api/brain/files'
+      fullPath: '/api/brain/files'
+      preLoaderRoute: typeof ApiBrainFilesRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/automations/$id': {
@@ -1643,12 +2390,124 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedInvitationsIdRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/handbook/$': {
+      id: '/_authenticated/handbook/$'
+      path: '/handbook/$'
+      fullPath: '/handbook/$'
+      preLoaderRoute: typeof AuthenticatedHandbookSplatRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/automations/$id': {
       id: '/_authenticated/automations/$id'
-      path: '/automations/$id'
+      path: '/$id'
       fullPath: '/automations/$id'
       preLoaderRoute: typeof AuthenticatedAutomationsIdRouteImport
-      parentRoute: typeof AuthenticatedRoute
+      parentRoute: typeof AuthenticatedAutomationsRoute
+    }
+    '/_authenticated/_app/workflows': {
+      id: '/_authenticated/_app/workflows'
+      path: '/workflows'
+      fullPath: '/workflows'
+      preLoaderRoute: typeof AuthenticatedAppWorkflowsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/teams': {
+      id: '/_authenticated/_app/teams'
+      path: '/teams'
+      fullPath: '/teams'
+      preLoaderRoute: typeof AuthenticatedAppTeamsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/tasks': {
+      id: '/_authenticated/_app/tasks'
+      path: '/tasks'
+      fullPath: '/tasks'
+      preLoaderRoute: typeof AuthenticatedAppTasksRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/skills': {
+      id: '/_authenticated/_app/skills'
+      path: '/skills'
+      fullPath: '/skills'
+      preLoaderRoute: typeof AuthenticatedAppSkillsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/inbox': {
+      id: '/_authenticated/_app/inbox'
+      path: '/inbox'
+      fullPath: '/inbox'
+      preLoaderRoute: typeof AuthenticatedAppInboxRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/home': {
+      id: '/_authenticated/_app/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof AuthenticatedAppHomeRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/files': {
+      id: '/_authenticated/_app/files'
+      path: '/files'
+      fullPath: '/files'
+      preLoaderRoute: typeof AuthenticatedAppFilesRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/connectors': {
+      id: '/_authenticated/_app/connectors'
+      path: '/connectors'
+      fullPath: '/connectors'
+      preLoaderRoute: typeof AuthenticatedAppConnectorsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/chats': {
+      id: '/_authenticated/_app/chats'
+      path: '/chats'
+      fullPath: '/chats'
+      preLoaderRoute: typeof AuthenticatedAppChatsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/agents': {
+      id: '/_authenticated/_app/agents'
+      path: '/agents'
+      fullPath: '/agents'
+      preLoaderRoute: typeof AuthenticatedAppAgentsRouteImport
+      parentRoute: typeof AuthenticatedAppRoute
+    }
+    '/_authenticated/_app/workflows/': {
+      id: '/_authenticated/_app/workflows/'
+      path: '/'
+      fullPath: '/workflows/'
+      preLoaderRoute: typeof AuthenticatedAppWorkflowsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppWorkflowsRoute
+    }
+    '/_authenticated/_app/teams/': {
+      id: '/_authenticated/_app/teams/'
+      path: '/'
+      fullPath: '/teams/'
+      preLoaderRoute: typeof AuthenticatedAppTeamsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppTeamsRoute
+    }
+    '/_authenticated/_app/tasks/': {
+      id: '/_authenticated/_app/tasks/'
+      path: '/'
+      fullPath: '/tasks/'
+      preLoaderRoute: typeof AuthenticatedAppTasksIndexRouteImport
+      parentRoute: typeof AuthenticatedAppTasksRoute
+    }
+    '/_authenticated/_app/chats/': {
+      id: '/_authenticated/_app/chats/'
+      path: '/'
+      fullPath: '/chats/'
+      preLoaderRoute: typeof AuthenticatedAppChatsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppChatsRoute
+    }
+    '/_authenticated/_app/agents/': {
+      id: '/_authenticated/_app/agents/'
+      path: '/'
+      fullPath: '/agents/'
+      preLoaderRoute: typeof AuthenticatedAppAgentsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppAgentsRoute
     }
     '/api/workspaces/$id/members': {
       id: '/api/workspaces/$id/members'
@@ -1670,6 +2529,27 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/work-products/$id/review'
       preLoaderRoute: typeof ApiWorkProductsIdReviewRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/api/teams/$teamId/repositories': {
+      id: '/api/teams/$teamId/repositories'
+      path: '/repositories'
+      fullPath: '/api/teams/$teamId/repositories'
+      preLoaderRoute: typeof ApiTeamsTeamIdRepositoriesRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRoute
+    }
+    '/api/teams/$teamId/owner': {
+      id: '/api/teams/$teamId/owner'
+      path: '/owner'
+      fullPath: '/api/teams/$teamId/owner'
+      preLoaderRoute: typeof ApiTeamsTeamIdOwnerRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRoute
+    }
+    '/api/teams/$teamId/members': {
+      id: '/api/teams/$teamId/members'
+      path: '/members'
+      fullPath: '/api/teams/$teamId/members'
+      preLoaderRoute: typeof ApiTeamsTeamIdMembersRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRoute
     }
     '/api/permission-requests/$id/resolve': {
       id: '/api/permission-requests/$id/resolve'
@@ -1741,6 +2621,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIssuesIdReactionsRouteImport
       parentRoute: typeof ApiIssuesIdRoute
     }
+    '/api/issues/$id/pending-approval': {
+      id: '/api/issues/$id/pending-approval'
+      path: '/pending-approval'
+      fullPath: '/api/issues/$id/pending-approval'
+      preLoaderRoute: typeof ApiIssuesIdPendingApprovalRouteImport
+      parentRoute: typeof ApiIssuesIdRoute
+    }
     '/api/issues/$id/events': {
       id: '/api/issues/$id/events'
       path: '/events'
@@ -1769,6 +2656,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIssuesIdActiveRunRouteImport
       parentRoute: typeof ApiIssuesIdRoute
     }
+    '/api/internal/executor/catalog': {
+      id: '/api/internal/executor/catalog'
+      path: '/api/internal/executor/catalog'
+      fullPath: '/api/internal/executor/catalog'
+      preLoaderRoute: typeof ApiInternalExecutorCatalogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/inbox/$id/read': {
       id: '/api/inbox/$id/read'
       path: '/$id/read'
@@ -1783,11 +2677,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiInboxIdArchiveRouteImport
       parentRoute: typeof ApiInboxRoute
     }
+    '/api/gmail/drafts/$draftId': {
+      id: '/api/gmail/drafts/$draftId'
+      path: '/$draftId'
+      fullPath: '/api/gmail/drafts/$draftId'
+      preLoaderRoute: typeof ApiGmailDraftsDraftIdRouteImport
+      parentRoute: typeof ApiGmailDraftsRoute
+    }
     '/api/executor/oauth/start': {
       id: '/api/executor/oauth/start'
       path: '/api/executor/oauth/start'
       fullPath: '/api/executor/oauth/start'
       preLoaderRoute: typeof ApiExecutorOauthStartRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/executor/decide/diagnose': {
+      id: '/api/executor/decide/diagnose'
+      path: '/api/executor/decide/diagnose'
+      fullPath: '/api/executor/decide/diagnose'
+      preLoaderRoute: typeof ApiExecutorDecideDiagnoseRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/documents/$id/versions': {
@@ -1818,6 +2726,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDocumentsIdDisplayRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/connections/$connectorId/grant': {
+      id: '/api/connections/$connectorId/grant'
+      path: '/grant'
+      fullPath: '/api/connections/$connectorId/grant'
+      preLoaderRoute: typeof ApiConnectionsConnectorIdGrantRouteImport
+      parentRoute: typeof ApiConnectionsConnectorIdRoute
+    }
     '/api/connections/$connectorId/activity': {
       id: '/api/connections/$connectorId/activity'
       path: '/activity'
@@ -1838,6 +2753,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/chat/threads/$id'
       preLoaderRoute: typeof ApiChatThreadsIdRouteImport
       parentRoute: typeof ApiChatThreadsRoute
+    }
+    '/api/brain/folders/$id': {
+      id: '/api/brain/folders/$id'
+      path: '/$id'
+      fullPath: '/api/brain/folders/$id'
+      preLoaderRoute: typeof ApiBrainFoldersIdRouteImport
+      parentRoute: typeof ApiBrainFoldersRoute
+    }
+    '/api/brain/files/$id': {
+      id: '/api/brain/files/$id'
+      path: '/$id'
+      fullPath: '/api/brain/files/$id'
+      preLoaderRoute: typeof ApiBrainFilesIdRouteImport
+      parentRoute: typeof ApiBrainFilesRoute
     }
     '/api/automations/$id/triggers': {
       id: '/api/automations/$id/triggers'
@@ -1874,6 +2803,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAgentsIdArchiveRouteImport
       parentRoute: typeof ApiAgentsIdRoute
     }
+    '/api/agents/$id/activity': {
+      id: '/api/agents/$id/activity'
+      path: '/activity'
+      fullPath: '/api/agents/$id/activity'
+      preLoaderRoute: typeof ApiAgentsIdActivityRouteImport
+      parentRoute: typeof ApiAgentsIdRoute
+    }
+    '/api/agents/$id/access': {
+      id: '/api/agents/$id/access'
+      path: '/access'
+      fullPath: '/api/agents/$id/access'
+      preLoaderRoute: typeof ApiAgentsIdAccessRouteImport
+      parentRoute: typeof ApiAgentsIdRoute
+    }
+    '/_authenticated/_app/workflows/$id': {
+      id: '/_authenticated/_app/workflows/$id'
+      path: '/$id'
+      fullPath: '/workflows/$id'
+      preLoaderRoute: typeof AuthenticatedAppWorkflowsIdRouteImport
+      parentRoute: typeof AuthenticatedAppWorkflowsRoute
+    }
+    '/_authenticated/_app/teams/issues': {
+      id: '/_authenticated/_app/teams/issues'
+      path: '/issues'
+      fullPath: '/teams/issues'
+      preLoaderRoute: typeof AuthenticatedAppTeamsIssuesRouteImport
+      parentRoute: typeof AuthenticatedAppTeamsRoute
+    }
+    '/_authenticated/_app/teams/$teamId': {
+      id: '/_authenticated/_app/teams/$teamId'
+      path: '/$teamId'
+      fullPath: '/teams/$teamId'
+      preLoaderRoute: typeof AuthenticatedAppTeamsTeamIdRouteImport
+      parentRoute: typeof AuthenticatedAppTeamsRoute
+    }
+    '/_authenticated/_app/tasks/$issueId': {
+      id: '/_authenticated/_app/tasks/$issueId'
+      path: '/$issueId'
+      fullPath: '/tasks/$issueId'
+      preLoaderRoute: typeof AuthenticatedAppTasksIssueIdRouteImport
+      parentRoute: typeof AuthenticatedAppTasksRoute
+    }
+    '/_authenticated/_app/chats/$threadId': {
+      id: '/_authenticated/_app/chats/$threadId'
+      path: '/$threadId'
+      fullPath: '/chats/$threadId'
+      preLoaderRoute: typeof AuthenticatedAppChatsThreadIdRouteImport
+      parentRoute: typeof AuthenticatedAppChatsRoute
+    }
+    '/_authenticated/_app/agents/$agentId': {
+      id: '/_authenticated/_app/agents/$agentId'
+      path: '/$agentId'
+      fullPath: '/agents/$agentId'
+      preLoaderRoute: typeof AuthenticatedAppAgentsAgentIdRouteImport
+      parentRoute: typeof AuthenticatedAppAgentsRoute
+    }
     '/api/workspaces/$id/members/$memberId': {
       id: '/api/workspaces/$id/members/$memberId'
       path: '/$memberId'
@@ -1888,12 +2873,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiWorkspacesIdInvitationsInvitationIdRouteImport
       parentRoute: typeof ApiWorkspacesIdInvitationsRoute
     }
+    '/api/teams/$teamId/repositories/available': {
+      id: '/api/teams/$teamId/repositories/available'
+      path: '/available'
+      fullPath: '/api/teams/$teamId/repositories/available'
+      preLoaderRoute: typeof ApiTeamsTeamIdRepositoriesAvailableRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRepositoriesRoute
+    }
+    '/api/teams/$teamId/repositories/$repositoryId': {
+      id: '/api/teams/$teamId/repositories/$repositoryId'
+      path: '/$repositoryId'
+      fullPath: '/api/teams/$teamId/repositories/$repositoryId'
+      preLoaderRoute: typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRepositoriesRoute
+    }
+    '/api/teams/$teamId/members/$membershipId': {
+      id: '/api/teams/$teamId/members/$membershipId'
+      path: '/$membershipId'
+      fullPath: '/api/teams/$teamId/members/$membershipId'
+      preLoaderRoute: typeof ApiTeamsTeamIdMembersMembershipIdRouteImport
+      parentRoute: typeof ApiTeamsTeamIdMembersRoute
+    }
     '/api/issues/$id/source-bindings/$bindingId': {
       id: '/api/issues/$id/source-bindings/$bindingId'
       path: '/$bindingId'
       fullPath: '/api/issues/$id/source-bindings/$bindingId'
       preLoaderRoute: typeof ApiIssuesIdSourceBindingsBindingIdRouteImport
       parentRoute: typeof ApiIssuesIdSourceBindingsRoute
+    }
+    '/api/chat/threads/$threadId/decide-analyses': {
+      id: '/api/chat/threads/$threadId/decide-analyses'
+      path: '/$threadId/decide-analyses'
+      fullPath: '/api/chat/threads/$threadId/decide-analyses'
+      preLoaderRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRouteImport
+      parentRoute: typeof ApiChatThreadsRoute
     }
     '/api/chat/threads/$id/tool-approval': {
       id: '/api/chat/threads/$id/tool-approval'
@@ -1923,12 +2936,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatThreadsIdDocumentsRouteImport
       parentRoute: typeof ApiChatThreadsIdRoute
     }
+    '/api/brain/proposals/$id/resolve': {
+      id: '/api/brain/proposals/$id/resolve'
+      path: '/api/brain/proposals/$id/resolve'
+      fullPath: '/api/brain/proposals/$id/resolve'
+      preLoaderRoute: typeof ApiBrainProposalsIdResolveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/brain/folders/$id/files': {
+      id: '/api/brain/folders/$id/files'
+      path: '/files'
+      fullPath: '/api/brain/folders/$id/files'
+      preLoaderRoute: typeof ApiBrainFoldersIdFilesRouteImport
+      parentRoute: typeof ApiBrainFoldersIdRoute
+    }
+    '/api/brain/files/$id/text': {
+      id: '/api/brain/files/$id/text'
+      path: '/text'
+      fullPath: '/api/brain/files/$id/text'
+      preLoaderRoute: typeof ApiBrainFilesIdTextRouteImport
+      parentRoute: typeof ApiBrainFilesIdRoute
+    }
+    '/api/brain/files/$id/content': {
+      id: '/api/brain/files/$id/content'
+      path: '/content'
+      fullPath: '/api/brain/files/$id/content'
+      preLoaderRoute: typeof ApiBrainFilesIdContentRouteImport
+      parentRoute: typeof ApiBrainFilesIdRoute
+    }
     '/api/automations/$id/triggers/$triggerId': {
       id: '/api/automations/$id/triggers/$triggerId'
       path: '/$triggerId'
       fullPath: '/api/automations/$id/triggers/$triggerId'
       preLoaderRoute: typeof ApiAutomationsIdTriggersTriggerIdRouteImport
       parentRoute: typeof ApiAutomationsIdTriggersRoute
+    }
+    '/api/teams/$teamId/repositories/$repositoryId/retry': {
+      id: '/api/teams/$teamId/repositories/$repositoryId/retry'
+      path: '/retry'
+      fullPath: '/api/teams/$teamId/repositories/$repositoryId/retry'
+      preLoaderRoute: typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRouteImport
+      parentRoute: typeof ApiTeamsTeamIdRepositoriesRepositoryIdRoute
     }
     '/api/connections/$connectorId/tools/$name/grant': {
       id: '/api/connections/$connectorId/tools/$name/grant'
@@ -1940,18 +2988,144 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface AuthenticatedRouteChildren {
-  AuthenticatedWorkspaceRoute: typeof AuthenticatedWorkspaceRoute
+interface AuthenticatedAppAgentsRouteChildren {
+  AuthenticatedAppAgentsAgentIdRoute: typeof AuthenticatedAppAgentsAgentIdRoute
+  AuthenticatedAppAgentsIndexRoute: typeof AuthenticatedAppAgentsIndexRoute
+}
+
+const AuthenticatedAppAgentsRouteChildren: AuthenticatedAppAgentsRouteChildren =
+  {
+    AuthenticatedAppAgentsAgentIdRoute: AuthenticatedAppAgentsAgentIdRoute,
+    AuthenticatedAppAgentsIndexRoute: AuthenticatedAppAgentsIndexRoute,
+  }
+
+const AuthenticatedAppAgentsRouteWithChildren =
+  AuthenticatedAppAgentsRoute._addFileChildren(
+    AuthenticatedAppAgentsRouteChildren,
+  )
+
+interface AuthenticatedAppChatsRouteChildren {
+  AuthenticatedAppChatsThreadIdRoute: typeof AuthenticatedAppChatsThreadIdRoute
+  AuthenticatedAppChatsIndexRoute: typeof AuthenticatedAppChatsIndexRoute
+}
+
+const AuthenticatedAppChatsRouteChildren: AuthenticatedAppChatsRouteChildren = {
+  AuthenticatedAppChatsThreadIdRoute: AuthenticatedAppChatsThreadIdRoute,
+  AuthenticatedAppChatsIndexRoute: AuthenticatedAppChatsIndexRoute,
+}
+
+const AuthenticatedAppChatsRouteWithChildren =
+  AuthenticatedAppChatsRoute._addFileChildren(
+    AuthenticatedAppChatsRouteChildren,
+  )
+
+interface AuthenticatedAppTasksRouteChildren {
+  AuthenticatedAppTasksIssueIdRoute: typeof AuthenticatedAppTasksIssueIdRoute
+  AuthenticatedAppTasksIndexRoute: typeof AuthenticatedAppTasksIndexRoute
+}
+
+const AuthenticatedAppTasksRouteChildren: AuthenticatedAppTasksRouteChildren = {
+  AuthenticatedAppTasksIssueIdRoute: AuthenticatedAppTasksIssueIdRoute,
+  AuthenticatedAppTasksIndexRoute: AuthenticatedAppTasksIndexRoute,
+}
+
+const AuthenticatedAppTasksRouteWithChildren =
+  AuthenticatedAppTasksRoute._addFileChildren(
+    AuthenticatedAppTasksRouteChildren,
+  )
+
+interface AuthenticatedAppTeamsRouteChildren {
+  AuthenticatedAppTeamsTeamIdRoute: typeof AuthenticatedAppTeamsTeamIdRoute
+  AuthenticatedAppTeamsIssuesRoute: typeof AuthenticatedAppTeamsIssuesRoute
+  AuthenticatedAppTeamsIndexRoute: typeof AuthenticatedAppTeamsIndexRoute
+}
+
+const AuthenticatedAppTeamsRouteChildren: AuthenticatedAppTeamsRouteChildren = {
+  AuthenticatedAppTeamsTeamIdRoute: AuthenticatedAppTeamsTeamIdRoute,
+  AuthenticatedAppTeamsIssuesRoute: AuthenticatedAppTeamsIssuesRoute,
+  AuthenticatedAppTeamsIndexRoute: AuthenticatedAppTeamsIndexRoute,
+}
+
+const AuthenticatedAppTeamsRouteWithChildren =
+  AuthenticatedAppTeamsRoute._addFileChildren(
+    AuthenticatedAppTeamsRouteChildren,
+  )
+
+interface AuthenticatedAppWorkflowsRouteChildren {
+  AuthenticatedAppWorkflowsIdRoute: typeof AuthenticatedAppWorkflowsIdRoute
+  AuthenticatedAppWorkflowsIndexRoute: typeof AuthenticatedAppWorkflowsIndexRoute
+}
+
+const AuthenticatedAppWorkflowsRouteChildren: AuthenticatedAppWorkflowsRouteChildren =
+  {
+    AuthenticatedAppWorkflowsIdRoute: AuthenticatedAppWorkflowsIdRoute,
+    AuthenticatedAppWorkflowsIndexRoute: AuthenticatedAppWorkflowsIndexRoute,
+  }
+
+const AuthenticatedAppWorkflowsRouteWithChildren =
+  AuthenticatedAppWorkflowsRoute._addFileChildren(
+    AuthenticatedAppWorkflowsRouteChildren,
+  )
+
+interface AuthenticatedAppRouteChildren {
+  AuthenticatedAppAgentsRoute: typeof AuthenticatedAppAgentsRouteWithChildren
+  AuthenticatedAppChatsRoute: typeof AuthenticatedAppChatsRouteWithChildren
+  AuthenticatedAppConnectorsRoute: typeof AuthenticatedAppConnectorsRoute
+  AuthenticatedAppFilesRoute: typeof AuthenticatedAppFilesRoute
+  AuthenticatedAppHomeRoute: typeof AuthenticatedAppHomeRoute
+  AuthenticatedAppInboxRoute: typeof AuthenticatedAppInboxRoute
+  AuthenticatedAppSkillsRoute: typeof AuthenticatedAppSkillsRoute
+  AuthenticatedAppTasksRoute: typeof AuthenticatedAppTasksRouteWithChildren
+  AuthenticatedAppTeamsRoute: typeof AuthenticatedAppTeamsRouteWithChildren
+  AuthenticatedAppWorkflowsRoute: typeof AuthenticatedAppWorkflowsRouteWithChildren
+}
+
+const AuthenticatedAppRouteChildren: AuthenticatedAppRouteChildren = {
+  AuthenticatedAppAgentsRoute: AuthenticatedAppAgentsRouteWithChildren,
+  AuthenticatedAppChatsRoute: AuthenticatedAppChatsRouteWithChildren,
+  AuthenticatedAppConnectorsRoute: AuthenticatedAppConnectorsRoute,
+  AuthenticatedAppFilesRoute: AuthenticatedAppFilesRoute,
+  AuthenticatedAppHomeRoute: AuthenticatedAppHomeRoute,
+  AuthenticatedAppInboxRoute: AuthenticatedAppInboxRoute,
+  AuthenticatedAppSkillsRoute: AuthenticatedAppSkillsRoute,
+  AuthenticatedAppTasksRoute: AuthenticatedAppTasksRouteWithChildren,
+  AuthenticatedAppTeamsRoute: AuthenticatedAppTeamsRouteWithChildren,
+  AuthenticatedAppWorkflowsRoute: AuthenticatedAppWorkflowsRouteWithChildren,
+}
+
+const AuthenticatedAppRouteWithChildren =
+  AuthenticatedAppRoute._addFileChildren(AuthenticatedAppRouteChildren)
+
+interface AuthenticatedAutomationsRouteChildren {
   AuthenticatedAutomationsIdRoute: typeof AuthenticatedAutomationsIdRoute
+}
+
+const AuthenticatedAutomationsRouteChildren: AuthenticatedAutomationsRouteChildren =
+  {
+    AuthenticatedAutomationsIdRoute: AuthenticatedAutomationsIdRoute,
+  }
+
+const AuthenticatedAutomationsRouteWithChildren =
+  AuthenticatedAutomationsRoute._addFileChildren(
+    AuthenticatedAutomationsRouteChildren,
+  )
+
+interface AuthenticatedRouteChildren {
+  AuthenticatedAppRoute: typeof AuthenticatedAppRouteWithChildren
+  AuthenticatedAutomationsRoute: typeof AuthenticatedAutomationsRouteWithChildren
+  AuthenticatedConnectionsRoute: typeof AuthenticatedConnectionsRoute
+  AuthenticatedWorkspaceRoute: typeof AuthenticatedWorkspaceRoute
+  AuthenticatedHandbookSplatRoute: typeof AuthenticatedHandbookSplatRoute
   AuthenticatedInvitationsIdRoute: typeof AuthenticatedInvitationsIdRoute
-  AuthenticatedAutomationsIndexRoute: typeof AuthenticatedAutomationsIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
+  AuthenticatedAppRoute: AuthenticatedAppRouteWithChildren,
+  AuthenticatedAutomationsRoute: AuthenticatedAutomationsRouteWithChildren,
+  AuthenticatedConnectionsRoute: AuthenticatedConnectionsRoute,
   AuthenticatedWorkspaceRoute: AuthenticatedWorkspaceRoute,
-  AuthenticatedAutomationsIdRoute: AuthenticatedAutomationsIdRoute,
+  AuthenticatedHandbookSplatRoute: AuthenticatedHandbookSplatRoute,
   AuthenticatedInvitationsIdRoute: AuthenticatedInvitationsIdRoute,
-  AuthenticatedAutomationsIndexRoute: AuthenticatedAutomationsIndexRoute,
 }
 
 const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
@@ -1959,11 +3133,15 @@ const AuthenticatedRouteWithChildren = AuthenticatedRoute._addFileChildren(
 )
 
 interface ApiAgentsIdRouteChildren {
+  ApiAgentsIdAccessRoute: typeof ApiAgentsIdAccessRoute
+  ApiAgentsIdActivityRoute: typeof ApiAgentsIdActivityRoute
   ApiAgentsIdArchiveRoute: typeof ApiAgentsIdArchiveRoute
   ApiAgentsIdRestoreRoute: typeof ApiAgentsIdRestoreRoute
 }
 
 const ApiAgentsIdRouteChildren: ApiAgentsIdRouteChildren = {
+  ApiAgentsIdAccessRoute: ApiAgentsIdAccessRoute,
+  ApiAgentsIdActivityRoute: ApiAgentsIdActivityRoute,
   ApiAgentsIdArchiveRoute: ApiAgentsIdArchiveRoute,
   ApiAgentsIdRestoreRoute: ApiAgentsIdRestoreRoute,
 }
@@ -2028,6 +3206,7 @@ const ApiAutomationsRouteWithChildren = ApiAutomationsRoute._addFileChildren(
 
 interface ApiConnectionsConnectorIdRouteChildren {
   ApiConnectionsConnectorIdActivityRoute: typeof ApiConnectionsConnectorIdActivityRoute
+  ApiConnectionsConnectorIdGrantRoute: typeof ApiConnectionsConnectorIdGrantRoute
   ApiConnectionsConnectorIdToolsNameGrantRoute: typeof ApiConnectionsConnectorIdToolsNameGrantRoute
 }
 
@@ -2035,6 +3214,7 @@ const ApiConnectionsConnectorIdRouteChildren: ApiConnectionsConnectorIdRouteChil
   {
     ApiConnectionsConnectorIdActivityRoute:
       ApiConnectionsConnectorIdActivityRoute,
+    ApiConnectionsConnectorIdGrantRoute: ApiConnectionsConnectorIdGrantRoute,
     ApiConnectionsConnectorIdToolsNameGrantRoute:
       ApiConnectionsConnectorIdToolsNameGrantRoute,
   }
@@ -2102,6 +3282,7 @@ interface ApiIssuesIdRouteChildren {
   ApiIssuesIdCancelRoute: typeof ApiIssuesIdCancelRoute
   ApiIssuesIdCommentsRoute: typeof ApiIssuesIdCommentsRoute
   ApiIssuesIdEventsRoute: typeof ApiIssuesIdEventsRoute
+  ApiIssuesIdPendingApprovalRoute: typeof ApiIssuesIdPendingApprovalRoute
   ApiIssuesIdReactionsRoute: typeof ApiIssuesIdReactionsRoute
   ApiIssuesIdRunsRoute: typeof ApiIssuesIdRunsRoute
   ApiIssuesIdSourceBindingsRoute: typeof ApiIssuesIdSourceBindingsRouteWithChildren
@@ -2118,6 +3299,7 @@ const ApiIssuesIdRouteChildren: ApiIssuesIdRouteChildren = {
   ApiIssuesIdCancelRoute: ApiIssuesIdCancelRoute,
   ApiIssuesIdCommentsRoute: ApiIssuesIdCommentsRoute,
   ApiIssuesIdEventsRoute: ApiIssuesIdEventsRoute,
+  ApiIssuesIdPendingApprovalRoute: ApiIssuesIdPendingApprovalRoute,
   ApiIssuesIdReactionsRoute: ApiIssuesIdReactionsRoute,
   ApiIssuesIdRunsRoute: ApiIssuesIdRunsRoute,
   ApiIssuesIdSourceBindingsRoute: ApiIssuesIdSourceBindingsRouteWithChildren,
@@ -2147,6 +3329,81 @@ const ApiIssuesRouteChildren: ApiIssuesRouteChildren = {
 
 const ApiIssuesRouteWithChildren = ApiIssuesRoute._addFileChildren(
   ApiIssuesRouteChildren,
+)
+
+interface ApiTeamsTeamIdMembersRouteChildren {
+  ApiTeamsTeamIdMembersMembershipIdRoute: typeof ApiTeamsTeamIdMembersMembershipIdRoute
+}
+
+const ApiTeamsTeamIdMembersRouteChildren: ApiTeamsTeamIdMembersRouteChildren = {
+  ApiTeamsTeamIdMembersMembershipIdRoute:
+    ApiTeamsTeamIdMembersMembershipIdRoute,
+}
+
+const ApiTeamsTeamIdMembersRouteWithChildren =
+  ApiTeamsTeamIdMembersRoute._addFileChildren(
+    ApiTeamsTeamIdMembersRouteChildren,
+  )
+
+interface ApiTeamsTeamIdRepositoriesRepositoryIdRouteChildren {
+  ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute: typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
+}
+
+const ApiTeamsTeamIdRepositoriesRepositoryIdRouteChildren: ApiTeamsTeamIdRepositoriesRepositoryIdRouteChildren =
+  {
+    ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute:
+      ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute,
+  }
+
+const ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren =
+  ApiTeamsTeamIdRepositoriesRepositoryIdRoute._addFileChildren(
+    ApiTeamsTeamIdRepositoriesRepositoryIdRouteChildren,
+  )
+
+interface ApiTeamsTeamIdRepositoriesRouteChildren {
+  ApiTeamsTeamIdRepositoriesRepositoryIdRoute: typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
+  ApiTeamsTeamIdRepositoriesAvailableRoute: typeof ApiTeamsTeamIdRepositoriesAvailableRoute
+}
+
+const ApiTeamsTeamIdRepositoriesRouteChildren: ApiTeamsTeamIdRepositoriesRouteChildren =
+  {
+    ApiTeamsTeamIdRepositoriesRepositoryIdRoute:
+      ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren,
+    ApiTeamsTeamIdRepositoriesAvailableRoute:
+      ApiTeamsTeamIdRepositoriesAvailableRoute,
+  }
+
+const ApiTeamsTeamIdRepositoriesRouteWithChildren =
+  ApiTeamsTeamIdRepositoriesRoute._addFileChildren(
+    ApiTeamsTeamIdRepositoriesRouteChildren,
+  )
+
+interface ApiTeamsTeamIdRouteChildren {
+  ApiTeamsTeamIdMembersRoute: typeof ApiTeamsTeamIdMembersRouteWithChildren
+  ApiTeamsTeamIdOwnerRoute: typeof ApiTeamsTeamIdOwnerRoute
+  ApiTeamsTeamIdRepositoriesRoute: typeof ApiTeamsTeamIdRepositoriesRouteWithChildren
+}
+
+const ApiTeamsTeamIdRouteChildren: ApiTeamsTeamIdRouteChildren = {
+  ApiTeamsTeamIdMembersRoute: ApiTeamsTeamIdMembersRouteWithChildren,
+  ApiTeamsTeamIdOwnerRoute: ApiTeamsTeamIdOwnerRoute,
+  ApiTeamsTeamIdRepositoriesRoute: ApiTeamsTeamIdRepositoriesRouteWithChildren,
+}
+
+const ApiTeamsTeamIdRouteWithChildren = ApiTeamsTeamIdRoute._addFileChildren(
+  ApiTeamsTeamIdRouteChildren,
+)
+
+interface ApiTeamsRouteChildren {
+  ApiTeamsTeamIdRoute: typeof ApiTeamsTeamIdRouteWithChildren
+}
+
+const ApiTeamsRouteChildren: ApiTeamsRouteChildren = {
+  ApiTeamsTeamIdRoute: ApiTeamsTeamIdRouteWithChildren,
+}
+
+const ApiTeamsRouteWithChildren = ApiTeamsRoute._addFileChildren(
+  ApiTeamsRouteChildren,
 )
 
 interface ApiWorkspacesIdInvitationsRouteChildren {
@@ -2204,6 +3461,55 @@ const ApiWorkspacesRouteWithChildren = ApiWorkspacesRoute._addFileChildren(
   ApiWorkspacesRouteChildren,
 )
 
+interface ApiBrainFilesIdRouteChildren {
+  ApiBrainFilesIdContentRoute: typeof ApiBrainFilesIdContentRoute
+  ApiBrainFilesIdTextRoute: typeof ApiBrainFilesIdTextRoute
+}
+
+const ApiBrainFilesIdRouteChildren: ApiBrainFilesIdRouteChildren = {
+  ApiBrainFilesIdContentRoute: ApiBrainFilesIdContentRoute,
+  ApiBrainFilesIdTextRoute: ApiBrainFilesIdTextRoute,
+}
+
+const ApiBrainFilesIdRouteWithChildren = ApiBrainFilesIdRoute._addFileChildren(
+  ApiBrainFilesIdRouteChildren,
+)
+
+interface ApiBrainFilesRouteChildren {
+  ApiBrainFilesIdRoute: typeof ApiBrainFilesIdRouteWithChildren
+}
+
+const ApiBrainFilesRouteChildren: ApiBrainFilesRouteChildren = {
+  ApiBrainFilesIdRoute: ApiBrainFilesIdRouteWithChildren,
+}
+
+const ApiBrainFilesRouteWithChildren = ApiBrainFilesRoute._addFileChildren(
+  ApiBrainFilesRouteChildren,
+)
+
+interface ApiBrainFoldersIdRouteChildren {
+  ApiBrainFoldersIdFilesRoute: typeof ApiBrainFoldersIdFilesRoute
+}
+
+const ApiBrainFoldersIdRouteChildren: ApiBrainFoldersIdRouteChildren = {
+  ApiBrainFoldersIdFilesRoute: ApiBrainFoldersIdFilesRoute,
+}
+
+const ApiBrainFoldersIdRouteWithChildren =
+  ApiBrainFoldersIdRoute._addFileChildren(ApiBrainFoldersIdRouteChildren)
+
+interface ApiBrainFoldersRouteChildren {
+  ApiBrainFoldersIdRoute: typeof ApiBrainFoldersIdRouteWithChildren
+}
+
+const ApiBrainFoldersRouteChildren: ApiBrainFoldersRouteChildren = {
+  ApiBrainFoldersIdRoute: ApiBrainFoldersIdRouteWithChildren,
+}
+
+const ApiBrainFoldersRouteWithChildren = ApiBrainFoldersRoute._addFileChildren(
+  ApiBrainFoldersRouteChildren,
+)
+
 interface ApiChatThreadsIdRouteChildren {
   ApiChatThreadsIdDocumentsRoute: typeof ApiChatThreadsIdDocumentsRoute
   ApiChatThreadsIdPermissionRequestsRoute: typeof ApiChatThreadsIdPermissionRequestsRoute
@@ -2224,10 +3530,13 @@ const ApiChatThreadsIdRouteWithChildren =
 
 interface ApiChatThreadsRouteChildren {
   ApiChatThreadsIdRoute: typeof ApiChatThreadsIdRouteWithChildren
+  ApiChatThreadsThreadIdDecideAnalysesRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRoute
 }
 
 const ApiChatThreadsRouteChildren: ApiChatThreadsRouteChildren = {
   ApiChatThreadsIdRoute: ApiChatThreadsIdRouteWithChildren,
+  ApiChatThreadsThreadIdDecideAnalysesRoute:
+    ApiChatThreadsThreadIdDecideAnalysesRoute,
 }
 
 const ApiChatThreadsRouteWithChildren = ApiChatThreadsRoute._addFileChildren(
@@ -2244,6 +3553,18 @@ const ApiCommentsIdRouteChildren: ApiCommentsIdRouteChildren = {
 
 const ApiCommentsIdRouteWithChildren = ApiCommentsIdRoute._addFileChildren(
   ApiCommentsIdRouteChildren,
+)
+
+interface ApiGmailDraftsRouteChildren {
+  ApiGmailDraftsDraftIdRoute: typeof ApiGmailDraftsDraftIdRoute
+}
+
+const ApiGmailDraftsRouteChildren: ApiGmailDraftsRouteChildren = {
+  ApiGmailDraftsDraftIdRoute: ApiGmailDraftsDraftIdRoute,
+}
+
+const ApiGmailDraftsRouteWithChildren = ApiGmailDraftsRoute._addFileChildren(
+  ApiGmailDraftsRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
@@ -2268,12 +3589,16 @@ const rootRouteChildren: RootRouteChildren = {
   ApiIssuesRoute: ApiIssuesRouteWithChildren,
   ApiMeRoute: ApiMeRoute,
   ApiProjectsRoute: ApiProjectsRoute,
+  ApiTeamsRoute: ApiTeamsRouteWithChildren,
   ApiUploadFileRoute: ApiUploadFileRoute,
   ApiWorkspacesRoute: ApiWorkspacesRouteWithChildren,
   ApiAttachmentsIdRoute: ApiAttachmentsIdRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiBrainFilesRoute: ApiBrainFilesRouteWithChildren,
+  ApiBrainFoldersRoute: ApiBrainFoldersRouteWithChildren,
   ApiChatThreadsRoute: ApiChatThreadsRouteWithChildren,
   ApiCommentsIdRoute: ApiCommentsIdRouteWithChildren,
+  ApiDecideAnalysesRunIdRoute: ApiDecideAnalysesRunIdRoute,
   ApiDevIssueRunPlanRoute: ApiDevIssueRunPlanRoute,
   ApiDiscordInstallRoute: ApiDiscordInstallRoute,
   ApiDiscordSetupRoute: ApiDiscordSetupRoute,
@@ -2283,6 +3608,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiGithubCallbackRoute: ApiGithubCallbackRoute,
   ApiGithubInstallRoute: ApiGithubInstallRoute,
   ApiGithubSetupRoute: ApiGithubSetupRoute,
+  ApiGithubWebhookRoute: ApiGithubWebhookRoute,
+  ApiGmailDraftsRoute: ApiGmailDraftsRouteWithChildren,
+  ApiGmailMessagesRoute: ApiGmailMessagesRoute,
+  ApiGmailSendRoute: ApiGmailSendRoute,
   ApiInternalCapabilitySyncRoute: ApiInternalCapabilitySyncRoute,
   ApiOauthCallbackRoute: ApiOauthCallbackRoute,
   ApiRunsIdRoute: ApiRunsIdRoute,
@@ -2290,9 +3619,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDocumentsIdDocxRoute: ApiDocumentsIdDocxRoute,
   ApiDocumentsIdMetadataRoute: ApiDocumentsIdMetadataRoute,
   ApiDocumentsIdVersionsRoute: ApiDocumentsIdVersionsRoute,
+  ApiExecutorDecideDiagnoseRoute: ApiExecutorDecideDiagnoseRoute,
   ApiExecutorOauthStartRoute: ApiExecutorOauthStartRoute,
+  ApiInternalExecutorCatalogRoute: ApiInternalExecutorCatalogRoute,
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,
   ApiWorkProductsIdReviewRoute: ApiWorkProductsIdReviewRoute,
+  ApiBrainProposalsIdResolveRoute: ApiBrainProposalsIdResolveRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

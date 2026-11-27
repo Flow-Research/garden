@@ -1,5 +1,8 @@
 import type { MemberWithUser } from '@garden/core/types'
-import { serializeMentionMarkdown } from '@garden/ui/markdown'
+import {
+  serializeMentionMarkdown,
+  unescapeMentionLabel,
+} from '@garden/ui/markdown'
 
 export type MemberMentionTrigger = {
   query: string
@@ -181,6 +184,46 @@ export function rebaseMemberMentions(
  * one mention cannot shift another. Identity comes from the recorded range,
  * never from globally matching user-controlled display text.
  */
+/**
+ * The inverse of `serializeMemberMentions`: turns committed mention links back
+ * into the `@Label` text the textarea shows, and recovers the ranges that make
+ * each one a real actor reference again.
+ *
+ * Why this exists: the 2026-09-16 message queue lets a person pull a queued
+ * send back into the composer to edit it (`ComposerHandle.restoreDraft`). A
+ * queued message holds what `handleSubmit` already serialized, so without this
+ * the composer would repopulate with raw `[@Ada](mention://member/…)` markdown
+ * — the person would be editing link syntax, and re-sending would double-
+ * serialize the label.
+ *
+ * Only `member` links are decoded. Chat's `@` has always been members-only
+ * (`searchComposerMembers` is the only lookup the composer offers), so an
+ * agent/issue/all link in a queued message could not have come from this
+ * composer; leaving those as literal text is the honest outcome rather than
+ * inventing a selection the person never made.
+ */
+export function deserializeMemberMentions(input: string): {
+  text: string
+  mentions: SelectedMemberMention[]
+} {
+  const pattern = /\[@([^\]]*)\]\(mention:\/\/member\/([^)\s]+)\)/g
+  const mentions: SelectedMemberMention[] = []
+  let text = ''
+  let lastIndex = 0
+
+  for (const match of input.matchAll(pattern)) {
+    const [literal, rawLabel = '', id = ''] = match
+    const label = unescapeMentionLabel(rawLabel)
+    text += input.slice(lastIndex, match.index)
+    const start = text.length
+    text += `@${label}`
+    mentions.push({ id, label, start, end: text.length })
+    lastIndex = match.index + literal.length
+  }
+
+  return { text: text + input.slice(lastIndex), mentions }
+}
+
 export function serializeMemberMentions(
   input: string,
   mentions: readonly SelectedMemberMention[],

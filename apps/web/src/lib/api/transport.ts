@@ -122,6 +122,104 @@ export class ApiTransport {
     return payload.value
   }
 
+  /**
+   * Uploads multipart form data and reports the percentage of bytes sent.
+   *
+   * The browser sets the multipart Content-Type boundary automatically.
+   */
+  async requestFormWithProgress<T>(
+    path: string,
+    body: FormData,
+    onProgress?: (percentage: number) => void,
+  ): Promise<T> {
+    const requestId = createRequestId()
+
+    return new Promise<T>((resolve, reject) => {
+      const request = new XMLHttpRequest()
+
+      request.open('POST', `${this.baseUrl}${path}`)
+      request.withCredentials = true
+      request.setRequestHeader('X-Request-ID', requestId)
+
+      for (const [name, value] of Object.entries(this.authHeaders())) {
+        request.setRequestHeader(name, value)
+      }
+
+      request.upload.onprogress = (event) => {
+        if (!event.lengthComputable || event.total === 0) return
+
+        const percentage = Math.min(
+          100,
+          Math.round((event.loaded / event.total) * 100),
+        )
+
+        onProgress?.(percentage)
+      }
+
+      request.onerror = () => {
+        reject(
+          new ApiError({
+            message: 'Network request failed',
+            status: 0,
+            statusText: 'Network Error',
+          }),
+        )
+      }
+
+      request.onabort = () => {
+        reject(
+          new ApiError({
+            message: 'Upload cancelled',
+            status: 0,
+            statusText: 'Abort Error',
+          }),
+        )
+      }
+
+      request.onload = () => {
+        if (request.status === 401) this.notifyUnauthorized()
+
+        if (request.status < 200 || request.status >= 300) {
+          const response = new Response(request.responseText, {
+            status: request.status,
+            statusText: request.statusText,
+          })
+
+          void this.errorFromResponse(
+            response,
+            `API error: ${request.status} ${request.statusText}`,
+          ).then(reject)
+
+          return
+        }
+
+        if (request.status === 204) {
+          resolve(undefined as T)
+          return
+        }
+
+        const payload = Result.try({
+          try: () => JSON.parse(request.responseText) as unknown,
+          catch: (cause) =>
+            new ApiError({
+              message: errorMessage(cause, 'Invalid JSON response'),
+              status: request.status,
+              statusText: request.statusText,
+            }),
+        })
+
+        if (payload.isErr()) {
+          reject(payload.error)
+          return
+        }
+
+        resolve(payload.value as T)
+      }
+
+      request.send(body)
+    })
+  }
+
   async requestForm<T>(path: string, body: FormData): Promise<T> {
     return this.request<T>(path, {
       method: 'POST',

@@ -11,17 +11,30 @@ import {
 } from '@executor-js/plugin-openapi/providers/microsoft'
 import { encryptedSecretsPlugin } from '@executor-js/plugin-encrypted-secrets'
 import { toolkitsPlugin } from '@executor-js/plugin-toolkits/server'
+import {
+  directDecideMcpPlugin,
+  logPublicMcpProgress,
+} from './direct-decide-mcp'
+
+export { logPublicMcpProgress }
 
 export const makeExecutorPlugins = (
   secretKey: string,
-  options: { readonly activeToolkitSlug?: string } = {},
+  options: {
+    readonly activeToolkitSlug?: string
+    readonly fetch?: typeof globalThis.fetch
+  } = {},
 ) =>
   [
     openApiPlugin({
       presets: [...googleCatalog, ...microsoftCatalog],
       specFormats: [googleDiscoveryAdapter, microsoftGraphAdapter],
     }),
-    mcpPlugin({ dangerouslyAllowStdioMCP: false }),
+    mcpPlugin({
+      dangerouslyAllowStdioMCP: false,
+      ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    }),
+    directDecideMcpPlugin(),
     graphqlPlugin(),
     toolkitsPlugin({ activeToolkitSlug: options.activeToolkitSlug }),
     encryptedSecretsPlugin({ key: secretKey }),

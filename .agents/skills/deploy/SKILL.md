@@ -1,26 +1,39 @@
 ---
 name: deploy
-description: Use whenever deploying, redeploying, shipping, building for remote deployment, verifying a deployed Garden Worker, or troubleshooting Garden deployment through Alchemy. Covers the protected live garden-staging target, temporary garden-preview target, package-script deployment, teardown, secret safety, and browser verification.
+description: Use whenever deploying, redeploying, shipping, building for remote deployment, verifying a deployed Garden Worker, or troubleshooting Garden deployment through Alchemy. Covers the persistent staging/dev targets, manual garden-preview target, package-script deployment, teardown, secret safety, and browser verification.
 ---
 
 # Garden deployment
 
-Garden has two Alchemy deployment targets:
+Garden has three Alchemy deployment targets:
 
-- `production` → the existing live `garden-staging` Worker.
-- `preview` → the temporary `garden-preview` Worker used for remote testing.
+- `staging` → `garden-staging`, automatically deployed from `main`.
+- `dev` → `garden-dev`, automatically deployed from `dev`.
+- `preview` → `garden-preview`, deployed manually for temporary remote testing.
+
+Two Workers Builds triggers are attached to `garden-staging`: the production
+trigger watches `main`; the non-production trigger watches other branches.
+Production runs `cd ../.. && pnpm run deploy`; non-production runs
+`cd ../.. && pnpm run deploy:ci`. The dispatcher deploys only `main`
+and `dev`, skipping other branches before typechecks or migrations. Preview
+remains manual. Build secrets must be configured separately on both triggers;
+Cloudflare copies plain variables when enabling non-production builds, not secrets.
+
+Staging retains Alchemy's existing `garden-production` stack and `production`
+state stage. Those are resource ownership identifiers, not another environment;
+do not rename them or adopt the same resources under a new stack.
 
 For any remote deploy or verification where the user does not explicitly request the live target, use **preview**.
 
 ## Non-negotiables
 
-- Treat `garden-staging` as production despite its name. Never deploy it unless the user explicitly requests the live production target.
+- Keep branch ownership explicit: `main` owns staging, `dev` owns dev. Use preview for ad hoc remote verification unless the user requests a persistent target.
 - Use repository package scripts. Do not create an ad hoc Wrangler deployment config or run `wrangler deploy`.
 - Alchemy owns each target's Garden app Worker, Hyperdrive, D1, R2, Durable Objects, Workflow, Worker Loader, sandbox container, and optional tail consumer.
 - Do not echo secrets, write secret values to tracked files, or expose `.env` contents.
 - Garden does not bundle or deploy Harnessy. Executor runs from its declared dependencies inside the Garden app Worker; do not create a separate connector or MCP-proxy Worker.
 - Preserve unrelated dirty-tree changes. Deployment does not require a commit.
-- Preview currently shares `DATABASE_URL` with the live target by explicit user decision. Use a dedicated preview workspace/account and avoid destructive product actions.
+- Dev and preview share staging’s `DATABASE_URL` by explicit user decision. Only staging runs migrations. Use a dedicated preview workspace/account and avoid destructive product actions.
 
 ## Validate deployment configuration
 
@@ -38,17 +51,37 @@ From the repository root:
 NODE_OPTIONS=--max-old-space-size=8192 pnpm run deploy:preview
 ```
 
-This selects `GARDEN_DEPLOY_TARGET=preview`. Both targets use the existing `garden-staging` Alchemy credential profile; the Alchemy app/stage and Cloudflare resource names provide target isolation. Docker must be available because preview has its own sandbox container.
+This selects `GARDEN_DEPLOY_TARGET=preview`. Alchemy v2 uses Cloudflare credentials and remote state; stack/stage and physical resource names keep the targets separately owned. Containers use the pinned prebuilt Sandbox image.
 
-## Live production deployment
+## Staging deployment
 
-Only when explicitly requested:
+Automatic on `main` pushes, or explicitly:
 
 ```bash
 NODE_OPTIONS=--max-old-space-size=8192 pnpm run deploy
 ```
 
-This selects `GARDEN_DEPLOY_TARGET=production` and updates `garden-staging`.
+This typechecks, applies pending PostgreSQL migrations, then selects
+`GARDEN_DEPLOY_TARGET=staging` and updates `garden-staging`. A migration
+failure stops the command before Alchemy deploys application code.
+
+`DATABASE_URL` must be available to the process that runs `pnpm deploy`. For
+Cloudflare Workers Builds, configure it as a build secret on the Git trigger;
+a Worker runtime secret is not available to the build command.
+
+Dev and preview intentionally do not run migrations because they share the
+staging PostgreSQL origin. Apply schema changes through staging first.
+
+## Dev deployment
+
+Automatic on `dev` pushes, or explicitly:
+
+```bash
+NODE_OPTIONS=--max-old-space-size=8192 pnpm run deploy:dev
+```
+
+This typechecks and deploys the `garden-dev` stack at stage `dev`. Dev remains
+running after verification. Do not run preview teardown against dev resources.
 
 ## Mandatory preview teardown
 
@@ -64,7 +97,6 @@ Confirm successful deletion before reporting completion. If teardown encounters 
 
 - Typecheck or build failures are blockers.
 - If the default Node heap is exhausted, use the documented 8 GB `NODE_OPTIONS` command above.
-- If Docker is unavailable, enable Docker and retry; do not remove the Sandbox binding without explicit approval.
 - For transient Cloudflare upload/network failures, retry the same approved package script.
 - If Alchemy proposes replacement or deletion of a resource belonging to the other target, stop immediately.
 - Missing environment variables should be reported by name only, never by value.
@@ -95,4 +127,4 @@ The OAuth popup may return to the same preview origin while another workspace is
 
 ## Reporting
 
-Report the exact command, selected target, Worker URL, verification evidence, teardown result, and confirmation that `garden-staging` was not changed.
+Report the exact command, selected target, Worker URL, verification evidence, teardown result, and which persistent targets changed.

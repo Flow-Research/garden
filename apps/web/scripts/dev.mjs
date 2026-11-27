@@ -14,6 +14,16 @@ for (const [key, value] of Object.entries(rootEnv)) {
 }
 
 process.env.NODE_OPTIONS ??= '--max-old-space-size=3072'
+// Workerd isolate OOM mitigation (cloudflare/workers-sdk#14701): every HMR edit
+// to a server file re-evaluates the module graph inside the same workerd
+// isolate and retains ~10-12MB, so this worker (agents SDK + DOs + MCP) hits
+// workerd's default ~1.4GB V8 heap limit mid-session and dies with "fetch
+// failed" on every subsequent request — Miniflare has no crash recovery
+// (#13045). Raise the isolate heap ceiling for dev. The env passthrough comes
+// from our pnpm patch on miniflare (mirrors merged upstream PR
+// cloudflare/workers-sdk#14702); drop the patch once the pinned miniflare
+// ships it natively (>= 4.20260724).
+process.env.MINIFLARE_WORKERD_V8_FLAGS ??= '--max-old-space-size=4096'
 const offline = args.has('--offline')
 const configSelection = selectWorkerConfig({
   containers: args.has('--containers'),

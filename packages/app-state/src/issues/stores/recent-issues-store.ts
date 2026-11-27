@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import {
   createWorkspaceAwareStorage,
   registerForWorkspaceRehydration,
+  workspaceScopedMerge,
 } from '../../platform/workspace-storage'
 import { defaultStorage } from '../../platform/storage'
 
@@ -37,6 +38,7 @@ export const useRecentIssuesStore = create<RecentIssuesState>()(
         createWorkspaceAwareStorage(defaultStorage),
       ),
       partialize: (state) => ({ items: state.items }),
+      merge: workspaceScopedMerge<RecentIssuesState>({ items: [] }),
     },
   ),
 )

@@ -7,6 +7,7 @@ import type { Workspace, MemberWithUser, Invitation } from './workspace'
 import type { Project } from './project'
 import type { IssueRun, IssueRunEvent, IssueRunStatus } from './issue-run'
 import type { IssueSourceBinding, IssueWorkProduct } from './issue-work-product'
+import type { TeamMemberKind } from './team'
 
 // App realtime event types.
 export type WSEventType =
@@ -62,12 +63,57 @@ export type WSEventType =
   | 'invitation:accepted'
   | 'invitation:declined'
   | 'invitation:revoked'
+  | 'team:created'
+  | 'team:updated'
+  | 'team:deleted'
+  | 'team_member:added'
+  | 'team_member:removed'
+  | 'team_member:updated'
 
 export interface WSMessage<T = unknown> {
   type: WSEventType
   payload: T
   actor_id?: string
 }
+
+/**
+ * Wire envelope for the workspace realtime channel. Every event carries the
+ * workspace id and a publish timestamp so subscribers can gate delivery and
+ * measure publish → deliver → cache-update latency without extra lookups.
+ */
+export interface RealtimeEventEnvelope<T = unknown> {
+  event_id: string
+  type: WSEventType
+  workspace_id: string
+  /** Epoch milliseconds at the API route, before the Durable Object hop. */
+  published_at: number
+  payload: T
+}
+
+/**
+ * Events the workspace realtime hub currently publishes. Team events drive the
+ * Teams surfaces; issue events carry `team_id` when the issue belongs to a Team
+ * so the hub can gate them per the spec's audience rules.
+ */
+export type RealtimePublishableEvent =
+  | { type: 'team:created'; payload: TeamCreatedPayload }
+  | { type: 'team:updated'; payload: TeamUpdatedPayload }
+  | { type: 'team:deleted'; payload: TeamDeletedPayload }
+  | { type: 'team_member:added'; payload: TeamMemberAddedPayload }
+  | { type: 'team_member:removed'; payload: TeamMemberRemovedPayload }
+  | { type: 'issue:created'; payload: IssueCreatedPayload }
+  | { type: 'issue:updated'; payload: IssueUpdatedPayload }
+  | { type: 'issue:deleted'; payload: IssueDeletedPayload }
+  | { type: 'comment:created'; payload: CommentChangedPayload }
+  | { type: 'comment:updated'; payload: CommentChangedPayload }
+  | { type: 'comment:deleted'; payload: CommentChangedPayload }
+
+/** Envelope union with `type` and `payload` kept correlated for gating. */
+export type RealtimePublishableEnvelope = {
+  [K in RealtimePublishableEvent['type']]: RealtimeEventEnvelope<
+    Extract<RealtimePublishableEvent, { type: K }>['payload']
+  > & { type: K }
+}[RealtimePublishableEvent['type']]
 
 export interface IssueCreatedPayload {
   issue: Issue
@@ -79,6 +125,18 @@ export interface IssueUpdatedPayload {
 
 export interface IssueDeletedPayload {
   issue_id: string
+  /** Present when the deleted issue belonged to a Team. */
+  team_id?: string | null
+}
+
+/**
+ * A comment on an issue was added, edited, removed or reacted to. Carries the
+ * issue's Team so the hub gates it like the issue itself.
+ */
+export interface CommentChangedPayload {
+  issue_id: string
+  comment_id: string
+  team_id: string | null
 }
 
 export interface AgentStatusPayload {
@@ -282,4 +340,52 @@ export interface InvitationDeclinedPayload {
 export interface InvitationRevokedPayload {
   invitationId: string
   email: string
+}
+
+/**
+ * Team event payloads carry identifiers only. Every workspace client receives
+ * them, so they must not include a caller-relative Team DTO (`can_manage`,
+ * visibility-dependent counts) or Team content. Clients invalidate and refetch
+ * the authoritative Team queries instead (#154).
+ */
+export interface TeamCreatedPayload {
+  workspace_id: string
+  team_id: string
+}
+
+export interface TeamUpdatedPayload {
+  workspace_id: string
+  team_id: string
+}
+
+export interface TeamDeletedPayload {
+  workspace_id: string
+  team_id: string
+}
+
+export interface TeamMemberAddedPayload {
+  workspace_id: string
+  team_id: string
+  membership_id: string
+  member_type: TeamMemberKind
+  user_id: string | null
+  agent_id: string | null
+}
+
+export interface TeamMemberRemovedPayload {
+  workspace_id: string
+  team_id: string
+  membership_id: string
+  member_type: TeamMemberKind
+  user_id: string | null
+  agent_id: string | null
+}
+
+export interface TeamMemberUpdatedPayload {
+  workspace_id: string
+  team_id: string
+  membership_id: string
+  member_type: TeamMemberKind
+  user_id: string | null
+  agent_id: string | null
 }

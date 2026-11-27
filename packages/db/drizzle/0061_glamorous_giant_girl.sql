@@ -1,0 +1,2 @@
+ALTER TABLE "decide_analysis_run" ADD COLUMN "delivered_at" timestamp with time zone;--> statement-breakpoint
+CREATE UNIQUE INDEX "decide_analysis_run_thread_active_idx" ON "decide_analysis_run" USING btree ("thread_id") WHERE "decide_analysis_run"."status" in ('queued', 'running', 'cancel_requested');

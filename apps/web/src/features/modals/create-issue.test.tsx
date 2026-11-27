@@ -2,6 +2,10 @@ import { forwardRef, useImperativeHandle, useRef, useState } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type {
+  MockContentEditorHandle,
+  MockEditorProps,
+} from '@/test/mock-props'
 
 const mockPush = vi.hoisted(() => vi.fn())
 const mockOpenPanel = vi.hoisted(() => vi.fn())
@@ -28,6 +32,7 @@ const mockDraftStore = {
 
 vi.mock('../navigation', () => ({
   useNavigation: () => ({ push: mockPush }),
+  useNavigationActions: () => ({ push: mockPush }),
 }))
 
 vi.mock('@garden/app-state/workspace', () => ({
@@ -53,8 +58,15 @@ vi.mock('@/lib/issues/mutations', () => ({
   useUpdateIssue: () => ({ mutate: vi.fn() }),
 }))
 
-vi.mock('@/components/shell/workspace-dock', () => ({
-  useWorkspaceDock: () => ({ openPanel: mockOpenPanel }),
+vi.mock('@/features/navigation/use-surface-navigation', () => ({
+  useSurfaceNavigation: () => ({
+    openIssue: (issue: { id: string; title: string }) =>
+      mockOpenPanel({
+        kind: 'issue-detail',
+        title: issue.title,
+        entityId: issue.id,
+      }),
+  }),
 }))
 
 vi.mock('@garden/app-state/hooks/use-file-upload', () => ({
@@ -66,13 +78,14 @@ vi.mock('@/lib/api', () => ({
 }))
 
 vi.mock('../editor', () => {
-  const ContentEditor = forwardRef(
-    ({ defaultValue, onUpdate, placeholder }: any, ref: any) => {
+  const ContentEditor = forwardRef<MockContentEditorHandle, MockEditorProps>(
+    ({ defaultValue, onUpdate, placeholder }, ref) => {
       const valueRef = useRef(defaultValue || '')
       const [value, setValue] = useState(defaultValue || '')
       useImperativeHandle(ref, () => ({
         getMarkdown: () => valueRef.current,
         uploadFile: vi.fn(),
+        hasActiveUploads: () => false,
       }))
       return (
         <textarea
@@ -93,7 +106,12 @@ vi.mock('../editor', () => {
     useFileDropZone: () => ({ isDragOver: false, dropZoneProps: {} }),
     FileDropOverlay: () => null,
     ContentEditor,
-    TitleEditor: ({ defaultValue, placeholder, onChange, onSubmit }: any) => {
+    TitleEditor: ({
+      defaultValue,
+      placeholder,
+      onChange,
+      onSubmit,
+    }: MockEditorProps) => {
       const [value, setValue] = useState(defaultValue || '')
       return (
         <input

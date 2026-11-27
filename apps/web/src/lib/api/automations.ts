@@ -84,6 +84,8 @@ export type AutomationRun = {
   created_at: string | null
   result_json?: Record<string, unknown> | null
   usage_json?: Record<string, unknown> | null
+  /** Decide analyses this run started, oldest first; each renders a card. */
+  decide_analysis_run_ids: string[]
 }
 
 export type AutomationListResponse = {

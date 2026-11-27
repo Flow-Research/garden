@@ -43,7 +43,7 @@ function redirectToConnections(request: Request, flowId?: string | null) {
     isDevelopmentEnv() && appEnv.BETTER_AUTH_URL
       ? appEnv.BETTER_AUTH_URL
       : requestOrigin
-  const url = new URL('/workspace', redirectOrigin)
+  const url = new URL('/connectors', redirectOrigin)
   url.search = connectorCallbackSearchParams({
     connectorId: 'github',
     flowId,

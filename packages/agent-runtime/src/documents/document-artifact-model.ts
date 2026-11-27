@@ -137,7 +137,7 @@ export const DocumentArtifactEvent = Schema.TaggedUnion({
 export type DocumentArtifactEvent = typeof DocumentArtifactEvent.Type
 
 /** Invalid persisted state or a malformed document command. */
-export class DocumentArtifactValidationError extends Schema.TaggedErrorClass<DocumentArtifactValidationError>()(
+export class DocumentArtifactValidationError extends Schema.TaggedError<DocumentArtifactValidationError>()(
   'DocumentArtifactValidationError',
   {
     operation: Schema.String,
@@ -146,7 +146,7 @@ export class DocumentArtifactValidationError extends Schema.TaggedErrorClass<Doc
 ) {}
 
 /** Recoverable durable-storage failure surfaced to the application boundary. */
-export class DocumentArtifactPersistenceError extends Schema.TaggedErrorClass<DocumentArtifactPersistenceError>()(
+export class DocumentArtifactPersistenceError extends Schema.TaggedError<DocumentArtifactPersistenceError>()(
   'DocumentArtifactPersistenceError',
   {
     operation: Schema.String,
@@ -156,13 +156,13 @@ export class DocumentArtifactPersistenceError extends Schema.TaggedErrorClass<Do
 ) {}
 
 /** The requested canonical document has not been initialized in this authority. */
-export class DocumentArtifactNotFoundError extends Schema.TaggedErrorClass<DocumentArtifactNotFoundError>()(
+export class DocumentArtifactNotFoundError extends Schema.TaggedError<DocumentArtifactNotFoundError>()(
   'DocumentArtifactNotFoundError',
   { documentId: DocumentArtifactId },
 ) {}
 
 /** Canonical state already exists and must be changed through operations. */
-export class DocumentArtifactAlreadyExistsError extends Schema.TaggedErrorClass<DocumentArtifactAlreadyExistsError>()(
+export class DocumentArtifactAlreadyExistsError extends Schema.TaggedError<DocumentArtifactAlreadyExistsError>()(
   'DocumentArtifactAlreadyExistsError',
   { documentId: DocumentArtifactId },
 ) {}

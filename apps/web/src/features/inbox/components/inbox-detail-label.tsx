@@ -18,11 +18,13 @@ const typeLabels: Record<InboxItemType, string> = {
   new_comment: 'New comment',
   mentioned: 'Mentioned',
   review_requested: 'Approval needed',
+  brain_proposal: 'Knowledge to review',
   waiting_for_input: 'Question waiting',
   wp_review: 'Ready for review',
   task_completed: 'Task completed',
   task_failed: 'Task failed',
   agent_blocked: 'Agent blocked',
+  connector_needed: 'Connector needed',
   agent_completed: 'Agent completed',
   reaction_added: 'Reacted',
 }
@@ -49,7 +51,7 @@ export function InboxDetailLabel({ item }: { item: InboxItem }) {
       return (
         <span className="inline-flex items-center gap-1">
           Set status to
-          <StatusIcon status={details.to as IssueStatus} className="h-3 w-3" />
+          <StatusIcon status={details.to as IssueStatus} className="size-3" />
           {label}
         </span>
       )
@@ -63,7 +65,7 @@ export function InboxDetailLabel({ item }: { item: InboxItem }) {
           Set priority to
           <PriorityIcon
             priority={details.to as IssuePriority}
-            className="h-3 w-3"
+            className="size-3"
           />
           {label}
         </span>

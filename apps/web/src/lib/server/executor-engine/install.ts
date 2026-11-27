@@ -9,6 +9,7 @@ import {
   variable,
   type ApiKeyAuthTemplate,
   type McpAuthMethodInput,
+  type McpPluginExtension,
 } from '@executor-js/plugin-mcp/core'
 import {
   ExecutorInstallConnected,
@@ -58,11 +59,11 @@ export interface PresetTarget {
 
 export type InstallTarget = McpTarget | OpenApiTarget | PresetTarget
 
-export class ExecutorInstallUnavailableError extends Schema.ErrorClass<ExecutorInstallUnavailableError>(
+export class ExecutorInstallUnavailableError extends Schema.Error<ExecutorInstallUnavailableError>(
   'ExecutorInstallUnavailableError',
 )({ reasons: Schema.NonEmptyArray(Schema.String) }) {}
 
-class ExecutorCandidateError extends Schema.ErrorClass<ExecutorCandidateError>(
+class ExecutorCandidateError extends Schema.Error<ExecutorCandidateError>(
   'ExecutorCandidateError',
 )({ reason: Schema.String }) {}
 
@@ -176,10 +177,17 @@ const bearerTemplate = (): ApiKeyAuthTemplate => ({
   },
 })
 
-const mcpAuthenticationTemplates = Effect.fn(
+interface McpProbeExecutor {
+  readonly mcp: Pick<McpPluginExtension, 'probeEndpoint'>
+}
+
+/** Converts an MCP endpoint probe into the authentication template that the
+ * Executor stores with the integration. Decide returns an OAuth challenge, so
+ * installation must declare OAuth before the later connection flow can start. */
+export const mcpAuthenticationTemplates = Effect.fn(
   'ExecutorInstall.mcpAuthenticationTemplates',
 )(function* (
-  executor: GardenExecutor,
+  executor: McpProbeExecutor,
   candidate: CatalogCandidate,
   endpoint: string,
 ) {

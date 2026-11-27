@@ -1,13 +1,18 @@
-import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useState } from 'react'
 import { NodeViewWrapper } from '@tiptap/react'
 import type { NodeViewProps } from '@tiptap/react'
 import { Maximize2, Download, Link as LinkIcon, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from '@garden/ui/components/ui/dialog'
 import { cn } from '@garden/ui/lib/utils'
 
 // ---------------------------------------------------------------------------
-// Lightbox — full-screen image preview (ESC or click backdrop to close)
+// Lightbox — full-screen image preview (ESC or click backdrop to close).
+// Built on Dialog so focus is trapped while it is open and restored after.
 // ---------------------------------------------------------------------------
 
 function ImageLightbox({
@@ -19,27 +24,24 @@ function ImageLightbox({
   alt: string
   onClose: () => void
 }) {
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [onClose])
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 cursor-zoom-out"
-      onClick={onClose}
-    >
-      <img
-        src={src}
-        alt={alt}
-        className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain"
-        onClick={(e) => e.stopPropagation()}
-      />
-    </div>,
-    document.body,
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        showCloseButton={false}
+        overlayClassName="bg-black/80 supports-backdrop-filter:backdrop-blur-none"
+        className="inset-0 top-0 left-0 flex h-full w-full max-w-none translate-x-0 translate-y-0 cursor-zoom-out items-center justify-center rounded-none bg-transparent p-0 ring-0 sm:max-w-none"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onClose()
+        }}
+      >
+        <DialogTitle className="sr-only">{alt || 'Image preview'}</DialogTitle>
+        <img
+          src={src}
+          alt={alt}
+          className="max-h-[90vh] max-w-[90vw] cursor-default rounded-lg object-contain"
+        />
+      </DialogContent>
+    </Dialog>
   )
 }
 

@@ -203,9 +203,8 @@ describe('makeMammothDocumentMarkdownLayer', () => {
   )
 
   it('imports a real DOCX into sanitized blocks without the AI binding', async () => {
-    const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import(
-      'docx'
-    )
+    const { Document, HeadingLevel, Packer, Paragraph, TextRun } =
+      await import('docx')
     const doc = new Document({
       sections: [
         {

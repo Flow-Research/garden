@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bot, Loader2 } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import type { Agent } from '@garden/core/types'
-import { agentDetailOptions } from '@/lib/workspace/queries'
+import { useAuthStore } from '@garden/app-state/auth'
+import { useWorkspaceId } from '@garden/app-state/hooks'
+import { agentDetailOptions, memberListOptions } from '@/lib/workspace/queries'
 import {
   Avatar,
   AvatarFallback,
@@ -17,39 +19,63 @@ import {
 } from '@garden/ui/components/ui/tabs'
 import { Skeleton } from '@garden/ui/components/ui/skeleton'
 import { cn } from '@garden/ui/lib/utils'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 
 import { AgentAccessTab } from './agent-access-tab'
 import { AgentSkillsTab } from './agent-skills-tab'
-
-const STATUS_COLOR: Record<Agent['status'], string> = {
-  idle: 'bg-zinc-400',
-  working: 'bg-emerald-500',
-  blocked: 'bg-amber-500',
-  error: 'bg-red-500',
-  offline: 'bg-zinc-300',
-}
+import { AGENT_STATUS_COLOR } from './agent-status'
+import { isMissingError } from '@/lib/api/errors'
+import { LoadError } from '@garden/ui/components/common/load-error'
 
 export function AgentDetail({
   agentId,
   onOpenSkill,
+  tab: routeTab,
+  onTabChange,
 }: {
   agentId: string
   onOpenSkill: (skillId: string, name: string) => void
+  /** The open tab, from the URL; without it the tab is local state. */
+  tab?: string
+  onTabChange?: (tab: string) => void
 }) {
-  const [tab, setTab] = useState('overview')
+  const [localTab, setLocalTab] = useState('overview')
+  const tab = routeTab ?? localTab
+  const setTab = (next: string) => {
+    setLocalTab(next)
+    onTabChange?.(next)
+  }
   const detailQuery = useQuery(agentDetailOptions(agentId))
   const agent = detailQuery.data ?? null
+  const wsId = useWorkspaceId()
+  const user = useAuthStore((s) => s.user)
+  const { data: members = [] } = useQuery(memberListOptions(wsId))
+  const currentMember = members.find((m) => m.user_id === user?.id) ?? null
+  const canManageAccess =
+    currentMember?.role === 'owner' || currentMember?.role === 'admin'
 
   if (detailQuery.isPending) {
     return <AgentDetailSkeleton />
   }
 
+  // Only a 404 or 403 means the agent is gone; other failures can be
+  // retried. Both used to show the raw error message with no retry.
+  if (!agent && detailQuery.isError && !isMissingError(detailQuery.error)) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <LoadError
+          message="Could not load this agent."
+          onRetry={() => void detailQuery.refetch()}
+          retrying={detailQuery.isFetching}
+        />
+      </div>
+    )
+  }
+
   if (!agent) {
     return (
       <div className="flex h-full items-center justify-center px-6 text-sm text-muted-foreground">
-        {detailQuery.error instanceof Error
-          ? detailQuery.error.message
-          : 'Agent not found.'}
+        Agent not found.
       </div>
     )
   }
@@ -87,7 +113,9 @@ export function AgentDetail({
           <TabsList variant="line" className="h-9">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="skills">Skills</TabsTrigger>
-            <TabsTrigger value="access">Access</TabsTrigger>
+            {canManageAccess ? (
+              <TabsTrigger value="access">Access</TabsTrigger>
+            ) : null}
             <TabsTrigger value="instructions">Instructions</TabsTrigger>
             <TabsTrigger value="activity">Activity</TabsTrigger>
           </TabsList>
@@ -100,9 +128,11 @@ export function AgentDetail({
           <TabsContent value="skills" className="px-6 py-5">
             <AgentSkillsTab agentId={agent.id} onOpenSkill={onOpenSkill} />
           </TabsContent>
-          <TabsContent value="access" className="px-6 py-5">
-            <AgentAccessTab agentId={agent.id} />
-          </TabsContent>
+          {canManageAccess ? (
+            <TabsContent value="access" className="px-6 py-5">
+              <AgentAccessTab agentId={agent.id} />
+            </TabsContent>
+          ) : null}
           <TabsContent value="instructions" className="px-6 py-5">
             <InstructionsPane agent={agent} />
           </TabsContent>
@@ -121,7 +151,9 @@ function StatusPill({ status }: { status: Agent['status'] }) {
       variant="outline"
       className="rounded-full border-border/70 bg-muted/40 text-[11px] text-muted-foreground capitalize"
     >
-      <span className={cn('size-1.5 rounded-full', STATUS_COLOR[status])} />
+      <span
+        className={cn('size-1.5 rounded-full', AGENT_STATUS_COLOR[status])}
+      />
       {status}
     </Badge>
   )
@@ -171,10 +203,7 @@ function PlaceholderPane({ title }: { title: string }) {
   return (
     <div className="flex max-w-md flex-col gap-2 rounded-md border border-dashed px-4 py-6 text-center">
       <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="text-xs text-muted-foreground">
-        Coming soon. This surface will land alongside the rest of the agent
-        operations toolkit.
-      </p>
+      <p className="text-xs text-muted-foreground">Not available yet.</p>
     </div>
   )
 }
@@ -190,7 +219,7 @@ function AgentDetailSkeleton() {
         </div>
       </div>
       <div className="flex flex-1 items-center justify-center text-xs text-muted-foreground">
-        <Loader2 className="mr-2 size-3.5 animate-spin" />
+        <Spinner className="mr-2 size-3.5" />
         Loading agent…
       </div>
     </div>

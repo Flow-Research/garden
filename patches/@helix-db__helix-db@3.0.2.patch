@@ -1,0 +1,26 @@
+diff --git a/dist/graph.js b/dist/graph.js
+index 211fe8576c858b8b81b1477dbcf25a4ab31393d2..6861ef6c6542d9243ceb2d944b5c678ff4bc9b68 100644
+--- a/dist/graph.js
++++ b/dist/graph.js
+@@ -232,7 +232,7 @@ export async function loadGraph(client, selection) {
+     return new NativeGraph(response instanceof Uint8Array ? native.graph_from_query_response(spec, response) : response, native);
+ }
+ const DEFAULT_NATIVE_PACKAGE = "@helix-db/uniffi";
+-const dynamicImport = new Function("specifier", "return import(specifier)");
++const dynamicImport = (specifier) => import(specifier);
+ async function loadNativeGraphModule() {
+     const packageName = process.env.HELIXDB_UNIFFI_NODE_PACKAGE ?? DEFAULT_NATIVE_PACKAGE;
+     let native;
+diff --git a/dist/index.js b/dist/index.js
+index 9417d14b8577fa7ba8f7e7db3a4fd1bf53da9975..ff34087b59acde28a12e772a90c83a90083ecc92 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -55,7 +55,7 @@ export class HelixError extends Error {
+     }
+ }
+ const DEFAULT_NATIVE_PACKAGE = "@helix-db/uniffi";
+-const dynamicImport = new Function("specifier", "return import(specifier)");
++const dynamicImport = (specifier) => import(specifier);
+ /**
+  * Async HTTP client for running queries against a Helix instance.
+  *

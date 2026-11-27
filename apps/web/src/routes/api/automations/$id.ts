@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm'
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { schema } from '@/lib/server/db'
@@ -15,8 +16,13 @@ import {
   toAutomationRun,
   toAutomationTrigger,
   uninstallAutomationSchedules,
+  writeWithScheduleSync,
 } from '@/lib/server/automations'
 import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import {
+  requireWorkspaceMember,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import {
   parseJsonBody,
   updateAutomationBodySchema,
@@ -64,9 +70,10 @@ export const Route = createFileRoute('/api/automations/$id')({
         const automation = automationResult.value
         if (!automation) return notFound('Automation not found')
 
-        const access = await requireWorkspaceAccess(
-          request,
+        const access = await requireWorkspaceMember(
+          appContext,
           automation.workspaceId,
+          workspacePermissions.automationManage,
         )
         if (access instanceof Response) return access
 
@@ -146,22 +153,29 @@ export const Route = createFileRoute('/api/automations/$id')({
         values.updatedBy = access.session.user.id
 
         const db = await appContext.db()
-        const [updated] = await db
-          .update(schema.automation)
-          .set(values)
-          .where(eq(schema.automation.id, automation.id))
-          .returning()
-        if (!updated) return notFound('Automation not found')
+        const writeResult = await writeWithScheduleSync(
+          db,
+          async (tx) => {
+            const [updated] = await tx
+              .update(schema.automation)
+              .set(values)
+              .where(eq(schema.automation.id, automation.id))
+              .returning()
+            return updated ?? null
+          },
+          async (updated) => {
+            if (!updated) return Result.ok()
+            return updated.status === 'active'
+              ? await syncAutomationSchedules(appEnv, updated)
+              : await uninstallAutomationSchedules(appEnv, updated.id)
+          },
+        )
+        if (writeResult.isErr()) return automationErr(writeResult.error)
+        if (!writeResult.value) return notFound('Automation not found')
 
-        const syncResult =
-          updated.status === 'active'
-            ? await syncAutomationSchedules(appEnv, updated)
-            : await uninstallAutomationSchedules(appEnv, updated.id)
-        if (syncResult.isErr()) return automationErr(syncResult.error)
-
-        return automationOk(toAutomation(updated))
+        return automationOk(toAutomation(writeResult.value))
       },
-      DELETE: async ({ context, request, params }) => {
+      DELETE: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
         const automationResult = await requireAutomation(appEnv, params.id)
         if (automationResult.isErr())
@@ -169,27 +183,33 @@ export const Route = createFileRoute('/api/automations/$id')({
         const automation = automationResult.value
         if (!automation) return notFound('Automation not found')
 
-        const access = await requireWorkspaceAccess(
-          request,
+        const access = await requireWorkspaceMember(
+          appContext,
           automation.workspaceId,
+          workspacePermissions.automationManage,
         )
         if (access instanceof Response) return access
 
         const db = await appContext.db()
-        const [updated] = await db
-          .update(schema.automation)
-          .set({ status: 'archived', updatedAt: new Date() })
-          .where(eq(schema.automation.id, automation.id))
-          .returning()
-        if (!updated) return notFound('Automation not found')
-
-        const uninstallResult = await uninstallAutomationSchedules(
-          appEnv,
-          automation.id,
+        const writeResult = await writeWithScheduleSync(
+          db,
+          async (tx) => {
+            const [updated] = await tx
+              .update(schema.automation)
+              .set({ status: 'archived', updatedAt: new Date() })
+              .where(eq(schema.automation.id, automation.id))
+              .returning()
+            return updated ?? null
+          },
+          async (updated) =>
+            updated
+              ? await uninstallAutomationSchedules(appEnv, automation.id)
+              : Result.ok(),
         )
-        if (uninstallResult.isErr()) return automationErr(uninstallResult.error)
+        if (writeResult.isErr()) return automationErr(writeResult.error)
+        if (!writeResult.value) return notFound('Automation not found')
 
-        return automationOk(toAutomation(updated))
+        return automationOk(toAutomation(writeResult.value))
       },
     },
   },

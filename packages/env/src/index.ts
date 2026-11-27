@@ -18,6 +18,8 @@ const serverSchema = {
   GITHUB_APP_SLUG: z.string().min(1).optional(),
   GITHUB_APP_PRIVATE_KEY: z.string().min(1).optional(),
   GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
+  GOOGLE_AUTH_CLIENT_ID: z.string().min(1).optional(),
+  GOOGLE_AUTH_CLIENT_SECRET: z.string().min(1).optional(),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   SLACK_CLIENT_ID: z.string().min(1).optional(),
@@ -26,6 +28,14 @@ const serverSchema = {
   // Optional: absent in environments that don't need web search. The web tools
   // report an unconfigured error to the model rather than failing the turn.
   EXA_API_KEY: z.string().min(1).optional(),
+  // Optional: absent in environments without an Org Brain HelixDB instance.
+  // The brain routes/tools report an unconfigured error rather than failing the
+  // turn when these are missing. Uses string().url() like BETTER_AUTH_URL, not
+  // z.httpUrl(): zod's httpUrl rejects non-FQDN hostnames, so the local dev
+  // value http://localhost:6968 (compose.dev.yaml, wrangler.containers.jsonc,
+  // brain tests) would fail every parseServerEnv caller, e.g. db:migrate.
+  HELIX_URL: z.string().url().optional(),
+  HELIX_API_KEY: z.string().min(1).optional(),
   ENVIRONMENT: z
     .enum(['development', 'test', 'staging', 'production'])
     .default('development'),
@@ -48,4 +58,16 @@ export function parseServerEnv(runtimeEnv: RuntimeEnv) {
 const nodeRuntimeEnv = ((globalThis as { process?: { env?: RuntimeEnv } })
   .process?.env ?? {}) as RuntimeEnv
 
-export const serverEnv = createServerEnv(nodeRuntimeEnv)
+let serverEnvCache: ReturnType<typeof createServerEnv> | undefined
+
+/**
+ * The server environment parsed from `process.env`, for Node tooling (drizzle
+ * config, the Better Auth CLI). Parsed on first use rather than at import, so
+ * importing this package (or @garden/db) never throws in a Worker or a test
+ * that lacks these variables. Workers validate their bindings with
+ * `parseServerEnv`.
+ */
+export function getServerEnv() {
+  serverEnvCache ??= createServerEnv(nodeRuntimeEnv)
+  return serverEnvCache
+}

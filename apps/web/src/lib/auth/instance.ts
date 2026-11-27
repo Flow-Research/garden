@@ -1,6 +1,11 @@
 import { Effect, Result as EffectResult } from 'effect'
 import { betterAuth } from 'better-auth'
-import { createAuthMiddleware, getOAuthState } from 'better-auth/api'
+import {
+  APIError,
+  createAuthMiddleware,
+  getOAuthState,
+  getSessionFromCtx,
+} from 'better-auth/api'
 import { Result, matchError } from 'better-result'
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { and, eq } from 'drizzle-orm'
@@ -40,6 +45,7 @@ import {
 } from '@/lib/posthog-server'
 import type { Db } from '@/lib/server/db'
 import { sendPasswordResetEmail } from '@/lib/server/email/password-reset'
+import { hasPasswordSignInMethod } from '@/lib/auth/sign-in-methods'
 
 export type GardenAuthEnv = Pick<
   AppEnv,
@@ -47,6 +53,8 @@ export type GardenAuthEnv = Pick<
   | 'BETTER_AUTH_URL'
   | 'GITHUB_CLIENT_ID'
   | 'GITHUB_CLIENT_SECRET'
+  | 'GOOGLE_AUTH_CLIENT_ID'
+  | 'GOOGLE_AUTH_CLIENT_SECRET'
   | 'GOOGLE_CLIENT_ID'
   | 'GOOGLE_CLIENT_SECRET'
   | 'SLACK_CLIENT_ID'
@@ -60,6 +68,7 @@ export type GardenAuthEnv = Pick<
 type GardenAuthRuntime = GardenAuthEnv & {
   request?: Request
   waitUntil?: (promise: Promise<unknown>) => void
+  authMode?: 'full' | 'session'
 }
 
 type AuthDatabase = Db
@@ -354,7 +363,46 @@ async function finishOAuthConnectorCallback(args: {
   })
 }
 
+/**
+ * Builds the Google sign-in provider from auth-only credentials. Connector
+ * credentials are intentionally excluded because Better Auth asks Google to
+ * include scopes previously granted to the same OAuth project. Before this
+ * split, sign-in could share consent history with Gmail and Drive. A partial
+ * pair is a deployment error because silently disabling Google would make the
+ * configured UI and server behavior disagree. Reference: Better Auth 1.6.26
+ * Google provider source and Google's incremental authorization guidance.
+ */
+function googleAuthProvider(env: GardenAuthRuntime) {
+  const clientId = env.GOOGLE_AUTH_CLIENT_ID?.trim()
+  const clientSecret = env.GOOGLE_AUTH_CLIENT_SECRET?.trim()
+
+  if (!clientId && !clientSecret) return undefined
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      'GOOGLE_AUTH_CLIENT_ID and GOOGLE_AUTH_CLIENT_SECRET must be set together',
+    )
+  }
+
+  return {
+    google: {
+      clientId,
+      clientSecret,
+    },
+  }
+}
+
+/**
+ * Builds the full Better Auth instance or the optional-provider-free instance
+ * used by agent transport authorization. Before this split, a partial optional
+ * Google OAuth credential pair threw while `/agents/*` requests were only
+ * trying to verify a session. The session mode keeps the database, cookie,
+ * origin, and session configuration while skipping social and connector OAuth
+ * providers.
+ * References: issue #122, Better Auth `getSession` API, and Cloudflare Worker
+ * request-boundary guidance.
+ */
 export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
+  const useOptionalProviders = env.authMode !== 'session'
   const runtimeOrigin = getRequestOrigin(env.request)
   const baseURL =
     runtimeOrigin ?? env.BETTER_AUTH_URL ?? 'http://localhost:3000'
@@ -435,6 +483,16 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
     account: {
       encryptOAuthTokens: true,
       updateAccountOnSignIn: true,
+      accountLinking: {
+        trustedProviders: ['google'],
+        // Require the existing Garden account to verify its email before
+        // trusted-provider linking. Otherwise, anyone can pre-register an
+        // unverified password account with another person's email and claim
+        // the account when that person later signs in with Google.
+        requireLocalEmailVerified: true,
+        allowDifferentEmails: false,
+        allowUnlinkingAll: false,
+      },
       additionalFields: {
         workspaceId: { type: 'string', required: false, input: false },
         status: { type: 'string', required: false, input: false },
@@ -442,6 +500,7 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
         connectorType: { type: 'string', required: false, input: false },
       },
     },
+    socialProviders: useOptionalProviders ? googleAuthProvider(env) : undefined,
     plugins: [
       organization({
         ac: gardenAccessControl,
@@ -472,11 +531,53 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
           },
         },
       }),
-      genericOAuth({
-        config: buildConnectorOAuthConfigs(oauthEnv),
-      }),
+      ...(useOptionalProviders
+        ? [
+            genericOAuth({
+              config: buildConnectorOAuthConfigs(oauthEnv),
+            }),
+          ]
+        : []),
     ],
     hooks: {
+      /**
+       * Enforces Garden's sign-in-method unlink policy before Better Auth runs
+       * its account-count check and delete as separate operations. Garden's
+       * connector accounts share `auth_account` with sign-in methods, and
+       * concurrent Google and credential unlink requests could otherwise each
+       * observe the other method and delete both. Garden does not support
+       * removing password sign-in, while Google unlink requires a password
+       * account to remain. Reference: Better Auth 1.6.26 `unlinkAccount` route
+       * and `getSessionFromCtx` source.
+       */
+      before: createAuthMiddleware(async (context) => {
+        if (context.path !== '/unlink-account') {
+          return
+        }
+
+        const providerId = context.body?.providerId
+        if (providerId !== 'credential' && providerId !== 'google') return
+
+        const session = await getSessionFromCtx(context)
+        if (!session) return
+
+        if (providerId === 'credential') {
+          throw APIError.from('BAD_REQUEST', {
+            code: 'CREDENTIAL_UNLINK_NOT_SUPPORTED',
+            message: 'Password sign-in cannot be removed',
+          })
+        }
+
+        const accounts = await context.context.internalAdapter.findAccounts(
+          session.user.id,
+        )
+        if (!hasPasswordSignInMethod(accounts)) {
+          throw APIError.from('BAD_REQUEST', {
+            code: 'FAILED_TO_UNLINK_LAST_ACCOUNT',
+            message: 'Google is your only sign-in method',
+          })
+        }
+      }),
       after: createAuthMiddleware(async (context) => {
         if (context.path !== '/oauth2/callback/:providerId') {
           return
@@ -584,7 +685,7 @@ export function createBetterAuth(db: AuthDatabase, env: GardenAuthRuntime) {
       disableCSRFCheck: false,
       disableOriginCheck: false,
       database: {
-        generateId: () => crypto.randomUUID(),
+        generateId: 'uuid',
       },
     },
   })

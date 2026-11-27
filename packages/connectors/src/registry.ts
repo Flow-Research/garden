@@ -34,4 +34,14 @@ export function getConnectorById(id: string) {
   return connectorsById.get(id)
 }
 
+const connectorsByExecutorSlug = new Map<string, RegisteredConnector>(
+  connectorRegistry.flatMap((connector) =>
+    connector.executorSlug ? [[connector.executorSlug, connector]] : [],
+  ),
+)
+
+export function getConnectorByExecutorSlug(slug: string) {
+  return connectorsByExecutorSlug.get(slug)
+}
+
 export default connectorRegistry

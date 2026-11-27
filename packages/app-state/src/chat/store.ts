@@ -31,8 +31,6 @@ export interface ChatTimelineItem {
 export interface ChatState {
   isOpen: boolean
   selectedAgentId: string | null
-  activeSessionId: string | null
-  visibleChatSessionIds: string[]
   showHistory: boolean
   /** Drafts per session: sessionId → markdown text. */
   inputDrafts: Record<string, string>
@@ -54,8 +52,6 @@ export interface ChatState {
   setOpen: (open: boolean) => void
   toggle: () => void
   setSelectedAgentId: (id: string) => void
-  setActiveSession: (id: string | null) => void
-  setVisibleChatSessions: (ids: string[]) => void
   setShowHistory: (show: boolean) => void
   setInputDraft: (sessionId: string, draft: string) => void
   clearInputDraft: (sessionId: string) => void
@@ -69,8 +65,6 @@ const chatStore = create<ChatState>()(
     (set, get) => ({
       isOpen: false,
       selectedAgentId: null,
-      activeSessionId: null,
-      visibleChatSessionIds: [],
       showHistory: false,
       inputDrafts: {},
       erroredSessionIds: {},
@@ -92,32 +86,6 @@ const chatStore = create<ChatState>()(
           to: id,
         })
         set({ selectedAgentId: id })
-      },
-      /**
-       * Tracks the active workspace-dock chat session for sidebar highlighting.
-       *
-       * Before this existed, workspace dock code called an action that was
-       * only present in test mocks, so Vite emitted a production bundle that
-       * crashed during dock startup. The dock layout remains the source of
-       * truth; this transient store field only mirrors active tab state for
-       * components outside the dock.
-       */
-      setActiveSession: (id) => {
-        logger.debug('setActiveSession', {
-          from: get().activeSessionId,
-          to: id,
-        })
-        set({ activeSessionId: id })
-      },
-      /**
-       * Mirrors currently visible workspace-dock chat sessions.
-       *
-       * This lets chat navigation surfaces know which sessions are mounted
-       * without persisting layout-derived state. FlexLayout recomputes this on
-       * model changes.
-       */
-      setVisibleChatSessions: (ids) => {
-        set({ visibleChatSessionIds: [...new Set(ids)] })
       },
       setShowHistory: (show) => {
         logger.debug('setShowHistory', { to: show })
@@ -206,8 +174,6 @@ registerForWorkspaceRehydration(() => {
   logger.info('workspace rehydration: reloading chat drafts for new workspace')
   chatStore.setState({
     selectedAgentId: null,
-    activeSessionId: null,
-    visibleChatSessionIds: [],
     showHistory: false,
   })
   void chatStore.persist.rehydrate()

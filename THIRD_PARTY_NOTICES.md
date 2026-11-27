@@ -39,6 +39,16 @@ retains upstream `setDocumentLocked`/`applyOperationLocked` mutation behavior
 while composing it into Garden's existing per-thread Durable Object instead of
 introducing the gadget's second Durable Object.
 
+## Material Icon Theme file icons
+
+Garden includes PDF, Word, spreadsheet, document, and Markdown SVG
+icons under `apps/web/public/file-types/`.
+
+Upstream: https://github.com/material-extensions/vscode-material-icon-theme
+
+Material Icon Theme is licensed under the MIT License. The complete upstream
+license is included at `third_party/material-icon-theme/LICENSE`.
+
 ## Cloudflare Agents
 
 Garden carries `patches/agents@0.17.3.patch`, which modifies Cloudflare Agents
@@ -84,6 +94,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## Cabinet Grotesk font
+
+Garden vendors one Cabinet Grotesk woff2 (weight 700) at
+`packages/ui/fonts/cabinet-grotesk/cabinet-grotesk-700.woff2`, downloaded from
+the Fontshare CDN (Indian Type Foundry). Cabinet Grotesk is not published to
+npm or Google Fonts, and the design system only uses the bold weight for
+display titles.
+
+Licensed under the ITF Free Font License (free for personal and commercial
+use). Source and license details:
+`packages/ui/fonts/cabinet-grotesk/LICENSE.txt`.
 
 ## shadcn/ui
 

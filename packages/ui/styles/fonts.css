@@ -1,0 +1,15 @@
+/*
+ * Self-hosted font faces for the Garden design system.
+ * Inter + Geist Mono come from @fontsource-variable packages (imported app-side
+ * in apps/web/src/styles.css). Cabinet Grotesk is not published to npm or Google
+ * Fonts, so the single weight the token system uses (700 — title-* composites)
+ * is vendored from Fontshare (Indian Type Foundry, free license — see
+ * packages/ui/fonts/cabinet-grotesk/LICENSE.txt).
+ */
+@font-face {
+  font-family: 'Cabinet Grotesk';
+  src: url('../fonts/cabinet-grotesk/cabinet-grotesk-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}

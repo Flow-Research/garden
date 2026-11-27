@@ -8,8 +8,20 @@ vi.mock('@/lib/auth', () => ({
   createAuth: mockCreateAuth,
 }))
 
-const env = {
-  DATABASE_URL: 'postgres://garden.test/db',
+const env: Parameters<typeof getAuthSession>[1] = {
+  // createAuth is mocked, so the Hyperdrive binding is never connected.
+  HYPERDRIVE: {
+    connectionString: 'postgres://garden.test/db',
+    host: 'garden.test',
+    ip: '127.0.0.1',
+    port: 5432,
+    user: 'garden',
+    password: 'garden',
+    database: 'db',
+    connect: () => {
+      throw new Error('Hyperdrive is not used in this test')
+    },
+  },
   BETTER_AUTH_SECRET: 'test-secret',
   BETTER_AUTH_URL: 'https://garden.test',
 }

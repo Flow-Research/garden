@@ -1,5 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
 import { Result } from 'better-result'
+import { toast } from 'sonner'
 import type { Workspace } from '@garden/core/types'
 import { api } from '@/lib/api'
 import { workspaceKeys, workspaceListOptions } from './queries'
@@ -7,6 +9,7 @@ import { useWorkspaceStore } from '@garden/app-state/workspace'
 
 export function useCreateWorkspace() {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   return useMutation({
     mutationFn: (data: { name: string; slug: string; description?: string }) =>
       api.createWorkspace(data),
@@ -16,9 +19,25 @@ export function useCreateWorkspace() {
         ...old,
         newWs,
       ])
-      void Result.tryPromise(() =>
+      // Land on /home first — the old workspace's entity route would fire
+      // detail queries with ids the new workspace doesn't own.
+      void navigate({ to: '/home' })
+      // The workspace exists even when Better Auth setActive fails. Opening the
+      // shell locally avoids trapping a first-time user on the empty
+      // "Create a workspace" screen, which has no workspace menu to recover
+      // from (#208).
+      const switched = await Result.tryPromise(() =>
         useWorkspaceStore.getState().switchWorkspace(newWs),
       )
+      if (Result.isError(switched)) {
+        const listed = qc.getQueryData<Workspace[]>(workspaceKeys.list()) ?? [
+          newWs,
+        ]
+        useWorkspaceStore.getState().hydrateWorkspace(listed, newWs.id)
+        toast.error(
+          `${newWs.name} was created, but saving it as the active workspace failed. Reload if the wrong workspace appears.`,
+        )
+      }
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: workspaceKeys.list() })

@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { LoginForm } from '@/components/login-form'
 import { LoginFoliage } from '@/components/login-foliage'
 import { authClient } from '@/lib/auth/client'
+import { authClientOperation } from '@/lib/auth/client-result'
 import {
   capturePostHogBrowserEvent,
   postHogBrowserClient,
@@ -21,20 +22,64 @@ export function LoginPage({
   invitationStatusMessage,
   invitationWorkspaceName,
   lockedEmail = false,
+  redirectTarget,
+  googleAuthEnabled = false,
+  initialError,
 }: {
   onSuccess: () => void
+  googleAuthEnabled?: boolean
   initialEmail?: string
+  initialError?: string
   initialMode?: 'signin' | 'signup'
   invitationStatusMessage?: string
   invitationWorkspaceName?: string
   lockedEmail?: boolean
+  /**
+   * Sanitized post-auth target (usually an invite link). Threaded into the
+   * forgot-password link so the recovery detour returns to the same flow.
+   */
+  redirectTarget?: string
 }) {
   const [mode, setMode] = useState<'signin' | 'signup'>(initialMode)
   const [name, setName] = useState('')
   const [email, setEmail] = useState(initialEmail ?? '')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
+  const [error, setError] = useState(initialError ?? '')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+
+  /**
+   * Starts Google OAuth with the route's sanitized destination. Invitation
+   * pages also send the locked invite email as a login hint. Google can suggest
+   * that account, while server-side invitation acceptance remains the final
+   * matching-email check. Better Auth can reject the request or resolve with an
+   * error payload, so `authClientOperation` normalizes both failure paths.
+   */
+  const handleGoogleSignIn = async () => {
+    setGoogleLoading(true)
+    setError('')
+
+    const result = await authClientOperation({
+      fallbackMessage: 'Could not continue with Google',
+      operation: 'google-sign-in',
+      request: () =>
+        authClient.signIn.social({
+          provider: 'google',
+          callbackURL: redirectTarget ?? '/workspace',
+          errorCallbackURL: currentOAuthErrorCallbackURL(),
+          loginHint: lockedEmail ? email : undefined,
+        }),
+    })
+
+    result.match({
+      ok: () => undefined,
+      err: (requestError) => {
+        setGoogleLoading(false)
+        setError(requestError.message)
+        toast.error(requestError.message)
+      },
+    })
+  }
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -96,11 +141,16 @@ export function LoginPage({
           password={password}
           error={error}
           loading={loading}
+          googleAuthEnabled={googleAuthEnabled}
+          googleLoading={googleLoading}
+          onGoogleSignIn={() => void handleGoogleSignIn()}
           onSubmit={handleSubmit}
           onNameChange={setName}
           emailReadonly={lockedEmail}
+          modeLocked={lockedEmail}
           invitationStatusMessage={invitationStatusMessage}
           invitationWorkspaceName={invitationWorkspaceName}
+          redirectTarget={redirectTarget}
           onEmailChange={lockedEmail ? () => undefined : setEmail}
           onPasswordChange={setPassword}
           onToggleMode={() =>
@@ -124,4 +174,16 @@ export function LoginPage({
       </footer>
     </div>
   )
+}
+
+/**
+ * Returns OAuth failures to the current Garden auth route. Better Auth otherwise
+ * uses its generic error page. Old OAuth error parameters are removed so a retry
+ * produces one current error code while preserving the invitation redirect.
+ */
+function currentOAuthErrorCallbackURL() {
+  const url = new URL(window.location.href)
+  url.searchParams.delete('error')
+  url.searchParams.delete('error_description')
+  return url.toString()
 }

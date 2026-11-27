@@ -10,8 +10,8 @@ export type FlowNode = { label: string; tone?: 'default' | 'moss' | 'amber' }
 
 const toneClass: Record<NonNullable<FlowNode['tone']>, string> = {
   default: 'text-foreground/90',
-  moss: 'text-[color:var(--moss)]',
-  amber: 'text-[color:var(--amber)]',
+  moss: 'text-success',
+  amber: 'text-text-warning-tertiary',
 }
 
 export function FlowDiagram({
@@ -51,7 +51,7 @@ function FlowArrow() {
       viewBox="0 0 28 10"
       fill="none"
       aria-hidden
-      className="shrink-0 text-[color:var(--moss)]"
+      className="shrink-0 text-success"
     >
       <line
         x1="0"

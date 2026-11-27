@@ -1,13 +1,19 @@
+import { Result } from 'better-result'
 import { Effect, Option, Schema } from 'effect'
 import { createFileRoute } from '@tanstack/react-router'
 import {
   ExecutorInstallAuthorizationRedirect,
+  ExecutorConnectionOwner,
   ExecutorInstallRequest,
   ExecutorInstallResponse,
   ExecutorIntegrationSlug,
 } from '@/lib/executor-contract'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import {
   CatalogProviderNotFoundError,
   catalogCandidateSource,
@@ -22,7 +28,7 @@ import { IntegrationsShDomainSurface } from '@/lib/server/executor-engine/integr
 import { runExecutorRouteEffect } from '@/lib/server/executor-observability'
 import { executorProgram } from '@/lib/server/executor-runtime'
 
-class ExecutorInstallRouteError extends Schema.ErrorClass<ExecutorInstallRouteError>(
+class ExecutorInstallRouteError extends Schema.Error<ExecutorInstallRouteError>(
   'ExecutorInstallRouteError',
 )({
   status: Schema.Number,
@@ -144,6 +150,27 @@ export const Route = createFileRoute('/api/executor/install')({
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
+
+        const payloadResult = await Result.tryPromise({
+          try: () => request.clone().json(),
+          catch: () => null,
+        })
+        const owner = payloadResult.match({
+          ok: (payload) =>
+            Schema.decodeUnknownOption(
+              Schema.Struct({ owner: ExecutorConnectionOwner }),
+            )(payload),
+          err: () => Option.none(),
+        })
+        if (Option.isSome(owner) && owner.value.owner === 'org') {
+          const permission = await requireWorkspacePermission({
+            appContext,
+            request,
+            workspaceId: workspaceContext.workspaceId,
+            permissions: workspacePermissions.connectionManage,
+          })
+          if (permission) return permission
+        }
 
         const outcome = await runExecutorRouteEffect({
           effect: installResponse(request, {

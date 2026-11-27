@@ -3,10 +3,12 @@ import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import type { AppRequestContext } from '@/lib/server/context'
 import { computeInboxItems } from '@/lib/server/inbox-compute'
+import { deduplicateInboxItems } from '@/lib/inbox/threads'
 import { sortIssuesByUpdatedAt } from '@/lib/server/inbox-surface'
 import { listAvailableConnectorBindings } from '@garden/server/connectors/availability'
 import { buildConnectionSurface } from '@/lib/server/connection-surface'
 import type { IssuePriority, IssueStatus } from '@garden/core/types'
+import { STATUS_CONFIG } from '@garden/core/issues/config'
 
 export type DashboardIssue = {
   id: string
@@ -76,20 +78,23 @@ export type DashboardResourcesSnapshot = {
   connections: DashboardConnection[]
 }
 
-const statusColors: Record<string, string> = {
-  todo: '#60a5fa',
-  in_progress: '#14b8a6',
-  in_review: '#f59e0b',
-  blocked: '#ef4444',
-  done: '#22c55e',
-}
+/**
+ * Distribution colors reference token vars (not literals) so charts follow the
+ * design system in both modes. Resolved client-side by CSS.
+ */
+const statusColors: Record<string, string> = Object.fromEntries(
+  Object.entries(STATUS_CONFIG).map(([status, config]) => [
+    status,
+    config.pillFill,
+  ]),
+)
 
 const priorityColors: Record<string, string> = {
-  urgent: '#ef4444',
-  high: '#f97316',
-  medium: '#eab308',
-  low: '#22c55e',
-  none: '#94a3b8',
+  urgent: 'var(--red-600)',
+  high: 'var(--util-color-10)',
+  medium: 'var(--yellow-500)',
+  low: 'var(--green-500)',
+  none: 'var(--gray-400)',
 }
 
 const issueStatuses = new Set<IssueStatus>([
@@ -161,42 +166,37 @@ async function loadDashboardConnections(
   workspaceId: string,
 ) {
   const { db, session } = await requireDashboardAccess(appContext, workspaceId)
-  const [
-    connections,
-    availableConnectors,
-    capabilities,
-    permissionGrants,
-    toolCallAudits,
-  ] = await Promise.all([
-    db
-      .select()
-      .from(schema.account)
-      .where(eq(schema.account.workspaceId, workspaceId)),
-    listAvailableConnectorBindings({
-      db,
-      getEnvVar: (name) => {
-        const value = (appEnv as Record<string, unknown>)[name]
-        return typeof value === 'string' ? value : undefined
-      },
-      userId: session.user.id,
-      workspaceId,
-    }),
-    db.select().from(schema.capability),
-    db.select().from(schema.permissionGrant),
-    db
-      .select()
-      .from(schema.toolCallAudit)
-      .where(eq(schema.toolCallAudit.workspaceId, workspaceId))
-      .orderBy(desc(schema.toolCallAudit.ts))
-      .limit(500),
-  ])
+  const [connections, availableConnectors, capabilities, toolCallAudits] =
+    await Promise.all([
+      db
+        .select()
+        .from(schema.account)
+        .where(eq(schema.account.workspaceId, workspaceId)),
+      listAvailableConnectorBindings({
+        db,
+        getEnvVar: (name) => {
+          const value = (appEnv as Record<string, unknown>)[name]
+          return typeof value === 'string' ? value : undefined
+        },
+        userId: session.user.id,
+        workspaceId,
+      }),
+      db.select().from(schema.capability),
+      db
+        .select()
+        .from(schema.toolCallAudit)
+        .where(eq(schema.toolCallAudit.workspaceId, workspaceId))
+        .orderBy(desc(schema.toolCallAudit.ts))
+        .limit(500),
+    ])
 
   return buildConnectionSurface({
     agentIds: [],
     connections,
     availableConnectors,
     capabilities,
-    permissionGrants,
+    permissionGrants: [],
+    connectionGrants: [],
     toolCallAudits,
   })
 }
@@ -241,7 +241,8 @@ export async function getDashboardOverviewSnapshot(
       blockedIssues: issues.filter((issue) => issue.status === 'blocked')
         .length,
       completedIssues: issues.filter((issue) => issue.status === 'done').length,
-      agentCount: agents.length,
+      // Archived agents no longer work, so they are not counted.
+      agentCount: agents.filter((agent) => agent.status !== 'archived').length,
       skillCount: skills.length,
       connectedCount: connectionSurface.filter(
         (connector) => connector.status === 'connected',
@@ -317,10 +318,14 @@ export async function getDashboardActivitySnapshot(
         issue.assigneeType === 'user' ? 'member' : issue.assigneeType,
     }))
 
+  // One row per issue thread, as the sidebar badge and the inbox page count
+  // them. Counting raw events showed a higher number here than in the badge.
+  const threads = deduplicateInboxItems(inbox)
+
   return {
-    unreadCount: inbox.filter((item) => !item.read).length,
+    unreadCount: threads.filter((item) => !item.read).length,
     recentIssues,
-    inbox: inbox.slice(0, 6).map((item) => ({
+    inbox: threads.slice(0, 6).map((item) => ({
       id: item.id,
       title: item.title,
       issue_id: item.issue_id ?? '',
@@ -356,13 +361,16 @@ export async function getDashboardResourcesSnapshot(
   }, new Map<string, number>())
 
   return {
-    agents: agents.slice(0, 5).map((agent) => ({
-      id: agent.id,
-      name: agent.name,
-      status: agent.status ?? 'idle',
-      roleTitle: agent.roleTitle ?? null,
-      activeIssueCount: activeIssueCountByAgentId.get(agent.id) ?? 0,
-    })),
+    agents: agents
+      .filter((agent) => agent.status !== 'archived')
+      .slice(0, 5)
+      .map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        status: agent.status ?? 'idle',
+        roleTitle: agent.roleTitle ?? null,
+        activeIssueCount: activeIssueCountByAgentId.get(agent.id) ?? 0,
+      })),
     connections: connectionSurface.map((connector) => ({
       id: connector.id,
       label: connector.label,

@@ -7,6 +7,7 @@ import {
   uuidSchema,
 } from '@garden/db/validation'
 import { z } from 'zod'
+import { isOrderKey } from '@garden/core/issues/order-key'
 import {
   datetimeStringSchema,
   nonNegativeQueryIntSchema,
@@ -41,6 +42,16 @@ export const reactionBodySchema = z
   .strict()
 
 export const issuesListSearchSchema = z.object({
+  team_id: uuidSchema.optional(),
+  /**
+   * When true, only issues with a non-null team_id. Lets Teams › Issues ask
+   * the server for team-scoped rows instead of fetching every workspace issue
+   * and filtering client-side (issue #153).
+   */
+  has_team: z
+    .enum(['true', 'false'])
+    .transform((value) => value === 'true')
+    .optional(),
   status: issueStatusSchema.optional(),
   priority: issuePrioritySchema.optional(),
   assignee_id: uuidSchema.optional(),
@@ -71,6 +82,7 @@ export const createIssueBodySchema = z
     priority: issueInsertSchema.shape.priority.optional(),
     assignee_type: issueApiAssigneeTypeSchema.optional().nullable(),
     assignee_id: issueInsertSchema.shape.assigneeId.optional().nullable(),
+    team_id: issueInsertSchema.shape.teamId.optional().nullable(),
     parent_issue_id: issueInsertSchema.shape.parentId.optional().nullable(),
     project_id: issueInsertSchema.shape.projectId.optional().nullable(),
     due_date: issueDueDateApiSchema.optional().nullable(),
@@ -87,9 +99,13 @@ export const updateIssueBodySchema = z
     priority: issueUpdateSchema.shape.priority.optional(),
     assignee_type: issueApiAssigneeTypeSchema.optional().nullable(),
     assignee_id: issueUpdateSchema.shape.assigneeId.optional().nullable(),
+    team_id: issueUpdateSchema.shape.teamId.optional().nullable(),
     parent_issue_id: issueUpdateSchema.shape.parentId.optional().nullable(),
     project_id: issueUpdateSchema.shape.projectId.optional().nullable(),
-    position: issueUpdateSchema.shape.position.optional(),
+    position: z
+      .string()
+      .refine(isOrderKey, 'position must be an order key')
+      .optional(),
     due_date: issueDueDateApiSchema.optional().nullable(),
   })
   .strict()
@@ -97,6 +113,13 @@ export const updateIssueBodySchema = z
     (value) => Object.keys(value).length > 0,
     'No valid issue changes submitted',
   )
+
+export const issueSubscriptionBodySchema = z
+  .object({
+    user_id: z.string().uuid().optional(),
+    user_type: issueApiAssigneeTypeSchema.optional(),
+  })
+  .strict()
 
 export const sourceBindingBodySchema = z
   .object({

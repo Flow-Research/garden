@@ -28,7 +28,7 @@ const decodeUnknownRecord = Schema.decodeUnknownOption(UnknownRecord)
 const parsePreviewUrl = (value: string): Option.Option<URL> =>
   Option.fromNullishOr(URL.parse(value))
 
-class ToolPreviewFailure extends Schema.ErrorClass<ToolPreviewFailure>(
+class ToolPreviewFailure extends Schema.Error<ToolPreviewFailure>(
   'ToolPreviewFailure',
 )({ reason: Schema.String }) {}
 

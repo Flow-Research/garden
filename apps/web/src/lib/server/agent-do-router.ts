@@ -3,6 +3,7 @@ import { and, eq, or } from 'drizzle-orm'
 import { agentSelectSchema, uuidSchema } from '@garden/db/validation'
 import { getDb, schema } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
+import { isAgentRuntimeName } from '@garden/server/runtime-bindings'
 
 export class AgentDoRouterError extends TaggedError('AgentDoRouterError')<{
   code: 'access_denied' | 'db_error' | 'invalid_agent_id'
@@ -25,12 +26,6 @@ const agentAccessRecordSchema = agentSelectSchema.pick({
   workspaceId: true,
   status: true,
 })
-const AGENT_RUNTIME_NAME_PATTERN = /^[A-Za-z0-9._:-]+$/
-
-export function isAgentRuntimeName(value: string) {
-  return AGENT_RUNTIME_NAME_PATTERN.test(value)
-}
-
 function dbError(operation: string, cause: unknown) {
   const message = cause instanceof Error ? cause.message : String(cause)
   return new AgentDoRouterError({

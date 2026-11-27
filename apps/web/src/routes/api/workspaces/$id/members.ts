@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { Result, TaggedError } from 'better-result'
 import { createLogger } from '@garden/observability/console'
@@ -11,10 +11,14 @@ import {
   requireSession,
   toInvitation,
   unauthorized,
-  badRequest,
 } from '@/lib/server/control-plane'
 import { schema, type Db } from '@/lib/server/db'
 import { sendOrganizationInvitationEmail } from '@/lib/server/email/invitation'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
+import { githubIdentityByMemberId } from '@/lib/server/workspace-members'
 
 const logger = createLogger('workspace-members-api')
 
@@ -40,7 +44,7 @@ type AuthInvitation = {
   email: string
   role?: string
   status: string
-  createdAt: Date
+  createdAt?: Date | null
   expiresAt: Date
 }
 
@@ -130,17 +134,29 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             }
           }>
         }
+        const db = await appContext.db()
+        const githubById = await githubIdentityByMemberId({
+          db,
+          workspaceId: params.id,
+          memberIds: result.members.map((row) => row.id),
+        })
+
         return Response.json(
-          result.members.map((row) => ({
-            id: row.id,
-            workspace_id: row.organizationId,
-            user_id: row.userId,
-            role: row.role,
-            created_at: new Date(row.createdAt).toISOString(),
-            name: row.user.name,
-            email: row.user.email,
-            avatar_url: row.user.image ?? null,
-          })),
+          result.members.map((row) => {
+            const github = githubById.get(row.id)
+            return {
+              id: row.id,
+              workspace_id: row.organizationId,
+              user_id: row.userId,
+              role: row.role,
+              github_user_id: github?.githubUserId ?? null,
+              github_login: github?.githubLogin ?? null,
+              created_at: new Date(row.createdAt).toISOString(),
+              name: row.user.name,
+              email: row.user.email,
+              avatar_url: row.user.image ?? null,
+            }
+          }),
         )
       },
       POST: async ({ context, request, params }) => {
@@ -163,6 +179,104 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
             )
           }
           const body = bodyResult.value
+          const db = await appContext.db()
+
+          /**
+           * Resend path: refresh the existing pending row in place. Better
+           * Auth's own `resend` flag cannot be used here — its
+           * findPendingInvitation filters out expired invites (adapter.mjs),
+           * so resending an expired invite would silently create a duplicate
+           * row and orphan the original. Garden owns the mutation instead:
+           * same effect as Better Auth's resend (extends expiresAt by the
+           * default 48h window), but covering expired rows too.
+           */
+          if (body.resend) {
+            const permissionResponse = await requireWorkspacePermission({
+              appContext,
+              request,
+              workspaceId: params.id,
+              permissions: workspacePermissions.invitationManage,
+            })
+            if (permissionResponse) {
+              return Result.err(
+                new WorkspaceInvitationRequestError({
+                  message: 'You cannot manage invitations in this workspace',
+                  status: permissionResponse.status,
+                }),
+              )
+            }
+
+            const [existing] = await db
+              .select()
+              .from(schema.invitation)
+              .where(
+                and(
+                  eq(schema.invitation.organizationId, params.id),
+                  sql`lower(${schema.invitation.email}) = lower(${body.email})`,
+                  eq(schema.invitation.status, 'pending'),
+                ),
+              )
+              .limit(1)
+
+            if (!existing) {
+              return Result.err(
+                new WorkspaceInvitationRequestError({
+                  message: 'Pending invitation not found',
+                  status: 404,
+                }),
+              )
+            }
+
+            // Mirrors Better Auth's invitationExpiresIn default (48h).
+            const refreshedExpiry = new Date(Date.now() + 48 * 3600 * 1000)
+            const [updated] = await db
+              .update(schema.invitation)
+              .set({ expiresAt: refreshedExpiry })
+              .where(
+                and(
+                  eq(schema.invitation.id, existing.id),
+                  eq(schema.invitation.status, 'pending'),
+                ),
+              )
+              .returning({ id: schema.invitation.id })
+
+            if (!updated) {
+              return Result.err(
+                new WorkspaceInvitationRequestError({
+                  message: 'Pending invitation not found',
+                  status: 404,
+                }),
+              )
+            }
+
+            const refreshed = { ...existing, expiresAt: refreshedExpiry }
+            const resendEmailResult = await sendInvitationForRoute({
+              baseURL: new URL(request.url).origin,
+              db,
+              env: appContext.env,
+              invitation: refreshed,
+              inviter: {
+                email: session.user.email,
+                name: session.user.name,
+              },
+            })
+            if (resendEmailResult.isErr()) {
+              await db
+                .update(schema.invitation)
+                .set({ expiresAt: existing.expiresAt })
+                .where(
+                  and(
+                    eq(schema.invitation.id, existing.id),
+                    eq(schema.invitation.status, 'pending'),
+                    eq(schema.invitation.expiresAt, refreshedExpiry),
+                  ),
+                )
+              return Result.err(resendEmailResult.error)
+            }
+
+            return Result.ok(toInvitation(refreshed))
+          }
+
           const invitation = yield* Result.await(
             Result.tryPromise({
               try: async () =>
@@ -196,6 +310,9 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
           })
 
           if (emailResult.isErr()) {
+            // Cancel only invites this request created. The resend path
+            // returned above before reaching here, so every invitation at
+            // this point is newly created.
             const cancelResult = await Result.tryPromise({
               try: async () => {
                 await auth.api.cancelInvitation({
@@ -229,7 +346,10 @@ export const Route = createFileRoute('/api/workspaces/$id/members')({
           ok: (invitation) => Response.json(invitation),
           err: (error) =>
             error instanceof WorkspaceInvitationRequestError
-              ? badRequest(error.message)
+              ? Response.json(
+                  { error: error.message },
+                  { status: error.status },
+                )
               : Response.json(
                   { error: error.message },
                   { status: error.status },

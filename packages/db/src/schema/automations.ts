@@ -22,12 +22,7 @@ import {
 import { issuePriorityValues } from './issue-values.js'
 import { user } from './users.js'
 import { organization } from './workspaces.js'
-
-function sqlValueList(values: readonly string[]) {
-  return sql.raw(
-    values.map((value) => `'${value.replace(/'/g, "''")}'`).join(', '),
-  )
-}
+import { sqlValueList } from './sql-values.js'
 
 export const automation = pgTable(
   'automation',
@@ -35,7 +30,7 @@ export const automation = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     projectId: uuid('project_id'),
     title: text('title').notNull(),
     description: text('description'),
@@ -52,12 +47,13 @@ export const automation = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => user.id),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
 
     // Prompt & input
     systemPrompt: text('system_prompt'),
@@ -96,6 +92,7 @@ export const automation = pgTable(
     metadata: jsonb('metadata'),
   },
   (table) => [
+    index('automation_assignee_agent_id_idx').on(table.assigneeAgentId),
     index('automation_workspace_status_idx').on(
       table.workspaceId,
       table.status,
@@ -131,12 +128,13 @@ export const automationTrigger = pgTable(
     cronExpression: text('cron_expression'),
     timezone: text('timezone'),
     webhookTokenHash: text('webhook_token_hash'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index('automation_trigger_automation_idx').on(table.automationId),
@@ -163,7 +161,7 @@ export const automationRun = pgTable(
     id: uuid('id').primaryKey(),
     workspaceId: uuid('workspace_id')
       .notNull()
-      .references(() => organization.id),
+      .references(() => organization.id, { onDelete: 'cascade' }),
     automationId: uuid('automation_id')
       .notNull()
       .references(() => automation.id, { onDelete: 'cascade' }),
@@ -201,14 +199,16 @@ export const automationRun = pgTable(
     }),
     failureReason: text('failure_reason'),
     triggerPayload: jsonb('trigger_payload'),
-    createdAt: timestamp('created_at', { mode: 'date' })
+    createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
       .default(sql`now()`),
-    updatedAt: timestamp('updated_at', { mode: 'date' })
+    updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' })
       .notNull()
-      .default(sql`now()`),
+      .default(sql`now()`)
+      .$onUpdate(() => new Date()),
   },
   (table) => [
+    index('automation_run_trigger_id_idx').on(table.triggerId),
     index('automation_run_workspace_idx').on(
       table.workspaceId,
       table.status,

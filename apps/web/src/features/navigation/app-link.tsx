@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import { useNavigation } from './context'
+import { useNavigationActions } from './context'
 
 interface AppLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   href: string
@@ -7,7 +7,7 @@ interface AppLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
 
 export const AppLink = forwardRef<HTMLAnchorElement, AppLinkProps>(
   function AppLink({ href, children, onClick, ...props }, ref) {
-    const { push, openInNewTab } = useNavigation()
+    const { push, openInNewTab } = useNavigationActions()
 
     const handleClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
       if (e.metaKey || e.ctrlKey || e.shiftKey) {

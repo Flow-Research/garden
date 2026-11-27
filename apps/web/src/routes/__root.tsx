@@ -2,9 +2,9 @@ import {
   HeadContent,
   Outlet,
   Scripts,
-  createRootRoute,
+  createRootRouteWithContext,
 } from '@tanstack/react-router'
-import { NuqsAdapter } from 'nuqs/adapters/tanstack-router'
+import type { QueryClient } from '@tanstack/react-query'
 import { Suspense, lazy } from 'react'
 import { PostHogErrorBoundary, PostHogProvider } from '@posthog/react'
 import { WebProviders } from '@/components/web-providers'
@@ -44,11 +44,19 @@ const Devtools =
 const APP_TITLE = 'Garden'
 const APP_DESCRIPTION =
   'Garden is a company operating surface where humans and AI agents work side by side.'
-const APP_THEME_COLOR = '#f4f1e8'
+// Browser chrome color mirrors the token system's per-mode page ground
+// (background.main.default: garden.parchment light / garden.charcoal dark).
+const APP_THEME_COLOR_LIGHT = '#f9f7f2'
+const APP_THEME_COLOR_DARK = '#1a1f1c'
 const APP_COVER_IMAGE = '/garden-cover.png'
-const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='system')?stored:'system';var storedColorTheme=window.localStorage.getItem('color-theme');var colorTheme=storedColorTheme==='garden'?'garden':'garden';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='system'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);root.style.colorScheme=resolved;root.dataset.theme=colorTheme;}catch(e){}})();`
+// Pre-paint theme bootstrap: applies the stored light/dark/system choice before
+// hydration so first paint never flashes the wrong mode. Mirrors next-themes'
+// storage key ('theme') and class strategy.
+const THEME_INIT_SCRIPT = `(function(){try{var stored=window.localStorage.getItem('theme');var mode=(stored==='light'||stored==='dark'||stored==='system')?stored:'system';var prefersDark=window.matchMedia('(prefers-color-scheme: dark)').matches;var resolved=mode==='system'?(prefersDark?'dark':'light'):mode;var root=document.documentElement;root.classList.remove('light','dark');root.classList.add(resolved);root.style.colorScheme=resolved;}catch(e){}})();`
 
-export const Route = createRootRoute({
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient
+}>()({
   head: () => ({
     meta: [
       { charSet: 'utf-8' },
@@ -57,7 +65,16 @@ export const Route = createRootRoute({
       { name: 'description', content: APP_DESCRIPTION },
       { name: 'application-name', content: APP_TITLE },
       { name: 'apple-mobile-web-app-title', content: APP_TITLE },
-      { name: 'theme-color', content: APP_THEME_COLOR },
+      {
+        name: 'theme-color',
+        content: APP_THEME_COLOR_LIGHT,
+        media: '(prefers-color-scheme: light)',
+      },
+      {
+        name: 'theme-color',
+        content: APP_THEME_COLOR_DARK,
+        media: '(prefers-color-scheme: dark)',
+      },
       { property: 'og:type', content: 'website' },
       { property: 'og:site_name', content: APP_TITLE },
       { property: 'og:title', content: APP_TITLE },
@@ -122,11 +139,9 @@ function RootErrorFallback() {
 
 function RootAppShell() {
   return (
-    <NuqsAdapter>
-      <WebProviders>
-        <Outlet />
-      </WebProviders>
-    </NuqsAdapter>
+    <WebProviders>
+      <Outlet />
+    </WebProviders>
   )
 }
 

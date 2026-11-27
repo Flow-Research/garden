@@ -1,14 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Result } from 'better-result'
-import { AlertTriangle, Download, Loader2, ZoomIn, ZoomOut } from 'lucide-react'
+import { AlertTriangle, Download, ZoomIn, ZoomOut } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import {
   documentArtifactQueryKey,
   getDocumentArtifact,
 } from '@/lib/api/documents'
 import { WorkspaceDocsEditor } from './workspace-docs-editor'
 import type { GardenCitationQuote } from './artifact-renderer'
+import type {
+  PDFDocumentLoadingTask,
+  PDFDocumentProxy,
+  RenderTask,
+} from 'pdfjs-dist'
+import type * as PdfJs from 'pdfjs-dist'
+
+type LoadedPdf = {
+  pdfjs: typeof PdfJs
+  pdf: PDFDocumentProxy
+}
 
 const PDF_ZOOM_MIN = 0.5
 const PDF_ZOOM_MAX = 3.0
@@ -67,16 +79,16 @@ export function DocumentArtifact({
   const canonicalDocx = isDocxArtifact(data) && Boolean(data.id)
   return (
     <div
-      className={`flex ${chrome ? 'h-[420px]' : 'h-full'} flex-col bg-white`}
+      className={`flex ${chrome ? 'h-[420px]' : 'h-full'} flex-col bg-background`}
     >
       {chrome ? (
         <div className="flex items-center justify-end gap-2 py-2 px-3">
           <div className="mr-auto flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm text-gray-700">
+            <span className="truncate text-sm text-foreground">
               {data.filename}
             </span>
             {versionNumber && versionNumber > 0 && (
-              <span className="shrink-0 inline-flex items-center rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-medium text-gray-600">
+              <span className="shrink-0 inline-flex items-center rounded-md border border-border bg-background px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
                 V{versionNumber}
               </span>
             )}
@@ -85,9 +97,9 @@ export function DocumentArtifact({
             <a
               href={data.url}
               download={data.filename}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
             >
-              <Download className="h-3.5 w-3.5" />
+              <Download className="size-3.5" />
               {canonicalDocx ? 'Original DOCX' : 'Download'}
             </a>
           ) : null}
@@ -104,7 +116,7 @@ export function DocumentArtifact({
         <iframe
           src={withRefreshKey(data.url, refreshKey)}
           title={data.filename}
-          className="min-h-0 flex-1 border-0 bg-gray-50"
+          className="min-h-0 flex-1 border-0 bg-muted/60"
         />
       ) : isDocxArtifact(data) ? (
         data.id ? (
@@ -124,7 +136,7 @@ export function DocumentArtifact({
           </div>
         )
       ) : (
-        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words border-t border-gray-100 bg-gray-50 px-4 py-3 text-xs leading-relaxed text-gray-700">
+        <pre className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words border-t border-border/60 bg-muted/60 px-4 py-3 text-xs leading-relaxed text-foreground">
           {data.content || 'Preview not available for this document.'}
         </pre>
       )}
@@ -147,7 +159,7 @@ function CanonicalDocxArtifact({ documentId }: { documentId: string }) {
   if (artifactQuery.isPending) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center gap-2 border-t border-border bg-muted/40 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+        <Spinner aria-hidden="true" />
         Loading editable document
       </div>
     )
@@ -178,6 +190,7 @@ function CanonicalDocxArtifact({ documentId }: { documentId: string }) {
 
   return (
     <WorkspaceDocsEditor
+      key={documentId}
       documentId={documentId}
       initialSnapshot={artifactQuery.data}
     />
@@ -212,29 +225,72 @@ function PdfArtifactPreview({
   const [currentPage, setCurrentPage] = useState(1)
   const [numPages, setNumPages] = useState(0)
 
+  const [pdfDocument, setPdfDocument] = useState<LoadedPdf | null>(null)
+
+  // Loading and rendering are separate so a zoom re-renders the loaded
+  // document instead of downloading it again. Each owns its cleanup: the
+  // document is destroyed when the URL changes or the preview unmounts (it
+  // used to leak one per zoom step), and a superseded render stops after its
+  // next await (it used to keep appending pages, duplicating them).
   useEffect(() => {
+    setPdfDocument(null)
     if (!url) {
       setStatus('error')
       return
     }
     let cancelled = false
+    let loadingTask: PDFDocumentLoadingTask | null = null
     setStatus('loading')
-    const render = async () => {
+    const load = async () => {
       const result = await Result.tryPromise({
         try: async () => {
-          const response = await fetch(withRefreshKey(url, refreshKey) ?? url)
+          // Load the pdf.js chunk while the document downloads.
+          const [response, pdfjs] = await Promise.all([
+            fetch(withRefreshKey(url, refreshKey) ?? url),
+            import('pdfjs-dist'),
+          ])
           if (!response.ok) throw new Error(`HTTP ${response.status}`)
           const bytes = await response.arrayBuffer()
-          const pdfjs = await import('pdfjs-dist')
           pdfjs.GlobalWorkerOptions.workerSrc = new URL(
             'pdfjs-dist/build/pdf.worker.min.mjs',
             import.meta.url,
           ).toString()
-          const pdf = await pdfjs.getDocument({ data: bytes }).promise
+          if (cancelled) return null
+          const task = pdfjs.getDocument({ data: bytes })
+          loadingTask = task
+          return { pdfjs, pdf: await task.promise }
+        },
+        catch: () => new Error('PDF preview failed.'),
+      })
+      if (cancelled) return
+      if (result.isErr() || !result.value) {
+        setStatus('error')
+        return
+      }
+      setPdfDocument(result.value)
+    }
+    void load()
+    return () => {
+      cancelled = true
+      // Destroys the document too once it has loaded.
+      void loadingTask?.destroy()
+    }
+  }, [url, refreshKey])
+
+  useEffect(() => {
+    if (!pdfDocument) return
+    const { pdfjs, pdf } = pdfDocument
+    let cancelled = false
+    const renderTasks: RenderTask[] = []
+    setStatus('loading')
+    const render = async () => {
+      const result = await Result.tryPromise({
+        try: async () => {
           const container = containerRef.current
-          if (!container || cancelled) return
-          container.innerHTML = ''
+          if (!container) return
           const firstPage = await pdf.getPage(1)
+          if (cancelled) return
+          container.innerHTML = ''
           const naturalWidth = firstPage.getViewport({ scale: 1 }).width
           const availableWidth = Math.max(320, container.clientWidth - 20)
           const fitScale = Math.max(
@@ -247,6 +303,7 @@ function PdfArtifactPreview({
 
           for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
             const page = await pdf.getPage(pageNumber)
+            if (cancelled) return
             const viewport = page.getViewport({ scale })
             const wrapper = document.createElement('div')
             wrapper.className = 'relative mx-auto mb-2 w-fit bg-white shadow-md'
@@ -259,14 +316,20 @@ function PdfArtifactPreview({
 
             const context = canvas.getContext('2d')
             if (!context) continue
+            const renderTask = page.render({
+              canvas,
+              canvasContext: context,
+              viewport,
+            })
+            renderTasks.push(renderTask)
             const renderResult = await Result.tryPromise({
               try: async () => {
-                await page.render({ canvas, canvasContext: context, viewport })
-                  .promise
+                await renderTask.promise
               },
               catch: (error) =>
                 error instanceof Error ? error : new Error(String(error)),
             })
+            if (cancelled) return
             if (renderResult.isErr()) continue
 
             const textLayer = document.createElement('div')
@@ -283,6 +346,7 @@ function PdfArtifactPreview({
               viewport,
             })
             await layer.render()
+            if (cancelled) return
             rendered.push(
               Array.from(textLayer.querySelectorAll<HTMLElement>('span')),
             )
@@ -300,13 +364,14 @@ function PdfArtifactPreview({
     void render()
     return () => {
       cancelled = true
+      for (const task of renderTasks) task.cancel()
     }
     // We intentionally exclude `quotes` from the deps — quote-only changes
     // are handled by the cheaper highlight-only effect below so a citation
-    // hop doesn't re-fetch the entire PDF. `zoom` IS a dep because changing
+    // hop doesn't re-render every page. `zoom` IS a dep because changing
     // the zoom requires a full re-render at the new scale.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [url, refreshKey, zoom])
+  }, [pdfDocument, zoom])
 
   useEffect(() => {
     if (status !== 'ready') return
@@ -353,51 +418,48 @@ function PdfArtifactPreview({
   }
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden border-t border-gray-100">
+    <div className="relative min-h-0 flex-1 overflow-hidden border-t border-border/60">
       {status === 'loading' ? (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100 text-sm text-gray-500">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted text-sm text-muted-foreground">
           Loading {filename}
         </div>
       ) : null}
       {status === 'error' ? (
-        <div className="absolute inset-0 z-10 flex items-center justify-center bg-gray-100 text-sm text-red-500">
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-muted text-sm text-destructive">
           Preview not available for this document.
         </div>
       ) : null}
-      <div
-        ref={scrollRef}
-        className="h-full overflow-auto bg-gray-100 px-5 py-5"
-      >
+      <div ref={scrollRef} className="h-full overflow-auto bg-muted px-5 py-5">
         <div ref={containerRef} className="min-h-full" />
       </div>
       {status === 'ready' && numPages > 0 ? (
         <>
           <div className="pointer-events-none absolute bottom-4 left-4">
-            <span className="flex items-center rounded-full border border-white/30 bg-white/25 px-3 py-1.5 text-xs font-medium tabular-nums text-gray-700 shadow-md backdrop-blur-md">
+            <span className="flex items-center rounded-full border border-border bg-background-main-default/80 px-3 py-1.5 text-xs font-medium tabular-nums text-foreground shadow-md backdrop-blur-md">
               {currentPage}/{numPages}
             </span>
           </div>
-          <div className="absolute bottom-4 right-4 flex items-center gap-px rounded-full border border-white/30 bg-white/25 px-1 py-1 shadow-md backdrop-blur-md">
+          <div className="absolute bottom-4 right-4 flex items-center gap-px rounded-full border border-border bg-background-main-default/80 px-1 py-1 shadow-md backdrop-blur-md">
             <button
               type="button"
               onClick={handleZoomOut}
               disabled={zoom <= PDF_ZOOM_MIN}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-white/80 disabled:opacity-30"
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
               aria-label="Zoom out"
             >
-              <ZoomOut className="h-3.5 w-3.5" />
+              <ZoomOut className="size-3.5" />
             </button>
-            <span className="w-9 select-none text-center text-xs font-medium tabular-nums text-gray-600">
+            <span className="w-9 select-none text-center text-xs font-medium tabular-nums text-muted-foreground">
               {Math.round(zoom * 100)}%
             </span>
             <button
               type="button"
               onClick={handleZoomIn}
               disabled={zoom >= PDF_ZOOM_MAX}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-gray-600 transition-colors hover:bg-white/80 disabled:opacity-30"
+              className="flex size-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-background-main-default disabled:opacity-30"
               aria-label="Zoom in"
             >
-              <ZoomIn className="h-3.5 w-3.5" />
+              <ZoomIn className="size-3.5" />
             </button>
           </div>
         </>

@@ -1,0 +1,39 @@
+diff --git a/dist/chunk-WJKCCRYL.js b/dist/chunk-WJKCCRYL.js
+index 81f806f7ded52f77e8a9cc407500b8e4c1e3d49d..2f92ebaaa149240d9d1a736632e1db04c03fa431 100644
+--- a/dist/chunk-WJKCCRYL.js
++++ b/dist/chunk-WJKCCRYL.js
+@@ -1,6 +1,6 @@
+ // src/sdk/errors.ts
+ import { Data, Schema } from "effect";
+-var OpenApiParseError = class extends Schema.TaggedErrorClass()(
++var OpenApiParseError = class extends Schema.TaggedError()(
+   "OpenApiParseError",
+   {
+     message: Schema.String
+@@ -8,7 +8,7 @@ var OpenApiParseError = class extends Schema.TaggedErrorClass()(
+   { httpApiStatus: 400 }
+ ) {
+ };
+-var OpenApiExtractionError = class extends Schema.TaggedErrorClass()(
++var OpenApiExtractionError = class extends Schema.TaggedError()(
+   "OpenApiExtractionError",
+   {
+     message: Schema.String
+@@ -16,7 +16,7 @@ var OpenApiExtractionError = class extends Schema.TaggedErrorClass()(
+   { httpApiStatus: 400 }
+ ) {
+ };
+-var OpenApiSpecOverrideError = class extends Schema.TaggedErrorClass()(
++var OpenApiSpecOverrideError = class extends Schema.TaggedError()(
+   "OpenApiSpecOverrideError",
+   {
+     operationIndex: Schema.Number,
+@@ -29,7 +29,7 @@ var OpenApiSpecOverrideError = class extends Schema.TaggedErrorClass()(
+ };
+ var OpenApiInvocationError = class extends Data.TaggedError("OpenApiInvocationError") {
+ };
+-var OpenApiOAuthError = class extends Schema.TaggedErrorClass()(
++var OpenApiOAuthError = class extends Schema.TaggedError()(
+   "OpenApiOAuthError",
+   {
+     message: Schema.String

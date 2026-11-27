@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { Result, TaggedError } from 'better-result'
-import { ArrowLeftIcon, ArrowRightIcon, Loader2Icon } from 'lucide-react'
+import { ArrowLeftIcon, ArrowRightIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { BrandIcon } from '@garden/ui/components/common/brand-icon'
 import { Button, buttonVariants } from '@garden/ui/components/ui/button'
@@ -13,6 +13,7 @@ import {
   FieldLabel,
 } from '@garden/ui/components/ui/field'
 import { Input } from '@garden/ui/components/ui/input'
+import { Spinner } from '@garden/ui/components/ui/spinner'
 import { LoginFoliage } from '@/components/login-foliage'
 import { authClient } from '@/lib/auth/client'
 
@@ -54,8 +55,14 @@ async function runRecoveryRequest(request: Promise<AuthResponse>) {
 
 export function RequestPasswordResetPage({
   initialEmail = '',
+  redirectTarget,
 }: {
   initialEmail?: string
+  /**
+   * Sanitized post-auth target (usually an invite link). Appended to the
+   * emailed reset URL so completing recovery returns to the original flow.
+   */
+  redirectTarget?: string
 }) {
   const [email, setEmail] = useState(initialEmail)
   const [error, setError] = useState('')
@@ -68,10 +75,13 @@ export function RequestPasswordResetPage({
     setLoading(true)
     setError('')
 
+    const resetUrl = new URL('/reset-password', window.location.origin)
+    if (redirectTarget) resetUrl.searchParams.set('redirect', redirectTarget)
+
     void runRecoveryRequest(
       authClient.requestPasswordReset({
         email,
-        redirectTo: `${window.location.origin}/reset-password`,
+        redirectTo: resetUrl.href,
       }),
     )
       .then((result) =>
@@ -108,7 +118,7 @@ export function RequestPasswordResetPage({
           >
             Send another link
           </Button>
-          <BackToSignIn />
+          <BackToSignIn redirectTarget={redirectTarget} />
         </div>
       ) : (
         <form onSubmit={handleSubmit}>
@@ -117,7 +127,7 @@ export function RequestPasswordResetPage({
               <FieldLabel htmlFor="recovery-email">Email</FieldLabel>
               <Input
                 id="recovery-email"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
@@ -131,14 +141,14 @@ export function RequestPasswordResetPage({
             <Field>
               <Button type="submit" className="h-10 w-full" disabled={loading}>
                 {loading ? (
-                  <Loader2Icon className="size-4 animate-spin" />
+                  <Spinner aria-hidden="true" />
                 ) : (
                   <ArrowRightIcon className="size-4" />
                 )}
                 {loading ? 'Sending link...' : 'Send reset link'}
               </Button>
             </Field>
-            <BackToSignIn />
+            <BackToSignIn redirectTarget={redirectTarget} />
           </FieldGroup>
         </form>
       )}
@@ -149,9 +159,12 @@ export function RequestPasswordResetPage({
 export function ResetPasswordPage({
   token,
   invalidToken,
+  redirectTarget,
 }: {
   token?: string
   invalidToken: boolean
+  /** Sanitized post-auth target preserved from the emailed reset URL. */
+  redirectTarget?: string
 }) {
   const navigate = useNavigate()
   const [password, setPassword] = useState('')
@@ -180,7 +193,7 @@ export function ResetPasswordPage({
             toast.success('Password updated. Sign in with your new password.')
             void navigate({
               to: '/login',
-              search: { redirect: undefined },
+              search: { redirect: redirectTarget },
               replace: true,
             })
           },
@@ -206,13 +219,13 @@ export function ResetPasswordPage({
         <div className="space-y-4">
           <Link
             to="/forgot-password"
-            search={{ email: undefined }}
+            search={{ email: undefined, redirect: redirectTarget }}
             className={buttonVariants({ className: 'w-full' })}
           >
             Request a new link
             <ArrowRightIcon className="size-4" />
           </Link>
-          <BackToSignIn />
+          <BackToSignIn redirectTarget={redirectTarget} />
         </div>
       ) : (
         <form onSubmit={handleSubmit}>
@@ -221,7 +234,7 @@ export function ResetPasswordPage({
               <FieldLabel htmlFor="new-password">New password</FieldLabel>
               <Input
                 id="new-password"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
@@ -237,7 +250,7 @@ export function ResetPasswordPage({
               </FieldLabel>
               <Input
                 id="confirm-password"
-                className="h-10 bg-bone/60"
+                className="h-10 bg-card/60"
                 type="password"
                 value={confirmation}
                 onChange={(event) => setConfirmation(event.target.value)}
@@ -250,7 +263,7 @@ export function ResetPasswordPage({
             <Field>
               <Button type="submit" className="h-10 w-full" disabled={loading}>
                 {loading ? (
-                  <Loader2Icon className="size-4 animate-spin" />
+                  <Spinner aria-hidden="true" />
                 ) : (
                   <ArrowRightIcon className="size-4" />
                 )}
@@ -298,12 +311,12 @@ function RecoveryShell({
   )
 }
 
-function BackToSignIn() {
+function BackToSignIn({ redirectTarget }: { redirectTarget?: string }) {
   return (
     <FieldDescription className="text-center">
       <Link
         to="/login"
-        search={{ redirect: undefined }}
+        search={{ redirect: redirectTarget }}
         className="inline-flex items-center gap-1 font-medium text-foreground underline underline-offset-4"
       >
         <ArrowLeftIcon className="size-3.5" />

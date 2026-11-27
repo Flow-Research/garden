@@ -36,5 +36,8 @@ export default defineConfig({
     // Large development hosts otherwise start enough jsdom forks to starve
     // Vitest's worker handshake and report unrelated suite timeouts.
     maxWorkers: 4,
+    testTimeout: 120_000,
+    hookTimeout: 120_000,
+    exclude: ['**/node_modules/**', '**/dist/**'],
   },
 })

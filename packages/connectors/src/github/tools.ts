@@ -1,10 +1,12 @@
 import { Effect, Schema } from 'effect'
+import { boundedPageInput } from '../effect/http.ts'
 import { defineNativeConnectorTool } from '../effect/native.ts'
 import { GitHubRestClient, type GitHubRequest } from './rest-client.ts'
 
+// GitHub caps per_page at 100; pages past 100 are almost always a runaway loop.
 const Pagination = {
-  page: Schema.optional(Schema.Number),
-  perPage: Schema.optional(Schema.Number),
+  page: boundedPageInput(100),
+  perPage: boundedPageInput(100),
 }
 const RepositoryListInput = Schema.Struct({
   ...Pagination,
@@ -41,6 +43,12 @@ const IssueWriteInput = Schema.Struct({
   body: Schema.optional(Schema.String),
   state: Schema.optional(Schema.Literals(['open', 'closed'])),
   labels: Schema.optional(Schema.Array(Schema.String)),
+  /**
+   * GitHub logins to assign. On update they are added; existing assignees
+   * stay. The agent runtime rejects any login not linked to a member of the
+   * calling workspace before this tool runs.
+   */
+  assignees: Schema.optional(Schema.Array(Schema.String)),
 })
 const IssueCommentInput = Schema.Struct({
   owner: Schema.String,
@@ -296,27 +304,55 @@ export const githubNativeTools = [
   }),
   defineNativeConnectorTool({
     name: 'issue_write',
-    description: 'Create or update a GitHub issue.',
+    description:
+      'Create or update a GitHub issue. Optional assignees are GitHub logins (from linked Garden member github_identity). Assignees must have repository write access; this call requires issues:write.',
     riskClass: 'send_external',
     requiredScopes: ['issues:write'],
     input: IssueWriteInput,
+    /**
+     * Create sends assignees in the POST body. Update must not: GitHub's PATCH
+     * replaces the whole assignee list, which silently unassigned existing
+     * people. Updates PATCH the other fields, then add assignees through
+     * POST /issues/{n}/assignees, which only appends.
+     * Ref: https://docs.github.com/en/rest/issues/assignees#add-assignees-to-an-issue
+     */
     handler: (input) => {
-      let method: 'POST' | 'PATCH' = 'POST'
-      let path = `${repositoryPath(input.owner, input.repo)}/issues`
-      if (input.issueNumber !== undefined) {
-        method = 'PATCH'
-        path = `${path}/${input.issueNumber}`
+      const issuesPath = `${repositoryPath(input.owner, input.repo)}/issues`
+      const fields = {
+        title: input.title,
+        body: input.body,
+        state: input.state,
+        labels: input.labels,
       }
-      return requestGitHub({
-        operation: 'github.writeIssue',
-        method,
-        path,
-        body: {
-          title: input.title,
-          body: input.body,
-          state: input.state,
-          labels: input.labels,
-        },
+      if (input.issueNumber === undefined) {
+        return requestGitHub({
+          operation: 'github.writeIssue',
+          method: 'POST',
+          path: issuesPath,
+          body: {
+            ...fields,
+            ...(input.assignees !== undefined
+              ? { assignees: input.assignees }
+              : {}),
+          },
+        })
+      }
+      const issuePath = `${issuesPath}/${input.issueNumber}`
+      const assignees = input.assignees ?? []
+      return Effect.gen(function* () {
+        const updated = yield* requestGitHub({
+          operation: 'github.writeIssue',
+          method: 'PATCH',
+          path: issuePath,
+          body: fields,
+        })
+        if (assignees.length === 0) return updated
+        return yield* requestGitHub({
+          operation: 'github.addIssueAssignees',
+          method: 'POST',
+          path: `${issuePath}/assignees`,
+          body: { assignees },
+        })
       })
     },
   }),

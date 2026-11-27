@@ -1,6 +1,7 @@
 import { Result } from 'better-result'
 import { eq } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/react-start'
+import { setResponseHeader } from '@tanstack/react-start/server'
 import { requireAppRequestContext } from '@/lib/server/context'
 import { toWorkspaceFromOrganization } from '@/lib/server/control-plane'
 import { schema } from '@/lib/server/db'
@@ -69,6 +70,37 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
           activeOrganizationId,
         )
 
+        // Persist whatever bootstrap selected when the session active org is
+        // missing or stale. Before: only `?workspace_id=` deep-links called
+        // setActive. After first signup / invite / a cleared active org, the
+        // client hydrated list[0] while `activeOrganizationId` stayed null, so
+        // the next reload could pick a different org or leave APIs without an
+        // active workspace (#208). Failures degrade to bootstrap-only selection.
+        if (
+          preferredWorkspaceId !== null &&
+          preferredWorkspaceId !== activeOrganizationId
+        ) {
+          const setActive = await Result.tryPromise({
+            try: async () =>
+              (await auth.api.setActiveOrganization({
+                headers: appContext.request.headers,
+                body: { organizationId: preferredWorkspaceId },
+                returnHeaders: true,
+              })) as { headers: Headers; response: unknown },
+            catch: (cause) => cause,
+          })
+          if (Result.isOk(setActive)) {
+            // Forward the refreshed session cookie — server-side auth.api calls don't reach the browser's cookie jar on their own.
+            const cookies = setActive.value.headers.getSetCookie()
+            if (cookies.length > 0) setResponseHeader('set-cookie', cookies)
+          } else {
+            bootstrapLogger.warn('auth.bootstrap.set_active_failed', {
+              ...requestFields(appContext.request),
+              ...errorFields(setActive.error),
+            })
+          }
+        }
+
         return {
           preferredWorkspaceId,
           user: toCoreUser({
@@ -102,7 +134,16 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
   },
 )
 
-function resolvePreferredWorkspaceId(
+/**
+ * Chooses which workspace the authenticated shell should open.
+ *
+ * Order: explicit `workspace_id` query (invite/deep-link) → session active org
+ * → first membership. Returning null when the user has orgs left the UI to
+ * guess via client hydrate while the session stayed without an active org
+ * (#208). The first-membership fallback is deterministic for that load and is
+ * then persisted by the bootstrap setActive path.
+ */
+export function resolvePreferredWorkspaceId(
   organizations: Array<{ id: string }>,
   requestedWorkspaceId: string | null,
   activeOrganizationId: string | null,
@@ -125,7 +166,7 @@ function resolvePreferredWorkspaceId(
     return activeOrganizationId
   }
 
-  return null
+  return organizations[0]?.id ?? null
 }
 
 export const getAuthBootstrap: () => Promise<AuthBootstrap | null> = () =>

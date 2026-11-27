@@ -1,18 +1,29 @@
-import { useMemo } from 'react'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMutation, useQuery } from '@tanstack/react-query'
+import { useNavigate } from '@tanstack/react-router'
+import { Option } from 'effect'
 import type { StructuredQuestion } from '@garden/app-state/chat'
 import type {
   InboxItem,
   IssueRunEvent,
   IssueWorkProduct,
 } from '@garden/core/types'
+import { getConnectorById } from '@garden/connectors'
 import { api } from '@/lib/api'
+import { executorOAuthStartUrl } from '@/lib/api/executor'
+import type { ExecutorIntegrationItem } from '@/lib/executor-contract'
+import { connectionListOptions } from '@/lib/workspace/queries'
+import { Button } from '@garden/ui/components/ui/button'
 import {
   issueActiveRunOptions,
   issueDetailOptions,
-  issueKeys,
+  issueWorkProductsOptions,
 } from '@/lib/issues/queries'
-import { inboxKeys } from '@/lib/inbox/queries'
+import {
+  useIssueActionInvalidation,
+  useReviewWorkProduct,
+  type WorkProductReviewAction,
+} from '@/lib/issues/mutations'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import {
   ApprovalCard,
@@ -106,46 +117,170 @@ function workProductForItem(item: InboxItem, workProducts: IssueWorkProduct[]) {
   )
 }
 
-function useInboxActionInvalidation(issueId: string | null) {
-  const queryClient = useQueryClient()
-  const wsId = useWorkspaceId()
-  return () => {
-    queryClient.invalidateQueries({
-      queryKey: inboxKeys.list(wsId),
-      exact: true,
-    })
-    queryClient.invalidateQueries({
-      queryKey: issueKeys.list(wsId),
-      exact: true,
-      refetchType: 'none',
-    })
-    if (issueId) {
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.activeRun(issueId),
-        exact: true,
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.detail(wsId, issueId),
-        exact: true,
-      })
-      queryClient.invalidateQueries({
-        queryKey: issueKeys.timeline(issueId),
-        exact: true,
-      })
-    }
-  }
+function BrainProposalInboxAction({ item }: { item: InboxItem }) {
+  const invalidate = useIssueActionInvalidation(item.issue_id)
+  const proposalId = item.details?.proposal_id
+  const resolveMutation = useMutation({
+    mutationFn: (action: 'approve' | 'reject') =>
+      api.resolveBrainProposal({ id: proposalId ?? '', action }),
+    onSuccess: invalidate,
+    onError: () => toast.error('Failed to update knowledge proposal'),
+  })
+
+  if (!proposalId) return null
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-card px-3 py-3">
+      <p className="whitespace-pre-wrap text-sm text-foreground">{item.body}</p>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          onClick={() => resolveMutation.mutate('approve')}
+          disabled={resolveMutation.isPending}
+        >
+          Approve
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => resolveMutation.mutate('reject')}
+          disabled={resolveMutation.isPending}
+        >
+          Reject
+        </Button>
+      </div>
+    </div>
+  )
 }
 
-type WorkProductReviewAction = 'approve' | 'request_changes' | 'apply'
+const AUTHORIZATION_TIMEOUT_MS = 10 * 60_000
 
-function useWorkProductReviewMutation(issueId: string | null) {
-  const invalidate = useInboxActionInvalidation(issueId)
-  return useMutation({
-    mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
-      api.reviewWorkProduct(vars.id, { action: vars.action }),
-    onSuccess: invalidate,
-    onError: () => toast.error('Failed to update work product'),
+function isConnectorConnected(
+  connections: { integrations: readonly ExecutorIntegrationItem[] } | undefined,
+  connectorId: string,
+) {
+  return Boolean(
+    connections?.integrations.some(
+      (integration) =>
+        Option.getOrNull(integration.gardenConnectorId) === connectorId &&
+        integration.status === 'connected',
+    ),
+  )
+}
+
+function ConnectorNeededInboxAction({ item }: { item: InboxItem }) {
+  const wsId = useWorkspaceId()
+  const navigate = useNavigate()
+  const invalidate = useIssueActionInvalidation(item.issue_id)
+  const connectorId = item.details?.connector_id ?? ''
+  const connectorLabel = item.details?.connector_label ?? connectorId
+  const connector = getConnectorById(connectorId)
+  const [awaiting, setAwaiting] = useState(false)
+  const popupRef = useRef<Window | null>(null)
+  const { data: connections, refetch: refetchConnections } = useQuery({
+    ...connectionListOptions(wsId),
+    enabled: awaiting,
+    refetchInterval: (query) =>
+      awaiting && !isConnectorConnected(query.state.data, connectorId)
+        ? 1500
+        : false,
   })
+  const connected = isConnectorConnected(connections, connectorId)
+
+  // Stop waiting once the popup is closed (or after ten minutes) without an
+  // authorization. `awaiting` used to stay true for good: the Connect button
+  // stayed disabled and the connection list was polled every 1.5 s forever.
+  useEffect(() => {
+    if (!awaiting || connected) return
+    const startedAt = Date.now()
+    const timer = setInterval(() => {
+      const popup = popupRef.current
+      const timedOut = Date.now() - startedAt > AUTHORIZATION_TIMEOUT_MS
+      if (!timedOut && popup && !popup.closed) return
+      clearInterval(timer)
+      // One last look, in case the authorization landed as the popup closed.
+      void refetchConnections().finally(() => setAwaiting(false))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [awaiting, connected, refetchConnections])
+
+  const resumeMutation = useMutation({
+    mutationFn: async () => {
+      if (!item.issue_id) return
+      await api.startIssueRun(item.issue_id)
+      // The run has started. Failing to clear the inbox item must not report
+      // the resume as failed, or a retry would start a second run.
+      await api.archiveInbox(item.id).catch(() => {
+        toast.info("Run started, but this item couldn't be cleared")
+      })
+    },
+    onSuccess: invalidate,
+    onError: () => toast.error('Failed to resume issue'),
+  })
+
+  const dismissMutation = useMutation({
+    mutationFn: () => api.archiveInbox(item.id),
+    onSuccess: invalidate,
+    onError: () => toast.error('Failed to dismiss'),
+  })
+
+  const connect = () => {
+    if (!connector) return
+    if (!connector.executorSlug) {
+      navigate({ to: '/connectors' })
+      return
+    }
+    const popup = window.open(
+      executorOAuthStartUrl(connector.executorSlug, 'user'),
+      'connector-oauth',
+      'popup=yes,width=620,height=760',
+    )
+    if (!popup) {
+      toast.error('Allow popups to connect this connector')
+      return
+    }
+    popupRef.current = popup
+    setAwaiting(true)
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border bg-card px-3 py-3">
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-foreground">{connectorLabel}</p>
+        <p className="whitespace-pre-wrap text-sm text-foreground">
+          {item.body}
+        </p>
+      </div>
+      {awaiting && !connected && (
+        <p className="text-sm text-muted-foreground">
+          Waiting for authorization...
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        {connected ? (
+          <Button
+            size="sm"
+            onClick={() => resumeMutation.mutate()}
+            disabled={resumeMutation.isPending}
+          >
+            Resume issue
+          </Button>
+        ) : (
+          <Button size="sm" onClick={connect} disabled={!connector || awaiting}>
+            Connect {connectorLabel}
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => dismissMutation.mutate()}
+          disabled={dismissMutation.isPending}
+        >
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  )
 }
 
 function WorkProductInboxAction({
@@ -155,18 +290,25 @@ function WorkProductInboxAction({
 }: {
   workProduct: IssueWorkProduct
   connectorId?: string | null
-  reviewMutation: ReturnType<typeof useWorkProductReviewMutation>
+  reviewMutation: ReturnType<typeof useReviewWorkProduct>
 }) {
   const review = (action: WorkProductReviewAction) =>
     reviewMutation.mutate({ id: workProduct.id, action })
+  const pending =
+    reviewMutation.isPending && reviewMutation.variables?.id === workProduct.id
+      ? reviewMutation.variables.action
+      : null
 
   return (
     <WorkProductCard
       workProduct={workProduct}
       connectorId={connectorId}
+      pendingAction={pending}
       onApprove={() => review('approve')}
       onRequestChanges={() => review('request_changes')}
-      onApply={() => review('apply')}
+      onApply={() =>
+        reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply' })
+      }
     />
   )
 }
@@ -178,7 +320,7 @@ function QuestionInboxAction({
   item: InboxItem
   question: StructuredQuestion
 }) {
-  const invalidate = useInboxActionInvalidation(item.issue_id)
+  const invalidate = useIssueActionInvalidation(item.issue_id)
   const answerMutation = useMutation({
     mutationFn: (answer: string | string[]) => {
       const content = Array.isArray(answer) ? answer.join('\n') : answer
@@ -208,7 +350,7 @@ function ApprovalInboxAction({
   item: InboxItem
   fallback: { title: string; body: string; targetLabel?: string } | null
 }) {
-  const invalidate = useInboxActionInvalidation(item.issue_id)
+  const invalidate = useIssueActionInvalidation(item.issue_id)
   const requestId = item.details?.request_id ?? item.details?.approval_id
   const resolveMutation = useMutation({
     mutationFn: (approved: boolean) =>
@@ -245,14 +387,18 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
     enabled: Boolean(issueId),
   })
 
+  const { data: issueWorkProducts } = useQuery({
+    ...issueWorkProductsOptions(issueId ?? ''),
+    enabled: Boolean(issueId),
+  })
   const events = data?.events ?? []
   const run = data?.run ?? null
-  const workProducts = data?.work_products ?? []
+  const workProducts = issueWorkProducts ?? []
   const question = useMemo(() => pendingQuestionFromEvents(events), [events])
   const approval = useMemo(() => pendingApprovalFromEvents(events), [events])
   const selectedWorkProduct = workProductForItem(item, workProducts)
   const connectorId = issue?.source_summary?.connector_id ?? null
-  const reviewMutation = useWorkProductReviewMutation(issueId)
+  const reviewMutation = useReviewWorkProduct(issueId)
   const remainingWorkProducts = selectedWorkProduct
     ? workProducts.filter((wp) => wp.id !== selectedWorkProduct.id)
     : workProducts
@@ -273,6 +419,14 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
           connectorId={connectorId}
           reviewMutation={reviewMutation}
         />
+      )}
+
+      {item.type === 'brain_proposal' && (
+        <BrainProposalInboxAction item={item} />
+      )}
+
+      {item.type === 'connector_needed' && (
+        <ConnectorNeededInboxAction item={item} />
       )}
 
       {(item.type === 'task_failed' || item.type === 'agent_blocked') &&
@@ -301,11 +455,14 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
           <WorkProductList
             workProducts={remainingWorkProducts}
             connectorId={connectorId}
+            pending={reviewMutation.isPending ? reviewMutation.variables : null}
             onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}
             onRequestChanges={(id) =>
               reviewMutation.mutate({ id, action: 'request_changes' })
             }
-            onApply={(id) => reviewMutation.mutate({ id, action: 'apply' })}
+            onApply={(id) =>
+              reviewMutation.mutateAsync({ id, action: 'apply' })
+            }
           />
         </div>
       )}

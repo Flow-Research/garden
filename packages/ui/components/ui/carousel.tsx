@@ -98,7 +98,10 @@ function Carousel({
     api.on('select', onSelect)
 
     return () => {
-      api?.off('select', onSelect)
+      // Both listeners go; only 'select' was removed, so every re-run
+      // left another 'reInit' listener behind.
+      api.off('reInit', onSelect)
+      api.off('select', onSelect)
     }
   }, [api, onSelect])
 

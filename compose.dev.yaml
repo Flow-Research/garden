@@ -5,6 +5,10 @@
 # db:migrate` can own; Neon is for staging/deploys). Port 55432 avoids
 # colliding with any system Postgres on 5432.
 #
+# It also boots HelixDB, the Brain graph/vector store, on 6968 — the port
+# `wrangler.containers.jsonc` and the Brain tests already point HELIX_URL at.
+# Local data persists in a volume. The deployed compose.brain.yaml stack uses R2.
+#
 # `pnpm offline:up:ollama` additionally starts Ollama for offline mode
 # (`pnpm dev:offline`), serving the default local model on 11434. Skip the
 # profile if you run Ollama natively.
@@ -25,6 +29,15 @@ services:
       timeout: 3s
       retries: 15
 
+  helix:
+    image: ghcr.io/helixdb/helixdb:v0.0.4
+    ports:
+      - '6968:8080'
+    environment:
+      HELIX_DATA_DIR: /var/lib/helix
+    volumes:
+      - garden-helix-data:/var/lib/helix
+
   ollama:
     image: ollama/ollama
     profiles: [ollama]
@@ -35,4 +48,5 @@ services:
 
 volumes:
   garden-postgres-data:
+  garden-helix-data:
   garden-ollama-data:

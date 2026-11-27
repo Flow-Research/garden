@@ -1,11 +1,11 @@
 {
   "name": "@garden/db",
+  "version": "0.0.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "type": "module",
   "dependencies": {
     "@garden/env": "workspace:*",
-    "@neondatabase/serverless": "^1.0.1",
     "drizzle-orm": "catalog:",
     "drizzle-zod": "^0.8.3",
     "pg": "^8.20.0",
@@ -13,14 +13,15 @@
   },
   "devDependencies": {
     "@types/pg": "^8.15.5",
-    "drizzle-kit": "^0.31.7",
-    "testcontainers": "^12.1.0",
     "@typescript/native": "catalog:",
+    "drizzle-kit": "^0.31.7",
+    "fractional-indexing": "3.2.0",
+    "testcontainers": "^12.1.0",
     "vitest": "catalog:"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "oxlint -c ../../.oxlintrc.json .",
+    "lint": "oxlint -c ../../.oxlintrc.json --report-unused-disable-directives .",
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix .",
     "test": "vitest run",
     "db:check": "node ../../scripts/run-with-root-env.mjs drizzle-kit check",
@@ -33,6 +34,7 @@
     "./runtime": "./src/runtime.ts",
     "./inbox": "./src/inbox.ts",
     "./subscribers": "./src/subscribers.ts",
+    "./team-issue-visibility": "./src/team-issue-visibility.ts",
     "./schema": "./src/schema/index.ts",
     "./schema/*": "./src/schema/*.ts",
     "./validation": "./src/validation/index.ts",

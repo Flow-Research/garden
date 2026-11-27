@@ -1,7 +1,8 @@
 import { and, desc, eq, ne } from 'drizzle-orm'
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -12,8 +13,13 @@ import {
   toAutomation,
   toAutomationListItem,
   toAutomationTrigger,
+  writeWithScheduleSync,
 } from '@/lib/server/automations'
 import { requireWorkspaceContext } from '@/lib/server/control-plane'
+import {
+  requireWorkspacePermission,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { capturePostHogEvent } from '@/lib/posthog-server'
 import {
@@ -80,6 +86,13 @@ export const Route = createFileRoute('/api/automations')({
         const appContext = requireAppRequestContext(context)
         const workspaceContext = await requireWorkspaceContext(appContext)
         if (workspaceContext instanceof Response) return workspaceContext
+        const permission = await requireWorkspacePermission({
+          appContext,
+          request,
+          workspaceId: workspaceContext.workspaceId,
+          permissions: workspacePermissions.automationManage,
+        })
+        if (permission) return permission
 
         const bodyResult = await parseJsonBody(
           request,
@@ -117,60 +130,73 @@ export const Route = createFileRoute('/api/automations')({
         const automationId = crypto.randomUUID()
         const triggerId = triggerInput ? crypto.randomUUID() : null
         const db = await appContext.db()
-        const [automation, trigger] = await db.transaction(async (tx) => {
-          const [automationRow] = await tx
-            .insert(schema.automation)
-            .values({
-              id: automationId,
-              workspaceId: workspaceContext.workspaceId,
-              projectId: body.project_id ?? null,
-              title: body.title,
-              description: body.description ?? null,
-              assigneeAgentId: body.assignee_agent_id,
-              priority: body.priority ?? 'medium',
-              status: automationStatus,
-              concurrencyPolicy: body.concurrency_policy ?? 'skip',
-              createdBy: workspaceContext.session.user.id,
+        const writeResult = await writeWithScheduleSync(
+          db,
+          async (tx) => {
+            const automationRow = requireReturnedRow(
+              await tx
+                .insert(schema.automation)
+                .values({
+                  id: automationId,
+                  workspaceId: workspaceContext.workspaceId,
+                  projectId: body.project_id ?? null,
+                  title: body.title,
+                  description: body.description ?? null,
+                  assigneeAgentId: body.assignee_agent_id,
+                  priority: body.priority ?? 'medium',
+                  status: automationStatus,
+                  concurrencyPolicy: body.concurrency_policy ?? 'skip',
+                  createdBy: workspaceContext.session.user.id,
 
-              systemPrompt: body.system_prompt ?? null,
-              inputSchema: body.input_schema ?? null,
-              contextSources: body.context_sources ?? null,
-              outputConfig: body.output_config ?? null,
-              executionConfig: body.execution_config ?? null,
-              notificationConfig: body.notification_config ?? null,
-              schedulingConfig: body.scheduling_config ?? null,
-              tags: body.tags ?? [],
-              category: body.category ?? null,
-              templateSource: body.template_source ?? null,
-              metadata: body.metadata ?? null,
-            })
-            .returning()
-          if (!triggerInput || !triggerId) return [automationRow, null] as const
+                  systemPrompt: body.system_prompt ?? null,
+                  inputSchema: body.input_schema ?? null,
+                  contextSources: body.context_sources ?? null,
+                  outputConfig: body.output_config ?? null,
+                  executionConfig: body.execution_config ?? null,
+                  notificationConfig: body.notification_config ?? null,
+                  schedulingConfig: body.scheduling_config ?? null,
+                  tags: body.tags ?? [],
+                  category: body.category ?? null,
+                  templateSource: body.template_source ?? null,
+                  metadata: body.metadata ?? null,
+                })
+                .returning(),
+              'automation',
+            )
+            if (!triggerInput || !triggerId)
+              return [automationRow, null] as const
 
-          const [triggerRow] = await tx
-            .insert(schema.automationTrigger)
-            .values({
-              id: triggerId,
-              automationId,
-              kind: 'schedule',
-              label: triggerInput.label ?? null,
-              enabled: triggerEnabled,
-              cronExpression: triggerInput.cron_expression,
-              timezone: triggerInput.timezone,
-            })
-            .returning()
-          return [automationRow, triggerRow] as const
-        })
-
-        if (trigger) {
-          const installResult = await installScheduleTrigger({
-            env: appEnv,
-            automation,
-            trigger,
-            nextRunAt: nextRunResult?.isOk() ? nextRunResult.value : undefined,
-          })
-          if (installResult.isErr()) return automationErr(installResult.error)
-        }
+            const triggerRow = requireReturnedRow(
+              await tx
+                .insert(schema.automationTrigger)
+                .values({
+                  id: triggerId,
+                  automationId,
+                  kind: 'schedule',
+                  label: triggerInput.label ?? null,
+                  enabled: triggerEnabled,
+                  cronExpression: triggerInput.cron_expression,
+                  timezone: triggerInput.timezone,
+                })
+                .returning(),
+              'automation trigger',
+            )
+            return [automationRow, triggerRow] as const
+          },
+          async ([automation, trigger]) =>
+            trigger
+              ? await installScheduleTrigger({
+                  env: appEnv,
+                  automation,
+                  trigger,
+                  nextRunAt: nextRunResult?.isOk()
+                    ? nextRunResult.value
+                    : undefined,
+                })
+              : Result.ok(),
+        )
+        if (writeResult.isErr()) return automationErr(writeResult.error)
+        const [automation, trigger] = writeResult.value
 
         capturePostHogEvent(appContext, {
           distinctId: workspaceContext.session.user.id,

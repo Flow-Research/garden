@@ -2,7 +2,9 @@ import {
   Link,
   createRouter as createTanStackRouter,
 } from '@tanstack/react-router'
+import { createQueryClient } from '@garden/app-state/platform/query-client'
 import { routeTree } from './routeTree.gen'
+import { RouteError } from './components/route-error'
 
 /**
  * Router-level 404 renderer for unmatched app routes. TanStack was warning that
@@ -37,15 +39,36 @@ function DefaultNotFoundComponent() {
 }
 
 export function getRouter() {
+  const queryClient = createQueryClient()
   const router = createTanStackRouter({
     routeTree,
+    context: { queryClient },
     scrollRestoration: true,
     defaultPreload: 'intent',
-    defaultPreloadStaleTime: 0,
+    // Keep intent-preloaded route loaders fresh through the click that follows
+    // the hover. Query data still owns its own freshness window.
+    defaultPreloadStaleTime: 30_000,
+    defaultPendingComponent: RouterPendingComponent,
     defaultNotFoundComponent: DefaultNotFoundComponent,
+    defaultErrorComponent: RouteError,
   })
 
   return router
+}
+
+/**
+ * Keeps a slow route transition visible instead of leaving the previous page
+ * frozen. Surface queries render their own skeletons after the route commits.
+ * Reference: TanStack Router pending components.
+ */
+function RouterPendingComponent() {
+  return (
+    <main className="grid min-h-screen place-items-center bg-background px-6 text-foreground">
+      <p className="text-sm text-muted-foreground" aria-live="polite">
+        Loading Garden…
+      </p>
+    </main>
+  )
 }
 
 declare module '@tanstack/react-router' {

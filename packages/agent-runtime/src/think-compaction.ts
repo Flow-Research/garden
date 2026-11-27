@@ -5,7 +5,13 @@ import {
 } from '@cloudflare/think'
 import { createCompactFunction } from 'agents/experimental/memory/utils'
 import { generateText, type LanguageModel } from 'ai'
+import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { getDefaultAgentModelProfile, type AgentModelProfile } from './model'
+
+const compactionLogger = createGardenLogger({
+  service: 'garden-staging',
+  component: 'think-compaction',
+})
 
 /**
  * Wires Think's built-in compaction to Garden sessions using the active model
@@ -36,9 +42,9 @@ export function configureThinkCompaction(
     )
     .compactAfter(profile.compaction.thresholdTokens)
     .onCompactionError((error) => {
-      console.warn('[agent-runtime] Think session compaction failed', {
-        error: error instanceof Error ? error.message : String(error),
+      compactionLogger.warn('think.compaction_failed', {
         modelId: profile.id,
+        ...errorFields(error),
       })
     })
 }

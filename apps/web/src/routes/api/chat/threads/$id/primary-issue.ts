@@ -7,10 +7,12 @@ import {
   badRequest,
   forbidden,
   notFound,
+  getWorkspaceIssuePrefix,
   toChatThread,
 } from '@/lib/server/control-plane'
 import { schema } from '@/lib/server/db'
 import { getThreadAccess } from '@/lib/server/chat-threads'
+import { requireIssueAccess } from '@/lib/server/issue-access'
 
 const primaryIssueBodySchema = z
   .object({
@@ -42,24 +44,21 @@ export const Route = createFileRoute('/api/chat/threads/$id/primary-issue')({
         } | null = null
 
         if (body.issue_id) {
-          const [issue] = await access.db
-            .select({
-              id: schema.issue.id,
-              number: schema.issue.number,
-              title: schema.issue.title,
-              status: schema.issue.status,
-            })
-            .from(schema.issue)
-            .where(
-              and(
-                eq(schema.issue.id, body.issue_id),
-                eq(schema.issue.workspaceId, access.thread.workspaceId),
-              ),
-            )
-            .limit(1)
-
-          if (!issue) return forbidden('Issue access denied')
-          primaryIssue = issue
+          const issueAccess = await requireIssueAccess(
+            appContext,
+            body.issue_id,
+          )
+          if (issueAccess instanceof Response) return issueAccess
+          const issue = issueAccess.issue
+          if (issue.workspaceId !== access.thread.workspaceId) {
+            return forbidden('Issue access denied')
+          }
+          primaryIssue = {
+            id: issue.id,
+            number: issue.number,
+            title: issue.title,
+            status: issue.status,
+          }
         }
 
         const [thread] = await access.db
@@ -79,7 +78,19 @@ export const Route = createFileRoute('/api/chat/threads/$id/primary-issue')({
 
         if (!thread) return notFound('Chat thread not found')
         return Response.json(
-          toChatThread(thread, access.hostName, primaryIssue),
+          toChatThread(
+            thread,
+            access.hostName,
+            primaryIssue
+              ? {
+                  ...primaryIssue,
+                  issuePrefix: await getWorkspaceIssuePrefix(
+                    access.db,
+                    access.thread.workspaceId,
+                  ),
+                }
+              : null,
+          ),
         )
       },
     },

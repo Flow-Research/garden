@@ -13,29 +13,18 @@ import {
   commentBodySchema,
   parseJsonBody,
 } from '@/lib/server/validation/issues'
-import {
-  badRequest,
-  notFound,
-  requireWorkspaceAccess,
-} from '@/lib/server/control-plane'
+import { badRequest } from '@/lib/server/control-plane'
+import { requireIssueAccess } from '@/lib/server/issue-access'
+import { publishWorkspaceEvent } from '@/lib/server/realtime'
 
 export const Route = createFileRoute('/api/issues/$id/comments')({
   server: {
     handlers: {
-      GET: async ({ context, request, params }) => {
+      GET: async ({ context, params }) => {
         const appContext = requireAppRequestContext(context)
-        const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({ workspaceId: schema.issue.workspaceId })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
-          existingIssue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
 
         const comments = await db
           .select()
@@ -79,22 +68,10 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
         if (bodyResult.isErr()) return badRequest(bodyResult.error.message)
         const body = bodyResult.value
 
-        const db = await appContext.db()
-        const [existingIssue] = await db
-          .select({
-            id: schema.issue.id,
-            workspaceId: schema.issue.workspaceId,
-            activeRunId: schema.issue.activeRunId,
-          })
-          .from(schema.issue)
-          .where(eq(schema.issue.id, params.id))
-        if (!existingIssue) return notFound('Issue not found')
-
-        const access = await requireWorkspaceAccess(
-          request,
-          existingIssue.workspaceId,
-        )
+        const access = await requireIssueAccess(appContext, params.id)
         if (access instanceof Response) return access
+        const db = access.db
+        const existingIssue = access.issue
 
         const commentResult = await postIssueComment({
           databaseUrl: appEnv.HYPERDRIVE.connectionString,
@@ -116,6 +93,16 @@ export const Route = createFileRoute('/api/issues/$id/comments')({
           })
         }
 
+        appContext.waitUntil(
+          publishWorkspaceEvent(appContext.env, existingIssue.workspaceId, {
+            type: 'comment:created',
+            payload: {
+              issue_id: existingIssue.id,
+              comment_id: commentResult.value.comment.id,
+              team_id: existingIssue.teamId,
+            },
+          }),
+        )
         return Response.json(commentResult.value.comment, { status: 201 })
       },
     },

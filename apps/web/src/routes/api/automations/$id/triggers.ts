@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { requireAppRequestContext } from '@/lib/server/context'
-import { schema } from '@/lib/server/db'
+import { requireReturnedRow, schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
 import {
   automationErr,
@@ -10,8 +10,13 @@ import {
   nextRunFromCron,
   requireAutomation,
   toAutomationTrigger,
+  writeWithScheduleSync,
 } from '@/lib/server/automations'
 import { notFound, requireWorkspaceAccess } from '@/lib/server/control-plane'
+import {
+  requireWorkspaceMember,
+  workspacePermissions,
+} from '@/lib/server/workspace-permissions'
 import {
   createAutomationTriggerBodySchema,
   parseJsonBody,
@@ -48,9 +53,10 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
         const automation = automationResult.value
         if (!automation) return notFound('Automation not found')
 
-        const access = await requireWorkspaceAccess(
-          request,
+        const access = await requireWorkspaceMember(
+          appContext,
           automation.workspaceId,
+          workspacePermissions.automationManage,
         )
         if (access instanceof Response) return access
 
@@ -73,28 +79,37 @@ export const Route = createFileRoute('/api/automations/$id/triggers')({
         if (nextRunResult?.isErr()) return automationErr(nextRunResult.error)
 
         const db = await appContext.db()
-        const [trigger] = await db
-          .insert(schema.automationTrigger)
-          .values({
-            id: crypto.randomUUID(),
-            automationId: automation.id,
-            kind: 'schedule',
-            enabled,
-            label: body.label ?? null,
-            cronExpression: body.cron_expression,
-            timezone: body.timezone,
-          })
-          .returning()
+        const writeResult = await writeWithScheduleSync(
+          db,
+          async (tx) =>
+            requireReturnedRow(
+              await tx
+                .insert(schema.automationTrigger)
+                .values({
+                  id: crypto.randomUUID(),
+                  automationId: automation.id,
+                  kind: 'schedule',
+                  enabled,
+                  label: body.label ?? null,
+                  cronExpression: body.cron_expression,
+                  timezone: body.timezone,
+                })
+                .returning(),
+              'automation trigger',
+            ),
+          async (trigger) =>
+            await installScheduleTrigger({
+              env: appEnv,
+              automation,
+              trigger,
+              nextRunAt: nextRunResult?.isOk()
+                ? nextRunResult.value
+                : undefined,
+            }),
+        )
+        if (writeResult.isErr()) return automationErr(writeResult.error)
 
-        const installResult = await installScheduleTrigger({
-          env: appEnv,
-          automation,
-          trigger,
-          nextRunAt: nextRunResult?.isOk() ? nextRunResult.value : undefined,
-        })
-        if (installResult.isErr()) return automationErr(installResult.error)
-
-        return automationOk(toAutomationTrigger(trigger), 201)
+        return automationOk(toAutomationTrigger(writeResult.value), 201)
       },
     },
   },

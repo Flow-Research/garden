@@ -3,5 +3,6 @@ export {
   ALL_STATUSES,
   BOARD_STATUSES,
   STATUS_CONFIG,
+  STATUS_PILL_TEXT,
 } from './status'
 export { PRIORITY_ORDER, PRIORITY_CONFIG } from './priority'

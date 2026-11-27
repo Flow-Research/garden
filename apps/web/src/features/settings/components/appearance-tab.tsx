@@ -1,23 +1,30 @@
-import {
-  colorThemeValues,
-  useTheme,
-} from '@garden/ui/components/common/theme-provider'
+import { useTheme } from 'next-themes'
 import { cn } from '@garden/ui/lib/utils'
 
+/**
+ * Preview swatches mirror the token system's semantic surfaces — light content
+ * is background.main.default (white.1000), dark content is gray.900, sidebars
+ * are main.secondary, bars are neutral fills. They reference the primitive
+ * ramps rather than semantic tokens on purpose: semantic vars flip with the
+ * root theme class, so they can't show light and dark side by side, while
+ * primitives never flip.
+ */
 const LIGHT_COLORS = {
-  titleBar: '#e8e8e8',
-  content: '#ffffff',
-  sidebar: '#f4f4f5',
-  bar: '#e4e4e7',
-  barMuted: '#d4d4d8',
+  titleBar: 'var(--gray-100)',
+  content: 'var(--white-1000)', // background.main.default
+  sidebar: 'var(--gray-100)', // background.main.secondary
+  bar: 'var(--gray-300)',
+  barMuted: 'var(--gray-200)',
+  accent: 'var(--brand-800)', // primary CTA
 }
 
 const DARK_COLORS = {
-  titleBar: '#333338',
-  content: '#27272a',
-  sidebar: '#1e1e21',
-  bar: '#3f3f46',
-  barMuted: '#52525b',
+  titleBar: 'var(--gray-800)',
+  content: 'var(--gray-900)', // background.main.default (dark)
+  sidebar: 'var(--gray-800)', // background.main.secondary (dark)
+  bar: 'var(--gray-600)',
+  barMuted: 'var(--gray-700)',
+  accent: 'var(--brand-200)', // accent on dark
 }
 
 function WindowMockup({
@@ -67,8 +74,8 @@ function WindowMockup({
             style={{ backgroundColor: colors.barMuted }}
           />
           <div
-            className="h-1 w-3/5 rounded-full"
-            style={{ backgroundColor: colors.barMuted }}
+            className="h-2 w-2/5 rounded-full"
+            style={{ backgroundColor: colors.accent }}
           />
         </div>
       </div>
@@ -82,17 +89,8 @@ const themeOptions = [
   { value: 'system' as const, label: 'System' },
 ]
 
-const colorThemeOptions = colorThemeValues.map((value) => ({
-  value,
-  label: value === 'garden' ? 'Garden' : value,
-  description:
-    value === 'garden'
-      ? 'Garden green accents and surfaces across light and dark modes.'
-      : value,
-}))
-
 export function AppearanceTab() {
-  const { theme, setTheme, colorTheme, setColorTheme } = useTheme()
+  const { theme, setTheme } = useTheme()
 
   return (
     <div className="space-y-12">
@@ -153,74 +151,6 @@ export function AppearanceTab() {
                   >
                     {opt.label}
                   </div>
-                </div>
-              </button>
-            )
-          })}
-        </div>
-      </section>
-
-      <section className="space-y-5">
-        <header className="space-y-1">
-          <h2 className="text-base font-semibold">Theme</h2>
-          <p className="text-sm text-muted-foreground">
-            Choose the color palette used across Garden.
-          </p>
-        </header>
-        <div
-          className="flex flex-wrap gap-6 border-t pt-5"
-          role="radiogroup"
-          aria-label="Color theme"
-        >
-          {colorThemeOptions.map((opt) => {
-            const active = colorTheme === opt.value
-
-            return (
-              <button
-                key={opt.value}
-                role="radio"
-                aria-checked={active}
-                aria-label={`Select ${opt.label} theme`}
-                onClick={() => setColorTheme(opt.value)}
-                className="group flex w-44 cursor-pointer flex-col items-start gap-3 rounded-xl text-left outline-none transition-transform hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-brand/60"
-              >
-                <div
-                  className={cn(
-                    'flex h-28 w-full flex-col overflow-hidden rounded-xl border bg-card p-3.5 text-left shadow-sm transition-all duration-150',
-                    active
-                      ? 'border-brand/50 ring-2 ring-brand/80 shadow-[0_12px_28px_-18px_color-mix(in_oklab,var(--brand)_75%,transparent)]'
-                      : 'border-border hover:border-brand/25 hover:bg-accent/30 hover:shadow-md',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="size-3 rounded-full bg-brand" />
-                    <span className="text-[0.95rem] font-semibold text-foreground">
-                      {opt.label}
-                    </span>
-                  </div>
-                  <div className="mt-3 grid flex-1 grid-cols-[1fr_1.3fr] gap-2.5">
-                    <div className="rounded-md bg-sidebar p-2">
-                      <div className="h-2 w-8 rounded-full bg-sidebar-primary" />
-                    </div>
-                    <div className="rounded-md bg-background p-2 ring-1 ring-border/60">
-                      <div className="h-2 w-10 rounded-full bg-brand/70" />
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-1 text-left">
-                  <div
-                    className={cn(
-                      'text-[0.95rem] transition-colors',
-                      active
-                        ? 'font-semibold text-foreground'
-                        : 'font-medium text-muted-foreground group-hover:text-foreground',
-                    )}
-                  >
-                    {opt.label}
-                  </div>
-                  <p className="max-w-[28ch] text-sm leading-5 text-muted-foreground">
-                    {opt.description}
-                  </p>
                 </div>
               </button>
             )
