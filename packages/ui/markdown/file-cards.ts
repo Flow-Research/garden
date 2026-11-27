@@ -1,6 +1,17 @@
 const IMAGE_PATH = /\.(?:png|jpe?g|gif|webp|svg|ico|bmp|tiff?)$/i
-const EXPLICIT_FILE = /^!file\[([^\]]*)\]\((https?:\/\/[^)]+)\)$/
+const EXPLICIT_FILE = /^!file\[([^\]]*)\]\(([^)\r\n]+)\)$/
 const STANDALONE_LINK = /^\[([^\]]+)\]\((https?:\/\/[^)]+)\)$/
+
+const ATTACHMENT_PATH =
+  /^\/api\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Accept Garden upload paths and absolute HTTP or HTTPS links. */
+export function safeFileHref(value: unknown): string {
+  const href = typeof value === 'string' ? value.trim() : ''
+  if (ATTACHMENT_PATH.test(href)) return href
+  if (!/^https?:\/\//i.test(href)) return ''
+  return URL.canParse(href) ? href : ''
+}
 
 function escapeAttribute(value: string): string {
   return value
@@ -37,7 +48,8 @@ export function preprocessFileCards(
       const content = line.trim()
       const explicit = EXPLICIT_FILE.exec(content)
       if (explicit?.[1] !== undefined && explicit[2]) {
-        return fileCardMarkup(explicit[1], explicit[2])
+        const href = safeFileHref(explicit[2])
+        return href ? fileCardMarkup(explicit[1], href) : line
       }
 
       const legacy = STANDALONE_LINK.exec(content)
