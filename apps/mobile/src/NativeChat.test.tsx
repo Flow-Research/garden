@@ -250,13 +250,17 @@ describe('native chat through the actual Cloudflare SDK', () => {
     expect(socket.requests()).toHaveLength(0)
   })
 
-  it('disconnects locally without sending a cancellation or replaying an unsent draft', async () => {
-    await fixture()
+  it('keeps a draft after a temporary verification outage without cancelling or replaying', async () => {
+    const app = await fixture()
     connectHistory()
     fireEvent.change(screen.getByLabelText('Chat message'), {
       target: { value: 'Unsent local draft' },
     })
-    act(() => socket.close())
+    act(() => socket.close(1013))
+    expect(app.controller.getSnapshot().chatDraft).toEqual({
+      threadId: thread.id,
+      text: 'Unsent local draft',
+    })
     fireEvent.click(screen.getByText('Send chat message'))
     cleanup()
     expect(socket.requests()).toHaveLength(0)
