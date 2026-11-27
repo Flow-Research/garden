@@ -1250,6 +1250,39 @@ describe('overwriteBrainFile', () => {
     expect(deferred).toHaveLength(1)
   })
 
+  it('preserves the original file when another member saves a revision', async () => {
+    const files = makeFiles()
+    const r2Key = 'brain/workspaces/ws-resave/item-resave/guide.md'
+    const original = new TextEncoder().encode('# Original')
+    files.objects.set(r2Key, original)
+    const item = storeBrainFile({
+      indexed: true,
+      itemId: 'item-resave',
+      r2Key,
+      workspaceId: 'ws-resave',
+    })
+    const waitUntil = vi.fn()
+    const result = await overwriteBrainFile({
+      env: {
+        BRAIN_FILES: files.bucket,
+        HYPERDRIVE: {},
+        AI: stubAi,
+        AgentDO: {},
+        HELIX_URL: 'http://localhost:6968',
+        HELIX_API_KEY: '',
+      } as never,
+      fileId: item.id,
+      body: '# Revision',
+      ownerUserId: 'other-member',
+      workspaceId: 'ws-resave',
+      waitUntil,
+    })
+    expect(result.isOk() && result.value).toBeNull()
+    expect(files.objects.get(r2Key)).toEqual(original)
+    expect(mockBrainItems.get(item.id)).toEqual(item)
+    expect(waitUntil).not.toHaveBeenCalled()
+  })
+
   it('returns null when the file was deleted so the caller saves anew', async () => {
     const files = makeFiles()
     const result = await overwriteBrainFile({
