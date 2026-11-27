@@ -107,8 +107,8 @@ describe('org connection capability bootstrap', () => {
     mocks.runExecutor.mockImplementation(
       (
         _identity: unknown,
-        use: (value: typeof executor) => Effect.Effect<unknown>,
-      ) => Effect.runPromise(use(executor)),
+        runWithExecutor: (value: typeof executor) => Effect.Effect<unknown>,
+      ) => Effect.runPromise(runWithExecutor(executor)),
     )
 
     const response = await call('PUT', {
@@ -159,8 +159,8 @@ describe('org connection capability bootstrap', () => {
     mocks.runExecutor.mockImplementation(
       (
         _identity: unknown,
-        use: (value: typeof executor) => Effect.Effect<unknown>,
-      ) => Effect.runPromise(use(executor)),
+        runWithExecutor: (value: typeof executor) => Effect.Effect<unknown>,
+      ) => Effect.runPromise(runWithExecutor(executor)),
     )
 
     const response = await call('POST', { action })
@@ -195,8 +195,8 @@ describe('org connection capability bootstrap', () => {
     mocks.runExecutor.mockImplementation(
       (
         _identity: unknown,
-        use: (value: typeof executor) => Effect.Effect<unknown>,
-      ) => Effect.runPromise(use(executor)),
+        runWithExecutor: (value: typeof executor) => Effect.Effect<unknown>,
+      ) => Effect.runPromise(runWithExecutor(executor)),
     )
     mocks.requireWorkspacePermission.mockResolvedValue(
       Response.json({ error: 'Forbidden' }, { status: 403 }),
