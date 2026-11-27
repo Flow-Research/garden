@@ -9,7 +9,7 @@ import {
 } from '@garden/connectors/capabilities'
 import { getDb, schema } from './db'
 import { appEnv } from './env'
-import { loadExecutorCatalog } from './executor-runtime'
+import { loadExecutorCatalog, type ExecutorCatalog } from './executor-runtime'
 import { createGardenLogger } from '@garden/observability/logger'
 
 const logger = createGardenLogger({
@@ -212,6 +212,22 @@ function dedupeCapabilityRows(
   )
 }
 
+/** Projects tools visible to this Executor subject into global capability names. */
+export function executorToolsForCapabilitySync(
+  tools: ExecutorCatalog['tools'],
+  executorSlug: string,
+) {
+  const byName = new Map<string, ExecutorCatalog['tools'][number]>()
+  for (const tool of tools) {
+    if (tool.integration !== executorSlug) continue
+    const existing = byName.get(tool.name)
+    if (!existing || (!existing.requiresApproval && tool.requiresApproval)) {
+      byName.set(tool.name, tool)
+    }
+  }
+  return [...byName.values()]
+}
+
 type CapabilityToolLike = {
   name: string
   description?: string | null
@@ -286,18 +302,15 @@ export const syncCapabilities = Effect.fn('CapabilitySync.sync')(function* (
       ),
     )
     const liveRows: Array<typeof schema.capability.$inferInsert> = []
-    for (const tool of catalog.tools) {
-      if (
-        tool.integration !== connector.executorSlug ||
-        tool.owner !== 'user'
-      ) {
-        continue
-      }
+    for (const tool of executorToolsForCapabilitySync(
+      catalog.tools,
+      connector.executorSlug,
+    )) {
       liveRows.push(
         yield* toCapabilityValue({
           connectorId,
           tool: { name: tool.name, description: tool.description },
-          riskOverride: tool.requiresApproval ? 'write' : 'read',
+          riskOverride: tool.requiresApproval ? 'send_external' : 'read',
         }),
       )
     }

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import type { ToolSet } from 'ai'
+import { jsonSchema, tool, type ToolSet } from 'ai'
 import { eq } from 'drizzle-orm'
 import * as schema from '@garden/db/schema'
 import type * as runtimeDb from '@garden/db/runtime'
@@ -90,13 +90,15 @@ function makeController(
   agentId: string = seeded.agentId,
   runId?: string,
   toolName: string = TOOL_NAME,
+  serverId: string = CONNECTOR_ID,
+  hasMember = true,
 ) {
   const memberUserId = randomUUID()
   const identity: ThreadRuntimeIdentity = {
     threadId: randomUUID(),
     workspaceId: seeded.workspaceId,
     userId: memberUserId,
-    connectorUserId: memberUserId,
+    connectorUserId: hasMember ? memberUserId : null,
     agentId,
     runId,
   }
@@ -116,12 +118,12 @@ function makeController(
       listTools: () => [
         {
           name: toolName,
-          serverId: CONNECTOR_ID,
+          serverId,
           description: 'Add a comment to a GitHub issue or pull request.',
           inputSchema: {},
         },
       ],
-      listServers: () => [{ id: CONNECTOR_ID }],
+      listServers: () => [{ id: serverId }],
       discoverIfConnected: async () => ({ success: true }),
     },
     removeMcpServer: async () => {},
@@ -129,6 +131,26 @@ function makeController(
   } as unknown as McpHost
 
   return new RuntimeMcpController(host)
+}
+
+async function needsApprovalForExecutor(
+  controller: RuntimeMcpController,
+  toolCallId: string,
+  code: string,
+): Promise<boolean> {
+  const toolKey = buildMcpAiToolKey('executor', 'execute')
+  const rawTools = {
+    [toolKey]: tool({
+      inputSchema: jsonSchema({ type: 'object', properties: {} }),
+      execute: async () => ({}),
+    }),
+  } satisfies ToolSet
+  const wrapped = controller.wrapGetAITools(() => rawTools)
+  const needsApproval = wrapped[toolKey]?.needsApproval
+  if (typeof needsApproval !== 'function') {
+    throw new Error('Expected Executor approval gate')
+  }
+  return needsApproval({ code }, { toolCallId, messages: [] })
 }
 
 async function insertPermissionRequest(input: {
@@ -304,6 +326,52 @@ describe('connector tool approval gate (integration)', () => {
         makeController(seeded, seeded.agentId, undefined, missingTool),
         `missing-${randomUUID()}`,
         missingTool,
+      ),
+    ).rejects.toThrow(/Capability .* is unavailable/)
+  })
+
+  it('uses an org-only Executor capability without a personal connection', async () => {
+    const capabilityId = randomUUID()
+    await testDb.db.insert(schema.capability).values({
+      id: capabilityId,
+      connectorType: 'google-drive',
+      name: 'list_files',
+      riskClass: 'read',
+    })
+    await testDb.db.insert(schema.capability).values({
+      id: randomUUID(),
+      connectorType: 'google-drive',
+      name: 'share_file',
+      riskClass: 'send_external',
+    })
+    const executorController = makeController(
+      seeded,
+      seeded.agentId,
+      undefined,
+      'execute',
+      'executor',
+      false,
+    )
+
+    await expect(
+      needsApprovalForExecutor(
+        executorController,
+        `org-${randomUUID()}`,
+        'await tools.google_drive.org.company.list_files({})',
+      ),
+    ).resolves.toBe(false)
+    await expect(
+      needsApprovalForExecutor(
+        executorController,
+        `org-share-${randomUUID()}`,
+        'await tools.google_drive.org.company.share_file({})',
+      ),
+    ).resolves.toBe(true)
+    await expect(
+      needsApprovalForExecutor(
+        executorController,
+        `unknown-${randomUUID()}`,
+        'await tools.google_drive.org.company.unknown_tool({})',
       ),
     ).rejects.toThrow(/Capability .* is unavailable/)
   })

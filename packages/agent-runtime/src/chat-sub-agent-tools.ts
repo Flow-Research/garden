@@ -1835,7 +1835,7 @@ export async function listWorkspaceInventoryFromChat(
                 auth_kind: connected ? 'executor' : null,
                 tools: filteredTools.slice(0, limit).map((tool) => ({
                   name: tool.name,
-                  risk_class: tool.requiresApproval ? 'write' : 'read',
+                  risk_class: tool.requiresApproval ? 'send_external' : 'read',
                   current_agent_trust: null,
                   owner: tool.owner,
                   connection: tool.connection,
