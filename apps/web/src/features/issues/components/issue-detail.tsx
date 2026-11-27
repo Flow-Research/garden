@@ -1,13 +1,13 @@
 import { Suspense, useState, useEffect, useCallback, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { Result } from 'better-result'
 import { Skeleton as BoneyardSkeleton } from 'boneyard-js/react'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
-import { AppLink } from '../../navigation'
-import { useNavigation } from '../../navigation'
+import { AppLink, useNavigation } from '../../navigation'
 import {
   ChevronDown,
   ChevronLeft,
-  ChevronRight,
+  CalendarDays,
   MessageSquare,
   PanelLeft,
   PanelRight,
@@ -26,12 +26,23 @@ import {
   AlertDialogTitle,
 } from '@garden/ui/components/ui/alert-dialog'
 import { Button } from '@garden/ui/components/ui/button'
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@garden/ui/components/ui/tabs'
+import {
+  PRIORITY_CONFIG,
+  STATUS_CONFIG,
+  STATUS_PILL_TEXT,
+} from '@garden/core/issues/config'
+import { DueDatePicker, PriorityPicker, StatusPicker } from './pickers'
 import { Sheet, SheetContent } from '@garden/ui/components/ui/sheet'
 import { useIsMobile } from '@garden/ui/hooks/use-mobile'
 import {
   ContentEditor,
   type ContentEditorRef,
-  TitleEditor,
   useFileDropZone,
   FileDropOverlay,
 } from '../../editor'
@@ -113,6 +124,53 @@ interface IssueDetailProps {
   contextRailOpen?: boolean
 }
 
+/**
+ * Inline title editor. Shows the live `title` until the user focuses it, then
+ * holds their draft, so a title changed elsewhere mid-session is never
+ * overwritten by a stale value on blur.
+ */
+function IssueTitleField({
+  title,
+  onSave,
+}: {
+  title: string
+  onSave: (title: string) => void
+}) {
+  const [draft, setDraft] = useState<string | null>(null)
+  const discardOnBlur = useRef(false)
+  return (
+    <textarea
+      aria-label="Issue title"
+      value={draft ?? title}
+      placeholder="Issue title"
+      rows={1}
+      className="block field-sizing-content w-full min-w-0 resize-none border-0 bg-transparent p-0 text-lg font-bold leading-snug tracking-tight outline-none [overflow-wrap:anywhere] placeholder:text-muted-foreground"
+      onChange={(event) => setDraft(event.currentTarget.value)}
+      onBlur={() => {
+        const trimmed = (draft ?? title).trim()
+        setDraft(null)
+        if (!discardOnBlur.current && trimmed && trimmed !== title)
+          onSave(trimmed)
+        discardOnBlur.current = false
+      }}
+      onKeyDown={(event) => {
+        // Enter/Escape during IME composition confirm or cancel the candidate
+        // text; they must not finish editing. Safari reports the committing
+        // keydown with isComposing false but keyCode 229.
+        if (event.nativeEvent.isComposing || event.keyCode === 229) return
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          event.currentTarget.blur()
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          discardOnBlur.current = true
+          event.currentTarget.blur()
+        }
+      }}
+    />
+  )
+}
+
 // ---------------------------------------------------------------------------
 // IssueDetail
 // ---------------------------------------------------------------------------
@@ -185,6 +243,20 @@ export function IssueDetail({
     [],
   )
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const tabsRef = useRef<HTMLDivElement>(null)
+  // A tab switch shows the new tab from its start; scrolls only when the
+  // tabs' top is already above the viewport, so it never jumps down. Panels
+  // hide during base-ui's exit phase (`data-ending-style`); otherwise the
+  // outgoing panel keeps its height for a frame and scroll anchoring shifts
+  // the page once it unmounts.
+  const scrollTabsToTop = () => {
+    const container = scrollContainerRef.current
+    const tabs = tabsRef.current
+    if (!container || !tabs) return
+    const offset =
+      tabs.getBoundingClientRect().top - container.getBoundingClientRect().top
+    if (offset < 0) container.scrollTop += offset
+  }
   const [highlightedId, setHighlightedId] = useState<string | null>(null)
   const didHighlightRef = useRef<string | null>(null)
   const [parentPickerOpen, setParentPickerOpen] = useState(false)
@@ -240,6 +312,20 @@ export function IssueDetail({
   const [focusKind, focusId] = focus.split(':')
   const focusedCommentId =
     focusKind === 'comment' && focusId ? focusId : highlightCommentId
+  const tabKey = `${id}:${focus}:${highlightCommentId ?? ''}`
+  const [tabSelection, setTabSelection] = useState<{
+    key: string
+    tab: 'activity' | 'comments'
+  } | null>(null)
+  const activeTab =
+    tabSelection?.key === tabKey
+      ? tabSelection.tab
+      : focusedCommentId
+        ? 'comments'
+        : 'activity'
+  const commentCount = timeline.filter(
+    (entry) => entry.type === 'comment',
+  ).length
 
   // Scroll to highlighted comment once timeline loads (fire only once per focusedCommentId)
   useEffect(() => {
@@ -261,6 +347,15 @@ export function IssueDetail({
     const timer = setTimeout(() => setHighlightedId(null), 2000)
     return () => clearTimeout(timer)
   }, [highlightedId])
+
+  const openComment = (commentId: string) => {
+    // Commit the Comments panel first so the reply is laid out before scrolling.
+    flushSync(() => setTabSelection({ key: tabKey, tab: 'comments' }))
+    document
+      .getElementById(`comment-${commentId}`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    setHighlightedId(commentId)
+  }
 
   const handleUpdateField = useCallback(
     (updates: Partial<UpdateIssueRequest>) => {
@@ -353,12 +448,12 @@ export function IssueDetail({
       loading={loading}
       // BoneyardSkeleton adds a wrapper div around children. Keep that wrapper
       // in the flex chain so the issue body remains height-capped and scrolls.
-      className="flex flex-1 min-h-0 [&>[data-boneyard-content=true]]:flex [&>[data-boneyard-content=true]]:flex-1 [&>[data-boneyard-content=true]]:min-h-0"
+      className="flex min-w-0 flex-1 min-h-0 [&>[data-boneyard-content=true]]:flex [&>[data-boneyard-content=true]]:min-w-0 [&>[data-boneyard-content=true]]:flex-1 [&>[data-boneyard-content=true]]:min-h-0"
     >
       {issue ? (
-        <div className="flex flex-1 min-h-0">
+        <div className="flex min-w-0 flex-1 min-h-0">
           <div className="flex h-full flex-1 min-w-0 min-h-0 flex-col overflow-hidden">
-            <PageHeader className="gap-2 bg-background text-sm">
+            <PageHeader className="h-auto min-h-12 flex-wrap gap-x-2 gap-y-1 bg-background px-3 py-2 text-sm sm:h-12 sm:flex-nowrap sm:px-4 sm:py-0">
               {onToggleContextRail && (
                 <Tooltip>
                   <TooltipTrigger
@@ -381,47 +476,60 @@ export function IssueDetail({
                   </TooltipContent>
                 </Tooltip>
               )}
-              <div className="flex flex-1 items-center gap-1.5 min-w-0">
-                {issue?.team_id ? (
+              <div className="flex min-w-0 basis-[calc(100%-40px)] flex-1 items-center gap-1.5 overflow-x-auto text-xs sm:basis-auto">
+                <button
+                  type="button"
+                  onClick={handleOpenIssues}
+                  className="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Tasks
+                </button>
+                <span className="mx-2 shrink-0 text-muted-foreground">/</span>
+                {issue.team_id && (
                   <>
                     <button
                       type="button"
                       onClick={() => void navigate({ to: '/teams' })}
-                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                      className="shrink-0 text-muted-foreground hover:text-foreground"
                     >
                       Teams
                     </button>
-                    <span className="text-muted-foreground/50 shrink-0">/</span>
+                    <span className="shrink-0 text-muted-foreground">/</span>
                     <button
                       type="button"
-                      onClick={() =>
-                        void navigate({
-                          to: '/teams/$teamId',
-                          params: { teamId: issue.team_id as string },
-                          search: { tab: 'issues' },
-                        })
-                      }
-                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                      onClick={() => {
+                        const teamId = issue.team_id
+                        if (teamId)
+                          void navigate({
+                            to: '/teams/$teamId',
+                            params: { teamId },
+                            search: { tab: 'issues' },
+                          })
+                      }}
+                      className="shrink-0 text-muted-foreground hover:text-foreground"
                     >
                       Issues
                     </button>
-                    <span className="text-muted-foreground/50 shrink-0">/</span>
+                    <span className="shrink-0 text-muted-foreground">/</span>
                   </>
-                ) : workspace ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleOpenIssues}
-                      className="text-muted-foreground hover:text-foreground transition-colors shrink-0"
-                    >
-                      {workspace.name}
-                    </button>
-                    <ChevronRight className="size-3 text-muted-foreground/50 shrink-0" />
-                  </>
-                ) : null}
+                )}
                 <span className="shrink-0">{issue.identifier}</span>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="ml-auto flex shrink-0 items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() =>
+                    openCreateIssue({
+                      parent_issue_id: issue.id,
+                      parent_issue_identifier: issue.identifier,
+                    })
+                  }
+                >
+                  <Plus className="size-3.5" />
+                  <span className="hidden sm:inline">New Sub-task</span>
+                  <span className="sm:hidden">Sub-task</span>
+                </Button>
                 <IssueActionsMenu
                   issue={issue}
                   members={members}
@@ -560,17 +668,11 @@ export function IssueDetail({
               ref={scrollContainerRef}
               className="relative flex-1 overflow-y-auto"
             >
-              <div className="mx-auto w-full max-w-3xl px-6 py-5">
-                <TitleEditor
+              <div className="mx-auto w-full max-w-[686px] px-4 pb-12 pt-6 sm:px-6 sm:pt-10">
+                <IssueTitleField
                   key={`title-${id}`}
-                  defaultValue={issue.title}
-                  placeholder="Issue title"
-                  className="w-full text-2xl font-bold leading-snug tracking-tight"
-                  onBlur={(value) => {
-                    const trimmed = value.trim()
-                    if (trimmed && trimmed !== issue.title)
-                      handleUpdateField({ title: trimmed })
-                  }}
+                  title={issue.title}
+                  onSave={(title) => handleUpdateField({ title })}
                 />
 
                 {parentIssue && (
@@ -612,19 +714,78 @@ export function IssueDetail({
 
                 <div
                   {...descDropZoneProps}
-                  className="relative mt-5 rounded-lg"
+                  className="relative mt-2 min-w-0 rounded-lg [overflow-wrap:anywhere]"
                 >
                   <ContentEditor
                     ref={descEditorRef}
                     key={id}
                     defaultValue={issue.description || ''}
                     placeholder="Add description..."
+                    className="text-xs leading-relaxed"
                     onUpdate={(md) => handleUpdateField({ description: md })}
                     onUploadFile={handleDescriptionUpload}
                     debounceMs={1500}
                   />
 
-                  <div className="flex items-center gap-1 mt-3">
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <StatusPicker
+                      status={issue.status}
+                      onUpdate={handleUpdateField}
+                      align="start"
+                      triggerRender={
+                        <Button
+                          size="xs"
+                          aria-label={`Status: ${STATUS_CONFIG[issue.status].label}`}
+                          className={`h-5 gap-1.5 rounded-full px-2 text-[10px] hover:opacity-80 ${STATUS_PILL_TEXT}`}
+                          style={{
+                            backgroundColor:
+                              STATUS_CONFIG[issue.status].pillFill,
+                          }}
+                        />
+                      }
+                      trigger={
+                        <>
+                          <StatusIcon
+                            status={issue.status}
+                            className={`size-3 ${STATUS_PILL_TEXT}`}
+                          />
+                          {STATUS_CONFIG[issue.status].label}
+                        </>
+                      }
+                    />
+                    <PriorityPicker
+                      priority={issue.priority}
+                      onUpdate={handleUpdateField}
+                      align="start"
+                      triggerRender={
+                        <Button
+                          size="xs"
+                          aria-label={`Priority: ${PRIORITY_CONFIG[issue.priority].label}`}
+                          className="h-5 rounded-full bg-foreground px-2 text-[10px] text-background hover:bg-foreground/80"
+                        />
+                      }
+                      trigger={PRIORITY_CONFIG[issue.priority].label}
+                    />
+                    <DueDatePicker
+                      dueDate={issue.due_date}
+                      onUpdate={handleUpdateField}
+                      triggerRender={
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          aria-label="Change due date"
+                          className="h-5 gap-1.5 rounded-full px-2 text-[10px]"
+                        />
+                      }
+                      trigger={
+                        <>
+                          <CalendarDays className="size-3" />
+                          {issue.due_date
+                            ? `Due: ${new Date(issue.due_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`
+                            : 'Due date'}
+                        </>
+                      }
+                    />
                     <BoneyardSkeleton
                       name={ISSUE_DETAIL_REACTIONS_SKELETON}
                       loading={reactionsLoading}
@@ -663,9 +824,6 @@ export function IssueDetail({
                 </div>
 
                 <div className="space-y-3">
-                  <Suspense fallback={<IssueOutputSurfaceFallback />}>
-                    <IssueOutputSurface issue={issue} />
-                  </Suspense>
                   <Suspense fallback={<IssueRunSurfaceFallback />}>
                     <IssueRunSurface
                       issue={issue}
@@ -682,23 +840,6 @@ export function IssueDetail({
                 </div>
 
                 {/* Sub-issues — Linear-style */}
-                {childIssues.length === 0 && (
-                  <div className="mt-6">
-                    <button
-                      type="button"
-                      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                      onClick={() =>
-                        openCreateIssue({
-                          parent_issue_id: issue.id,
-                          parent_issue_identifier: issue.identifier,
-                        })
-                      }
-                    >
-                      <Plus className="size-3.5" />
-                      <span>Add sub-issues</span>
-                    </button>
-                  </div>
-                )}
                 {childIssues.length > 0 &&
                   (() => {
                     const doneCount = childIssues.filter(
@@ -719,7 +860,7 @@ export function IssueDetail({
                                 subIssuesCollapsed && '-rotate-90',
                               )}
                             />
-                            <span>Sub-issues</span>
+                            <span>Sub-tasks</span>
                           </button>
                           <div className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5">
                             <ProgressRing
@@ -809,17 +950,43 @@ export function IssueDetail({
 
                 <div className="my-10 border-t" />
 
-                {/* Activity / Comments */}
-                <div className="space-y-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <h2 className="text-base font-semibold">Activity</h2>
-                    </div>
+                <Tabs
+                  ref={tabsRef}
+                  value={activeTab}
+                  onValueChange={(value) => {
+                    if (value !== 'activity' && value !== 'comments') return
+                    // Commit the new panel first so the scroll measures its layout.
+                    flushSync(() =>
+                      setTabSelection({ key: tabKey, tab: value }),
+                    )
+                    scrollTabsToTop()
+                  }}
+                  className="min-w-0 gap-5"
+                >
+                  <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 bg-background py-3">
+                    <TabsList
+                      variant="line"
+                      aria-label="Task activity"
+                      className="h-8 gap-0 bg-background-main-default-hover p-0"
+                    >
+                      <TabsTrigger
+                        value="activity"
+                        className="h-8 rounded-none px-3 text-xs font-normal sm:px-4 after:bottom-0 after:h-px after:bg-brand"
+                      >
+                        Activity
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="comments"
+                        className="h-8 rounded-none px-3 text-xs font-normal sm:px-4 after:bottom-0 after:h-px after:bg-brand"
+                      >
+                        Comments
+                      </TabsTrigger>
+                    </TabsList>
                     <div className="flex items-center gap-2">
                       <BoneyardSkeleton
                         name={ISSUE_DETAIL_SUBSCRIBERS_SKELETON}
                         loading={subscribersLoading}
-                        className="inline-flex"
+                        className="inline-flex items-center gap-2"
                       >
                         {!subscribersLoading ? (
                           <IssueSubscribersControl
@@ -834,9 +1001,55 @@ export function IssueDetail({
                       </BoneyardSkeleton>
                     </div>
                   </div>
-
-                  {/* Timeline entries */}
-                  <div>
+                  <TabsContent
+                    value="activity"
+                    className="min-h-[196px] min-w-0 space-y-6 rounded-md data-[ending-style]:hidden bg-background-main-default-hover p-3 sm:p-5"
+                  >
+                    {activeTab === 'activity' && (
+                      <>
+                        <Suspense fallback={<IssueOutputSurfaceFallback />}>
+                          <IssueOutputSurface issue={issue} />
+                        </Suspense>
+                        <BoneyardSkeleton
+                          name={ISSUE_DETAIL_TIMELINE_SKELETON}
+                          loading={timelineLoading}
+                          className="w-full"
+                        >
+                          {timelineLoadFailed ? (
+                            <LoadError
+                              message="Could not load activity."
+                              onRetry={retryTimeline}
+                              retrying={timelineRetrying}
+                            />
+                          ) : !timelineLoading ? (
+                            <IssueActivityTimeline
+                              timeline={timeline}
+                              debugMode={debugMode}
+                              highlightedId={highlightedId}
+                              issueId={id}
+                              currentUserId={user?.id}
+                              getActorName={getActorName}
+                              onReply={submitReply}
+                              onEdit={editComment}
+                              onDelete={deleteComment}
+                              onToggleReaction={handleToggleReaction}
+                              onOpenComment={openComment}
+                            />
+                          ) : null}
+                        </BoneyardSkeleton>
+                      </>
+                    )}
+                  </TabsContent>
+                  <TabsContent
+                    value="comments"
+                    keepMounted
+                    className="min-w-0 space-y-5 rounded-md bg-background-main-default-hover p-3 data-[ending-style]:hidden sm:p-6"
+                  >
+                    <h2 className="text-sm font-semibold">
+                      Comments ({commentCount})
+                    </h2>
+                    {/* Stays mounted while hidden so in-progress comment edits and
+                        reply drafts survive a switch to Activity. */}
                     <BoneyardSkeleton
                       name={ISSUE_DETAIL_TIMELINE_SKELETON}
                       loading={timelineLoading}
@@ -844,13 +1057,14 @@ export function IssueDetail({
                     >
                       {timelineLoadFailed ? (
                         <LoadError
-                          message="Could not load activity."
+                          message="Could not load comments."
                           onRetry={retryTimeline}
                           retrying={timelineRetrying}
                         />
                       ) : !timelineLoading ? (
                         <IssueActivityTimeline
                           timeline={timeline}
+                          view="comments"
                           debugMode={debugMode}
                           highlightedId={highlightedId}
                           issueId={id}
@@ -863,22 +1077,31 @@ export function IssueDetail({
                         />
                       ) : null}
                     </BoneyardSkeleton>
-                  </div>
-
-                  {/* Bottom composer — contextual, mode swaps by run state */}
-                  <div className="sticky bottom-0 z-20 -mx-6 mt-4 px-6 pb-5 pt-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-                    <ContextualComposer
-                      issueId={id}
-                      onSubmit={submitComment}
-                      onOpenChat={
-                        issue.assignee_type === 'agent' && issue.assignee_id
-                          ? handleOpenChat
-                          : undefined
-                      }
-                      openChatPending={openChatPending}
-                    />
-                  </div>
-                </div>
+                    <div className="sticky bottom-0 z-10 -mx-3 -mb-3 flex items-start gap-3 rounded-b-md border-t bg-background-main-default-hover px-3 py-3 sm:-mx-6 sm:-mb-6 sm:px-6 sm:py-4">
+                      {user && (
+                        <ActorAvatar
+                          actorType="member"
+                          actorId={user.id}
+                          size={24}
+                          className="mt-2 shrink-0"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <ContextualComposer
+                          key={id}
+                          issueId={id}
+                          onSubmit={submitComment}
+                          onOpenChat={
+                            issue.assignee_type === 'agent' && issue.assignee_id
+                              ? handleOpenChat
+                              : undefined
+                          }
+                          openChatPending={openChatPending}
+                        />
+                      </div>
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
             </div>
           </div>
@@ -904,8 +1127,8 @@ export function IssueDetail({
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
               <SheetContent
                 side="right"
-                showCloseButton={false}
-                className="w-[320px] overflow-y-auto p-4"
+                aria-label="Task properties"
+                className="w-full max-w-[320px] overflow-y-auto p-4 data-[side=right]:w-full"
               >
                 {sidebarContent}
               </SheetContent>

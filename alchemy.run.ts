@@ -174,10 +174,9 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
       persist: true,
     },
   },
-  // The reconciler performs ledger cleanup without a durable deadline, so a
-  // 12-hour cadence avoids unnecessary database wakeups while still repairing
-  // stale product state.
-  crons: ['0 */12 * * *'],
+  // Must match `triggers.crons` in apps/web/wrangler.jsonc: the 12-hour
+  // issue-run reconciler and the daily model health check.
+  crons: ['0 */12 * * *', '0 8 * * *'],
   // Use the stable script name here. Passing the Worker declaration can
   // resolve to `undefined` while Alchemy plans another direct resource.
   tailConsumers: [deployTarget.tailWorkerName],
@@ -241,6 +240,7 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
       'GITHUB_APP_ID',
       'GITHUB_APP_SLUG',
       'SLACK_CLIENT_ID',
+      'GARDEN_ALERT_EMAIL',
     ]),
     GOOGLE_CLIENT_SECRET: Config.redacted('GOOGLE_CLIENT_SECRET'),
     ...optionalSecretBindings([

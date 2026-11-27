@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import { toast } from 'sonner'
 import { LoginForm } from '@/components/login-form'
-import { LoginFoliage } from '@/components/login-foliage'
 import { authClient } from '@/lib/auth/client'
 import { authClientOperation } from '@/lib/auth/client-result'
 import {
@@ -131,7 +130,6 @@ export function LoginPage({
 
   return (
     <div className="relative flex min-h-dvh flex-col overflow-y-auto px-6 py-6">
-      <LoginFoliage className="pointer-events-none absolute inset-x-0 bottom-0 mx-auto h-[clamp(180px,34vh,330px)] w-full max-w-6xl text-brand" />
       <main className="flex flex-1 items-center justify-center py-4">
         <LoginForm
           className="relative z-10 w-full max-w-sm"
