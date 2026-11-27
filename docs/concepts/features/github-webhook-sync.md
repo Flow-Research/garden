@@ -10,7 +10,7 @@ Related issue: [#161](https://github.com/Flow-Research/garden/issues/161). Pull 
 
 ## What the feature does
 
-The signed `installation_target.renamed` event also refreshes the saved GitHub account login. Garden reads the current login from GitHub using the event's installation ID. It updates every workspace linked to that ID. A failed lookup leaves the saved login unchanged and returns 503.
+The signed `installation_target.renamed` event also refreshes the saved GitHub account login. Garden reads the current login from GitHub using the event's installation ID. It updates linked workspaces whose installation is connected or degraded. It skips disconnected links and contacts GitHub only when an active link exists. A failed lookup leaves the saved login unchanged and returns 503.
 
 A Garden issue can be linked to a GitHub issue through an `issue_source_binding` row. When someone edits, closes, reopens, or comments on that GitHub issue, the Garden GitHub App receives a webhook and updates the linked Garden issue. Team boards show the change without a refresh, and a close from GitHub has the same effects as a close in Garden.
 

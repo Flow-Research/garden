@@ -1,5 +1,5 @@
 import { Result } from 'better-result'
-import { eq } from 'drizzle-orm'
+import { and, eq, ne } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
 import { getGitHubAppInstallation } from '@garden/connectors/github-app'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
@@ -321,6 +321,24 @@ export const Route = createFileRoute('/api/github/webhook')({
               'Installation target event is missing installation id',
             )
           }
+          const linkedInstallations = and(
+            eq(
+              schema.githubAppInstallation.installationId,
+              String(installationId),
+            ),
+            ne(schema.githubAppInstallation.status, 'disconnected'),
+          )
+          const linked = await Result.tryPromise(() =>
+            ctx.db
+              .select({ id: schema.githubAppInstallation.id })
+              .from(schema.githubAppInstallation)
+              .where(linkedInstallations)
+              .limit(1),
+          )
+          if (linked.isErr())
+            return serviceUnavailable('Failed to read GitHub installation')
+          if (linked.value.length === 0)
+            return json({ ok: true, status: 'ignored' }, 200)
           const canonical = await getGitHubAppInstallation({
             env: normalizeGitHubAppEnv(appEnv),
             installationId: String(installationId),
@@ -337,19 +355,18 @@ export const Route = createFileRoute('/api/github/webhook')({
             ctx.db
               .update(schema.githubAppInstallation)
               .set({ accountLogin, updatedAt: new Date() })
-              .where(
-                eq(
-                  schema.githubAppInstallation.installationId,
-                  String(installationId),
-                ),
-              ),
+              .where(linkedInstallations)
+              .returning({ id: schema.githubAppInstallation.id }),
           )
           if (saved.isErr()) {
             return serviceUnavailable(
               'Failed to save GitHub installation owner',
             )
           }
-          return json({ ok: true, status: 'applied' }, 200)
+          return json(
+            { ok: true, status: saved.value.length ? 'applied' : 'ignored' },
+            200,
+          )
         }
 
         if (event === 'repository') {

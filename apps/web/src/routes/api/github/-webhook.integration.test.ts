@@ -267,6 +267,13 @@ describe('POST /api/github/webhook (integration)', () => {
   }
 
   it('refreshes the saved owner from a verified installation rename', async () => {
+    const disconnected = await seedWorkspace(testDb)
+    await testDb.db.insert(schema.githubAppInstallation).values({
+      workspaceId: disconnected.workspaceId,
+      installationId: '99',
+      accountLogin: 'Archived-Research',
+      status: 'disconnected',
+    })
     githubInstallation.get.mockResolvedValue(
       Result.ok({ account: { login: 'Renamed-Research' } }),
     )
@@ -288,6 +295,30 @@ describe('POST /api/github/webhook (integration)', () => {
       .from(schema.githubAppInstallation)
       .where(eq(schema.githubAppInstallation.workspaceId, workspaceId))
     expect(installation?.accountLogin).toBe('Renamed-Research')
+    const [archived] = await testDb.db
+      .select({ accountLogin: schema.githubAppInstallation.accountLogin })
+      .from(schema.githubAppInstallation)
+      .where(
+        eq(schema.githubAppInstallation.workspaceId, disconnected.workspaceId),
+      )
+    expect(archived?.accountLogin).toBe('Archived-Research')
+  })
+
+  it('ignores a rename when all links to that installation are disconnected', async () => {
+    const disconnected = await seedWorkspace(testDb)
+    await testDb.db.insert(schema.githubAppInstallation).values({
+      workspaceId: disconnected.workspaceId,
+      installationId: '12345',
+      accountLogin: 'Archived-Research',
+      status: 'disconnected',
+    })
+    const response = await deliver({
+      event: 'installation_target',
+      payload: { action: 'renamed', installation: { id: 12345 } },
+    })
+    expect(response.status).toBe(200)
+    expect(response.body.status).toBe('ignored')
+    expect(githubInstallation.get).not.toHaveBeenCalled()
   })
 
   async function readIssue(issueId: string) {
