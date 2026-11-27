@@ -452,6 +452,44 @@ describe('IssueDetail (shared)', () => {
     expect(title).not.toHaveFocus()
   })
 
+  it('discards the title draft on Escape and permits a later save', async () => {
+    renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    title.focus()
+    fireEvent.change(title, { target: { value: 'Discard this title' } })
+    fireEvent.keyDown(title, { key: 'Escape' })
+    expect(title).not.toHaveFocus()
+    expect(title).toHaveValue(mockIssue.title)
+    expect(mockApiObj.updateIssue).not.toHaveBeenCalled()
+    title.focus()
+    fireEvent.change(title, { target: { value: 'Keep this title' } })
+    fireEvent.keyDown(title, { key: 'Enter' })
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ title: 'Keep this title' }),
+      ),
+    )
+  })
+
+  it('keeps the comment draft when the task is assigned to an agent', async () => {
+    const { queryClient } = renderIssueDetail()
+    const composer = await findCommentBox()
+    fireEvent.change(composer, {
+      target: { value: 'A draft for the new assignee' },
+    })
+    await act(async () => {
+      queryClient.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+        ...mockIssue,
+        assignee_type: 'agent',
+        assignee_id: 'agent-1',
+      })
+    })
+    await screen.findByPlaceholderText(/Redirect Garden/)
+    expect(commentBox()).toBe(composer)
+    expect(commentBox()).toHaveValue('A draft for the new assignee')
+  })
+
   it('keeps editing the title when Enter confirms IME composition', async () => {
     renderIssueDetail()
     const title = await screen.findByRole('textbox', { name: 'Issue title' })

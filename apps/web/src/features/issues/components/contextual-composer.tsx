@@ -76,7 +76,6 @@ export function ContextualComposer({
   return (
     <div className="space-y-1.5">
       <CommentInput
-        key={mode}
         issueId={issueId}
         onSubmit={onSubmit}
         placeholder={placeholder}

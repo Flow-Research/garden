@@ -137,6 +137,7 @@ function IssueTitleField({
   onSave: (title: string) => void
 }) {
   const [draft, setDraft] = useState<string | null>(null)
+  const discardOnBlur = useRef(false)
   return (
     <textarea
       aria-label="Issue title"
@@ -148,7 +149,9 @@ function IssueTitleField({
       onBlur={() => {
         const trimmed = (draft ?? title).trim()
         setDraft(null)
-        if (trimmed && trimmed !== title) onSave(trimmed)
+        if (!discardOnBlur.current && trimmed && trimmed !== title)
+          onSave(trimmed)
+        discardOnBlur.current = false
       }}
       onKeyDown={(event) => {
         // Enter/Escape during IME composition confirm or cancel the candidate
@@ -159,6 +162,8 @@ function IssueTitleField({
           event.preventDefault()
           event.currentTarget.blur()
         } else if (event.key === 'Escape') {
+          event.preventDefault()
+          discardOnBlur.current = true
           event.currentTarget.blur()
         }
       }}
