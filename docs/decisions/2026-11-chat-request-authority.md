@@ -138,8 +138,7 @@ Garden has no caller for those methods today.
 A chat decision applies to one thread and agent. Different threads can receive the same provider tool call ID. The chat route, Inbox batch, approval reuse and action check all retain the thread scope. A competing decision cannot change a terminal row or append a second audit record.
 
 A connector approval row from before this change has no thread, so its decision is refused.
-The chat card resolves the rows of one capability for each call.
-An Executor call that names two connectors therefore needs a second decision in the Inbox before its effect.
+For a tool call with multiple connector requests, the operator records each decision in the Inbox. The chat card stays available. After the decisions are complete, select the recorded outcome on the card to continue the call.
 A recovery snapshot from before this change has no request source.
 At deployment, the recovery of such an in-flight turn ends in a terminal refusal or `recovery_error`. The turn does not resume.
 

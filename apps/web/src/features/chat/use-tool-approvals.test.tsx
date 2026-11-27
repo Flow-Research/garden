@@ -39,13 +39,14 @@ function renderApprovals(
   continueAfterGardenApproval: Parameters<
     typeof useToolApprovals
   >[0]['continueAfterGardenApproval'],
+  addToolApprovalResponse = vi.fn(),
 ) {
   return renderHook(
     () =>
       useToolApprovals({
         sessionId: 'thread-1',
         messages: [],
-        addToolApprovalResponse: vi.fn(),
+        addToolApprovalResponse,
         continueAfterGardenApproval,
       }),
     { wrapper },
@@ -87,6 +88,35 @@ describe('useToolApprovals', () => {
     })
     // The approval itself was recorded once; only the resume is retried.
     expect(mocks.resolveToolApproval).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a partial connector decision visible and sends only decisions the server confirms', async () => {
+    const send = vi.fn()
+    const { result } = renderApprovals(vi.fn(), send)
+    const group = {
+      ...GROUP,
+      permissionRequestId: undefined,
+      toolCallIds: ['call-1', 'call-2'],
+      approvalIds: ['approval-1', 'approval-2'],
+    }
+    mocks.resolveToolApproval.mockRejectedValueOnce(
+      new Error('Review the connector requests in the Inbox.'),
+    )
+    await act(async () => {
+      await result.current.handleResolveToolApproval(group, true)
+    })
+    expect(send).not.toHaveBeenCalled()
+    expect(result.current.resolvedApprovalIds).toEqual([])
+    expect(result.current.approvalError).toContain('Inbox')
+    mocks.resolveToolApproval.mockResolvedValueOnce({ toolCallIds: ['call-2'] })
+    await act(async () => {
+      await result.current.handleResolveToolApproval(group, true)
+    })
+    expect(send).toHaveBeenCalledExactlyOnceWith({
+      id: 'approval-2',
+      approved: true,
+    })
+    expect(result.current.resolvedApprovalIds).toEqual(['approval-2'])
   })
 
   it('sends one response when approve is clicked twice in a row', async () => {

@@ -344,6 +344,42 @@ describe('connector approval from the runtime insert to the chat tool decision (
     },
   )
 
+  it('lets the chat retry a multi-connector call after every Inbox decision is recorded', async () => {
+    const seeded = await seed({ owner: (fixture) => fixture.adminId })
+    const toolCallId = randomUUID()
+    const row = await requestApproval(seeded, toolCallId)
+    const capabilityId = randomUUID()
+    await testDb.db.insert(schema.capability).values({
+      id: capabilityId,
+      connectorType: CONNECTOR_ID,
+      name: `additional-${capabilityId}`,
+      riskClass: 'send_external',
+    })
+    const secondId = randomUUID()
+    await testDb.db
+      .insert(schema.permissionRequest)
+      .values({ ...row, id: secondId, capabilityId })
+    const actor = {
+      seeded,
+      userId: seeded.fixture.adminId,
+      role: 'admin' as const,
+      approved: true,
+    }
+    const click = () => resolveInChat({ ...actor, toolCallId })
+    expect((await click()).status).toBe(409)
+    expect((await resolveInInbox({ ...actor, requestId: row.id })).status).toBe(
+      200,
+    )
+    expect((await click()).status).toBe(409)
+    expect(
+      (await resolveInInbox({ ...actor, requestId: secondId })).status,
+    ).toBe(200)
+    const resumed = await click()
+    expect(resumed.status).toBe(200)
+    expect(await resumed.json()).toMatchObject({ toolCallIds: [toolCallId] })
+    await expectApprovedEffect(seeded, toolCallId)
+  })
+
   it('keeps the first recorded decision when two approvers decide concurrently', async () => {
     const seeded = await seed({ owner: (fixture) => fixture.adminId })
     const toolCallId = randomUUID()

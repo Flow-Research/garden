@@ -175,11 +175,10 @@ export function useToolApprovals({
         return
       }
 
-      setResolvedApprovalIds((current) => [
-        ...new Set([...current, ...group.approvalIds]),
-      ])
-
       if (group.permissionRequestId) {
+        setResolvedApprovalIds((current) => [
+          ...new Set([...current, ...group.approvalIds]),
+        ])
         // B1: REST recorded the approval, but the durable Think turn only
         // resumes when we tell the agent — otherwise the approved sub-agent
         // never spawns and the chat hangs "thinking".
@@ -199,14 +198,28 @@ export function useToolApprovals({
             approvalByToolCallId.set(toolCallId, approvalId)
           }
         })
-        const targetToolCallIds =
-          result.toolCallIds.length > 0 ? result.toolCallIds : group.toolCallIds
-        for (const toolCallId of targetToolCallIds) {
+        const deliveredApprovalIds: string[] = []
+        for (const toolCallId of result.toolCallIds) {
           const approvalId = approvalByToolCallId.get(toolCallId)
-          if (approvalId) {
-            addToolApprovalResponse?.({ id: approvalId, approved })
+          if (approvalId && addToolApprovalResponse) {
+            const delivered = await Promise.resolve()
+              .then(() => addToolApprovalResponse({ id: approvalId, approved }))
+              .then(
+                () => true,
+                () => false,
+              )
+            if (delivered) deliveredApprovalIds.push(approvalId)
+            else if (currentSessionRef.current === requestSessionId) {
+              setApprovalError(
+                'The decision was recorded. Reconnect and select the same decision to continue.',
+              )
+            }
           }
         }
+        if (currentSessionRef.current === requestSessionId)
+          setResolvedApprovalIds((current) => [
+            ...new Set([...current, ...deliveredApprovalIds]),
+          ])
       }
 
       releaseInFlight()
