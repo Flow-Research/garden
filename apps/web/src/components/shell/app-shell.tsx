@@ -152,9 +152,9 @@ export function AppShell() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [drawerOpen])
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
-  const [inviteWorkspaceId, setInviteWorkspaceId] = useState<string | null>(
-    null,
-  )
+  const [inviteOpening, setInviteOpening] = useState<{
+    workspaceId: string
+  } | null>(null)
   const [expandedNavIds, setExpandedNavIds] = useState<string[]>(() =>
     pathname.startsWith('/teams/') ? ['teams'] : [],
   )
@@ -178,14 +178,14 @@ export function AppShell() {
   const canManageTeams =
     currentMemberRole === 'owner' || currentMemberRole === 'admin'
   const inviteOpen =
-    inviteWorkspaceId !== null &&
-    inviteWorkspaceId === workspaceId &&
+    inviteOpening !== null &&
+    inviteOpening.workspaceId === workspaceId &&
     canManageTeams
-  if (inviteWorkspaceId !== null && !inviteOpen) setInviteWorkspaceId(null)
+  if (inviteOpening !== null && !inviteOpen) setInviteOpening(null)
   const openInviteMembers = canManageTeams
     ? () => {
         setMobileNavOpen(false)
-        setInviteWorkspaceId(workspaceId)
+        setInviteOpening({ workspaceId })
       }
     : undefined
 
@@ -442,10 +442,10 @@ export function AppShell() {
             <SettingsDialog />
             {inviteOpen ? (
               <InviteMembersDialog
-                workspaceId={inviteWorkspaceId}
+                workspaceId={inviteOpening.workspaceId}
                 onClose={() =>
-                  setInviteWorkspaceId((current) =>
-                    current === inviteWorkspaceId ? null : current,
+                  setInviteOpening((current) =>
+                    current === inviteOpening ? null : current,
                   )
                 }
               />

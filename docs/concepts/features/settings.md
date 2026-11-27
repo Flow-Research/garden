@@ -10,6 +10,8 @@ Select **Settings** in the account menu to open the authenticated `/settings` pa
 
 **Invite members** in the workspace menu and the account menu opens the Add a Team Member dialog directly, without the Settings modal behind it. Only owners and admins see it, because only they can create invitations. If the workspace changes or the inviter loses that role, Garden closes the dialog and discards its unsent rows.
 
+Closing and reopening the invitation dialog starts a new draft. A completed send closes only the dialog opening that started it, so an earlier send cannot close the reopened draft.
+
 ## Page shell
 
 The page follows the supplied All settings design: heading and description, horizontal section navigation with icons and an active underline, then a rounded secondary-background content container. Navigation scrolls horizontally on narrow screens. Colors use Garden semantic tokens so the shell supports both themes. Each section places white `SettingsPanel` cards on that container. Switching sections slides the active underline to the new tab and fades the section content in from the left (`Animate` in `apps/web/src/components/animate.tsx`). Moving between a section's sub-routes does not replay it, and users who prefer reduced motion get the fade without movement.
