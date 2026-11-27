@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { fileURLToPath } from 'node:url'
-import type { Link, Root } from 'mdast'
+import type { Image, Link, Root } from 'mdast'
 import type { VFile } from 'vfile'
 import { describe, expect, it } from 'vitest'
 import {
@@ -77,5 +77,24 @@ describe('remarkHandbookLinks', () => {
 
   it('does nothing when the file has no path', () => {
     expect(rewrite('./realtime.md', null)).toBe('./realtime.md')
+  })
+
+  /**
+   * Fumadocs' `remarkImage` turns a relative image into a bundled asset
+   * import. Rewriting it to a GitHub URL would break that and serve the
+   * diagram as an HTML blob page.
+   */
+  it('leaves relative image paths for the bundler', () => {
+    const image: Image = {
+      type: 'image',
+      url: '../../diagrams/garden-components.drawio.svg',
+      alt: 'Garden components',
+    }
+    const tree: Root = {
+      type: 'root',
+      children: [{ type: 'paragraph', children: [image] }],
+    }
+    remarkHandbookLinks()(tree, { path: sourcePage } as VFile)
+    expect(image.url).toBe('../../diagrams/garden-components.drawio.svg')
   })
 })

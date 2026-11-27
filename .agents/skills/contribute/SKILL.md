@@ -38,6 +38,8 @@ dependency.
    - Use `.agents/skills/verify/SKILL.md` for UI, connector, agent, workflow,
      and deployment behavior.
    - Update the verification map when the feature adds a new user path.
+   - Follow `.agents/skills/diagrams/SKILL.md` when the change touches a path
+     in `docs/diagrams/manifest.json`.
    - Report `PASS`, `FAIL`, or `INCONCLUSIVE` for user-flow proof.
 6. Review the change before handoff.
    - Read the final diff as a reviewer.
