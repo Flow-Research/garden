@@ -1,4 +1,5 @@
 import { Effect, Result as EffectResult } from 'effect'
+import { Result } from 'better-result'
 import { createFileRoute } from '@tanstack/react-router'
 import { and, eq } from 'drizzle-orm'
 import { z } from 'zod'
@@ -31,6 +32,13 @@ const archiveForUser = async (args: {
   })
 }
 
+/**
+ * Locks the proposal through the brain write so another decision or proposal
+ * cannot take its pending claim. The old early approval released that claim;
+ * a failed write could then make rollback violate the pending unique index.
+ * PostgreSQL row locks and the partial unique index provide the order; see
+ * packages/db/src/schema/brain-telemetry.ts and lib/server/teams.ts.
+ */
 export const resolveBrainProposal = async ({
   context,
   request,
@@ -54,28 +62,6 @@ export const resolveBrainProposal = async ({
   }
 
   const db = await appContext.db()
-  const [row] = await db
-    .select()
-    .from(schema.brainWriteProposal)
-    .where(
-      and(
-        eq(schema.brainWriteProposal.id, params.id),
-        eq(schema.brainWriteProposal.workspaceId, workspaceContext.workspaceId),
-      ),
-    )
-    .limit(1)
-
-  if (row === undefined) {
-    return json({ error: 'Proposal not found' }, 404)
-  }
-
-  if (
-    row.scope.kind === 'user' &&
-    row.scope.userId !== workspaceContext.session.user.id
-  ) {
-    return json({ error: 'Proposal not found' }, 404)
-  }
-
   const action = bodyResult.value.action
   const env = appEnv as AppEnv & {
     HELIX_URL?: string
@@ -90,82 +76,102 @@ export const resolveBrainProposal = async ({
           files: env.BRAIN_FILES,
         })
       : null
-  if (action === 'approve' && approveLayer === null) {
-    return json({ error: 'Brain is not configured' }, 503)
-  }
-
-  const status = action === 'approve' ? 'approved' : 'rejected'
-  const [claimed] = await db
-    .update(schema.brainWriteProposal)
-    .set({
-      status,
-      decidedBy: workspaceContext.session.user.id,
-      decidedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(schema.brainWriteProposal.id, row.id),
-        eq(schema.brainWriteProposal.status, 'pending'),
-      ),
-    )
-    .returning({ id: schema.brainWriteProposal.id })
-
-  if (claimed === undefined) {
-    await archiveForUser({
-      db,
-      workspaceId: workspaceContext.workspaceId,
-      proposalId: row.id,
-    })
-    const [current] = await db
-      .select({ status: schema.brainWriteProposal.status })
-      .from(schema.brainWriteProposal)
-      .where(eq(schema.brainWriteProposal.id, row.id))
-      .limit(1)
-    return json({ ok: true, status: current?.status ?? row.status })
-  }
-
-  if (approveLayer !== null) {
-    const writeResult = await Effect.runPromise(
-      Effect.result(
-        Effect.flatMap(Brain, (brain) =>
-          brain.addText({
-            tenantId: WorkspaceId.make(row.workspaceId),
-            label: row.claim.slice(0, 80),
-            body: row.claim,
-            kind: Kind.make(row.kind),
-            scope: row.scope,
-            canonical: {
-              type: 'brain-write-back-claim',
-              value: brainWriteBackCanonicalKey(
-                row.workspaceId,
-                row.claimHash,
+  const resolution = await Result.tryPromise({
+    try: () =>
+      db.transaction(async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(schema.brainWriteProposal)
+          .where(
+            and(
+              eq(schema.brainWriteProposal.id, params.id),
+              eq(
+                schema.brainWriteProposal.workspaceId,
+                workspaceContext.workspaceId,
               ),
-            },
-            actor: {
-              _tag: 'Agent',
-              agentId: 'brain-write-back',
-              runId: row.runId,
-            },
-          }),
-        ).pipe(Effect.provide(approveLayer)),
-      ),
-    )
-    if (EffectResult.isFailure(writeResult)) {
-      await db
-        .update(schema.brainWriteProposal)
-        .set({ status: 'pending', decidedBy: null, decidedAt: null })
-        .where(eq(schema.brainWriteProposal.id, row.id))
-      return json({ error: 'Could not write to the brain' }, 502)
-    }
-  }
+            ),
+          )
+          .for('update')
 
-  await archiveForUser({
-    db,
-    workspaceId: workspaceContext.workspaceId,
-    proposalId: row.id,
+        if (
+          row === undefined ||
+          (row.scope.kind === 'user' &&
+            row.scope.userId !== workspaceContext.session.user.id)
+        ) {
+          return { kind: 'missing' as const }
+        }
+        if (row.status !== 'pending') {
+          return { kind: 'decided' as const, status: row.status, id: row.id }
+        }
+        if (action === 'approve' && approveLayer === null) {
+          return { kind: 'unavailable' as const }
+        }
+
+        if (approveLayer !== null) {
+          const writeResult = await Effect.runPromise(
+            Effect.result(
+              Effect.flatMap(Brain, (brain) =>
+                brain.addText({
+                  tenantId: WorkspaceId.make(row.workspaceId),
+                  label: row.claim.slice(0, 80),
+                  body: row.claim,
+                  kind: Kind.make(row.kind),
+                  scope: row.scope,
+                  canonical: {
+                    type: 'brain-write-back-claim',
+                    value: brainWriteBackCanonicalKey(
+                      row.workspaceId,
+                      row.claimHash,
+                    ),
+                  },
+                  actor: {
+                    _tag: 'Agent',
+                    agentId: 'brain-write-back',
+                    runId: row.runId,
+                  },
+                }),
+              ).pipe(Effect.provide(approveLayer)),
+            ),
+          )
+          if (EffectResult.isFailure(writeResult)) {
+            return { kind: 'write_failed' as const }
+          }
+        }
+
+        const status = action === 'approve' ? 'approved' : 'rejected'
+        await tx
+          .update(schema.brainWriteProposal)
+          .set({
+            status,
+            decidedBy: workspaceContext.session.user.id,
+            decidedAt: new Date(),
+          })
+          .where(eq(schema.brainWriteProposal.id, row.id))
+        return { kind: 'decided' as const, status, id: row.id }
+      }),
+    catch: (cause) => cause,
   })
 
-  return json({ ok: true, status })
+  return await resolution.match({
+    err: async () => json({ error: 'Could not resolve proposal' }, 500),
+    ok: async (outcome) => {
+      if (outcome.kind === 'missing') {
+        return json({ error: 'Proposal not found' }, 404)
+      }
+      if (outcome.kind === 'unavailable') {
+        return json({ error: 'Brain is not configured' }, 503)
+      }
+      if (outcome.kind === 'write_failed') {
+        return json({ error: 'Could not write to the brain' }, 502)
+      }
+      await archiveForUser({
+        db,
+        workspaceId: workspaceContext.workspaceId,
+        proposalId: outcome.id,
+      })
+      return json({ ok: true, status: outcome.status })
+    },
+  })
 }
 
 export const Route = createFileRoute('/api/brain/proposals/$id/resolve')({
