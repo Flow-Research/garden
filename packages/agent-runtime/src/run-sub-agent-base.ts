@@ -8,7 +8,8 @@ import {
   type TurnConfig,
   type TurnContext,
 } from '@cloudflare/think'
-import { R2Bucket as mountR2Bucket, Workspace } from '@cloudflare/computer'
+import { Workspace } from '@cloudflare/computer'
+import { Workspace as ShellWorkspace } from '@cloudflare/shell'
 import type { Connection } from 'agents'
 import type { McpAgent } from 'agents/mcp'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
@@ -250,16 +251,13 @@ export abstract class RunSubAgentBase<
     timeout: mcpRuntimeConfig.connectionWaitTimeoutMs,
   }
 
-  // Computer Workspace on DO storage; document bytes spill to FILES via a
-  // read-write R2 mount (Shell previously auto-spilled large files there).
-  override workspace = new Workspace({
-    storage: this.ctx.storage,
-    mounts: {
-      '/documents': mountR2Bucket(this.env.FILES, {
-        mode: 'read-write',
-        prefix: 'documents/',
-      }),
-    },
+  // Each facet owns its filesystem. The shared FILES bucket also holds
+  // documents from other facets and must never be mounted in its sandbox.
+  override workspace = new Workspace({ storage: this.ctx.storage })
+  protected readonly documentFiles = new ShellWorkspace({
+    sql: this.ctx.storage.sql,
+    r2: this.env.FILES,
+    name: () => this.name,
   })
 
   protected currentRunId: string | null = null

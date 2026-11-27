@@ -45,7 +45,8 @@ import {
   type ToolSet,
   type UIMessage,
 } from 'ai'
-import { R2Bucket as mountR2Bucket, Workspace } from '@cloudflare/computer'
+import { Workspace } from '@cloudflare/computer'
+import { Workspace as ShellWorkspace } from '@cloudflare/shell'
 import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
@@ -1692,16 +1693,13 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       await this.pauseMcpRuntime(reason, controller),
   })
 
-  // Computer Workspace on DO storage; document bytes spill to FILES via a
-  // read-write R2 mount (Shell previously auto-spilled large files there).
-  override workspace = new Workspace({
-    storage: this.ctx.storage,
-    mounts: {
-      '/documents': mountR2Bucket(this.env.FILES, {
-        mode: 'read-write',
-        prefix: 'documents/',
-      }),
-    },
+  // Each facet owns its filesystem. The shared FILES bucket also holds
+  // documents from other facets and must never be mounted in its sandbox.
+  override workspace = new Workspace({ storage: this.ctx.storage })
+  protected readonly documentFiles = new ShellWorkspace({
+    sql: this.ctx.storage.sql,
+    r2: this.env.FILES,
+    name: () => this.name,
   })
   getModel(): LanguageModel {
     return createAgentModel({
@@ -1806,6 +1804,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return createChatSubAgentTools({
       ctx: this.ctx,
       documentArtifacts: this.getDocumentArtifactToolAuthority(),
+      documentFiles: this.documentFiles,
       ...(this.env.EXA_API_KEY ? { exaApiKey: this.env.EXA_API_KEY } : {}),
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       threadId: this.name,
@@ -2052,7 +2051,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return {
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       documentArtifacts: this.getDocumentArtifactToolAuthority(),
-      workspace: this.workspace,
+      workspace: this.documentFiles,
       threadId: this.name,
     }
   }

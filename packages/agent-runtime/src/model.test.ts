@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { MockLanguageModelV4 } from 'ai/test'
 import { captureAiGeneration } from '@posthog/ai'
 
 const {
@@ -66,6 +67,88 @@ describe('createAgentModel', () => {
     createOpenAICompatibleSpy.mockReset()
     createOpenAICompatibleSpy.mockReturnValue(vi.fn(() => ({ id: 'local' })))
   })
+
+  it.each(['generate', 'stream'] as const)(
+    'records V4 %s usage and protects private content',
+    async (mode) => {
+      const usage = {
+        inputTokens: { total: 7, noCache: 7, cacheRead: 0, cacheWrite: 0 },
+        outputTokens: { total: 2, text: 2, reasoning: 0 },
+      }
+      const finishReason = { unified: 'stop' as const, raw: 'stop' }
+      const source = new MockLanguageModelV4({
+        doGenerate: {
+          content: [{ type: 'text', text: 'PRIVATE_OUTPUT' }],
+          finishReason,
+          usage,
+          warnings: [],
+        },
+        doStream: {
+          stream: new ReadableStream({
+            start(controller) {
+              controller.enqueue({
+                type: 'text-delta',
+                id: 'text',
+                delta: 'PRIVATE_OUTPUT',
+              })
+              controller.enqueue({ type: 'finish', finishReason, usage })
+              controller.close()
+            },
+          }),
+        },
+      })
+      createWorkersAISpy.mockReturnValue(() => source)
+      const pending: Promise<unknown>[] = []
+      const model = createAgentModel({
+        ai: {} as Ai,
+        env: { VITE_PUBLIC_POSTHOG_PROJECT_TOKEN: 'synthetic-test-token' },
+        tracing: {
+          distinctId: 'owner',
+          traceId: 'trace',
+          workspaceId: 'workspace',
+          properties: {},
+          waitUntil: (task) => {
+            pending.push(task)
+          },
+          privacyMode: true,
+        },
+      })
+      if (typeof model !== 'object' || model.specificationVersion !== 'v4')
+        throw new Error('Expected V4 model')
+      const call = {
+        prompt: [{ role: 'system' as const, content: 'PRIVATE_PROMPT' }],
+      }
+      if (mode === 'generate') {
+        expect((await model.doGenerate(call)).content[0]).toEqual({
+          type: 'text',
+          text: 'PRIVATE_OUTPUT',
+        })
+      } else {
+        const { stream } = await model.doStream(call)
+        const reader = stream.getReader()
+        expect((await reader.read()).value).toMatchObject({
+          type: 'text-delta',
+          delta: 'PRIVATE_OUTPUT',
+        })
+        expect((await reader.read()).value).toMatchObject({ type: 'finish' })
+        expect((await reader.read()).done).toBe(true)
+      }
+      await Promise.all(pending)
+      expect(telemetryEvents).toHaveLength(1)
+      expect(telemetryEvents[0]).toMatchObject({
+        event: '$ai_generation',
+        properties: {
+          $ai_trace_id: 'trace',
+          $ai_input_tokens: 7,
+          $ai_output_tokens: 2,
+          workspace_id: 'workspace',
+        },
+      })
+      expect(JSON.stringify(telemetryEvents)).not.toMatch(
+        /PRIVATE_(PROMPT|OUTPUT)/,
+      )
+    },
+  )
 
   it.each([true, false, undefined])(
     'passes content privacy to the generation adapter: %s',

@@ -74,6 +74,7 @@ const chatToolsLogger = createGardenLogger({
 
 type ChatSubAgentToolsInput = {
   ctx: DurableObjectState
+  documentFiles: DocumentToolContext['workspace']
   documentArtifacts?: DocumentArtifactToolAuthority
   exaApiKey?: string
   databaseUrl?: string
@@ -1949,6 +1950,7 @@ async function postIssueCommentFromChat(
 export function createChatSubAgentTools({
   ctx,
   documentArtifacts,
+  documentFiles,
   exaApiKey,
   databaseUrl,
   threadId,
@@ -1966,7 +1968,7 @@ export function createChatSubAgentTools({
       ? {
           databaseUrl,
           ...(documentArtifacts ? { documentArtifacts } : {}),
-          workspace,
+          workspace: documentFiles,
           threadId,
         }
       : null

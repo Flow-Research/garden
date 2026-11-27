@@ -202,5 +202,5 @@ export const DEBUG_SDK_STACK: readonly SdkVersionInfo[] = [
 
 export const VIRTUAL_FS_BACKING_STORES = [
   'Durable Object storage via @cloudflare/computer Workspace',
-  'FILES R2 mount at /documents (read-write, prefix documents/)',
+  'Facet-owned Computer execution files and separate Shell document storage with R2 spill',
 ] as const

@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer'
-import type { Workspace } from '@cloudflare/computer'
+import type { WorkspaceFsLike } from '@cloudflare/shell'
 import { and, desc, eq, or } from 'drizzle-orm'
 import type ExcelJS from 'exceljs'
 import { getPooledDb } from '@garden/db/runtime'
@@ -88,7 +88,7 @@ export type DocumentArtifactToolAuthority = {
 export type DocumentToolContext = {
   documentArtifacts?: DocumentArtifactToolAuthority
   databaseUrl: string
-  workspace: Workspace
+  workspace: WorkspaceFsLike
   threadId: string
 }
 
@@ -597,10 +597,10 @@ export async function generateDocx(args: {
   const workspacePath = `/documents/${documentId}/versions/v1/${filename}`
   const writeResult = await Result.tryPromise({
     try: async () =>
-      await writeWorkspaceBytes(
-        args.context.workspace,
+      await args.context.workspace.writeFileBytes(
         workspacePath,
         packResult.value,
+        contentTypeForFileType('docx'),
       ),
     catch: (error) =>
       new DocumentToolError({
@@ -1034,7 +1034,11 @@ export async function registerUploadedDocument(args: {
     args.bytes instanceof Uint8Array ? args.bytes : new Uint8Array(args.bytes)
   const writeResult = await Result.tryPromise({
     try: async () =>
-      await writeWorkspaceBytes(args.context.workspace, versionPath, byteArray),
+      await args.context.workspace.writeFileBytes(
+        versionPath,
+        byteArray,
+        args.mediaType ?? contentTypeForFileType(fileType, filename),
+      ),
     catch: (error) =>
       new DocumentToolError({
         message: error instanceof Error ? error.message : String(error),
@@ -1375,52 +1379,12 @@ async function extractDocumentText(
   )
 }
 
-async function collectStreamBytes(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (!value) continue
-    chunks.push(value)
-    total += value.byteLength
-  }
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const chunk of chunks) {
-    out.set(chunk, offset)
-    offset += chunk.byteLength
-  }
-  return out
-}
-
-/** Parent directory of a workspace path (`/a/b/c` → `/a/b`). */
-function parentWorkspacePath(path: string) {
-  const trimmed = path.replace(/\/+$/, '')
-  const slash = trimmed.lastIndexOf('/')
-  return slash <= 0 ? '/' : trimmed.slice(0, slash)
-}
-
-/**
- * Computer `fs.writeFile` does not create missing parents (Shell's
- * `writeFileBytes` did). mkdir recursive first so generate/upload paths work.
- */
-async function writeWorkspaceBytes(
-  workspace: Workspace,
-  path: string,
-  bytes: Uint8Array,
-) {
-  await workspace.fs.mkdir(parentWorkspacePath(path), { recursive: true })
-  await workspace.fs.writeFile(path, bytes)
-}
-
-async function readWorkspaceBytes(workspace: Workspace, path: string) {
+async function readWorkspaceBytes(workspace: WorkspaceFsLike, path: string) {
   return Result.tryPromise({
     try: async () => {
-      const stream = await workspace.fs.readFile(path)
-      // Empty files are valid; missing paths throw from fs.readFile.
-      return Buffer.from(await collectStreamBytes(stream))
+      const bytes = await workspace.readFileBytes(path)
+      if (!bytes) throw new Error(`Document bytes not found: ${path}`)
+      return Buffer.from(bytes)
     },
     catch: (error) =>
       new DocumentToolError({

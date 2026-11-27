@@ -4,6 +4,7 @@ import { withTracing } from '@posthog/ai/vercel'
 import { PostHog } from 'posthog-node'
 import { createWorkersAI } from 'workers-ai-provider'
 import { resolveGardenAnalyticsEnvironment } from '@garden/observability/analytics/events'
+import { traceV4Model } from './model-v4-tracing'
 import { observeRetiredAgentModel } from './model-retirement'
 
 // Grant-bearing generation telemetry has a fixed metadata boundary. New SDK
@@ -257,40 +258,49 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
     waitUntilDebounceMs: 0,
   })
 
-  // @posthog/ai 8.x still types withTracing for LanguageModelV2|V3 only.
-  // Workers AI (and AI SDK 7) ship LanguageModelV4; wrap when supported,
-  // otherwise return the unwrapped model so turns still run.
-  if (
-    typeof model === 'object' &&
-    model !== null &&
-    'specificationVersion' in model &&
-    model.specificationVersion === 'v4'
-  ) {
-    return model
+  const properties = {
+    environment: resolveGardenAnalyticsEnvironment({
+      environment: config.env?.ENVIRONMENT,
+    }),
+    workspace_id: config.tracing.workspaceId,
+    ...config.tracing.properties,
+  }
+  const provider =
+    profile.provider === 'openai-compatible'
+      ? 'openai-compatible.chat'
+      : 'workersai.chat'
+  const costs = {
+    inputCost: profile.pricePerToken.input,
+    outputCost: profile.pricePerToken.output,
+  }
+  if (model.specificationVersion === 'v4') {
+    return traceV4Model(
+      model,
+      posthog,
+      {
+        distinctId: config.tracing.distinctId,
+        traceId: config.tracing.traceId,
+        groups: { workspace: config.tracing.workspaceId },
+        properties,
+        privacyMode: config.tracing.privacyMode ?? false,
+        model: profile.id,
+        provider,
+        costOverride: costs,
+      },
+      config.tracing.waitUntil,
+    )
   }
 
   return withTracing(model, posthog, {
     posthogDistinctId: config.tracing.distinctId,
     posthogTraceId: config.tracing.traceId,
     posthogGroups: { workspace: config.tracing.workspaceId },
-    posthogProperties: {
-      environment: resolveGardenAnalyticsEnvironment({
-        environment: config.env?.ENVIRONMENT,
-      }),
-      workspace_id: config.tracing.workspaceId,
-      ...config.tracing.properties,
-    },
+    posthogProperties: properties,
     posthogPrivacyMode: config.tracing.privacyMode ?? false,
     posthogCaptureImmediate: false,
     posthogModelOverride: profile.id,
-    posthogProviderOverride:
-      profile.provider === 'openai-compatible'
-        ? 'openai-compatible.chat'
-        : 'workersai.chat',
-    posthogCostOverride: {
-      inputCost: profile.pricePerToken.input,
-      outputCost: profile.pricePerToken.output,
-    },
+    posthogProviderOverride: provider,
+    posthogCostOverride: costs,
   })
 }
 

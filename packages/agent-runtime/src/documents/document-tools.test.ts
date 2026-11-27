@@ -1,4 +1,4 @@
-import type { Workspace } from '@cloudflare/computer'
+import type { WorkspaceFsLike } from '@cloudflare/shell'
 import ExcelJS from 'exceljs'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -43,24 +43,11 @@ function queryDatabase(...rows: unknown[][]) {
   return { select: () => query }
 }
 
-function bytesStream(bytes: Uint8Array) {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      controller.enqueue(bytes)
-      controller.close()
-    },
-  })
-}
-
 /** Creates the read-only workspace surface required by document tools. */
 function workspaceReading(bytes: Uint8Array) {
   return {
-    fs: {
-      readFile: vi.fn(async () => bytesStream(bytes)),
-      mkdir: vi.fn(async () => undefined),
-      writeFile: vi.fn(async () => undefined),
-    },
-  } as unknown as Workspace
+    readFileBytes: vi.fn(async () => bytes),
+  } as unknown as WorkspaceFsLike
 }
 
 const canonicalSnapshot: DocumentSnapshot = {
@@ -226,12 +213,11 @@ describe('document image media types', () => {
       }),
     }
     mocks.getPooledDb.mockReturnValue(database)
-    const mkdir = vi.fn(async () => undefined)
-    const writeFile = vi.fn(async () => undefined)
+    const writeFileBytes = vi.fn(async () => undefined)
     const context: DocumentToolContext = {
       databaseUrl: 'postgres://test',
       documentArtifacts: documentAuthority(),
-      workspace: { fs: { mkdir, writeFile } } as unknown as Workspace,
+      workspace: { writeFileBytes } as unknown as WorkspaceFsLike,
       threadId: 'thread-1',
     }
 
@@ -245,13 +231,10 @@ describe('document image media types', () => {
       ok: true,
       artifact: { mediaType: 'image/webp' },
     })
-    expect(mkdir).toHaveBeenCalledWith(
-      expect.stringMatching(/\/documents\/[^/]+\/versions\/v1$/),
-      { recursive: true },
-    )
-    expect(writeFile).toHaveBeenCalledWith(
+    expect(writeFileBytes).toHaveBeenCalledWith(
       expect.stringContaining('/Screenshot.WEBP'),
       expect.any(Uint8Array),
+      'image/webp',
     )
   })
 
@@ -341,7 +324,7 @@ describe('canonical DOCX document tools', () => {
       text: 'Current canonical text',
       version_id: null,
     })
-    expect(workspace.fs.readFile).not.toHaveBeenCalled()
+    expect(workspace.readFileBytes).not.toHaveBeenCalled()
 
     mocks.getPooledDb.mockReturnValue(
       queryDatabase(
@@ -409,11 +392,9 @@ describe('canonical DOCX document tools', () => {
     })
     const apply = vi.fn(async () => ({ ok: true as const, outcome: conflict }))
     const workspace = {
-      fs: {
-        readFile: vi.fn(),
-        writeFile: vi.fn(),
-      },
-    } as unknown as Workspace
+      readFileBytes: vi.fn(),
+      writeFileBytes: vi.fn(),
+    } as unknown as WorkspaceFsLike
     const context: DocumentToolContext = {
       databaseUrl: 'postgres://test',
       documentArtifacts: documentAuthority({ apply }),
@@ -449,8 +430,8 @@ describe('canonical DOCX document tools', () => {
         upserts: [expect.objectContaining({ baseVersion: 2 })],
       }),
     )
-    expect(workspace.fs.readFile).not.toHaveBeenCalled()
-    expect(workspace.fs.writeFile).not.toHaveBeenCalled()
+    expect(workspace.readFileBytes).not.toHaveBeenCalled()
+    expect(workspace.writeFileBytes).not.toHaveBeenCalled()
   })
 
   it(
@@ -477,14 +458,12 @@ describe('canonical DOCX document tools', () => {
         ok: true as const,
         snapshot: canonicalSnapshot,
       }))
-      const mkdir = vi.fn(async () => undefined)
-      const writeFile = vi.fn(async () => undefined)
       const context: DocumentToolContext = {
         databaseUrl: 'postgres://test',
         documentArtifacts: documentAuthority({ initializeDocx }),
         workspace: {
-          fs: { mkdir, writeFile },
-        } as unknown as Workspace,
+          writeFileBytes: vi.fn(async () => undefined),
+        } as unknown as WorkspaceFsLike,
         threadId: 'thread-1',
       }
 
@@ -499,14 +478,6 @@ describe('canonical DOCX document tools', () => {
         canonical_revision: 2,
         document_id: 'document-1',
       })
-      expect(mkdir).toHaveBeenCalledWith(
-        expect.stringMatching(/\/documents\/[^/]+\/versions\/v1$/),
-        { recursive: true },
-      )
-      expect(writeFile).toHaveBeenCalledWith(
-        expect.stringContaining('/Generated brief.docx'),
-        expect.any(Uint8Array),
-      )
       expect(initializeDocx).toHaveBeenCalledWith({
         bytes: expect.any(Uint8Array),
         documentId: 'document-1',
