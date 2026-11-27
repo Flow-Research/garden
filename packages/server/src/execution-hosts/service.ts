@@ -10,6 +10,7 @@ export {
 import {
   and,
   asc,
+  desc,
   eq,
   gt,
   lt,
@@ -1022,7 +1023,7 @@ export class ExecutionHostReceiver {
         .where(eq(executionHostIntervention.launchRecordId, row.id))
         .orderBy(
           asc(
-            sql`case when ${executionHostIntervention.answerId} is null and ${executionHostIntervention.expiresAt} > ${new Date(now)} then 0 else 1 end`,
+            sql`case when ${executionHostIntervention.answerId} is null and ${executionHostIntervention.expiresAt} > ${new Date(now).toISOString()}::timestamptz then 0 else 1 end`,
           ),
           desc(executionHostIntervention.receivedAt),
           desc(executionHostIntervention.id),
