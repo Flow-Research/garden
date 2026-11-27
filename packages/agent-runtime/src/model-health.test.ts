@@ -21,8 +21,13 @@ it('consumes a provider failure when the timeout signal already fired', async ()
   const reason = new Error('deadline')
   const work = Promise.reject(new Error('provider closed'))
   const observe = vi.spyOn(work, 'then')
-  await expect(settleBefore(AbortSignal.abort(reason), work)).rejects.toBe(reason)
-  expect(observe).toHaveBeenCalledWith(expect.any(Function), expect.any(Function))
+  await expect(settleBefore(AbortSignal.abort(reason), work)).rejects.toBe(
+    reason,
+  )
+  expect(observe).toHaveBeenCalledWith(
+    expect.any(Function),
+    expect.any(Function),
+  )
 })
 
 describe('probeAgentModel', () => {
