@@ -27,7 +27,8 @@ export function TeamMembersPanel({
   onRemove: (member: TeamMember) => void
   onAddMember: () => void
   onAgentSettings: () => void
-  onSeeIssues: () => void
+  /** Omitted where the Team's Issues tab is not shown, which hides the link. */
+  onSeeIssues?: () => void
 }) {
   const assignedTasks = members.reduce(
     (sum, member) => sum + member.assigned_issue_count,
@@ -56,9 +57,11 @@ export function TeamMembersPanel({
           label="Total Assigned Tasks"
           value={assignedTasks}
           action={
-            <TeamSummaryMenu
-              items={[{ label: 'See issues', onSelect: onSeeIssues }]}
-            />
+            onSeeIssues ? (
+              <TeamSummaryMenu
+                items={[{ label: 'See issues', onSelect: onSeeIssues }]}
+              />
+            ) : undefined
           }
         />
         <TeamSummaryCard
