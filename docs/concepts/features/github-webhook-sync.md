@@ -3,12 +3,14 @@ title: GitHub webhooks keep linked Garden issues current
 description: How signed GitHub App webhooks update Garden issues and comments that are already linked to a GitHub issue, and how replays and late deliveries are handled.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-06
+last_reviewed: 2026-11-27
 ---
 
 Related issue: [#161](https://github.com/Flow-Research/garden/issues/161). Pull request: [#236](https://github.com/Flow-Research/garden/pull/236).
 
 ## What the feature does
+
+The signed `installation_target.renamed` event also refreshes the saved GitHub account login. Garden reads the current login from GitHub using the event's installation ID. It updates linked workspaces whose installation is connected or degraded. It skips disconnected links and contacts GitHub only when an active link exists. A failed lookup leaves the saved login unchanged and returns 503.
 
 A Garden issue can be linked to a GitHub issue through an `issue_source_binding` row. When someone edits, closes, reopens, or comments on that GitHub issue, the Garden GitHub App receives a webhook and updates the linked Garden issue. Team boards show the change without a refresh, and a close from GitHub has the same effects as a close in Garden.
 
@@ -70,9 +72,9 @@ Out of scope:
 
 ## Data and permissions
 
-The GitHub App must subscribe to the Issues, Issue comment, Pull request, and Repository events, with Issues and Pull requests read access. A human sets these in the App's settings on GitHub.
+The GitHub App must subscribe to the Issues, Issue comment, Pull request, Repository, and Installation target events, with Issues and Pull requests read access. A human sets these in the App's settings on GitHub. If Installation target is not subscribed, the write path still checks GitHub when a requested owner differs from the saved login.
 
-The route needs no Garden session. The GitHub signature is the only credential, and an empty `GITHUB_WEBHOOK_SECRET` never authorizes a delivery. The installation id selects the workspaces through `github_app_installation`, and a disconnected installation is ignored. The route writes only the linked issue's title, description, and status, the issue's connector comments, the binding's `last_synced_at`, and ledger rows. Ledger rows are deleted when their binding is deleted.
+The route needs no Garden session. The GitHub signature is the only credential, and an empty `GITHUB_WEBHOOK_SECRET` never authorizes a delivery. The installation id selects the workspaces through `github_app_installation`, and a disconnected installation is ignored. The route writes the installation account login, linked issue fields, connector comments, binding sync times, and ledger rows. Ledger rows are deleted when their binding is deleted.
 
 ## How to verify it
 

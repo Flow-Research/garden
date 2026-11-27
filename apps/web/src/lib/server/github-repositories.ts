@@ -27,6 +27,7 @@ export type GitHubRequester = (
 
 export type WorkspaceGitHubInstallation = {
   installationId: string
+  accountLogin?: string | null
   status: 'connected' | 'degraded' | 'disconnected'
 }
 
@@ -38,6 +39,7 @@ export async function loadWorkspaceGitHubInstallation(
   const [row] = await db
     .select({
       installationId: schema.githubAppInstallation.installationId,
+      accountLogin: schema.githubAppInstallation.accountLogin,
       status: schema.githubAppInstallation.status,
     })
     .from(schema.githubAppInstallation)
@@ -45,6 +47,7 @@ export async function loadWorkspaceGitHubInstallation(
   if (!row) return null
   return {
     installationId: row.installationId,
+    accountLogin: row.accountLogin,
     status: row.status as WorkspaceGitHubInstallation['status'],
   }
 }

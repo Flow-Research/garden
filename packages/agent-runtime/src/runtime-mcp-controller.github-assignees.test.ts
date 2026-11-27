@@ -67,6 +67,7 @@ function hostedIssueWrite(workspaceId: string) {
   }
   internals.activeNativeConnectorAccounts.set('github', {
     accountId: '42',
+    accountLogin: 'o',
     status: 'connected',
   })
   internals.activeGitHubHostedMcpTools = [

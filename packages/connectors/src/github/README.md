@@ -22,6 +22,18 @@ upstream "Bad credentials". GitHub repository selection and App permissions
 remain authoritative. `list_workspace_inventory` reports the real install
 status (`connected` / `degraded`) from the availability query.
 
+Before any request is built, `resolveGithubToolOwner` (`identity.ts`)
+validates the call's `owner` against `github_app_installation.account_login`
+on every surface (native, hosted MCP, work-product writeback): a case variant
+is corrected to the canonical login on every call. Only writes are account
+scoped — a different owner is rejected with the connected account named on
+`write`, `send_external`, and `destructive` tools. Reads accept any owner;
+public repositories are useful context and a read cannot change GitHub state,
+so a wrong-owner read falls through to GitHub's 404 (#332). Repository-scoped
+404s come back as `ConnectorNotFoundError` with a `list_repositories` retry
+hint. There is no path normalization for owner/repo — the gate and GitHub's
+own responses are the only authorities.
+
 ## Verification
 
 With a connected install that has repository access:

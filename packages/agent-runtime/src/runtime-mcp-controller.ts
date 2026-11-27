@@ -9,6 +9,10 @@ import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
 import { discordNativeTools } from '@garden/connectors/discord/tools'
 import { makeDiscordBaseLayer } from '@garden/connectors/discord/services'
 import {
+  resolveGithubToolOwner,
+  resolveGithubWriteOwner,
+} from '@garden/connectors/github/identity'
+import {
   GitHubHostedMcpClient,
   makeGitHubHostedMcpBaseLayer,
   type GitHubHostedMcpTool,
@@ -409,7 +413,24 @@ export function isMcpFailedConnectionStateMessage(message: string | undefined) {
 
 type ActiveNativeConnectorAccount = {
   accountId: string | null
+  /**
+   * Canonical account login from the active binding (GitHub: the install
+   * account login). The GitHub owner gate (#332) checks repo-scoped tool
+   * calls against it before any GitHub request is built.
+   */
+  accountLogin?: string | null
   status: 'connected' | 'degraded'
+}
+
+/**
+ * Owner scoping is a write-only guard: reads of public repositories outside
+ * the installation are useful context, while a wrong-owner write cannot be
+ * allowed. Unknown risk classes fail closed.
+ */
+function githubOwnerGateMode(
+  riskClass: string | null | undefined,
+): 'read' | 'write' {
+  return riskClass === 'read' ? 'read' : 'write'
 }
 
 type GithubAssigneesInput =
@@ -1087,10 +1108,37 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(nativeTool.inputSchema)),
                 execute: async (input) => {
+                  // Confirm a mismatched write against the server-selected
+                  // installation before the repository request is built.
+                  const mode = githubOwnerGateMode(nativeTool.riskClass)
+                  const ownerArgs = {
+                    accountLogin: githubAccount.accountLogin,
+                    input,
+                    ownerField:
+                      nativeTool.name === 'fork_repository'
+                        ? ('organization' as const)
+                        : ('owner' as const),
+                  }
+                  const ownerGate =
+                    mode === 'read'
+                      ? resolveGithubToolOwner({ ...ownerArgs, mode })
+                      : await resolveGithubWriteOwner({
+                          ...ownerArgs,
+                          installationId: githubAccount.accountId!,
+                          env: {
+                            GITHUB_APP_ID: this.host.env.GITHUB_APP_ID,
+                            GITHUB_CLIENT_ID: this.host.env.GITHUB_CLIENT_ID,
+                            GITHUB_APP_PRIVATE_KEY:
+                              this.host.env.GITHUB_APP_PRIVATE_KEY,
+                          },
+                        })
+                  if (ownerGate.kind === 'reject') {
+                    return { error: true, message: ownerGate.message }
+                  }
                   const rejection = await this.rejectGithubIssueWrite(
                     'native',
                     nativeTool.name,
-                    input,
+                    ownerGate.input,
                   )
                   if (rejection !== null) {
                     return { error: true, message: rejection }
@@ -1098,7 +1146,7 @@ export class RuntimeMcpController {
                   const outcome = await Effect.runPromise(
                     Effect.match(
                       nativeTool
-                        .execute(input)
+                        .execute(ownerGate.input)
                         .pipe(
                           Effect.provide(
                             makeGitHubBaseLayer(
@@ -1175,10 +1223,39 @@ export class RuntimeMcpController {
                 }),
                 inputSchema: jsonSchema(asAiJsonSchema(hostedTool.inputSchema)),
                 execute: async (input) => {
+                  // Hosted tools share the native owner's write boundary.
+                  const mode = githubOwnerGateMode(
+                    getConnectorById('github')?.tools[hostedTool.name]
+                      ?.riskClass,
+                  )
+                  const ownerArgs = {
+                    accountLogin: githubAccount.accountLogin,
+                    input,
+                    ownerField:
+                      hostedTool.name === 'fork_repository'
+                        ? ('organization' as const)
+                        : ('owner' as const),
+                  }
+                  const ownerGate =
+                    mode === 'read'
+                      ? resolveGithubToolOwner({ ...ownerArgs, mode })
+                      : await resolveGithubWriteOwner({
+                          ...ownerArgs,
+                          installationId: githubAccount.accountId!,
+                          env: {
+                            GITHUB_APP_ID: this.host.env.GITHUB_APP_ID,
+                            GITHUB_CLIENT_ID: this.host.env.GITHUB_CLIENT_ID,
+                            GITHUB_APP_PRIVATE_KEY:
+                              this.host.env.GITHUB_APP_PRIVATE_KEY,
+                          },
+                        })
+                  if (ownerGate.kind === 'reject') {
+                    return { error: true, message: ownerGate.message }
+                  }
                   const rejection = await this.rejectGithubIssueWrite(
                     'hosted',
                     hostedTool.name,
-                    input,
+                    ownerGate.input,
                   )
                   if (rejection !== null) {
                     return { error: true, message: rejection }
@@ -1186,7 +1263,7 @@ export class RuntimeMcpController {
                   const outcome = await this.callGitHubHostedMcpTool(
                     githubAccount,
                     hostedTool.name,
-                    input,
+                    ownerGate.input,
                   )
                   if (outcome.isOk()) return outcome.value
 
@@ -1881,6 +1958,7 @@ export class RuntimeMcpController {
       if (connector && isNativeConnector(connector)) {
         nativeConnectorAccounts.set(connector.id, {
           accountId: binding.accountId,
+          accountLogin: binding.accountLogin,
           status: binding.status === 'degraded' ? 'degraded' : 'connected',
         })
         continue

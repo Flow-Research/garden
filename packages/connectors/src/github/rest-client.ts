@@ -20,6 +20,12 @@ import {
 
 const GITHUB_API_BASE_URL = 'https://api.github.com'
 
+/**
+ * Only a bare repository lookup can identify a missing repository. A 404 on
+ * a sub-resource can mean that the file, ref, or issue is missing instead.
+ */
+const REPOSITORY_PATH_PATTERN = /^\/repos\/[^/]+\/[^/?]+\/?(?:\?.*)?$/
+
 export type GitHubAppConfigShape = {
   readonly appId?: string
   readonly clientId?: string
@@ -146,6 +152,7 @@ export const makeGitHubRestClientLayer = (): Layer.Layer<
                   operation: input.operation,
                   status: response.status,
                   bodyText,
+                  repoScoped: REPOSITORY_PATH_PATTERN.test(input.path),
                 })
               }
               if (response.status === 204) return null

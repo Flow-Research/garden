@@ -40,6 +40,15 @@ const runService = vi.hoisted(() => ({
   startIssueRun: vi.fn(),
 }))
 
+const githubInstallation = vi.hoisted(() => ({
+  get: vi.fn(),
+}))
+
+vi.mock('@garden/connectors/github-app', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@garden/connectors/github-app')>()),
+  getGitHubAppInstallation: githubInstallation.get,
+}))
+
 vi.mock('@/lib/server/env', () => ({
   appEnv: {
     GITHUB_WEBHOOK_SECRET: 'garden-webhook-test-secret',
@@ -78,7 +87,12 @@ describe('POST /api/github/webhook (integration)', () => {
     await testDb?.cleanup()
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    githubInstallation.get.mockReset()
+    await testDb.db
+      .update(schema.githubAppInstallation)
+      .set({ accountLogin: 'Flow-Research' })
+      .where(eq(schema.githubAppInstallation.workspaceId, workspaceId))
     harness.published = []
     pending = []
     runService.cancelIssueRun.mockReset()
@@ -251,6 +265,61 @@ describe('POST /api/github/webhook (integration)', () => {
         results?.length === 1 ? (results[0] as Record<string, unknown>) : json,
     }
   }
+
+  it('refreshes the saved owner from a verified installation rename', async () => {
+    const disconnected = await seedWorkspace(testDb)
+    await testDb.db.insert(schema.githubAppInstallation).values({
+      workspaceId: disconnected.workspaceId,
+      installationId: '99',
+      accountLogin: 'Archived-Research',
+      status: 'disconnected',
+    })
+    githubInstallation.get.mockResolvedValue(
+      Result.ok({ account: { login: 'Renamed-Research' } }),
+    )
+    const delivered = await deliver({
+      event: 'installation_target',
+      payload: {
+        action: 'renamed',
+        installation: { id: 99 },
+        account: { login: 'untrusted-payload-name' },
+      },
+    })
+    expect(delivered.status).toBe(200)
+    expect(githubInstallation.get).toHaveBeenCalledWith({
+      env: expect.any(Object),
+      installationId: '99',
+    })
+    const [installation] = await testDb.db
+      .select({ accountLogin: schema.githubAppInstallation.accountLogin })
+      .from(schema.githubAppInstallation)
+      .where(eq(schema.githubAppInstallation.workspaceId, workspaceId))
+    expect(installation?.accountLogin).toBe('Renamed-Research')
+    const [archived] = await testDb.db
+      .select({ accountLogin: schema.githubAppInstallation.accountLogin })
+      .from(schema.githubAppInstallation)
+      .where(
+        eq(schema.githubAppInstallation.workspaceId, disconnected.workspaceId),
+      )
+    expect(archived?.accountLogin).toBe('Archived-Research')
+  })
+
+  it('ignores a rename when all links to that installation are disconnected', async () => {
+    const disconnected = await seedWorkspace(testDb)
+    await testDb.db.insert(schema.githubAppInstallation).values({
+      workspaceId: disconnected.workspaceId,
+      installationId: '12345',
+      accountLogin: 'Archived-Research',
+      status: 'disconnected',
+    })
+    const response = await deliver({
+      event: 'installation_target',
+      payload: { action: 'renamed', installation: { id: 12345 } },
+    })
+    expect(response.status).toBe(200)
+    expect(response.body.status).toBe('ignored')
+    expect(githubInstallation.get).not.toHaveBeenCalled()
+  })
 
   async function readIssue(issueId: string) {
     const [row] = await testDb.db

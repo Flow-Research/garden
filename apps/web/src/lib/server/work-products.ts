@@ -11,6 +11,7 @@ import {
 import { parseWorkProductPrTarget } from '@garden/core/issues/work-product-pr-target'
 import { type WorkProductSavedFile } from '@garden/core/issues/work-product-saved-file'
 import { makeGitHubBaseLayer } from '@garden/connectors/github/rest-client'
+import { resolveGithubWriteOwner } from '@garden/connectors/github/identity'
 import { githubNativeTools } from '@garden/connectors/github/tools'
 import {
   issueSourceBindingSelectSchema,
@@ -19,6 +20,10 @@ import {
 } from '@garden/db/validation'
 import type { AppEnv } from './env'
 import { getDb, schema } from './db'
+import {
+  createGitHubRequester,
+  loadWorkspaceGitHubInstallation,
+} from './github-repositories'
 import { resolveConnectorWritePermissionRequests } from './permission-request'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { addBrainFolderFile, getOrCreateApprovedFolder } from './brain-folders'
@@ -296,10 +301,13 @@ function resolveGithubIssueRef(binding: IssueSourceBindingRow) {
       )
 }
 
-function resolveWritebackInvocation(args: {
+async function resolveWritebackInvocation(args: {
+  env: AppEnv
   binding: IssueSourceBindingRow
   workProduct: WorkProductRow
-}): ResultValue<WritebackInvocation, WorkProductReviewError> {
+}): Promise<
+  ResultValue<WritebackInvocation, ConnectorError | WorkProductReviewError>
+> {
   const body = args.workProduct.body?.trim()
   if (!body) return Result.err(invalidState('Work product body is empty'))
 
@@ -312,7 +320,69 @@ function resolveWritebackInvocation(args: {
     const refResult = resolveGithubIssueRef(args.binding)
     if (refResult.isErr()) return Result.err(refResult.error)
 
-    const ref = refResult.value
+    let ref = refResult.value
+    // Only a stored source binding can follow a rename. Agent-authored PR
+    // targets still go through the ordinary owner check without rewriting.
+    const installation = await Result.tryPromise({
+      try: async () =>
+        loadWorkspaceGitHubInstallation(
+          await getDb(args.env),
+          args.binding.workspaceId,
+        ),
+      catch: (cause) =>
+        dbError('Failed to load GitHub App installation', cause),
+    })
+    if (installation.isErr()) return Result.err(installation.error)
+    const linked = installation.value
+    if (linked?.status === 'disconnected' || !linked) {
+      return Result.err(
+        invalidState('GitHub App installation is not connected'),
+      )
+    }
+    if (
+      linked.accountLogin &&
+      ref.owner.toLowerCase() !== linked.accountLogin.toLowerCase()
+    ) {
+      const repoId = firstNumber(objectOrNull(args.binding.metadata), [
+        'github_repo_id',
+      ])
+      // A legacy binding can contain only a name. Ask GitHub about its original
+      // path; substituting the new login would risk a different same-named repo.
+      const safeSegment = (value: string) =>
+        /^[a-zA-Z0-9_.-]+$/.test(value) && value !== '.' && value !== '..'
+      if (
+        repoId === null &&
+        (!safeSegment(ref.owner) || !safeSegment(ref.repo))
+      ) {
+        return Result.err(
+          invalidState('Invalid GitHub repository name in source binding'),
+        )
+      }
+      const response = await createGitHubRequester(
+        args.env,
+        linked,
+      )({
+        operation: 'github.getRepository',
+        path:
+          repoId === null
+            ? `/repos/${ref.owner}/${ref.repo}`
+            : `/repositories/${repoId}`,
+      })
+      if (response.isErr())
+        return Result.err(classifyConnectorError(response.error))
+      const record = objectOrNull(response.value)
+      const current = parseRepository(stringValue(record?.full_name))
+      if (!current || (repoId !== null && record?.id !== repoId)) {
+        return Result.err(
+          invalidState(
+            'GitHub could not confirm this source repository under the connected account',
+          ),
+        )
+      }
+      // callConnectorTool checks this resolved owner with resolveGithubWriteOwner
+      // before dispatch. It refreshes the installation when the saved login differs.
+      ref = { ...ref, ...current }
+    }
     return Result.ok({
       connectorId: 'github',
       toolName: 'add_issue_comment',
@@ -415,6 +485,7 @@ async function callConnectorTool(args: {
       const [installation] = await db
         .select({
           installationId: schema.githubAppInstallation.installationId,
+          accountLogin: schema.githubAppInstallation.accountLogin,
           status: schema.githubAppInstallation.status,
         })
         .from(schema.githubAppInstallation)
@@ -430,10 +501,27 @@ async function callConnectorTool(args: {
     return Result.err(invalidState('GitHub App installation is not connected'))
   }
 
+  // Owner identity gate (#332): writeback args are agent-authored, so a
+  // hallucinated owner must not reach GitHub from this path either.
+  const ownerGate = await resolveGithubWriteOwner({
+    accountLogin: installation.accountLogin,
+    installationId: installation.installationId,
+    env: {
+      GITHUB_APP_ID: args.env.GITHUB_APP_ID,
+      GITHUB_CLIENT_ID: args.env.GITHUB_CLIENT_ID,
+      GITHUB_APP_PRIVATE_KEY: args.env.GITHUB_APP_PRIVATE_KEY,
+    },
+    input: args.toolArgs,
+    ownerField: args.toolName === 'fork_repository' ? 'organization' : 'owner',
+  })
+  if (ownerGate.kind === 'reject') {
+    return Result.err(invalidState(ownerGate.message))
+  }
+
   const result = await Result.tryPromise({
     try: async () =>
       await Effect.runPromise(
-        nativeTool.execute(args.toolArgs).pipe(
+        nativeTool.execute(ownerGate.input).pipe(
           Effect.provide(
             makeGitHubBaseLayer({
               appId: args.env.GITHUB_APP_ID,
@@ -1001,7 +1089,8 @@ async function applyWorkProduct(args: {
   })
   if (bindingResult.isErr()) return Result.err(bindingResult.error)
 
-  const invocationResult = resolveWritebackInvocation({
+  const invocationResult = await resolveWritebackInvocation({
+    env: args.env,
     binding: bindingResult.value,
     workProduct,
   })

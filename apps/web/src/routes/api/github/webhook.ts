@@ -1,5 +1,7 @@
 import { Result } from 'better-result'
+import { and, eq, ne } from 'drizzle-orm'
 import { createFileRoute } from '@tanstack/react-router'
+import { getGitHubAppInstallation } from '@garden/connectors/github-app'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { requireAppRequestContext } from '@/lib/server/context'
 import {
@@ -8,9 +10,12 @@ import {
   serviceUnavailable,
   unauthorized,
 } from '@/lib/server/control-plane'
-import type { Db } from '@/lib/server/db'
+import { schema, type Db } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
-import { resolveGitHubAppSlug } from '@/lib/server/github-app'
+import {
+  normalizeGitHubAppEnv,
+  resolveGitHubAppSlug,
+} from '@/lib/server/github-app'
 import { verifyGitHubWebhookSignature } from '@/lib/server/github-webhook'
 import {
   applyGitHubRepositoryMove,
@@ -291,6 +296,77 @@ export const Route = createFileRoute('/api/github/webhook')({
           waitUntil: (promise: Promise<unknown>) =>
             appContext.waitUntil(promise),
           appSlug: resolveGitHubAppSlug(appEnv),
+        }
+
+        if (event === 'installation_target') {
+          const value = payload.value
+          if (typeof value !== 'object' || value === null) {
+            return badRequest('Invalid installation target event')
+          }
+          const target = value as Record<string, unknown>
+          if (target.action !== 'renamed') {
+            return json({ ok: true, status: 'ignored' }, 200)
+          }
+          const installation = target.installation
+          const installationId =
+            typeof installation === 'object' && installation !== null
+              ? (installation as Record<string, unknown>).id
+              : undefined
+          if (
+            typeof installationId !== 'number' ||
+            !Number.isSafeInteger(installationId) ||
+            installationId <= 0
+          ) {
+            return badRequest(
+              'Installation target event is missing installation id',
+            )
+          }
+          const linkedInstallations = and(
+            eq(
+              schema.githubAppInstallation.installationId,
+              String(installationId),
+            ),
+            ne(schema.githubAppInstallation.status, 'disconnected'),
+          )
+          const linked = await Result.tryPromise(() =>
+            ctx.db
+              .select({ id: schema.githubAppInstallation.id })
+              .from(schema.githubAppInstallation)
+              .where(linkedInstallations)
+              .limit(1),
+          )
+          if (linked.isErr())
+            return serviceUnavailable('Failed to read GitHub installation')
+          if (linked.value.length === 0)
+            return json({ ok: true, status: 'ignored' }, 200)
+          const canonical = await getGitHubAppInstallation({
+            env: normalizeGitHubAppEnv(appEnv),
+            installationId: String(installationId),
+          })
+          const accountLogin = canonical.isOk()
+            ? canonical.value.account?.login?.trim()
+            : null
+          if (!accountLogin) {
+            return serviceUnavailable(
+              'Failed to confirm GitHub installation owner',
+            )
+          }
+          const saved = await Result.tryPromise(() =>
+            ctx.db
+              .update(schema.githubAppInstallation)
+              .set({ accountLogin, updatedAt: new Date() })
+              .where(linkedInstallations)
+              .returning({ id: schema.githubAppInstallation.id }),
+          )
+          if (saved.isErr()) {
+            return serviceUnavailable(
+              'Failed to save GitHub installation owner',
+            )
+          }
+          return json(
+            { ok: true, status: saved.value.length ? 'applied' : 'ignored' },
+            200,
+          )
         }
 
         if (event === 'repository') {
