@@ -3,7 +3,7 @@ title: Settings page rollout
 description: The routed Settings shell, its sections, User Management's Members and Team sub-tabs, and the separate modal entry during design rollout.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-19
 ---
 
 Settings has an authenticated page at `/settings` for direct-link review during the staging rollout. Existing account and workspace menu entries still open the Settings modal. The page is not linked from application navigation yet.
@@ -19,10 +19,10 @@ The page follows the supplied All settings design: heading and description, hori
 | Profile         | `/settings/profile`                                                    | Redesigned; see [Profile](#profile)                                      |
 | User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins |
 | Preferences     | `/settings/preferences`                                                | Appearance and theme selection                                           |
-| General         | `/settings/general`                                                    | Workspace settings                                                       |
+| General         | `/settings/general`                                                    | Redesigned; see [General](#general)                                      |
 | Execution hosts | `/settings/execution-hosts` | Read-only [execution-host status](./external-execution-hosts.md) |
 
-User Management, Preferences and General reuse the same components, queries and mutations as the modal and the Teams page. Notifications has no tab or route until its behavior is implemented. Settings adds no new account operations, APIs or permissions.
+User Management and Preferences reuse the same components, queries and mutations as the modal and the Teams page. Their content redesigns are separate changes. Notifications has no tab or route until its behavior is implemented. This shell adds no new account operations, APIs or permissions.
 
 ## Profile
 
@@ -53,6 +53,15 @@ User Management has Members and Team sub-tabs, shown as pills, each with its own
 The design also shows Roles and Guests sub-tabs. Workspace roles are the fixed owner, admin and member set and Garden has no guest access, so neither sub-tab exists until the backend supports it.
 
 Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
+
+## General
+
+The General section restyles the workspace settings and keeps every control the modal offers. It has two cards:
+
+- **General.** Name, Description and Context fields, with a hint that agents read Context as background. The slug is a read-only row. Save and Reset appear only after a field changes, ignoring leading and trailing spaces. Save is disabled while the name is empty, and it sends trimmed values. A successful save updates the workspace store and the cached workspace list. Unsaved edits are tied to the workspace they were typed in, so switching workspaces discards them. Members who are not admins or owners see the fields disabled, with a note at the top of the card.
+- **Danger zone.** Leave workspace, with the existing confirmation. The dialog stays open if leaving fails, so the action can be retried.
+
+The modal still renders the earlier `WorkspaceTab`. Both use `api.updateWorkspace` and `useLeaveWorkspace`.
 
 ## Verification
 
