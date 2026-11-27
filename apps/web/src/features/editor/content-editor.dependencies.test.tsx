@@ -31,7 +31,8 @@ import { DOMSerializer, Schema } from '@tiptap/pm/model'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import { NavigationProvider } from '../navigation'
 import { ContentEditor } from './content-editor'
-import { safeFileHref } from './extensions/file-card'
+import { safeFileHref } from '@garden/ui/markdown'
+import { ReadonlyContent } from './readonly-content'
 
 const navigation = {
   push: vi.fn(),
@@ -212,7 +213,22 @@ describe('ContentEditor on the installed Tiptap and ProseMirror', () => {
     expect(editor.state.doc.firstChild?.attrs.href).toBe(href)
     expect(editor.getMarkdown().trim()).toBe(markdown)
     editor.commands.setContent(editor.getHTML())
-    expect(editor.getMarkdown().trim()).toBe(markdown)
+    const saved = editor.getMarkdown().trim()
+    expect(saved).toBe(markdown)
+    const comment = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <WorkspaceIdProvider wsId="ws-1">
+          <NavigationProvider value={navigation}>
+            <ReadonlyContent content={saved} />
+          </NavigationProvider>
+        </WorkspaceIdProvider>
+      </QueryClientProvider>,
+    )
+    expect(
+      comment.container
+        .querySelector('a[download="report.pdf"]')
+        ?.getAttribute('href'),
+    ).toBe(href)
     await waitFor(() =>
       expect(
         container.querySelector('button[aria-label="Download report.pdf"]'),

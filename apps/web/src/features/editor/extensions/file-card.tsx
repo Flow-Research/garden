@@ -1,4 +1,4 @@
-import { Result } from 'better-result'
+import { safeFileHref } from '@garden/ui/markdown'
 import { mergeAttributes, Node } from '@tiptap/core'
 import {
   NodeViewWrapper,
@@ -10,21 +10,6 @@ import { Button } from '@garden/ui/components/ui/button'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 
 const FILE_MARKDOWN = /^!file\[([^\]]*)\]\(([^)\r\n]+)\)/
-
-const ATTACHMENT_PATH =
-  /^\/api\/attachments\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-
-/** Accept Garden upload paths and absolute HTTP or HTTPS links. */
-export function safeFileHref(value: unknown): string {
-  const href = typeof value === 'string' ? value.trim() : ''
-  if (ATTACHMENT_PATH.test(href)) return href
-  if (!/^https?:\/\//i.test(href)) return ''
-  const url = Result.try(() => new URL(href))
-  if (url.isErr()) return ''
-  return url.value.protocol === 'http:' || url.value.protocol === 'https:'
-    ? href
-    : ''
-}
 
 /** Visual node for a file attachment embedded in editor content. */
 function FileCardView({ node }: NodeViewProps) {
