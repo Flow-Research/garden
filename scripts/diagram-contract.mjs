@@ -1,4 +1,6 @@
-const EXCUSE = /^.*diagrams:\s*not affected\b\s*[-–—:,(]?\s*(\S.*)$/im
+// Anchored to the line start so the PR template's own checkbox text, which
+// quotes the phrase mid-sentence, does not count as an excuse.
+const EXCUSE = /^\s*(?:[-*]\s+)?diagrams:\s*not affected\b\s*[-–—:,(]?\s*(\S.*)$/im
 
 /**
  * Return a failure for each diagram whose watched paths changed in a PR

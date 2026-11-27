@@ -52,3 +52,10 @@ test('stated reason in the body passes', () => {
 test('excuse without a reason still fails', () => {
   assert.equal(check([workflow], 'Diagrams: not affected').length, 1)
 })
+
+test('a sentence that quotes the excuse mid-line does not excuse', () => {
+  const checkbox =
+    '- [ ] I updated the diagrams in `docs/diagrams/` that this change affects, or\n' +
+    '      wrote `Diagrams: not affected` with a reason.'
+  assert.equal(check([workflow], checkbox).length, 1)
+})
