@@ -109,6 +109,20 @@ async function waitForIssueRun(input: {
       })
     }
 
+    if (!isTerminalRunStatus(observed.run.status)) {
+      return Result.err(
+        new GardenEvalError({
+          stage: 'evidence_collection',
+          code: 'deadline_reached',
+          message:
+            'The issue run did not reach a terminal state before the eval deadline.',
+          invalidReason: 'required_evidence_unavailable',
+          issueId: input.issueId,
+          runId: input.runId,
+        }),
+      )
+    }
+
     return Result.ok(observed)
   })
 }
@@ -188,6 +202,13 @@ export async function runIssueRunTask(input: {
       sessionCookie: input.config.sessionCookie,
       fetch: input.config.fetch,
     })
+    yield* Result.await(
+      api.verifyEvalTarget({
+        workspaceId: safeConfiguration.workspaceId,
+        agentId: safeConfiguration.agentId,
+        deadlineAt,
+      }),
+    )
     const issue = yield* Result.await(
       api.createIssue({
         workspaceId: safeConfiguration.workspaceId,
@@ -223,28 +244,38 @@ export async function runIssueRunTask(input: {
     const start = yield* Result.await(
       api.startIssueRun({ issueId: issue.id, deadlineAt }),
     )
-    if (start.kind === 'skipped') {
+    if (start.kind !== 'started') {
       return Result.err(
         new GardenEvalError({
           stage: 'garden_execution',
-          code: 'run_start_skipped',
-          message: 'Garden skipped the issue-run start request.',
+          code: 'run_start_not_started',
+          message: 'Garden did not start a new issue run for this trial.',
           invalidReason: 'garden_execution_failed',
           issueId: issue.id,
         }),
       )
     }
 
-    const observed = yield* Result.await(
-      waitForIssueRun({
-        api,
-        issueId: issue.id,
-        runId: start.runId,
-        workspaceId: safeConfiguration.workspaceId,
-        deadlineAt,
-        pollIntervalMs: input.config.pollIntervalMs,
-      }),
-    )
+    const observedResult = await waitForIssueRun({
+      api,
+      issueId: issue.id,
+      runId: start.runId,
+      workspaceId: safeConfiguration.workspaceId,
+      deadlineAt,
+      pollIntervalMs: input.config.pollIntervalMs,
+    })
+    await observedResult.match({
+      ok: async () => undefined,
+      err: async (error) => {
+        if (error.code === 'deadline_reached') {
+          await api.cancelIssueRun({
+            issueId: issue.id,
+            deadlineAt: Date.now() + safeConfiguration.pollIntervalMs,
+          })
+        }
+      },
+    })
+    const observed = yield* observedResult
     const evidence = createIssueRunEvidence({
       identity: input.identity,
       requiredSources: ['issue_run'],

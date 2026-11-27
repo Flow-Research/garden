@@ -25,6 +25,8 @@ export interface DeploymentTarget {
   readonly workflowName: string
   readonly decideAnalysisWorkflowId: string
   readonly decideAnalysisWorkflowName: string
+  readonly githubRepoImportWorkflowId: string
+  readonly githubRepoImportWorkflowName: string
   readonly sandboxId: string
   readonly sandboxName: string
   readonly aiGatewayId: string

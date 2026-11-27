@@ -105,20 +105,33 @@ export async function runChatTask(input: {
   })
 
   return Result.gen(async function* () {
+    yield* Result.await(
+      api.verifyEvalTarget({
+        workspaceId: configuration.workspaceId,
+        agentId: configuration.agentId,
+        deadlineAt,
+      }),
+    )
     const thread = yield* Result.await(
       api.createChatThread({
         threadId: identity.isolationId,
+        workspaceId: configuration.workspaceId,
         agentId: configuration.agentId,
         title: `Garden eval ${input.task.definition.taskId} ${identity.trialId}`,
         deadlineAt,
       }),
     )
-    if (thread.id !== identity.isolationId) {
+    if (
+      thread.id !== identity.isolationId ||
+      thread.workspaceId !== configuration.workspaceId ||
+      thread.agentId !== configuration.agentId
+    ) {
       return Result.err(
         new GardenEvalError({
           stage: 'fixture_setup',
           code: 'thread_identity_mismatch',
-          message: 'Garden returned a different chat thread ID.',
+          message:
+            'Garden returned a chat thread with a different ID, workspace, or agent.',
           invalidReason: 'fixture_setup_failed',
           threadId: thread.id,
         }),
@@ -250,15 +263,20 @@ function collectDecideEvidence(input: {
         deadlineAt: input.deadlineAt,
       }),
     )
-    while (input.waitForTerminal && Date.now() < input.deadlineAt) {
+    let observedAbsent = false
+    let absenceConfirmed = false
+    while (Date.now() < input.deadlineAt) {
       const onlyRun = latest.runs.length === 1 ? latest.runs[0] : undefined
       if (
         latest.runs.length > 1 ||
         (onlyRun !== undefined &&
-          ['completed', 'failed', 'cancelled'].includes(onlyRun.status))
+          (!input.waitForTerminal ||
+            ['completed', 'failed', 'cancelled'].includes(onlyRun.status))) ||
+        (!input.waitForTerminal && absenceConfirmed)
       ) {
         break
       }
+      observedAbsent = latest.runs.length === 0
       const remainingMs = input.deadlineAt - Date.now()
       if (remainingMs <= 0) break
       yield* Result.await(
@@ -271,6 +289,48 @@ function collectDecideEvidence(input: {
         input.api.listDecideAnalyses({
           threadId: input.threadId,
           deadlineAt: input.deadlineAt,
+        }),
+      )
+      absenceConfirmed = observedAbsent && latest.runs.length === 0
+    }
+
+    const liveRun = latest.runs.length === 1 ? latest.runs[0] : undefined
+    if (
+      input.waitForTerminal &&
+      (!liveRun ||
+        !['completed', 'failed', 'cancelled'].includes(liveRun.status)) &&
+      Date.now() >= input.deadlineAt
+    ) {
+      if (liveRun && liveRun.status !== 'cancel_requested') {
+        await input.api.cancelDecideAnalysis({
+          runId: liveRun.runId,
+          deadlineAt: Date.now() + input.pollIntervalMs,
+        })
+      }
+      return Result.err(
+        new GardenEvalError({
+          stage: 'evidence_collection',
+          code: 'deadline_reached',
+          message:
+            'The Decide analysis did not reach a terminal state before the eval deadline.',
+          invalidReason: 'required_evidence_unavailable',
+          threadId: input.threadId,
+        }),
+      )
+    }
+    if (
+      !input.waitForTerminal &&
+      !absenceConfirmed &&
+      latest.runs.length === 0
+    ) {
+      return Result.err(
+        new GardenEvalError({
+          stage: 'evidence_collection',
+          code: 'deadline_reached',
+          message:
+            'The eval deadline expired before a second Decide absence check.',
+          invalidReason: 'required_evidence_unavailable',
+          threadId: input.threadId,
         }),
       )
     }

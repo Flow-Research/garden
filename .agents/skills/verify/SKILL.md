@@ -27,7 +27,7 @@ Garden's local stack uses Postgres and HelixDB. Offline mode also needs an
 OpenAI-compatible model, usually Ollama.
 
 Choose the Docker or native Ollama setup in
-[`docs/development/onboarding.md`](../../../docs/development/onboarding.md).
+[`docs/tutorials/get-started.md`](../../../docs/tutorials/get-started.md).
 For Docker-hosted Ollama, run:
 
 ```bash
@@ -96,6 +96,20 @@ Each report must name the action, the expected result, the observed result, and
 the command or route that produced the evidence. Mark a scenario `PASS`,
 `FAIL`, or `INCONCLUSIVE`. A passing typecheck is not evidence for a user flow.
 
+Screenshots for a pull request are the exception: reviewers need to see them in
+the PR, and agents cannot upload images to a PR description. Convert them to
+WebP in the PR's own folder and commit them:
+
+```bash
+pnpm screenshot:webp <pr-number> ~/.garden/evidence/<scenario>/screenshots/*.png
+```
+
+The command writes `docs/assets/pr/<pr-number>/*.webp`. Link each file under
+`## Verification` with its `raw.githubusercontent.com` URL. The PR contract
+check fails when a UI change has no screenshots, or when a PR commits an image
+outside that folder or in another format. Mark Verification `INCONCLUSIVE` with
+the reason when screenshots are impossible.
+
 ## Cleanup
 
 Only stop resources that this run started. When the local stack is no longer
@@ -114,6 +128,8 @@ Read the feature file before driving it:
 
 - `features/mvp.md` covers the beta path.
 - `features/decide.md` covers Decide installation and the first agent action.
+- `features/handbook.md` covers the internal handbook at `/handbook`.
+- `features/teams.md` covers Teams admin and its Settings entry.
 
 Add a feature file when a shipped user path has no observable proof. Keep the
 feature file focused on what a user can do and see.

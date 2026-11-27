@@ -240,9 +240,10 @@ record the target, workspace, agent, deadline, and poll interval. They never
 record the cookie or raw API responses.
 
 The deadline is the total trial budget. Each API request uses the remaining
-budget. When the budget expires while the run is still live, the runner grades
-the observed status against the task's expected status. This does not change
-Garden's model or MCP timeout.
+budget. A live run at the deadline is invalid. The runner requests cancellation
+through the public API and keeps the run ID for follow-up. The cancellation
+request uses one poll interval as its own budget. Cancellation is not proof
+that the run stopped.
 
 The first evidence adapter stores the run ID, issue ID, workspace ID, status,
 timestamps, and safe usage fields. Garden returns events and work products
@@ -252,9 +253,8 @@ token counts, and the time Garden recorded them when the API includes usage.
 
 Garden owns the run status. The eval runner reads that status instead of
 treating a closed browser request or stopped model stream as completion. If
-the deadline expires first, it grades the last status it observed. Missing
-required evidence means `invalid`; complete evidence that proves the wrong
-behavior means `failed`.
+the deadline expires first, it records `invalid`. Missing required evidence
+means `invalid`; complete evidence that proves the wrong behavior means `failed`.
 
 ## Use three outcome classes
 
@@ -569,6 +569,13 @@ Every trial gets a unique identity. The issue-run task creates a unique issue.
 Each chat task creates a unique thread and uploads its fixture to that thread.
 The current runners use one configured workspace and agent. They do not create
 a separate workspace or Decide account for every trial.
+Before writing, both runners list the session's workspaces and the workspace's
+agents. The workspace slug must start with `garden-eval`, and the active agent
+name must start with `Garden Eval`. The agent must belong to that workspace.
+The chat runner sends `workspace_id` when it creates a thread and checks the
+returned workspace and agent IDs before it uploads a file or sends a message.
+These checks do not prove the agent's effective connector grants. The operator
+must inspect those grants and use an isolated account and Decide environment.
 
 ```mermaid
 flowchart TB
@@ -598,9 +605,10 @@ Each `EvidenceBundle` stores the identifiers created for that trial. Evidence
 readers query by those identifiers. They do not use time windows or "latest
 row" queries because concurrent trials make those queries ambiguous.
 
-Cleanup is idempotent. A second cleanup call has no effect. If cleanup fails,
-the runner reports the fixture identifiers and keeps the trial evidence for
-diagnosis.
+The current runners do not delete Garden records or Decide outputs. The
+operator must review and remove old eval issues, threads, documents, and Decide
+analyses from the dedicated environment. CI must not schedule these tasks
+until the owner sets a retention period and implements cleanup for that period.
 
 ## Reproducibility record
 
@@ -825,6 +833,8 @@ The CLI does not lock the eval agent. Run one command at a time for that agent.
 
 Use a dedicated Garden workspace and agent. The CLI creates a normal Garden
 issue and run. It keeps the issue after the trial so you can inspect failures.
+Give the workspace a slug that starts with `garden-eval` and the agent a name
+that starts with `Garden Eval`. Confirm its connector grants before each run.
 The trial UUID appears in the issue title and description. The runner does not
 retry issue creation because Garden's issue API has no idempotency key. A
 network failure after issue creation may leave an issue without an issue or
@@ -873,10 +883,12 @@ Set the same `GARDEN_EVAL_*` values above in the root `.env` file or export them
 in the shell. Keep `GARDEN_EVAL_SESSION_COOKIE` out of committed files and
 command history. Promptfoo reads the root `.env`, runs cases one at a time,
 disables result caching and latest-result storage, and writes
-`.artifacts/evals/promptfoo.json` and `.artifacts/evals/promptfoo.html`. Open
+`.artifacts/evals/<evaluation-id>/promptfoo.json` and `.artifacts/evals/<evaluation-id>/promptfoo.html`. Open
 the HTML file in a browser to review the cases and their results. The JSON
 file keeps the structured results for scripts and later analysis. Neither
-report is a Garden page or uploads results to a hosted service.
+report is a Garden page. The script sets `PROMPTFOO_DISABLE_TELEMETRY=1`.
+Promptfoo's other local storage and network behavior has not been verified
+against the installed version, so use synthetic inputs only.
 
 ```sh
 pnpm --filter @garden/evals eval:promptfoo

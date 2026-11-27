@@ -17,9 +17,9 @@ import { useFileUpload } from '@garden/app-state/hooks/use-file-upload'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 import { useNavigationActions } from '@/features/navigation'
 import { authClient } from '@/lib/auth/client'
+import { accountSessionsQueryOptions } from '../account-queries'
+import { GithubWorkspaceIdentitySection } from './github-workspace-identity'
 import { GoogleAccountConnection } from './google-account-connection'
-
-const sessionQueryKey = ['account', 'sessions']
 
 function formatDateTime(value: string | Date | null | undefined) {
   if (!value) return 'Unavailable'
@@ -70,16 +70,7 @@ export function AccountTab() {
     data: sessions = [],
     isPending: sessionsPending,
     refetch,
-  } = useQuery({
-    queryKey: sessionQueryKey,
-    queryFn: async () => {
-      const result = await authClient.listSessions()
-      if (result.error) {
-        throw new Error(result.error.message || 'Failed to load sessions')
-      }
-      return result.data ?? []
-    },
-  })
+  } = useQuery(accountSessionsQueryOptions())
 
   const initials = (user?.name ?? user?.email ?? '')
     .split(' ')
@@ -416,6 +407,8 @@ export function AccountTab() {
           </div>
         </form>
       </section>
+
+      <GithubWorkspaceIdentitySection />
 
       <GoogleAccountConnection />
 

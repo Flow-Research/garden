@@ -166,7 +166,17 @@ function gradeCriterion(input: {
 function includesExpectedFact(response: string, expected: string): boolean {
   const calendarDate = calendarDateSchema.safeParse(expected)
   if (!calendarDate.success) {
-    return response.toLocaleLowerCase().includes(expected.toLocaleLowerCase())
+    const text = response.toLocaleLowerCase()
+    const value = expected.toLocaleLowerCase()
+    const index = text.indexOf(value)
+    if (index < 0) return false
+    const before = text.slice(Math.max(0, index - 24), index)
+    const after = text.slice(index + value.length, index + value.length + 32)
+    return !(
+      /\b(?:not|isn't|is not|never|wrong|incorrect)\b[^.!?]*$/.test(before) ||
+      /^\s+(?:is\s+)?(?:not|wrong|incorrect)\b/.test(after) ||
+      /\bnot\s+(?:the\s+)?owner\b/.test(after)
+    )
   }
 
   const date = new Date(`${calendarDate.data}T00:00:00Z`)
@@ -175,9 +185,29 @@ function includesExpectedFact(response: string, expected: string): boolean {
     ...englishDateFormatters.map((formatter) => formatter.format(date)),
   ]
   const normalizedResponse = ` ${normalizeDateText(response)} `
-  return equivalents.some((equivalent) =>
-    normalizedResponse.includes(` ${normalizeDateText(equivalent)} `),
+  const expectedDates = new Set(equivalents.map(normalizeDateText))
+  const month =
+    '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)'
+  const writtenDate = new RegExp(
+    `\\b(?:\\d{4}-\\d{2}-\\d{2}|${month}\\s+\\d{1,2}\\s+\\d{4}|\\d{1,2}\\s+${month}\\s+\\d{4})\\b`,
+    'gi',
   )
+  if (
+    [...normalizedResponse.matchAll(writtenDate)].some(
+      (match) => !expectedDates.has(match[0].trim()),
+    )
+  )
+    return false
+  return equivalents.some((equivalent) => {
+    const token = ` ${normalizeDateText(equivalent)} `
+    const index = normalizedResponse.indexOf(token)
+    if (index < 0) return false
+    const before = normalizedResponse.slice(Math.max(0, index - 35), index)
+    return (
+      /\blaunch(?:es|ed)?\b/.test(before) &&
+      !/\b(?:not|wrong|incorrect)\b(?:\s+\w+){0,5}\s*$/.test(before)
+    )
+  })
 }
 
 /**

@@ -72,6 +72,12 @@ export type {
   UpdateTeamRequest,
   TransferTeamOwnerRequest,
   ListTeamIssuesParams,
+  TeamRepository,
+  TeamRepositoryImportState,
+  AvailableTeamRepository,
+  ListTeamRepositoriesResponse,
+  ListAvailableTeamRepositoriesResponse,
+  LinkTeamRepositoryRequest,
   ListTeamsResponse,
   ListTeamMembersResponse,
 } from './team'

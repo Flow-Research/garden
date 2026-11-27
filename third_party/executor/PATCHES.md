@@ -36,6 +36,38 @@ documented compatibility changes:
    results through `Buffer.from` before base64 encoding. Cloudflare Workers
    Types v5 models these Node-compatible values as `Uint8Array`, whose native
    `toString` has no encoding parameter; the byte output is unchanged.
+8. The published SDK patch at `patches/@executor-js__sdk@1.5.40.patch`
+   suppresses regional callback-domain rebinding only when the saved OAuth
+   client's resource is exactly `https://workstream.flowresearch.tech/mcp`.
+   Workstream authorization codes and PKCE verifiers must reach the configured
+   issuer token endpoint, and refresh must retain that endpoint. Other
+   resources keep the SDK's regional-provider behavior.
+9. The same SDK patch appends `/.well-known/openid-configuration` after a
+   path-bearing issuer, as required by [OpenID Connect Discovery section 4.1](https://openid.net/specs/openid-connect-discovery-1_0.html#ProviderConfig).
+   OAuth metadata discovery retains [RFC 8414 section 3](https://www.rfc-editor.org/rfc/rfc8414.html#section-3),
+   which inserts its well-known path before the issuer path. Garden's Workstream
+   installation requires successful OAuth discovery and reports unavailability
+   without offering a manual token template or registering an integration.
+
+10. The SDK's MCP template has no caller-specific scope option. For the exact
+    Flow issuer and Workstream resource, a dedicated `garden-` authorization-code
+    client additionally requests `offline_access`. Other clients and providers
+    keep discovered scopes unchanged. The issuer bounds the retained grant.
+11. SDK connection projection prioritizes its durable reauthorization marker over
+    later catalogue health observations. Removing a Workstream connection revokes
+    its refresh credential at the pinned issuer before deleting connection state;
+    provider failure or a missing issuer binding retains the connection. Revocation
+    uses Worker-supported manual redirect handling; the hosted fetch guard honors
+    that mode from request initialization or a `Request` (explicit initialization
+    takes precedence), so a redirect is refused without forwarding the refresh
+    credential. Mint,
+    reconnect, and refresh prepare ciphertext through the existing encrypted
+    provider and publish new credential IDs with the connection in one D1 batch.
+    The batch matches the exact previous credential IDs and removes the obsolete
+    ciphertext. The request-scoped Executor and hibernatable MCP session both
+    receive this D1 capability. Disconnect batches credential and catalogue
+    deletion after issuer revocation. A database rollback retains local custody for
+    retry. A competing grant change leaves the current connection intact.
 
 Garden aliases only the exact retained entrypoints. The generic MCP serving
 envelope and in-memory session host, its browser-approval store, and Executor's

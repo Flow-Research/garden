@@ -45,9 +45,26 @@ const runResponseSchema = z.object({
 
 const chatThreadResponseSchema = z.object({
   id: z.string().uuid(),
+  workspaceId: z.string().uuid(),
+  agentId: z.string().uuid(),
   hostName: z.string().min(1),
   runtime_key: z.string().min(1),
 })
+
+const workspacesResponseSchema = z.array(
+  z.object({
+    id: z.string().uuid(),
+    slug: z.string(),
+  }),
+)
+const agentsResponseSchema = z.array(
+  z.object({
+    id: z.string().uuid(),
+    workspace_id: z.string().uuid(),
+    name: z.string(),
+    record_status: z.string(),
+  }),
+)
 
 const chatDocumentUploadResponseSchema = z.object({
   ok: z.literal(true),
@@ -104,6 +121,10 @@ type JsonRequest<TSchema extends z.ZodType> = {
     | 'create_chat_thread'
     | 'upload_chat_document'
     | 'read_decide_analyses'
+    | 'read_eval_workspaces'
+    | 'read_eval_agents'
+    | 'cancel_issue_run'
+    | 'cancel_decide_analysis'
   stage: GardenEvalError['stage']
   invalidReason: GardenEvalError['invalidReason']
   issueId?: string
@@ -226,6 +247,76 @@ export function createGardenApiClient(config: GardenApiConfig) {
   const fetcher = config.fetch ?? fetch
 
   return {
+    /** Confirms the configured workspace and agent before a trial writes data. */
+    verifyEvalTarget(input: {
+      workspaceId: string
+      agentId: string
+      deadlineAt: number
+    }): Promise<Result<void, GardenEvalError>> {
+      return Result.gen(async function* () {
+        const workspaces = yield* Result.await(
+          requestJson(
+            {
+              operation: 'read_eval_workspaces',
+              stage: 'fixture_setup',
+              invalidReason: 'unsupported_environment',
+              url: new URL('/api/workspaces', baseUrl),
+              deadlineAt: input.deadlineAt,
+              schema: workspacesResponseSchema,
+              init: { headers: { cookie: config.sessionCookie } },
+            },
+            fetcher,
+          ),
+        )
+        const workspace = workspaces.find((row) => row.id === input.workspaceId)
+        if (!workspace || !/^garden-eval(?:-|$)/i.test(workspace.slug)) {
+          return Result.err(
+            new GardenEvalError({
+              stage: 'fixture_setup',
+              code: 'invalid_eval_workspace',
+              message:
+                'The configured workspace must have a garden-eval slug and be visible to this session.',
+              invalidReason: 'unsupported_environment',
+            }),
+          )
+        }
+        const agentsUrl = new URL('/api/agents', baseUrl)
+        agentsUrl.searchParams.set('workspace_id', input.workspaceId)
+        const agents = yield* Result.await(
+          requestJson(
+            {
+              operation: 'read_eval_agents',
+              stage: 'fixture_setup',
+              invalidReason: 'unsupported_environment',
+              url: agentsUrl,
+              deadlineAt: input.deadlineAt,
+              schema: agentsResponseSchema,
+              init: { headers: { cookie: config.sessionCookie } },
+            },
+            fetcher,
+          ),
+        )
+        const agent = agents.find((row) => row.id === input.agentId)
+        if (
+          !agent ||
+          agent.workspace_id !== input.workspaceId ||
+          !/^garden eval(?:\s|$)/i.test(agent.name) ||
+          agent.record_status === 'archived'
+        ) {
+          return Result.err(
+            new GardenEvalError({
+              stage: 'fixture_setup',
+              code: 'invalid_eval_agent',
+              message:
+                'The configured agent must be active, named Garden Eval, and belong to the eval workspace.',
+              invalidReason: 'unsupported_environment',
+            }),
+          )
+        }
+        return Result.ok(undefined)
+      })
+    },
+
     /**
      * Creates a non-starting issue so the runner can start its run once.
      * Before this method, evals had no public issue creation path. Reference:
@@ -331,6 +422,7 @@ export function createGardenApiClient(config: GardenApiConfig) {
      */
     createChatThread(input: {
       threadId: string
+      workspaceId: string
       agentId: string
       title: string
       deadlineAt: number
@@ -343,7 +435,10 @@ export function createGardenApiClient(config: GardenApiConfig) {
           stage: 'fixture_setup',
           invalidReason: 'fixture_setup_failed',
           threadId: input.threadId,
-          url: new URL('/api/chat/threads', baseUrl),
+          url: new URL(
+            `/api/chat/threads?workspace_id=${encodeURIComponent(input.workspaceId)}`,
+            baseUrl,
+          ),
           deadlineAt: input.deadlineAt,
           schema: chatThreadResponseSchema,
           init: {
@@ -357,6 +452,55 @@ export function createGardenApiClient(config: GardenApiConfig) {
               title: input.title,
               agent_id: input.agentId,
             }),
+          },
+        },
+        fetcher,
+      )
+    },
+
+    /** Requests cancellation through the same routes as Garden's user interface. */
+    cancelIssueRun(input: { issueId: string; deadlineAt: number }) {
+      return requestJson(
+        {
+          operation: 'cancel_issue_run',
+          stage: 'garden_execution',
+          invalidReason: 'garden_execution_failed',
+          issueId: input.issueId,
+          url: new URL(
+            `/api/issues/${encodeURIComponent(input.issueId)}/cancel`,
+            baseUrl,
+          ),
+          deadlineAt: input.deadlineAt,
+          schema: z.object({ ok: z.literal(true) }),
+          init: { method: 'POST', headers: { cookie: config.sessionCookie } },
+        },
+        fetcher,
+      )
+    },
+
+    /** Requests cancellation of a live Decide analysis. */
+    cancelDecideAnalysis(input: { runId: string; deadlineAt: number }) {
+      return requestJson(
+        {
+          operation: 'cancel_decide_analysis',
+          stage: 'garden_execution',
+          invalidReason: 'garden_execution_failed',
+          runId: input.runId,
+          url: new URL(
+            `/api/decide-analyses/${encodeURIComponent(input.runId)}`,
+            baseUrl,
+          ),
+          deadlineAt: input.deadlineAt,
+          schema: z
+            .object({ status: decideAnalysisStatusSchema })
+            .passthrough(),
+          init: {
+            method: 'POST',
+            headers: {
+              cookie: config.sessionCookie,
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify({ action: 'cancel' }),
           },
         },
         fetcher,

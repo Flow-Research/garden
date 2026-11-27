@@ -1,9 +1,10 @@
 import { spawnSync } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 const outputDirectory = fileURLToPath(
-  new URL('../../../.artifacts/evals/', import.meta.url),
+  new URL(`../../../.artifacts/evals/${randomUUID()}/`, import.meta.url),
 )
 mkdirSync(outputDirectory, { recursive: true })
 

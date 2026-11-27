@@ -7,6 +7,12 @@ import { api } from '@/lib/api'
 import { workspaceKeys, workspaceListOptions } from './queries'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
 
+/**
+ * Publishes created membership before switching, then refreshes the cached auth
+ * boundary through the destination's workspace_id loader dependency. Previously
+ * old list requests or cached bootstrap hydration could erase the new workspace.
+ * Keep local recovery when Better Auth cannot persist the active organization.
+ */
 export function useCreateWorkspace() {
   const qc = useQueryClient()
   const navigate = useNavigate()
@@ -14,27 +20,37 @@ export function useCreateWorkspace() {
     mutationFn: (data: { name: string; slug: string; description?: string }) =>
       api.createWorkspace(data),
     onSuccess: async (newWs) => {
-      // Add to cache before switching so sidebar list is consistent on first render
+      // Stop a list request started before creation from erasing the new row.
+      await qc.cancelQueries({ queryKey: workspaceKeys.list(), exact: true })
       qc.setQueryData(workspaceKeys.list(), (old: Workspace[] = []) => [
-        ...old,
+        ...old.filter((workspace) => workspace.id !== newWs.id),
         newWs,
       ])
       // Land on /home first — the old workspace's entity route would fire
       // detail queries with ids the new workspace doesn't own.
-      void navigate({ to: '/home' })
-      // The workspace exists even when switching to it fails; that failure
-      // used to be dropped, leaving the user in the old workspace unawares.
+      await navigate({ to: '/home', search: {} })
+      // The workspace exists even when Better Auth setActive fails. Opening the
+      // shell locally avoids trapping a first-time user on the empty
+      // "Create a workspace" screen, which has no workspace menu to recover
+      // from (#208).
       const switched = await Result.tryPromise(() =>
         useWorkspaceStore.getState().switchWorkspace(newWs),
       )
-      if (Result.isError(switched)) {
-        toast.error(
-          `${newWs.name} was created, but switching to it failed. Open it from the workspace menu.`,
-        )
-      }
+      await switched.match({
+        ok: () => navigate({ to: '/home', search: { workspace_id: newWs.id } }),
+        err: async () => {
+          const listed = qc.getQueryData<Workspace[]>(workspaceKeys.list()) ?? [
+            newWs,
+          ]
+          useWorkspaceStore.getState().hydrateWorkspace(listed, newWs.id)
+          toast.error(
+            `${newWs.name} was created, but saving it as the active workspace failed. Reload if the wrong workspace appears.`,
+          )
+        },
+      })
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: workspaceKeys.list() })
+      return qc.invalidateQueries({ queryKey: workspaceKeys.list() })
     },
   })
 }

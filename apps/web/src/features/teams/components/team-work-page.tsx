@@ -57,7 +57,7 @@ export function TeamWorkPage() {
     refetch: refetchMembers,
   } = useQuery(memberListOptions(wsId))
   const { data: projectList = [] } = useQuery(projectListOptions(wsId))
-  const [{ data: allIssues }, { data: teams }] = useSuspenseQueries({
+  const [{ data: allIssues }, { data: teamList }] = useSuspenseQueries({
     queries: [allTeamIssuesOptions(wsId), teamListOptions(wsId)],
   })
 
@@ -65,6 +65,7 @@ export function TeamWorkPage() {
     members?.find((member) => member.user_id === currentUserId)?.role ?? null
   const isAdmin = currentRole === 'owner' || currentRole === 'admin'
 
+  const teams = teamList.teams
   const teamById = useMemo(
     () => new Map(teams.map((team) => [team.id, team] as const)),
     [teams],

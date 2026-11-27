@@ -22,7 +22,7 @@
     "better-result": "^2.9.2",
     "exceljs": "catalog:",
     "ws": "8.21.0",
-    "zod": "^4.4.3"
+    "zod": "4.6.6"
   },
   "devDependencies": {
     "@garden/tsconfig": "workspace:*",

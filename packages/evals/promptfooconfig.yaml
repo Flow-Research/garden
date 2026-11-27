@@ -23,15 +23,13 @@ defaultTest:
         return {
           pass: report?.outcome === 'passed',
           score: report?.outcome === 'passed' ? 1 : 0,
-          reason: report?.checks?.map((check) => `${check.criterionId}: ${check.passed}`).join('; ') ?? 'Garden did not return a trial report',
+          reason: report ? [report.outcome, report.invalidReason, report.diagnostic?.message, ...(report.checks ?? []).map((check) => `${check.criterionId}: ${check.passed}`)].filter(Boolean).join('; ') : 'Garden did not return a trial report',
         };
 
 evaluateOptions:
   cache: false
   maxConcurrency: 1
   repeat: 1
-  timeoutMs: 0
-  maxEvalTimeMs: 0
 
 commandLineOptions:
   envPath:

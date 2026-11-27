@@ -80,6 +80,34 @@ describe('uploaded brief date facts', () => {
     assert.equal(checkAnswer(''), false)
   })
 
+  it('rejects a denied owner or launch date', () => {
+    assert.equal(
+      checkAnswer('Not Maya Okafor owns Lark. It launches December 14, 2026.'),
+      false,
+    )
+    assert.equal(
+      checkAnswer(
+        'Maya Okafor is not the owner. Lark launches December 14, 2026.',
+      ),
+      false,
+    )
+    assert.equal(
+      checkAnswer(
+        'Maya Okafor owns Lark. The launch date is not December 14, 2026.',
+      ),
+      false,
+    )
+  })
+
+  it('rejects an extra wrong launch date', () => {
+    assert.equal(
+      checkAnswer(
+        'Maya Okafor launches Lark on December 15, 2026. The brief also says December 14, 2026.',
+      ),
+      false,
+    )
+  })
+
   it('does not guess the interpretation of an ambiguous numeric date', () => {
     const task = {
       ...uploadedBriefTask,

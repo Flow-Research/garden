@@ -5,6 +5,7 @@ import {
   cancelAutomationRun,
   startAutomationRun,
 } from '@garden/server/automations/run-service'
+import { runFailureCauseSchema } from '@garden/core/runs/failure'
 import { getDb, requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
@@ -226,6 +227,8 @@ export function toAutomationRun(
   options: { debug?: boolean } = {},
 ) {
   const resultJson = objectOrNull(row.resultJson)
+  const cause = runFailureCauseSchema.safeParse(row.failureReason)
+  const failure = cause.success ? { cause: cause.data } : null
   const run = {
     id: row.id,
     automation_id: row.automationId,
@@ -236,6 +239,7 @@ export function toAutomationRun(
     triggered_at: dateToIso(row.triggeredAt),
     completed_at: dateToIso(row.completedAt),
     failure_reason: row.failureReason,
+    failure,
     trigger_payload: row.triggerPayload,
     created_at: dateToIso(row.createdAt),
     result_json: resultJson,

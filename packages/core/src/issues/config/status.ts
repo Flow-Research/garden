@@ -18,6 +18,26 @@ export const ALL_STATUSES: IssueStatus[] = [
   'cancelled',
 ]
 
+/**
+ * Statuses that still need work: everything except `done` and `cancelled`.
+ * Before this set existed, callers wrote `status !== 'done'` and counted
+ * cancelled issues as open (Home showed 198 open against 74 real tasks).
+ */
+export const OPEN_STATUSES: readonly IssueStatus[] = [
+  'todo',
+  'in_progress',
+  'in_review',
+  'blocked',
+]
+
+/**
+ * True when an issue in this status is still open work. Takes a plain string
+ * because the DB column is untyped text; unknown values are not open.
+ */
+export function isOpenIssueStatus(status: string): boolean {
+  return (OPEN_STATUSES as readonly string[]).includes(status)
+}
+
 /** Statuses shown as board columns (excludes cancelled). */
 export const BOARD_STATUSES: IssueStatus[] = [
   'blocked',

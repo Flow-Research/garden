@@ -130,6 +130,18 @@ export function gradeIssueRunStatus(input: {
   run: GardenIssueRunResponse['run']
   evidence: IssueRunEvidenceBundle
 }): Result<TrialReport, GardenEvalError> {
+  if (!terminalIssueRunStatusSchema.safeParse(input.run.status).success) {
+    return Result.err(
+      new GardenEvalError({
+        stage: 'evidence_collection',
+        code: 'non_terminal_run',
+        message: 'The issue run has not reached a terminal status.',
+        invalidReason: 'required_evidence_unavailable',
+        issueId: input.issueId,
+        runId: input.run.id,
+      }),
+    )
+  }
   const checks = input.task.criteria.map((criterion) => ({
     criterionId: criterion.criterionId,
     passed: input.run.status === criterion.expectedStatus,

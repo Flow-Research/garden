@@ -141,30 +141,26 @@ export async function inspectDecideWorkbook(
   })
 }
 
-/**
- * Finds a labeled value in inline text or table cells. Before this helper, the
- * workbook grader rejected normal separate-column corrections. It now accepts
- * labels and values in one row or adjacent rows. Reference: synthetic Decide
- * workbook contract in `examples/chat-tasks.ts`.
- */
+/** Accepts a direct label/value pair in one cell or adjacent cells. */
 function hasLabeledValue(
   rows: string[][],
   labelPattern: RegExp,
   valuePattern: RegExp,
 ): boolean {
-  return rows.some((row, rowIndex) => {
-    const labelIndexes = row.flatMap((cell, index) =>
-      labelPattern.test(cell) ? [index] : [],
-    )
-    const valueIndexes = row.flatMap((cell, index) =>
-      valuePattern.test(cell) ? [index] : [],
-    )
-    if (labelIndexes.length > 0 && valueIndexes.length > 0) return true
-
-    const nextRow = rows[rowIndex + 1]
-    return (
-      nextRow !== undefined &&
-      labelIndexes.some((index) => valuePattern.test(nextRow[index] ?? ''))
+  const label = new RegExp(
+    `^(?:${labelPattern.source})(?:\\s+(?:value|correction))?\\s*:?$`,
+    'i',
+  )
+  const value = new RegExp(`^(?:${valuePattern.source})$`, 'i')
+  const inline = new RegExp(
+    `^(?:${labelPattern.source})\\s*:\\s*(?:${valuePattern.source})$`,
+    'i',
+  )
+  return rows.some((row) => {
+    return row.some(
+      (cell, index) =>
+        inline.test(cell.trim()) ||
+        (label.test(cell.trim()) && value.test((row[index + 1] ?? '').trim())),
     )
   })
 }

@@ -113,7 +113,12 @@ export const makeBrainFileIngestionLayer = (
             catch: (cause) =>
               ingestionFailure('resolve workspace audit agent', cause),
           })
-          return agent.hostName ?? agent.id
+          if (agent.isErr())
+            return yield* ingestionFailure(
+              'resolve workspace audit agent',
+              agent.error,
+            )
+          return agent.value.hostName ?? agent.value.id
         },
       )
 
