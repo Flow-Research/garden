@@ -69,7 +69,7 @@ If the diff changes a behavior path and no documentation path, the Documentation
 
 ## Architecture changes need a diagram check
 
-`docs/diagrams/manifest.json` lists the code paths each diagram in `docs/diagrams/` shows. If the diff changes one of those paths, the check fails unless the diff also changes that diagram's `.drawio.svg` file, or the PR body has a line `Diagrams: not affected (<name>) — <reason>` for that diagram. Each affected diagram needs its own line. A diff that touches no watched path is not checked. To update a diagram, follow `.agents/skills/diagrams/SKILL.md`.
+`docs/diagrams/manifest.json` lists the code paths each diagram in `docs/diagrams/` shows. If the diff changes one of those paths, the check fails unless the diff also changes that diagram's `.drawio.svg` file, or the PR body has a line `Diagrams: not affected (<name>) — <reason>` for that diagram. Each affected diagram needs its own line and a reason on that line. A file watch matches its exact path, including a deletion or rename. A directory watch ends in a slash and includes its descendants. A diff that touches no watched path is not checked. To update a diagram, follow `.agents/skills/diagrams/SKILL.md`.
 
 ## Run the check locally
 

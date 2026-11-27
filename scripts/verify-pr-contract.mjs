@@ -74,10 +74,12 @@ function hasCheckedItem(body, item) {
 /**
  * Read changed paths from the checked-out base and head commits.
  */
-function changedFiles(baseSha, headSha) {
+function changedFiles(baseSha, headSha, { includeRemoved = false } = {}) {
   const result = spawnSync(
     'git',
-    ['diff', '--name-only', '--diff-filter=ACMRT', baseSha, headSha],
+    includeRemoved
+      ? ['diff', '--name-only', '-z', '--no-renames', baseSha + '...' + headSha]
+      : ['diff', '--name-only', '-z', '--diff-filter=ACMRT', baseSha, headSha],
     { encoding: 'utf8' },
   )
 
@@ -89,8 +91,7 @@ function changedFiles(baseSha, headSha) {
     return []
   }
 
-  const output = result.stdout.trim()
-  return output ? output.split('\n') : []
+  return result.stdout.split('\0').filter(Boolean)
 }
 
 /**
@@ -252,7 +253,9 @@ function main() {
 
     failures.push(
       ...diagramFailures({
-        files,
+        files: changedFiles(pullRequest.base.sha, pullRequest.head.sha, {
+          includeRemoved: true,
+        }),
         body,
         manifest: JSON.parse(
           readFileSync(

@@ -1,14 +1,19 @@
 // Anchored to the line start so the PR template's own checkbox text, which
 // quotes the phrase mid-sentence, does not count as an excuse.
 const EXCUSE =
-  /^\s*(?:[-*]\s+)?diagrams:\s*not affected\s*\(([a-z0-9-]+)\)\s*[-–—:,]?\s*(\S.*)$/gim
+  /^\s*(?:[-*]\s+)?diagrams:\s*not affected\s*\(([a-z0-9-]+)\)(.*)$/i
 
 /**
  * Names of the diagrams the PR body excuses, one per
  * `Diagrams: not affected (<name>) — <reason>` line.
  */
 function excusedDiagrams(body) {
-  return new Set([...body.matchAll(EXCUSE)].map((match) => match[1]))
+  const names = new Set()
+  for (const line of body.split(/\r?\n/)) {
+    const match = EXCUSE.exec(line)
+    if (match && /[\p{L}\p{N}]/u.test(match[2])) names.add(match[1])
+  }
+  return names
 }
 
 /**
@@ -25,7 +30,10 @@ export function diagramFailures({ files, body, manifest }) {
     if (files.includes(path) || excused.has(name)) continue
 
     const matched = files.find((file) =>
-      watches.some((watch) => file === watch || file.startsWith(watch)),
+      watches.some(
+        (watch) =>
+          file === watch || (watch.endsWith('/') && file.startsWith(watch)),
+      ),
     )
     if (!matched) continue
 

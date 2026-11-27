@@ -92,3 +92,17 @@ test('a sentence that quotes the excuse mid-line does not excuse', () => {
     '      wrote `Diagrams: not affected` with a reason.'
   assert.equal(check([workflow], checkbox).length, 1)
 })
+
+test('another line and a bare separator cannot supply a reason', () => {
+  for (const suffix of ['\n## Checks', ' —', ':\r\nunrelated text']) {
+    assert.equal(
+      check([workflow], 'Diagrams: not affected (garden-issue-run)' + suffix)
+        .length,
+      1,
+    )
+  }
+})
+
+test('a file watch does not match a similarly named sibling', () => {
+  assert.deepEqual(check([workflow + '.bak']), [])
+})
