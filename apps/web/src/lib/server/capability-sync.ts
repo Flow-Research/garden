@@ -435,7 +435,7 @@ const persistCapabilityRows = Effect.fn('CapabilitySync.persist')(
         }),
     })
 
-    if (capabilityRows.length === 0 && existingCapabilities.length > 0) {
+    if (canonical && capabilityRows.length === 0 && existingCapabilities.length > 0) {
       yield* Effect.sync(() =>
         logger.warn('capability_sync.empty_prune_refused', { connectorId }),
       )

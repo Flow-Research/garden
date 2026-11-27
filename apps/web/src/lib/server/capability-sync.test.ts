@@ -15,12 +15,12 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('./db', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./db')>()),
+  ...(await importOriginal()),
   getDb: mocks.getDb,
 }))
 
 vi.mock('./executor-runtime', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./executor-runtime')>()),
+  ...(await importOriginal()),
   loadExecutorCatalog: mocks.loadExecutorCatalog,
 }))
 
@@ -135,7 +135,7 @@ describe('capability persistence boundaries', () => {
     expect(writes.upserts[0]?.set).toHaveProperty('riskClass')
     expect(Object.keys(writes.upserts[0]?.set ?? {})).toEqual(['riskClass'])
     const riskSql = dialect.sqlToQuery(
-      writes.upserts[0]!.set.riskClass as Parameters<
+      writes.upserts[0]?.set.riskClass as Parameters<
         typeof dialect.sqlToQuery
       >[0],
     )
@@ -147,6 +147,48 @@ describe('capability persistence boundaries', () => {
     expect(writes.grants[0]).toEqual([
       expect.objectContaining({ capabilityId: 'visible-id' }),
     ])
+  })
+
+  it('raises a shared risk when a tenant reports approval is required', async () => {
+    const writes = fakeDb([
+      { id: 'shared-id', name: 'list_files', riskClass: 'send_external' },
+    ])
+    mocks.loadExecutorCatalog.mockReturnValue(
+      Effect.succeed({
+        tools: [{ ...orgTool, requiresApproval: true }],
+      }),
+    )
+
+    await Effect.runPromise(
+      syncCapabilities('google-drive', 'user-1', 'workspace-1'),
+    )
+
+    const riskSql = dialect.sqlToQuery(
+      writes.upserts[0]?.set.riskClass as Parameters<
+        typeof dialect.sqlToQuery
+      >[0],
+    )
+    expect(riskSql.params).toEqual([
+      'send_external',
+      'send_external',
+      'send_external',
+    ])
+    expect(writes.deletes).toEqual([])
+  })
+
+  it('does not prune when a tenant returns no tools', async () => {
+    const writes = fakeDb([
+      { id: 'shared-id', name: 'list_files', riskClass: 'read' },
+    ])
+    mocks.loadExecutorCatalog.mockReturnValue(Effect.succeed({ tools: [] }))
+
+    await Effect.runPromise(
+      syncCapabilities('google-drive', 'user-1', 'workspace-1'),
+    )
+
+    expect(writes.upserts).toEqual([])
+    expect(writes.deletes).toEqual([])
+    expect(writes.grants).toEqual([])
   })
 
   it('still prunes stale rows when the source is the native registry', async () => {
