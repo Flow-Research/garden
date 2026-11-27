@@ -85,6 +85,7 @@ const makeEncryptedProvider = (
 ): CredentialProvider => ({
   key: ENCRYPTED_PROVIDER_KEY,
   writable: true,
+  prepareWorkstreamCiphertext: (value) => encryptSecret(key, value),
 
   get: (id: ProviderItemId) =>
     storage

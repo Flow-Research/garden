@@ -49,6 +49,8 @@ You work in one authenticated shell, `AppShell` in `apps/web/src/components/shel
 - Connectors (`/connectors`)
 - Teams (`/teams`), with an admin-only Issues child at `/teams/issues`
 
+On a wide screen the sidebar can collapse to icons (`AppSidebar` `collapsed`). Hovering or focusing an icon shows that tab's name beside the rail. The same name is the control's accessible name while the tooltip is closed. Small screens keep the labeled drawer instead of the icon rail.
+
 Settings opens as a dialog from `apps/web/src/features/settings`. It is not a sidebar page.
 
 ## Each product primitive has one source of truth

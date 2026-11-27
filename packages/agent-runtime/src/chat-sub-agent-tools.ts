@@ -96,10 +96,9 @@ type ChatSubAgentToolsInput = {
     helixApiKey?: string
     ai: Ai
     files: R2Bucket
-    getContext?: () =>
-      | BrainToolContext
-      | null
-      | Promise<BrainToolContext | null>
+    getContext?: (
+      toolName: string,
+    ) => BrainToolContext | null | Promise<BrainToolContext | null>
   }
 }
 
@@ -2248,7 +2247,7 @@ export function createChatSubAgentTools({
       Awaited<ReturnType<typeof readDocument>>
     >({
       description:
-        "Read the full content of a product attachment/document. Text documents return text. Images are lazily loaded into the model, using the same private image-data tool-result pattern as Think's workspace read tool. Always call this before answering questions about, summarizing, citing, editing, or visually inspecting an uploaded attachment.",
+        "Read the full content of a product attachment/document. Text documents return text. Images are lazily loaded into the model, using the same private image-data tool-result pattern as Think's workspace read tool. Always call this before answering questions about, summarizing, citing, editing, or visually inspecting an uploaded attachment. When text cannot be extracted, the error explains why and how to recover.",
       inputSchema: z.object({
         documentId: z
           .string()

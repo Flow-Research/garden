@@ -47,3 +47,34 @@ describe('Executor installation authentication', () => {
     })
   })
 })
+
+describe('Workstream installation authentication', () => {
+  it.effect(
+    'requires OAuth when the MCP server does not allow dynamic registration',
+    () => {
+      const provider = listServerOwnedExecutorProviders().find(
+        (candidate) => String(candidate.installSlug) === 'workstream',
+      )
+      expect(provider).toBeDefined()
+      if (provider === undefined) return Effect.void
+      return Effect.gen(function* () {
+        const templates = yield* mcpAuthenticationTemplates(
+          {
+            mcp: {
+              probeEndpoint: () =>
+                Effect.succeed({
+                  ...decideOAuthProbe,
+                  name: 'Workstream',
+                  slug: 'workstream',
+                  supportsDynamicRegistration: false,
+                }),
+            },
+          },
+          provider.candidates[0],
+          'https://workstream.flowresearch.tech/mcp',
+        )
+        expect(templates).toEqual([{ slug: 'oauth2', kind: 'oauth2' }])
+      })
+    },
+  )
+})

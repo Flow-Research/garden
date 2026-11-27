@@ -14,8 +14,10 @@ handoff steps. Do not treat pstack as a runtime dependency of Garden.
 Session rules:
 
 - When talking to the user, sacrifice grammar for concision. Drop articles, punctuation, capitalization — whatever shaves words without losing meaning.
-- If the next action is non-destructive and naturally follows from the user's request, do it proactively. Do not wait for approval or turn-by-turn feedback.
-- Keep moving through safe next steps until the task is done or you hit a real blocker.
+- Small, reversible, local edits that follow directly from the request (fixing a typo, running tests, reading code) can proceed without asking.
+- Stop and get the user's decision before any structural choice: new tables or schema changes, new abstractions or modules, new dependencies, changes that cross package boundaries, or picking between two viable designs. Present the options with the tradeoff and a recommendation, then wait.
+- Before implementing a non-trivial task, ask the user for their intended design if they have not given one. Compare your plan to theirs and surface every divergence explicitly.
+- Never merge PRs. The user reads every diff and merges themselves.
 - Greenfield codebase, no users to preserve — rip things out and reshape data structures freely; ship the cleanest version of the change. Hold every line to production quality: rigorous code, thoughtful UX, real product thinking. Scope stays narrow; craft stays high.
 - No overengineering. Pick the simplest approach that fits the codebase and the task.
 - Product feel matters: the app should feel fast, snappy, and local-first. Prefer proper caching, preloading, optimistic updates, and reuse of warm UI/runtime state so users rarely see loading states.

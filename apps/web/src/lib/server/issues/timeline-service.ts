@@ -1,6 +1,11 @@
 import { Result, type Result as ResultValue } from 'better-result'
 import type { Attachment } from '@garden/core/types'
 import {
+  parseRunFailure,
+  runFailure,
+  toPublicRunFailure,
+} from '@garden/core/runs/failure'
+import {
   IssueServiceError,
   connectorCommentActorLabel,
   toIssueAttachment,
@@ -77,18 +82,30 @@ function toTimelineRunEvent(row: {
   }
   agentId: string
 }) {
+  const payload =
+    row.event.payload &&
+    typeof row.event.payload === 'object' &&
+    !Array.isArray(row.event.payload)
+      ? (row.event.payload as Record<string, unknown>)
+      : null
+  const safePayload =
+    row.event.eventType === 'issue_run:failed'
+      ? {
+          failure: toPublicRunFailure(
+            parseRunFailure(payload).match({
+              ok: (failure) => failure,
+              err: () => runFailure('unknown'),
+            }),
+          ),
+        }
+      : payload
   return {
     type: 'activity' as const,
     id: row.event.id,
     actor_type: 'agent',
     actor_id: row.agentId,
     action: row.event.eventType,
-    details:
-      row.event.payload &&
-      typeof row.event.payload === 'object' &&
-      !Array.isArray(row.event.payload)
-        ? (row.event.payload as Record<string, unknown>)
-        : {},
+    details: safePayload ?? {},
     created_at: (row.event.createdAt ?? new Date()).toISOString(),
     event: {
       id: row.event.id,
@@ -99,13 +116,11 @@ function toTimelineRunEvent(row: {
       event_type: row.event.eventType,
       stream: row.event.stream,
       level: row.event.level,
-      message: row.event.message ?? null,
-      payload:
-        row.event.payload &&
-        typeof row.event.payload === 'object' &&
-        !Array.isArray(row.event.payload)
-          ? (row.event.payload as Record<string, unknown>)
-          : null,
+      message:
+        row.event.eventType === 'issue_run:failed'
+          ? 'Run failed'
+          : (row.event.message ?? null),
+      payload: safePayload,
       created_at: (row.event.createdAt ?? new Date()).toISOString(),
     },
   }

@@ -45,8 +45,16 @@ function renderDashboard({ agentCount = 0 } = {}) {
   })
   queryClient.setQueryData(dashboardKeys.distribution(WS), {
     summary: { totalIssues: 4, openIssues: 3 },
-    issueStatus: [],
-    issuePriority: [],
+    issueStatus: [
+      { name: 'cancelled', value: 6, color: 'pink' },
+      { name: 'done', value: 1, color: 'green' },
+      { name: 'blocked', value: 2, color: 'orange' },
+      { name: 'todo', value: 1, color: 'blue' },
+    ],
+    issuePriority: [
+      { name: 'medium', value: 9, color: 'yellow' },
+      { name: 'urgent', value: 1, color: 'red' },
+    ],
   })
   queryClient.setQueryData(dashboardKeys.activity(WS), {
     unreadCount: 1,
@@ -63,8 +71,18 @@ function renderDashboard({ agentCount = 0 } = {}) {
     ],
   })
   queryClient.setQueryData(dashboardKeys.resources(WS), {
-    agents: [],
-    connections: [],
+    agents: [
+      {
+        id: 'garden',
+        name: 'Garden',
+        status: 'active',
+        roleTitle: 'Workspace assistant',
+        activeIssueCount: 2,
+      },
+    ],
+    connections: [
+      { id: 'github', label: 'GitHub', status: 'connected', toolCount: 45 },
+    ],
   })
   render(
     <QueryClientProvider client={queryClient}>
@@ -75,7 +93,7 @@ function renderDashboard({ agentCount = 0 } = {}) {
   )
 }
 
-describe('DashboardPage links', () => {
+describe('DashboardPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     useIssueViewStore.getState().clearFilters()
@@ -93,7 +111,9 @@ describe('DashboardPage links', () => {
     useIssueViewStore.getState().togglePriorityFilter('high')
     renderDashboard({ agentCount: 1 })
 
-    fireEvent.click(await screen.findByText('Blocked'))
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Blocked.*Needs a human/ }),
+    )
 
     expect(nav.navigate).toHaveBeenCalledWith({ to: '/tasks' })
     expect(useIssueViewStore.getState().statusFilters).toEqual(['blocked'])
@@ -106,5 +126,59 @@ describe('DashboardPage links', () => {
     fireEvent.click(await screen.findByText('Connect Gmail'))
     expect(nav.openIssue).not.toHaveBeenCalled()
     expect(nav.navigate).toHaveBeenCalledWith({ href: '/inbox?item=inbox-1' })
+  })
+
+  it('shows completion against non-cancelled work and priority shares of all tasks', async () => {
+    renderDashboard({ agentCount: 1 })
+    expect(
+      await screen.findByRole('heading', { name: 'Overview' }),
+    ).toBeTruthy()
+    expect(
+      screen
+        .getByRole('meter', { name: 'Completed work' })
+        .getAttribute('aria-valuenow'),
+    ).toBe('25')
+    expect(screen.getByText('cancelled').textContent).toContain(
+      'excluded from total',
+    )
+    expect(screen.getByText('All 10 tasks')).toBeTruthy()
+    expect(screen.getByText('10%')).toBeTruthy()
+    expect(screen.getByText('90%')).toBeTruthy()
+    const statusPanel = screen
+      .getByRole('heading', { name: 'Issues by status' })
+      .closest('section')
+    const segments = statusPanel?.querySelectorAll('[aria-hidden="true"] > div')
+    expect(
+      Array.from(segments ?? []).map((segment) =>
+        segment.getAttribute('style'),
+      ),
+    ).toEqual([
+      expect.stringContaining('width: 25%'),
+      expect.stringContaining('width: 50%'),
+      expect.stringContaining('width: 25%'),
+    ])
+  })
+
+  it('keeps tasks and activity before agents and connections, with working resource links', async () => {
+    renderDashboard({ agentCount: 1 })
+    await screen.findByRole('heading', { name: 'Connections' })
+    expect(
+      screen
+        .getAllByRole('heading', { level: 2 })
+        .map((heading) => heading.textContent),
+    ).toEqual([
+      'Issues by status',
+      'Issues by priority',
+      'Recent tasks',
+      'Recent activity',
+      'Agents',
+      'Connections',
+    ])
+    fireEvent.click(
+      screen.getByRole('button', { name: /Agents.*skills available/ }),
+    )
+    expect(nav.navigate).toHaveBeenCalledWith({ to: '/agents' })
+    fireEvent.click(screen.getByRole('button', { name: /GitHub/ }))
+    expect(nav.openConnections).toHaveBeenCalled()
   })
 })

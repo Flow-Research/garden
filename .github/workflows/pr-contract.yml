@@ -28,6 +28,11 @@ jobs:
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 22
+          # This job runs a dependency-free script and never creates a pnpm store.
+          package-manager-cache: false
+
+      - name: Test PR contract rules
+        run: pnpm test:pr-contract
 
       - name: Check PR contract
         run: pnpm verify:pr
