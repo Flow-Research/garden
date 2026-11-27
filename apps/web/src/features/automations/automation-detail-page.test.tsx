@@ -92,7 +92,7 @@ const TRIGGER = {
 
 let queryClient: QueryClient
 
-function renderPage(onDeleted = vi.fn()) {
+function renderPage(onDeleted = vi.fn(), runs: AutomationRun[] = []) {
   queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Infinity },
@@ -102,10 +102,10 @@ function renderPage(onDeleted = vi.fn()) {
   const detail: AutomationDetailResponse = {
     automation: AUTOMATION,
     triggers: [TRIGGER],
-    runs: [],
+    runs,
   }
   queryClient.setQueryData(automationKeys.detail(WS_ID, 'auto-1'), detail)
-  queryClient.setQueryData(automationKeys.runs(WS_ID, 'auto-1', false), [])
+  queryClient.setQueryData(automationKeys.runs(WS_ID, 'auto-1', false), runs)
   queryClient.setQueryData(workspaceKeys.agents(WS_ID), [])
   render(
     <QueryClientProvider client={queryClient}>
@@ -217,6 +217,44 @@ describe('AutomationDetailPage pause', () => {
 })
 
 describe('AutomationDetailPage Decide card', () => {
+  it('shows typed failure copy and preserves legacy failure text', async () => {
+    const run = (
+      id: string,
+      failure: AutomationRun['failure'],
+      reason: string,
+    ): AutomationRun => ({
+      id,
+      automation_id: 'auto-1',
+      trigger_id: null,
+      source: 'manual',
+      status: 'failed',
+      run_id: id,
+      triggered_at: null,
+      completed_at: null,
+      failure_reason: reason,
+      failure,
+      trigger_payload: null,
+      created_at: null,
+      decide_analysis_run_ids: [],
+    })
+    renderPage(vi.fn(), [
+      run('typed', { cause: 'no_output' }, 'no_output'),
+      run('legacy', null, 'Legacy failure reason'),
+    ])
+
+    expect(
+      await screen.findByText(
+        /The automation finished without producing any output\./,
+      ),
+    ).toBeTruthy()
+    expect(
+      screen.getByText(
+        /Add more detail to the automation's instructions and run it again\./,
+      ),
+    ).toBeTruthy()
+    expect(screen.getByText('Legacy failure reason')).toBeTruthy()
+  })
+
   it('shows the Decide card for a run waiting on an analysis', async () => {
     const run = {
       id: 'run-1',
@@ -228,6 +266,7 @@ describe('AutomationDetailPage Decide card', () => {
       triggered_at: null,
       completed_at: null,
       failure_reason: null,
+      failure: null,
       trigger_payload: null,
       created_at: null,
       decide_analysis_run_ids: ['decide-1'],

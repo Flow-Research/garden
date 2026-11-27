@@ -33,7 +33,30 @@ When you assign an issue to an agent and start it, the work passes through four 
 
 Each agent gets at most one live run per issue. `startIssueRun` takes a Postgres advisory lock on the issue ID, then checks for a live run by the same agent before it inserts. A second start for that agent, from a double click, a retry, or another actor, returns `{ kind: 'already_running', runId }` with the existing run, and no second row or Workflow is created. A waiting run is resumed instead (`resumed`). The Workflow instance ID is the run ID, so retrying the runtime start for the same run cannot create a second instance. Different agents can each run on the same issue, for example after a comment mentions them.
 
-If the runtime start fails after the row is written, `markStartFailed` marks the run `failed` with the error, clears `issue.active_run_id`, and appends `issue_run:failed` with reason `workflow_start_failed`. The issue activity timeline shows that event as "agent run failed: <error>", and the Inbox lists the failed run.
+If the runtime start fails after the row is written, `markStartFailed` marks the run `failed` with cause `workflow_start_failed`, clears `issue.active_run_id`, and appends `issue_run:failed`. The timeline, active-run panel, Inbox, and chat transcript use the same failure cause and approved copy. They do not show raw runtime errors.
+
+## Failed runs show a cause and a next step
+
+`@garden/core/runs/failure` defines each issue run failure cause, its title, and its next step. `issue_run.error` stores only the cause code. A failed event stores `{ failure: PublicRunFailure }`. The active-run API returns `failure` instead of the row's `error` text. Runtime diagnostics stay in server logs.
+
+Readers parse older rows and event payloads at the boundary. A known legacy reason maps to its cause. Other legacy text maps to `unknown` and never appears in failure copy. A blocked run returns its agent-authored `blocked_reason` separately from failure data, because `mark_blocked` is a completed resolution rather than a failed run.
+
+| Cause | Title | Next step |
+| --- | --- | --- |
+| `subrequest_limit` | The answer got too long for one run. | Try again with a narrower request, or split the task. |
+| `output_cap_reached` | The agent ran out of room before finishing its answer. | Try again with a narrower request, or split the task. |
+| `run_token_budget_exceeded` | The run hit its limit of 2 million tokens. | Split the task into smaller issues, or narrow its scope, then try again. |
+| `model_unavailable` | The AI model didn't respond. | Try again in a few minutes. |
+| `model_retired` | The AI model this agent uses was retired by its provider. | Ask a workspace admin to choose a new model. |
+| `tool_failed` | `{Connector name} failed during the run.` If no name is available: `A connected tool failed during the run.` | Auth: `Reconnect {Connector name} in Connectors.` Permission: `Check what {Connector name} is allowed to access.` Rate limit: `Wait a few minutes and try again.` Other: `Try again.` |
+| `turn_timed_out` | The run took too long and was stopped. | Try again, or split the task. |
+| `turn_ended_without_resolution`, `no_resolution` | The agent finished without completing the task or asking a question. | Add more detail to the task and run it again. |
+| `no_output` | The automation finished without producing any output. | Add more detail to the automation's instructions and run it again. |
+| `brain_output_authority_denied` | The agent wasn't allowed to save its results. | Ask a workspace admin to check the agent's permissions. |
+| `approval_stale` | The run waited too long for approval and was closed. | Start the run again when you're ready to approve. |
+| `turn_aborted`, `turn_skipped`, `workflow_ended_with_live_run`, `workflow_start_failed`, `unknown` | The run stopped for an unexpected reason. | Try again. If it keeps happening, tell your workspace admin. |
+
+The Inbox may keep the `Run failed` label. Its body uses the failure title. A timeline row uses `agent run stopped: {title} {next step}`.
 
 `cancelIssueRun` sets `issue_run.cancel_requested_at` and sends a cancel event to the run's Workflow instance, which finalizes the row. Both `POST /api/issues/:id/cancel` and an issue status or assignee change that stops live runs go through it.
 
