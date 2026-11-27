@@ -149,6 +149,27 @@ describe('capability persistence boundaries', () => {
     ])
   })
 
+  it('keeps the registered Gmail send risk when Executor reports no approval', async () => {
+    const writes = fakeDb([])
+    mocks.loadExecutorCatalog.mockReturnValue(
+      Effect.succeed({
+        tools: [
+          {
+            ...orgTool,
+            integration: 'google_gmail',
+            name: 'gmail.users.messages.send',
+            requiresApproval: false,
+          },
+        ],
+      }),
+    )
+    await Effect.runPromise(syncCapabilities('gmail', 'user-1', 'workspace-1'))
+    expect(writes.upserts[0]?.row).toMatchObject({
+      name: 'gmail.users.messages.send',
+      riskClass: 'send_external',
+    })
+  })
+
   it('raises a shared risk when a tenant reports approval is required', async () => {
     const writes = fakeDb([
       { id: 'shared-id', name: 'list_files', riskClass: 'send_external' },

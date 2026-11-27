@@ -251,6 +251,12 @@ const toCapabilityValue = Effect.fn('CapabilitySync.toCapabilityValue')(
       })
     }
 
+    const risks: RiskClass[] = ['destructive', 'send_external', 'write', 'read']
+    const riskClass =
+      risks.find(
+        (risk) =>
+          risk === args.riskOverride || risk === classification?.riskClass,
+      ) ?? 'ask'
     const inputSchema = args.tool.inputSchema ?? null
     return {
       id: crypto.randomUUID(),
@@ -266,7 +272,7 @@ const toCapabilityValue = Effect.fn('CapabilitySync.toCapabilityValue')(
         (isMcpConnector(connector) && connector.oauth
           ? connector.oauth.scopes
           : []),
-      riskClass: args.riskOverride ?? classification?.riskClass ?? 'ask',
+      riskClass,
     } satisfies typeof schema.capability.$inferInsert
   },
 )
