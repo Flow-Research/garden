@@ -372,17 +372,15 @@ async function resolveWritebackInvocation(args: {
         return Result.err(classifyConnectorError(response.error))
       const record = objectOrNull(response.value)
       const current = parseRepository(stringValue(record?.full_name))
-      if (
-        !current ||
-        current.owner.toLowerCase() !== linked.accountLogin.toLowerCase() ||
-        (repoId !== null && record?.id !== repoId)
-      ) {
+      if (!current || (repoId !== null && record?.id !== repoId)) {
         return Result.err(
           invalidState(
             'GitHub could not confirm this source repository under the connected account',
           ),
         )
       }
+      // callConnectorTool checks this resolved owner with resolveGithubWriteOwner
+      // before dispatch. It refreshes the installation when the saved login differs.
       ref = { ...ref, ...current }
     }
     return Result.ok({

@@ -4,6 +4,12 @@ import { Result } from 'better-result'
 import { GitHubApiError } from './github-repositories'
 import { reviewWorkProduct, workProductReviewBodySchema } from './work-products'
 
+const installationDetails = vi.hoisted(() => vi.fn())
+vi.mock('@garden/connectors/github-app', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@garden/connectors/github-app')>()),
+  getGitHubAppInstallation: installationDetails,
+}))
+
 const requestRepo = vi.hoisted(() => vi.fn())
 vi.mock('./github-repositories', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./github-repositories')>()),
@@ -275,10 +281,12 @@ async function makeApplyDb(args: {
   workProduct: Record<string, unknown>
   issueTeamId?: string | null
   linkedLogin?: string
+  bindingRepository?: string
   bindingMetadata?: Record<string, unknown>
   savedFileHistoryId?: string
 }) {
   const { schema } = await import('./db')
+  const bindingRepository = args.bindingRepository ?? 'Flow-Research/garden'
   const sets: Array<Record<string, unknown>> = []
   const inserts: InsertRow[] = []
   const tx = {
@@ -338,9 +346,9 @@ async function makeApplyDb(args: {
               issueId,
               connectorId: 'github',
               sourceKind: 'issue',
-              externalId: 'Flow-Research/garden#375',
-              externalUrl: 'https://github.com/Flow-Research/garden/issues/375',
-              displayRef: 'Flow-Research/garden#375',
+              externalId: `${bindingRepository}#375`,
+              externalUrl: `https://github.com/${bindingRepository}/issues/375`,
+              displayRef: `${bindingRepository}#375`,
               titleSnapshot: null,
               metadata: args.bindingMetadata ?? {},
               lastSyncedAt: null,
@@ -352,7 +360,7 @@ async function makeApplyDb(args: {
         if (table === schema.githubAppInstallation) {
           return queryRows([
             {
-              installationId: 1,
+              installationId: '1',
               accountLogin: args.linkedLogin ?? 'Flow-Research',
               status: 'active',
             },
@@ -421,6 +429,68 @@ async function runPrContract(pr: { title: string; body: string }) {
 }
 
 describe('approved connector reply after a GitHub account rename', () => {
+  beforeEach(() => {
+    installationDetails
+      .mockReset()
+      .mockResolvedValue(
+        Result.err(new Error('Installation lookup unavailable')),
+      )
+  })
+
+  it.each([
+    ['Renamed', true],
+    ['AnotherAccount', false],
+  ] as const)(
+    'checks a stale installation login against %s before posting',
+    async (currentLogin, allowed) => {
+      githubCalls.length = 0
+      installationDetails.mockResolvedValueOnce(
+        Result.ok({ account: { login: currentLogin } }),
+      )
+      requestRepo
+        .mockReset()
+        .mockResolvedValueOnce(
+          Result.ok({ id: 27, full_name: 'Renamed/garden' }),
+        )
+      const { db } = await makeApplyDb({
+        linkedRepos: [],
+        linkedLogin: 'Flow-Research',
+        bindingRepository: 'Renamed/garden',
+        bindingMetadata: { github_repo_id: 27 },
+        workProduct: { ...approvedWorkProduct({}), type: 'connector_reply' },
+      })
+      state.db = db
+      const result = await reviewWorkProduct({
+        actorUserId: agentId,
+        env: {} as never,
+        input: { action: 'apply' },
+        workProductId,
+        workspaceId,
+      })
+      expect(requestRepo).toHaveBeenCalledWith({
+        operation: 'github.getRepository',
+        path: '/repositories/27',
+      })
+      expect(installationDetails).toHaveBeenCalledWith(
+        expect.objectContaining({ installationId: '1' }),
+      )
+      expect(result.isOk()).toBe(allowed)
+      expect(githubCalls).toEqual(
+        allowed
+          ? [
+              {
+                name: 'add_issue_comment',
+                input: expect.objectContaining({
+                  owner: 'Renamed',
+                  repo: 'garden',
+                  issue_number: 375,
+                }),
+              },
+            ]
+          : [],
+      )
+    },
+  )
   it('preserves a temporary lookup failure and does not send a comment', async () => {
     githubCalls.length = 0
     requestRepo
