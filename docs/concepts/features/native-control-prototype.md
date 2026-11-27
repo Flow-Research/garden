@@ -75,8 +75,7 @@ Leaving the view disconnects locally. It does not cancel the server turn.
 Interrupted delivery stays unconfirmed until the member reloads and inspects history.
 
 The server checks private chat ownership when the connection opens.
-Its current chat runtime does not independently check the initiating session on every later WebSocket frame.
-The native checks do not close this server enforcement gap. Security qualification remains open.
+The server rechecks the initiating session on private browser and native chat frames. Delayed requests retain their originating member. Physical-device qualification and a deployed socket test remain open.
 Tool details, approvals, attachments, and offline chat history remain separate unfinished native surfaces.
 Private chat drafts can be restored and edited offline. Drafts never send automatically.
 

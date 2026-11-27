@@ -20,7 +20,7 @@ Do not use production task changes for the prototype.
 | Owned chat creation             | One explicit POST creates the owned thread, and unknown acknowledgement reconciles by reads | Real server and both native receipts                           |
 | Native text chat                | Current access precedes each send, history precedes first send, and SDK text streams        | Actual SDK tests plus real server/device journeys              |
 | Chat interruption               | Client disconnect does not cancel or replay, and delivery remains unconfirmed               | Interrupted stream, reconnect, and server receipts             |
-| Chat authority after connection | Server refuses revoked sessions on every consequential frame                                | Server enforcement repair and adversarial native/server tests  |
+| Chat authority after connection | Server refuses revoked sessions on every consequential frame                                | Server frame and delayed-request regressions. Native-device socket proof remains open  |
 | Unavailable host transport      | Controls stay unavailable without a real capability                                         | Visible state and zero mutation requests                       |
 | Credential storage              | Credentials use device-secure storage and origin namespaces                                 | Device storage and logout inspection                           |
 | Accessibility                   | Labels, focus, keyboard, and content work                                                   | VoiceOver and TalkBack journeys                                |
