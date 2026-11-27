@@ -90,5 +90,5 @@ To repeat the local browser check:
 5. Send the SDK's `cf_agent_use_chat_request` frame with a new request ID and one user text message. Confirm that the local model receives the request.
 6. Check the response frames for that request ID. Confirm that the known model text arrives before the final frame with `done: true`.
 
-This run used the local model and temporary data. Deferred tool decisions, recovery and the deployed service still require separate browser checks.
+A second local run used two signed-in Chromium sessions. The chat owner asked the default agent to propose a teammate. A different workspace administrator denied the proposal through the Inbox API. The owner reopened the private thread and clicked **Resume chat**. The runtime completed the continuation. The run used thread `54f7cd01-005d-486e-81bb-950462ad01db`, proposal `d0233482-d75d-49d2-95c9-40fe346e0f24` and continuation `6a07fd0c-a0f8-4cb2-84b6-159ca1d89ec1`. The fixture supplied workspace membership and a loopback model. Tool decisions for connectors, recovery and the deployed service still require separate browser checks.
 The [request decision](../../../../docs/decisions/2026-11-chat-request-authority.md) lists the known design limits.

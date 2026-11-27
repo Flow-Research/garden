@@ -60,6 +60,13 @@ async function checkProposalDecision(
           schema.agent,
           eq(schema.agent.id, schema.agentProposalRequest.pendingAgentId),
         )
+        .innerJoin(
+          schema.member,
+          and(
+            eq(schema.member.userId, schema.agentProposalRequest.resolvedBy),
+            eq(schema.member.organizationId, principal.workspaceId),
+          ),
+        )
         .where(
           and(
             eq(schema.agentProposalRequest.id, proposal.permissionRequestId),
@@ -69,7 +76,6 @@ async function checkProposalDecision(
               schema.agentProposalRequest.pendingAgentId,
               proposal.pendingAgentId,
             ),
-            eq(schema.agentProposalRequest.resolvedBy, principal.userId),
             eq(
               schema.agentProposalRequest.status,
               proposal.approved ? 'approved' : 'denied',

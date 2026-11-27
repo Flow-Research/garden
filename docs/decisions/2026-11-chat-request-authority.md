@@ -57,6 +57,8 @@ Automatic compaction retains request context through `AsyncLocalStorage` and gua
 This storage keeps each asynchronous invocation separate.
 
 A tool decision requires the current Garden permission rows of that tool call and the matching retained SDK decision.
+An owner can resume a private chat after a workspace approver decides an agent proposal in the Inbox. Garden checks the recorded outcome, thread, agent, proposed agent and the resolver's current workspace membership. The owner's browser sends the recorded decision once. A continuation message retains the proposal ID so the client can recognize it after a reconnect.
+
 The runtime records the chat thread on each connector approval row that a chat turn raises.
 The approval routes decide who can resolve a row: a workspace approver or the owner of the Team whose policy held the call.
 The thread owner resolves in the chat only with one of those two authorities.
