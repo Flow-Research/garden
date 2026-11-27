@@ -226,8 +226,6 @@ async function checkToolDecision(
       db
         .select({
           status: schema.permissionRequest.status,
-          threadId: schema.permissionRequest.threadId,
-          agentId: schema.permissionRequest.agentId,
           live: sql<boolean>`${schema.permissionRequest.expiresAt} is null or ${schema.permissionRequest.expiresAt} > clock_timestamp()`,
           resolverIsMember: sql<boolean>`exists (
             select 1 from ${schema.member}
@@ -238,6 +236,8 @@ async function checkToolDecision(
         .from(schema.permissionRequest)
         .where(
           and(
+            eq(schema.permissionRequest.threadId, authority.threadId),
+            eq(schema.permissionRequest.agentId, authority.agentId),
             eq(schema.permissionRequest.toolCallId, toolCallId),
             eq(schema.permissionRequest.kind, 'connector_write'),
           ),
@@ -247,11 +247,6 @@ async function checkToolDecision(
   })
   return result.andThen((rows) => {
     if (rows.length === 0 && expected === undefined) return Result.ok(undefined)
-    const inScope = rows.every(
-      (row) =>
-        row.threadId === authority.threadId &&
-        row.agentId === authority.agentId,
-    )
     const decided = (status: 'approved' | 'denied') =>
       rows.filter(
         (row) => row.status === status && row.live && row.resolverIsMember,
@@ -259,8 +254,7 @@ async function checkToolDecision(
     if (
       rows.length === 0 ||
       rows.length > maxToolDecisionRows ||
-      expected === undefined ||
-      !inScope
+      expected === undefined
     )
       return Result.err(browserChatRefused())
     // An effect needs every row approved. One recorded denial settles a refusal.

@@ -2,7 +2,7 @@ import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
 import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
-import { and, desc, eq, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
 import { getConnectorById } from '@garden/connectors'
 import { getConnectorByExecutorSlug } from '@garden/connectors/registry'
@@ -1367,6 +1367,9 @@ export class RuntimeMcpController {
     }
 
     const toolArgsSignature = canonicalJsonString(args.toolArgs)
+    const threadScope = identityResult.value.chatThreadId
+      ? eq(schema.permissionRequest.threadId, identityResult.value.chatThreadId)
+      : isNull(schema.permissionRequest.threadId)
     const existingRequestResult = await Result.tryPromise({
       try: async () =>
         db
@@ -1382,6 +1385,7 @@ export class RuntimeMcpController {
                 identityResult.value.agentId,
               ),
               eq(schema.permissionRequest.capabilityId, capability.id),
+              threadScope,
               eq(schema.permissionRequest.toolCallId, args.toolCallId),
             ),
           )
@@ -1493,6 +1497,7 @@ export class RuntimeMcpController {
                 identityResult.value.agentId,
               ),
               eq(schema.permissionRequest.capabilityId, capability.id),
+              threadScope,
             ),
           )
           .orderBy(desc(schema.permissionRequest.requestedAt))
