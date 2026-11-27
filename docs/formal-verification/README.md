@@ -1,13 +1,15 @@
-# Formal verification
+---
+title: Formal verification plans
+description: Plans for bounded checks of Garden run and permission behavior.
+status: proposed
+owner: '@Umoren'
+last_reviewed: 2026-11-27
+---
 
-These documents describe formal checks that Garden may add for high-risk state
-and permission behavior. They are plans until a project-local verification
-skill and a runnable check exist.
+# Formal verification plans
 
-Formal verification does not replace tests. It checks a stated property across
-every state transition in a bounded model or across every input that the chosen
-verifier can prove.
+These plans describe checks for run state and permission behavior. A plan is
+not a proof. A runnable model and a replay against production entry points are
+needed before a result can support a product claim.
 
-## Plans
-
-- [Issue-run lifecycle and approval safety](./issue-run-approval.md)
+- [Issue run and approval verification](./issue-run-approval.md)

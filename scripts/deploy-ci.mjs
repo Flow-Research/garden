@@ -8,7 +8,7 @@ import {
  * Workers Builds uses separate production and non-production triggers. Its
  * non-production trigger accepts every other branch, so skip branches without
  * a persistent target before typechecks or migrations:
- * staging owns shared Postgres migrations; dev only deploys its own resources.
+ * staging and dev each migrate their own Postgres database before deploying.
  * Preview remains manual; missing branch metadata still fails configuration.
  * Reference: https://developers.cloudflare.com/workers/ci-cd/builds/configuration/
  */

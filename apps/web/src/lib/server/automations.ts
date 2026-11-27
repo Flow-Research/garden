@@ -1,10 +1,11 @@
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { CronExpressionParser } from 'cron-parser'
 import {
   cancelAutomationRun,
   startAutomationRun,
 } from '@garden/server/automations/run-service'
+import { runFailureCauseSchema } from '@garden/core/runs/failure'
 import { getDb, requireReturnedRow, schema, type Db } from '@/lib/server/db'
 import type { AppEnv } from '@/lib/server/env'
 
@@ -222,10 +223,12 @@ export function toAutomationTrigger(row: AutomationTriggerRow) {
 }
 
 export function toAutomationRun(
-  row: AutomationRunRow,
+  row: AutomationRunRow & { decideAnalysisRunIds?: readonly string[] },
   options: { debug?: boolean } = {},
 ) {
   const resultJson = objectOrNull(row.resultJson)
+  const cause = runFailureCauseSchema.safeParse(row.failureReason)
+  const failure = cause.success ? { cause: cause.data } : null
   const run = {
     id: row.id,
     automation_id: row.automationId,
@@ -236,9 +239,11 @@ export function toAutomationRun(
     triggered_at: dateToIso(row.triggeredAt),
     completed_at: dateToIso(row.completedAt),
     failure_reason: row.failureReason,
+    failure,
     trigger_payload: row.triggerPayload,
     created_at: dateToIso(row.createdAt),
     result_json: resultJson,
+    decide_analysis_run_ids: [...(row.decideAnalysisRunIds ?? [])],
   }
 
   if (!options.debug) return run
@@ -444,10 +449,11 @@ export async function uninstallAutomationSchedules(
   })
   if (rowsResult.isErr()) return Result.err(rowsResult.error)
 
-  for (const row of rowsResult.value) {
-    const uninstallResult = await uninstallScheduleTrigger(env, row.id)
-    if (uninstallResult.isErr()) return Result.err(uninstallResult.error)
-  }
+  const uninstallResults = await Promise.all(
+    rowsResult.value.map((row) => uninstallScheduleTrigger(env, row.id)),
+  )
+  const failedUninstall = uninstallResults.find((result) => result.isErr())
+  if (failedUninstall) return Result.err(failedUninstall.error)
   const clearResult = await Result.tryPromise({
     try: async () => {
       await db
@@ -486,15 +492,17 @@ export async function syncAutomationSchedules(
   })
   if (rowsResult.isErr()) return Result.err(rowsResult.error)
 
-  for (const trigger of rowsResult.value) {
-    const installResult = await installScheduleTrigger({
-      env,
-      trigger,
-      automation,
-    })
-    if (installResult.isErr()) return Result.err(installResult.error)
-    if (installResult.value) {
-      const updateResult = await Result.tryPromise({
+  // Each trigger lives in its own Durable Object, so install them together.
+  const syncResults = await Promise.all(
+    rowsResult.value.map(async (trigger) => {
+      const installResult = await installScheduleTrigger({
+        env,
+        trigger,
+        automation,
+      })
+      if (installResult.isErr()) return Result.err(installResult.error)
+      if (!installResult.value) return Result.ok()
+      return await Result.tryPromise({
         try: async () => {
           await db
             .update(schema.automationTrigger)
@@ -503,9 +511,10 @@ export async function syncAutomationSchedules(
         },
         catch: (cause) => dbError('touch automation trigger', cause),
       })
-      if (updateResult.isErr()) return Result.err(updateResult.error)
-    }
-  }
+    }),
+  )
+  const failedSync = syncResults.find((result) => result.isErr())
+  if (failedSync) return Result.err(failedSync.error)
   return Result.ok()
 }
 
@@ -761,19 +770,50 @@ export async function listAutomationRuns(args: {
   source?: string
   limit?: number
   offset?: number
-}): Promise<ResultValue<AutomationRunRow[], AutomationApiError>> {
+}): Promise<
+  ResultValue<
+    Array<AutomationRunRow & { decideAnalysisRunIds: string[] }>,
+    AutomationApiError
+  >
+> {
   const db = await getDb(args.env)
   const conditions = [eq(schema.automationRun.automationId, args.automationId)]
   if (args.source) conditions.push(eq(schema.automationRun.source, args.source))
   const result = await Result.tryPromise({
-    try: async () =>
-      await db
+    try: async () => {
+      const runs = await db
         .select()
         .from(schema.automationRun)
         .where(and(...conditions))
         .orderBy(desc(schema.automationRun.triggeredAt))
         .limit(args.limit ?? 50)
-        .offset(args.offset ?? 0),
+        .offset(args.offset ?? 0)
+      // The run page shows a Decide card per analysis a run started, so the
+      // listed runs carry their analysis IDs. One indexed lookup covers the
+      // whole page of runs.
+      const analyses =
+        runs.length === 0
+          ? []
+          : await db
+              .select({
+                id: schema.decideAnalysisRun.id,
+                automationRunId: schema.decideAnalysisRun.automationRunId,
+              })
+              .from(schema.decideAnalysisRun)
+              .where(
+                inArray(
+                  schema.decideAnalysisRun.automationRunId,
+                  runs.map((run) => run.id),
+                ),
+              )
+              .orderBy(asc(schema.decideAnalysisRun.createdAt))
+      return runs.map((run) => ({
+        ...run,
+        decideAnalysisRunIds: analyses
+          .filter((analysis) => analysis.automationRunId === run.id)
+          .map((analysis) => analysis.id),
+      }))
+    },
     catch: (cause) => dbError('list automation runs', cause),
   })
   if (result.isErr()) return Result.err(result.error)

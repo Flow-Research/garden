@@ -36,6 +36,7 @@ export type AppEnv = {
   Sandbox: RequiredEnvBinding<'Sandbox'>
   RUN_WORKFLOW: RequiredEnvBinding<'RUN_WORKFLOW'>
   DECIDE_ANALYSIS_WORKFLOW: RequiredEnvBinding<'DECIDE_ANALYSIS_WORKFLOW'>
+  GITHUB_REPO_IMPORT_WORKFLOW: RequiredEnvBinding<'GITHUB_REPO_IMPORT_WORKFLOW'>
   ENVIRONMENT?: 'development' | 'test' | 'staging' | 'production'
   GITHUB_CLIENT_ID?: string
   GITHUB_CLIENT_SECRET?: string
@@ -45,6 +46,7 @@ export type AppEnv = {
   GITHUB_WEBHOOK_SECRET?: string
   GOOGLE_AUTH_CLIENT_ID?: string
   GOOGLE_AUTH_CLIENT_SECRET?: string
+  WORKSTREAM_MCP_CLIENT_ID?: string
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
   SLACK_CLIENT_ID?: string

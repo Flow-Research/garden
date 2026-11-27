@@ -18,11 +18,18 @@ export {
 export type {
   DecideAnalysisProgress,
   DecideAnalysisSnapshot,
+  DecideAnalysisStartOutcome,
   DecideAnalysisStatus,
   DecideAnalysisWorkflowBinding,
   DecideAnalysisWorkflowParams,
 } from './decide-analysis-types'
 export { DECIDE_ANALYSIS_STATUSES } from './decide-analysis-types'
+export {
+  decideGeneratedFiles,
+  decideSessionIdFromResult,
+  type DecideGeneratedFile,
+} from './decide-analysis-result'
+export { markdownToDocx } from './documents/markdown-docx'
 export { createAgentModel } from './model'
 export {
   buildContentDisposition,

@@ -18,6 +18,8 @@ export interface Member {
   workspace_id: string
   user_id: string
   role: MemberRole
+  github_user_id: string | null
+  github_login: string | null
   created_at: string
 }
 
@@ -35,6 +37,8 @@ export interface MemberWithUser {
   workspace_id: string
   user_id: string
   role: MemberRole
+  github_user_id: string | null
+  github_login: string | null
   created_at: string
   name: string
   email: string

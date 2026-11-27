@@ -487,3 +487,166 @@ describe('canonical DOCX document tools', () => {
     DOCX_TEST_TIMEOUT_MS,
   )
 })
+
+describe('document read failures', () => {
+  it('keeps the Postgres cause and code that drizzle wraps', async () => {
+    const pgError = Object.assign(
+      new Error('relation "chat_thread" does not exist'),
+      { code: '42P01' },
+    )
+    const query = {} as QueryChain
+    query.from = () => query
+    query.innerJoin = () => query
+    query.where = () => query
+    query.limit = async () => {
+      throw new Error('Failed query: select "id" from "chat_thread"', {
+        cause: pgError,
+      })
+    }
+    mocks.getPooledDb.mockReturnValue({ select: () => query })
+
+    const result = await readDocument({
+      context: {
+        databaseUrl: 'postgres://test',
+        documentArtifacts: documentAuthority(),
+        workspace: workspaceReading(new Uint8Array()),
+        threadId: 'thread-1',
+      },
+      documentId: 'document-1',
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('Failed query')
+    expect(result.error).toContain('relation "chat_thread" does not exist')
+    expect(result.error).toContain('42P01')
+  })
+})
+
+/** Builds a minimal valid PDF with one Helvetica text line per page. */
+function pdfWithPages(pages: string[]) {
+  const pageIds = pages.map((_, i) => 3 + i * 2)
+  const fontId = 3 + pages.length * 2
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pages.length} >>`,
+    ...pages.flatMap((text, i) => {
+      const stream = text ? `BT /F1 18 Tf 72 720 Td (${text}) Tj ET` : ''
+      return [
+        `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents ${4 + i * 2} 0 R /Resources << /Font << /F1 ${fontId} 0 R >> >> >>`,
+        `<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+      ]
+    }),
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ]
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((body, i) => {
+    offsets.push(pdf.length)
+    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`
+  })
+  const xref = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  pdf += offsets
+    .map((o) => `${String(o).padStart(10, '0')} 00000 n \n`)
+    .join('')
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`
+  return new TextEncoder().encode(pdf)
+}
+
+/** Reads one uploaded document of the given type through `readDocument`. */
+async function readUploaded(file: {
+  filename: string
+  fileType: string
+  bytes: Uint8Array
+}) {
+  mocks.getPooledDb.mockReturnValue(
+    queryDatabase(
+      [
+        {
+          threadId: 'thread-1',
+          workspaceId: 'workspace-1',
+          ownerUserId: 'user-1',
+        },
+      ],
+      [
+        {
+          id: 'document-1',
+          filename: file.filename,
+          fileType: file.fileType,
+          ownerUserId: 'user-1',
+          storagePath: `/documents/${file.filename}`,
+          versionId: 'version-1',
+          versionNumber: 1,
+        },
+      ],
+    ),
+  )
+  return readDocument({
+    context: {
+      databaseUrl: 'postgres://test',
+      documentArtifacts: documentAuthority(),
+      workspace: workspaceReading(file.bytes),
+      threadId: 'thread-1',
+    },
+    documentId: 'document-1',
+  })
+}
+
+describe('PDF document reads', () => {
+  it('extracts text per page with page markers', async () => {
+    const result = await readUploaded({
+      filename: 'Report.pdf',
+      fileType: 'pdf',
+      bytes: pdfWithPages(['Quarterly revenue grew', 'Hiring plan']),
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      kind: 'text',
+      media_type: 'application/pdf',
+      text: '[Page 1]\nQuarterly revenue grew\n\n[Page 2]\nHiring plan',
+    })
+  })
+
+  it('reports a PDF without a text layer as unreadable text, with recovery steps', async () => {
+    const result = await readUploaded({
+      filename: 'Scan.pdf',
+      fileType: 'pdf',
+      bytes: pdfWithPages(['']),
+    })
+
+    expect(result).toMatchObject({ ok: false, reason: 'no_text' })
+    expect(result.error).toContain('Scan.pdf has no extractable text')
+    expect(result.error).toContain('paste the relevant text')
+  })
+
+  it('replaces parser errors for a damaged PDF with recovery steps', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const result = await readUploaded({
+      filename: 'Broken.pdf',
+      fileType: 'pdf',
+      bytes: new TextEncoder().encode('%PDF-1.4 not really a pdf'),
+    })
+
+    expect(result).toMatchObject({ ok: false, reason: 'unreadable' })
+    expect(result.error).toMatch(
+      /^Broken\.pdf could not be parsed\..*upload a text-based copy/,
+    )
+    expect(warn).toHaveBeenCalledWith(
+      '[documents] text extraction failed',
+      expect.objectContaining({ reason: 'unreadable', fileType: 'pdf' }),
+    )
+    warn.mockRestore()
+  })
+
+  it('explains unsupported formats instead of failing silently', async () => {
+    const result = await readUploaded({
+      filename: 'Legacy.doc',
+      fileType: 'doc',
+      bytes: new Uint8Array([0xd0, 0xcf]),
+    })
+
+    expect(result).toMatchObject({ ok: false, reason: 'unsupported' })
+    expect(result.error).toContain('Legacy.doc is a doc file')
+  })
+})

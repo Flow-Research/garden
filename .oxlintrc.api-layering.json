@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "import"],
+  "categories": {
+    "correctness": "off"
+  },
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.output/**",
+    "**/.tanstack/**",
+    "**/*.test.ts",
+    "**/routeTree.gen.ts",
+    "**/worker-configuration.d.ts"
+  ],
+  "rules": {
+    "no-restricted-imports": [
+      "warn",
+      {
+        "paths": [
+          {
+            "name": "drizzle-orm",
+            "message": "API routes must stay thin. Move Drizzle into apps/web/src/lib/server/queries/{domain}/ (see docs/decisions/2026-11-09-api-layering.md)."
+          },
+          {
+            "name": "@/lib/server/db",
+            "message": "API routes must stay thin. Pass db from AppRequestContext into queries/services instead of importing @/lib/server/db (see docs/decisions/2026-11-09-api-layering.md)."
+          }
+        ],
+        "patterns": [
+          {
+            "group": ["drizzle-orm/**"],
+            "message": "API routes must stay thin. Move Drizzle into apps/web/src/lib/server/queries/{domain}/ (see docs/decisions/2026-11-09-api-layering.md)."
+          },
+          {
+            "group": ["@garden/db", "@garden/db/**"],
+            "message": "API routes must stay thin. Import @garden/db only from queries/services, not routes/api (see docs/decisions/2026-11-09-api-layering.md)."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -64,17 +64,19 @@ async function folderDetailResponse({
   workspaceContext: { workspaceId: string; session: { user: { id: string } } }
   folder: { id: string }
 }): Promise<Response> {
-  const memberIds = await listBrainFolderFileIds({
-    env: appContext.env,
-    workspaceId: workspaceContext.workspaceId,
-    folderId: folder.id,
-  })
-  const fullFolder = await getBrainFolder({
-    env: appContext.env,
-    workspaceId: workspaceContext.workspaceId,
-    userId: workspaceContext.session.user.id,
-    folderId: folder.id,
-  })
+  const [memberIds, fullFolder] = await Promise.all([
+    listBrainFolderFileIds({
+      env: appContext.env,
+      workspaceId: workspaceContext.workspaceId,
+      folderId: folder.id,
+    }),
+    getBrainFolder({
+      env: appContext.env,
+      workspaceId: workspaceContext.workspaceId,
+      userId: workspaceContext.session.user.id,
+      folderId: folder.id,
+    }),
+  ])
   if (fullFolder === null) return notFound('Folder not found')
 
   const resolved = await loadBrainItemsByIds({

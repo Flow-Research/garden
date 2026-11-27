@@ -19,16 +19,32 @@ import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
 import type { AgentPermissions } from '@garden/core/agents/permissions'
 import {
+  runFailure,
+  toPublicRunFailure,
+  type RunFailure,
+} from '@garden/core/runs/failure'
+import {
   errorFields,
   type GardenLogFields,
   type GardenLogger,
 } from '@garden/observability/logger'
-import { evaluateRuntimeToolPermission } from './chat-permissions'
+import {
+  evaluateExecutorCallTeamPolicy,
+  evaluateRuntimeToolPermission,
+  isTeamToolAllowed,
+} from './chat-permissions'
+import {
+  NO_TEAM_AGENT_POLICY,
+  type EffectiveTeamAgentPolicy,
+} from '@garden/core/teams/agent-policy'
+import { loadTeamAgentPolicyForUser } from '@garden/core/teams/agent-policy-store'
 import {
   type AgentModelEnv,
   createAgentModel,
   resolveAgentModelProfile,
 } from './model'
+import { createRetiredModelTracker } from './model-retirement'
+import { classifyRunFailure as classifyRuntimeFailure } from './run-failure-matchers'
 import { AiObservation, type AiTurnIdentity } from './ai-observation'
 import {
   classifyGardenContextOverflow,
@@ -38,7 +54,6 @@ import {
 import {
   RuntimeMcpConnectionPreparer,
   RuntimeMcpController,
-  type McpHost,
   type RuntimeMcpError,
   type RuntimeMcpServerStates,
   type ThreadRuntimeIdentity,
@@ -46,6 +61,17 @@ import {
 import { mcpRuntimeConfig } from './mcp-runtime-config'
 import { assembleFoundationPrompt } from './prompt'
 import { loadRuntimeSkillSources } from './skills'
+import { isHistoryUnverifiedMessage } from './brain-run-authority'
+import {
+  RUN_TOKEN_BUDGET_EXCEEDED,
+  parsePersistedRunUsage,
+  runTokenBudgetReached,
+  runTokenBudgetStopCondition,
+} from './run-token-budget'
+import {
+  isOutputCapFinishReason,
+  RUN_OUTPUT_CAP_REACHED,
+} from './run-output-cap'
 import {
   addStepUsage,
   normalizeRunUsage,
@@ -56,7 +82,10 @@ import {
   type RunWorkflowBinding,
   type RunWorkflowTurnCompleteEvent,
   type RunWorkflowTurnStartResult,
+  type RunWorkflowWait,
 } from './run-workflow'
+import type { DecideAnalysisOwner } from './decide-analysis-types'
+import { runExceededTimeout } from './run-timeout'
 import { latestUserText, loadBrainInjection } from './brain-injection'
 import { logAgentSocketError } from './websocket-errors'
 import {
@@ -64,6 +93,7 @@ import {
   errorMessage,
   isTerminalSubmissionStatus,
   operationFailedMessage,
+  unresolvedSettledTurnReason,
 } from './runtime-utils'
 
 /**
@@ -110,6 +140,7 @@ export type RunTurnInput = {
 
 export type RunSubAgentErrorCode =
   | 'database_failed'
+  | 'history_unverified'
   | 'invalid_state'
   | 'not_found'
   | 'runtime_failed'
@@ -127,6 +158,11 @@ export type RunSubAgentErrorFields = {
  */
 export type RunSubAgentError = Error &
   Readonly<RunSubAgentErrorFields> & { readonly _tag: string }
+
+/** `history_unverified` only reaches a caller that asked for it with `'report'`. */
+export type RunFacetTurnStartResult =
+  | RunWorkflowTurnStartResult
+  | { kind: 'history_unverified' }
 
 /**
  * Thrown from `beforeTurn` when a boundary guard (cancellation, timeout or a
@@ -171,7 +207,9 @@ type DriveTurnResult =
       submissionId: string
     }
 
-type BoundaryGuardResult = 'continue' | 'cancelled' | 'timeout'
+type BoundaryGuardResult =
+  | { kind: 'continue'; usage: RunUsageSnapshot | null }
+  | { kind: 'cancelled' | 'timeout' | typeof RUN_TOKEN_BUDGET_EXCEEDED }
 
 const DEFAULT_RUN_TIMEOUT_SEC = 2 * 60 * 60
 const THINK_TURN_MAX_RETRIES = 1
@@ -220,19 +258,17 @@ export abstract class RunSubAgentBase<
 
   protected currentRunId: string | null = null
   protected currentPermissions: AgentPermissions | null = null
+  /** Team policies of the user who started the run, reloaded every turn. */
+  protected currentTeamPolicy: EffectiveTeamAgentPolicy = NO_TEAM_AGENT_POLICY
   protected aggUsage: RunUsageSnapshot | null = null
+  /** Set when the run token budget, not the model or a terminal tool, ended the turn. */
+  private stoppedByTokenBudget = false
+  private stoppedByOutputCap = false
   protected readonly aiObservation = new AiObservation(this.ctx, this.env)
-  private readonly mcpConnectionPreparer = new RuntimeMcpConnectionPreparer({
-    getController: () => this.getMcpController(),
-    fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
-    waitForConnections: async (timeoutMs) =>
-      await this.mcp.waitForConnections({ timeout: timeoutMs }),
-    getServerStates: () =>
-      this.getMcpServers().servers as RuntimeMcpServerStates,
-    connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
-    logger: this.runConfig().logger,
-    readinessPolicy: 'required',
-  })
+  private mcpRuntime: {
+    runId: string | null
+    preparer: RuntimeMcpConnectionPreparer
+  } | null = null
 
   maxSteps = 30
 
@@ -289,7 +325,7 @@ export abstract class RunSubAgentBase<
   /** Moves a live run to `failed`; a no-op for runs already settled. */
   protected abstract forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
     loaded?: TLoaded,
   ): Promise<ResultValue<void, RunSubAgentError>>
   /**
@@ -320,9 +356,9 @@ export abstract class RunSubAgentBase<
    * The run facet knows these from its loaded context; the shared base must not
    * assume fields that differ between issue and automation ledgers.
    */
-  protected brainInjectionIdentity(
+  protected async brainInjectionIdentity(
     _loaded: TLoaded,
-  ): { workspaceId: string; userId: string | undefined } | null {
+  ): Promise<{ workspaceId: string; userId: string | undefined } | null> {
     return null
   }
 
@@ -341,6 +377,20 @@ export abstract class RunSubAgentBase<
     return Result.ok(undefined)
   }
 
+  /** Validates the exact originating run before a mutating Workflow RPC. */
+  protected async verifyRunEntry(
+    _runId: string,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
+  /** Run facets can refuse the final analytics copy of retained context. */
+  protected async authorizeFinalObservation(
+    _runId: string,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    return Result.ok(undefined)
+  }
+
   /**
    * Returns the run's workspace/owner and a short product summary for post-turn
    * Brain write-back. Defaults keep run kinds that do not write back on the
@@ -354,9 +404,59 @@ export abstract class RunSubAgentBase<
     return { workspaceId: null, ownerUserId: null, summary: '' }
   }
 
+  /**
+   * What a settled turn left the run waiting on outside the agent loop.
+   * `RunWorkflow` waits on it before the next turn. Run kinds that never
+   * pause this way keep the default.
+   */
+  protected async readWorkflowWait(
+    _runId: string,
+    _status: string,
+  ): Promise<RunWorkflowWait | null> {
+    return null
+  }
+
+  /**
+   * Time the run spent paused in its Workflow, which the `runTimeoutSec`
+   * guard does not count as working time. Run kinds that never pause keep 0.
+   */
+  protected async loadPausedMs(
+    _loaded: TLoaded,
+  ): Promise<ResultValue<number, RunSubAgentError>> {
+    return Result.ok(0)
+  }
+
+  /**
+   * The user text that opens a Workflow turn. Most turns send the fixed
+   * prompt; an automation resume after a Decide pause also carries the
+   * analysis outcome. The text must be the same on a Workflow retry, since
+   * the submission is idempotent by ID and only the first text is kept.
+   */
+  protected async buildTurnPrompt(
+    mode: RunTurnMode,
+    _input: TInput,
+  ): Promise<ResultValue<string, RunSubAgentError>> {
+    return Result.ok(this.turnPrompt(mode))
+  }
+
+  /**
+   * The owner of a `decide_analyze` call made from this facet, or null for
+   * the controller's chat default. Automation runs own their analyses.
+   */
+  protected decideAnalysisOwner(): DecideAnalysisOwner | null {
+    return null
+  }
+
+  /** Id of the issue or automation run this facet serves; the facet name by default. */
+  protected runObjectId() {
+    return this.name
+  }
+
   protected telemetryMetadata(runId: string): Record<string, string> {
     return { agentClass: this.runConfig().agentClass, runId }
   }
+
+  private readonly retiredModel = createRetiredModelTracker()
 
   getModel(): LanguageModel {
     return createAgentModel({
@@ -393,7 +493,7 @@ export abstract class RunSubAgentBase<
         bucket: this.env.FILES,
         databaseUrl: this.env.HYPERDRIVE.connectionString,
       },
-      { kind: this.runConfig().kind, id: this.name },
+      { kind: this.runConfig().kind, id: this.runObjectId() },
     )
   }
 
@@ -413,22 +513,31 @@ export abstract class RunSubAgentBase<
     }
 
     const loadedResult = await this.loadTurnContext(runId)
-    if (loadedResult.isErr()) throw loadedResult.error
+    if (loadedResult.isErr())
+      throw await this.errorForOutput(runId, loadedResult.error)
 
     const guardResult = await this.applyRunBoundaryGuards(loadedResult.value)
-    if (guardResult.isErr()) throw guardResult.error
-    if (guardResult.value !== 'continue') {
-      throw new RunTurnStopped(this.turnStoppedName(), guardResult.value)
+    if (guardResult.isErr())
+      throw await this.errorForOutput(runId, guardResult.error)
+    if (guardResult.value.kind !== 'continue') {
+      throw new RunTurnStopped(this.turnStoppedName(), guardResult.value.kind)
     }
+    const priorUsage = guardResult.value.usage
 
     const prepareResult = await this.prepareRun(loadedResult.value, false)
-    if (prepareResult.isErr()) throw prepareResult.error
+    if (prepareResult.isErr())
+      throw await this.errorForOutput(runId, prepareResult.error)
 
     this.currentRunId = runId
     this.currentPermissions = loadedResult.value.permissions
+    const teamPolicyResult = await this.loadActingUserTeamPolicy()
+    if (teamPolicyResult.isErr()) throw teamPolicyResult.error
+    this.currentTeamPolicy = teamPolicyResult.value
     this.activateRun(loadedResult.value)
     this.startTurnState(runId, loadedResult.value)
-    this.aggUsage = null
+    this.aggUsage = priorUsage
+    this.stoppedByTokenBudget = false
+    this.stoppedByOutputCap = false
     this.aiObservation.startTurn(
       this.observationIdentity(loadedResult.value, runId),
       ctx,
@@ -439,9 +548,7 @@ export abstract class RunSubAgentBase<
     )
     await this.onTurnStarted(runId)
 
-    const mcpController = await this.mcpConnectionPreparer.ensureForTurn(
-      `${config.kind}-turn`,
-    )
+    const mcpController = await this.prepareMcpForTurn(`${config.kind}-turn`)
     const observedChangesResult = mcpController.captureObservedMcpToolChanges()
     if (observedChangesResult.isErr()) {
       this.logRunWarning('mcp_tool_changes_capture_failed', {
@@ -459,7 +566,7 @@ export abstract class RunSubAgentBase<
       },
     )
 
-    const brainIdentity = this.brainInjectionIdentity(loadedResult.value)
+    const brainIdentity = await this.brainInjectionIdentity(loadedResult.value)
     const brainContext = brainIdentity
       ? (
           await Result.tryPromise({
@@ -507,6 +614,7 @@ export abstract class RunSubAgentBase<
         ai: this.env.AI,
         env: this.env,
         gatewayId: this.env.AI_GATEWAY_ID,
+        onModelRetired: this.retiredModel.observeTurn(runId),
         tracing: this.aiObservation.modelTracing(),
       }),
       experimental_telemetry: {
@@ -518,14 +626,17 @@ export abstract class RunSubAgentBase<
       },
       maxRetries: THINK_TURN_MAX_RETRIES,
       maxSteps: this.maxSteps,
+      maxOutputTokens: resolveAgentModelProfile(this.env).maxOutputTokens,
       sendReasoning: true,
-      stopWhen: this.turnStopConditions(),
+      stopWhen: this.turnStopWhen(priorUsage?.total_tokens ?? 0),
       system: `${ctx.system}\n\n${[loadedResult.value.contextBlock, brainContext].filter((part) => part.trim() !== '').join('\n\n')}`,
       tools: stableMcpTools,
-      activeTools: mcpController.activeToolKeysWithoutRawMcp({
-        assembledTools: ctx.tools,
-        stableMcpTools,
-      }),
+      activeTools: mcpController
+        .activeToolKeysWithoutRawMcp({
+          assembledTools: ctx.tools,
+          stableMcpTools,
+        })
+        .filter((key) => isTeamToolAllowed(this.currentTeamPolicy, key)),
     } satisfies TurnConfig
   }
 
@@ -542,10 +653,20 @@ export abstract class RunSubAgentBase<
         : null
     if (!runId) return
 
+    const failure = submission.error
+      ? await this.failureReasonForOutput(runId, submission.error)
+      : null
+    if (failure?.diagnostic) {
+      this.logRunWarning('turn_failed', {
+        runId,
+        cause: failure.cause,
+        diagnostic: failure.diagnostic,
+      })
+    }
     const payload: RunWorkflowTurnCompleteEvent = {
       submissionId: submission.submissionId,
       status: submission.status,
-      ...(submission.error ? { error: submission.error } : {}),
+      ...(failure ? { failure: toPublicRunFailure(failure) } : {}),
     }
     // RunWorkflow also reconciles from Think's submission state when this
     // event never arrives, so a delivery that still fails after these retries
@@ -576,6 +697,9 @@ export abstract class RunSubAgentBase<
     this.aiObservation.stepFinished(ctx)
     const runId = this.currentRunId
     if (!runId) return
+    if (isOutputCapFinishReason(ctx.finishReason)) {
+      this.stoppedByOutputCap = true
+    }
 
     const nextUsage = addStepUsage(this.aggUsage, ctx)
     this.aggUsage = nextUsage
@@ -623,7 +747,7 @@ export abstract class RunSubAgentBase<
           ...errorFields(cancelResult.error),
         })
       } else if (!cancelResult.value) {
-        const failedResult = await this.forceCloseFailed(runId, 'turn_aborted')
+        const failedResult = await this.closeFailedRun(runId, 'turn_aborted')
         if (failedResult.isErr()) {
           this.logRunWarning('close_failed', {
             runId,
@@ -633,7 +757,7 @@ export abstract class RunSubAgentBase<
         }
       }
     } else if (result.status === 'error') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         runId,
         result.error ?? 'chat_error',
       )
@@ -644,11 +768,37 @@ export abstract class RunSubAgentBase<
           ...errorFields(failedResult.error),
         })
       }
+    } else if (this.stoppedByTokenBudget) {
+      const failedResult = await this.closeFailedRun(
+        runId,
+        RUN_TOKEN_BUDGET_EXCEEDED,
+      )
+      if (failedResult.isErr()) {
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: RUN_TOKEN_BUDGET_EXCEEDED,
+          ...errorFields(failedResult.error),
+        })
+      }
+    } else if (this.stoppedByOutputCap) {
+      const failedResult = await this.closeFailedRun(
+        runId,
+        RUN_OUTPUT_CAP_REACHED,
+      )
+      if (failedResult.isErr()) {
+        this.logRunWarning('close_failed', {
+          runId,
+          reason: RUN_OUTPUT_CAP_REACHED,
+          ...errorFields(failedResult.error),
+        })
+      }
     } else {
       await this.finishSettledTurn(runId, result)
     }
 
-    this.aiObservation.finishTurn(result)
+    const observationAuthority = await this.authorizeFinalObservation(runId)
+    if (observationAuthority.isOk()) this.aiObservation.finishTurn(result)
+    else this.aiObservation.discardTurn()
     this.clearTurnState()
   }
 
@@ -661,11 +811,20 @@ export abstract class RunSubAgentBase<
    * This and `completeWorkflowTurn` are Workflow RPC targets, so failures are
    * thrown (the Workflow step must reject to retry) — always as the run's
    * tagged error, keeping its code and cause.
+   *
+   * With `historyUnverified: 'report'`, a start refused because retained
+   * history cannot be verified returns `history_unverified` and leaves the run
+   * open, so the caller can start it on a fresh context. With `'fail'`, that
+   * refusal fails the run with its fixed reason.
    */
   async executeWorkflowTurn(
     mode: RunTurnMode,
     input: TInput,
-  ): Promise<RunWorkflowTurnStartResult> {
+    historyUnverified: 'fail' | 'report' = 'fail',
+  ): Promise<RunFacetTurnStartResult> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const table = this.runTable()
     const [runRow] = await this.getDb()
       .select({
@@ -682,22 +841,29 @@ export abstract class RunSubAgentBase<
         'cancelled',
       )
       if (cancelResult.isErr()) {
-        await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw cancelResult.error
+        await this.closeFailedRun(input.runId, cancelResult.error.message)
+        throw await this.errorForOutput(input.runId, cancelResult.error)
       }
       return { kind: 'run_status', status: 'cancelled' }
     }
 
     const driveResult = await this.driveTurn(mode, input)
+    if (
+      driveResult.isErr() &&
+      driveResult.error.code === 'history_unverified' &&
+      mode === 'start' &&
+      historyUnverified === 'report'
+    )
+      return { kind: 'history_unverified' }
     if (driveResult.isErr()) {
-      await this.forceCloseFailed(input.runId, driveResult.error.message)
-      throw driveResult.error
+      await this.closeFailedRun(input.runId, driveResult.error.message)
+      throw await this.errorForOutput(input.runId, driveResult.error)
     }
     if (driveResult.value.kind === 'stopped') {
       const statusResult = await this.readRunStatus(input.runId)
       if (statusResult.isErr()) {
-        await this.forceCloseFailed(input.runId, statusResult.error.message)
-        throw statusResult.error
+        await this.closeFailedRun(input.runId, statusResult.error.message)
+        throw await this.errorForOutput(input.runId, statusResult.error)
       }
       return { kind: 'run_status', status: statusResult.value }
     }
@@ -722,21 +888,29 @@ export abstract class RunSubAgentBase<
     workspaceId: string | null
     ownerUserId: string | null
     summary: string
+    waitingOn?: RunWorkflowWait
   }> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const kind = this.runConfig().kind
     const inspectionResult = await Result.tryPromise({
       try: async () => await this.inspectSubmission(input.submissionId),
       catch: (cause) => cause,
     })
     if (inspectionResult.isErr()) {
-      await this.forceCloseFailed(input.runId, String(inspectionResult.error))
-      throw this.runtimeFailure(inspectionResult.error)
+      const reason = await this.failureReasonForOutput(
+        input.runId,
+        String(inspectionResult.error),
+      )
+      await this.forceCloseFailed(input.runId, reason)
+      throw this.runtimeFailure(reason.cause)
     }
 
     const inspection = inspectionResult.value
     if (!inspection) {
       const message = `Submitted ${kind} turn ${input.submissionId} was not found.`
-      await this.forceCloseFailed(input.runId, message)
+      await this.closeFailedRun(input.runId, message)
       throw this.runError({ code: 'not_found', message })
     }
     if (!isTerminalSubmissionStatus(inspection.status)) {
@@ -747,49 +921,96 @@ export abstract class RunSubAgentBase<
     }
 
     if (inspection.status === 'error') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         input.runId,
         inspection.error ?? `Submitted ${kind} turn failed.`,
       )
-      if (failedResult.isErr()) throw failedResult.error
+      if (failedResult.isErr())
+        throw await this.errorForOutput(input.runId, failedResult.error)
       this.clearTurnState()
     }
     if (inspection.status === 'aborted') {
       const cancelResult = await this.cancelRunIfRequested(input.runId)
       if (cancelResult.isErr()) {
-        await this.forceCloseFailed(input.runId, cancelResult.error.message)
-        throw cancelResult.error
+        await this.closeFailedRun(input.runId, cancelResult.error.message)
+        throw await this.errorForOutput(input.runId, cancelResult.error)
       }
       if (!cancelResult.value) {
-        const failedResult = await this.forceCloseFailed(
+        const failedResult = await this.closeFailedRun(
           input.runId,
           'turn_aborted',
         )
-        if (failedResult.isErr()) throw failedResult.error
+        if (failedResult.isErr())
+          throw await this.errorForOutput(input.runId, failedResult.error)
       }
       this.clearTurnState()
     }
     if (inspection.status === 'skipped') {
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         input.runId,
         'turn_skipped',
       )
-      if (failedResult.isErr()) throw failedResult.error
+      if (failedResult.isErr())
+        throw await this.errorForOutput(input.runId, failedResult.error)
       this.clearTurnState()
     }
 
     const statusResult = await this.readRunStatus(input.runId)
     if (statusResult.isErr()) {
-      await this.forceCloseFailed(input.runId, statusResult.error.message)
-      throw statusResult.error
+      await this.closeFailedRun(input.runId, statusResult.error.message)
+      throw await this.errorForOutput(input.runId, statusResult.error)
     }
+    const waitingOn = await this.readWorkflowWait(
+      input.runId,
+      statusResult.value,
+    )
+    const status = await this.closeUnresolvedSettledTurn({
+      runId: input.runId,
+      submissionStatus: inspection.status,
+      runStatus: statusResult.value,
+      waiting: waitingOn !== null,
+    })
     const turnSummary = await this.readWorkflowTurnSummary(input.runId)
     return {
-      status: statusResult.value,
+      status,
       workspaceId: turnSummary.workspaceId,
       ownerUserId: turnSummary.ownerUserId,
       summary: turnSummary.summary,
+      ...(waitingOn === null ? {} : { waitingOn }),
     }
+  }
+
+  /**
+   * Fails a run whose Think turn completed without settling it, and returns
+   * the run status the Workflow should act on. Before, `completeWorkflowTurn`
+   * returned the still-live `running` status and the Workflow completed,
+   * stranding the run row (FLO-150). The policy lives in
+   * `unresolvedSettledTurnReason`; `forceCloseFailed` writes the failed row
+   * and its `issue_run:failed` / automation failure event.
+   */
+  private async closeUnresolvedSettledTurn(input: {
+    runId: string
+    submissionStatus: string
+    runStatus: string
+    waiting: boolean
+  }) {
+    const reason = unresolvedSettledTurnReason(input)
+    if (reason === null) return input.runStatus
+
+    this.logRunWarning('turn_ended_without_resolution', {
+      runId: input.runId,
+      runStatus: input.runStatus,
+    })
+    const failedResult = await this.forceCloseFailed(
+      input.runId,
+      runFailure('turn_ended_without_resolution'),
+    )
+    if (failedResult.isErr()) throw failedResult.error
+    this.clearTurnState()
+
+    const statusResult = await this.readRunStatus(input.runId)
+    if (statusResult.isErr()) throw statusResult.error
+    return statusResult.value
   }
 
   /**
@@ -805,7 +1026,7 @@ export abstract class RunSubAgentBase<
       catch: (cause) => cause,
     })
     if (inspectionResult.isErr()) {
-      throw this.runtimeFailure(inspectionResult.error)
+      throw this.runtimeFailure('Cannot inspect submitted run status.')
     }
     return { status: inspectionResult.value?.status ?? null }
   }
@@ -816,18 +1037,26 @@ export abstract class RunSubAgentBase<
    */
   async failWorkflowTurn(input: {
     runId: string
-    reason: string
+    failure: RunFailure
   }): Promise<{ status: string }> {
-    const failedResult = await this.forceCloseFailed(input.runId, input.reason)
-    if (failedResult.isErr()) throw failedResult.error
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
+    const failedResult = await this.forceCloseFailed(input.runId, input.failure)
+    if (failedResult.isErr())
+      throw await this.errorForOutput(input.runId, failedResult.error)
     this.clearTurnState()
 
     const statusResult = await this.readRunStatus(input.runId)
-    if (statusResult.isErr()) throw statusResult.error
+    if (statusResult.isErr())
+      throw await this.errorForOutput(input.runId, statusResult.error)
     return { status: statusResult.value }
   }
 
   async requestCancel(input: { runId: string }): Promise<void> {
+    const entry = await this.verifyRunEntry(input.runId)
+    if (entry.isErr()) throw entry.error
+
     const cancelResult = await this.setCancelRequested(input.runId, 'cancelled')
     if (cancelResult.isErr()) {
       this.logRunWarning('cancel_request_failed', {
@@ -887,7 +1116,7 @@ export abstract class RunSubAgentBase<
 
     const boundaryResult = await this.applyRunBoundaryGuards(loadedResult.value)
     if (boundaryResult.isErr()) return Result.err(boundaryResult.error)
-    if (boundaryResult.value !== 'continue') {
+    if (boundaryResult.value.kind !== 'continue') {
       return Result.ok({ kind: 'stopped' })
     }
 
@@ -904,11 +1133,14 @@ export abstract class RunSubAgentBase<
     this.currentPermissions = loadedResult.value.permissions
     this.activateRun(loadedResult.value)
 
+    const promptResult = await this.buildTurnPrompt(mode, input)
+    if (promptResult.isErr()) return Result.err(promptResult.error)
+
     const submissionId = `${this.runConfig().kind}-run:${input.runId}:${input.turn}:${mode}`
     const message: UIMessage = {
       id: `${submissionId}:user`,
       role: 'user',
-      parts: [{ type: 'text', text: this.turnPrompt(mode) }],
+      parts: [{ type: 'text', text: promptResult.value }],
     }
 
     return await this.submitWorkflowTurn({
@@ -951,6 +1183,49 @@ export abstract class RunSubAgentBase<
       submissionId: submitResult.value.submissionId,
       status: submitResult.value.status,
     })
+  }
+
+  /** Raw SDK errors can contain retained context; check before failure records or RPCs. */
+  private async failureReasonForOutput(runId: string, reason: string) {
+    if (isHistoryUnverifiedMessage(reason)) {
+      return { ...runFailure('unknown'), diagnostic: reason }
+    }
+    const authority = await this.authorizeFinalObservation(runId)
+    if (authority.isOk()) {
+      return classifyRuntimeFailure({
+        error: reason,
+        turnFlags: {
+          modelRetired: this.retiredModel.wasRetired(runId, reason),
+        },
+      })
+    }
+    this.aiObservation.discardTurn()
+    return runFailure('brain_output_authority_denied')
+  }
+
+  private async errorForOutput(runId: string, error: RunSubAgentError) {
+    if (isHistoryUnverifiedMessage(error.message)) {
+      return { ...runFailure('unknown'), diagnostic: error.message }
+    }
+    const authority = await this.authorizeFinalObservation(runId)
+    if (authority.isOk()) return error
+    this.aiObservation.discardTurn()
+    return this.runError({
+      code: 'runtime_failed',
+      message: 'brain_output_authority_denied',
+    })
+  }
+
+  private async closeFailedRun(
+    runId: string,
+    reason: string,
+    loaded?: TLoaded,
+  ) {
+    return this.forceCloseFailed(
+      runId,
+      await this.failureReasonForOutput(runId, reason),
+      loaded,
+    )
   }
 
   /** Logs `<kind>_run.<event>` at warn level through the run's logger. */
@@ -1005,14 +1280,61 @@ export abstract class RunSubAgentBase<
     })
   }
 
-  /** Applies the agent's tool permissions to a runtime tool call. */
+  /**
+   * Loads the Team policies of the run's acting user, the same identity that
+   * drives connector bindings. Read per turn, never cached, so a saved policy
+   * applies from the next turn.
+   */
+  private async loadActingUserTeamPolicy(): Promise<
+    ResultValue<EffectiveTeamAgentPolicy, RunSubAgentError>
+  > {
+    const identityResult = await this.resolveMcpIdentity()
+    if (identityResult.isErr()) {
+      return Result.err(
+        this.runError({
+          code: 'runtime_failed',
+          message: identityResult.error.message,
+        }),
+      )
+    }
+    return Result.tryPromise({
+      try: () =>
+        loadTeamAgentPolicyForUser(
+          getPooledDb(this.env.HYPERDRIVE.connectionString),
+          {
+            workspaceId: identityResult.value.workspaceId,
+            userId: identityResult.value.userId,
+          },
+        ),
+      catch: (cause) =>
+        this.runError({
+          code: 'runtime_failed',
+          message:
+            cause instanceof Error
+              ? cause.message
+              : 'Failed to load Team agent policy',
+        }),
+    })
+  }
+
+  /**
+   * Applies the agent's tool permissions and the acting user's Team policies
+   * to a runtime tool call. Executor calls are also checked against the
+   * connectors their code names, which only the input reveals.
+   */
   protected assertToolAllowed(
     runtimeToolName: string,
+    input?: unknown,
   ): ResultValue<void, RunSubAgentError> {
-    const decision = evaluateRuntimeToolPermission(
+    const permissionDecision = evaluateRuntimeToolPermission(
       this.currentPermissions,
+      this.currentTeamPolicy,
       runtimeToolName,
     )
+    const decision =
+      permissionDecision.allowed && input !== undefined
+        ? evaluateExecutorCallTeamPolicy(this.currentTeamPolicy, input)
+        : permissionDecision
     if (decision.allowed) return Result.ok()
     return Result.err(
       this.runError({
@@ -1059,7 +1381,7 @@ export abstract class RunSubAgentBase<
     loaded: TLoaded,
   ): Promise<ResultValue<BoundaryGuardResult, RunSubAgentError>> {
     if (!this.isActiveRunStatus(loaded.run.status)) {
-      return Result.ok('cancelled')
+      return Result.ok({ kind: 'cancelled' })
     }
 
     if (loaded.run.cancelRequestedAt) {
@@ -1069,29 +1391,89 @@ export abstract class RunSubAgentBase<
         loaded,
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
-      return Result.ok('cancelled')
+      return Result.ok({ kind: 'cancelled' })
     }
 
     const timeoutSec = await this.loadRunTimeoutSec(loaded.run.agentId)
     if (timeoutSec.isErr()) return Result.err(timeoutSec.error)
-    const startedAt = loaded.run.startedAt ?? loaded.run.createdAt
-    const elapsedMs = startedAt ? Date.now() - startedAt.getTime() : 0
-    if (elapsedMs > timeoutSec.value * 1000) {
+    const pausedMs = await this.loadPausedMs(loaded)
+    if (pausedMs.isErr()) return Result.err(pausedMs.error)
+    if (
+      runExceededTimeout({
+        startedAt: loaded.run.startedAt ?? loaded.run.createdAt,
+        timeoutSec: timeoutSec.value,
+        pausedMs: pausedMs.value,
+        now: new Date(),
+      })
+    ) {
       const cancelResult = await this.setCancelRequested(
         loaded.run.id,
         'timeout',
       )
       if (cancelResult.isErr()) return Result.err(cancelResult.error)
-      const failedResult = await this.forceCloseFailed(
+      const failedResult = await this.closeFailedRun(
         loaded.run.id,
         'timeout',
         loaded,
       )
       if (failedResult.isErr()) return Result.err(failedResult.error)
-      return Result.ok('timeout')
+      return Result.ok({ kind: 'timeout' })
     }
 
-    return Result.ok('continue')
+    const usage = await this.loadRunUsage(loaded.run.id)
+    if (usage.isErr()) return Result.err(usage.error)
+    if (usage.value && runTokenBudgetReached(usage.value.total_tokens)) {
+      const failedResult = await this.closeFailedRun(
+        loaded.run.id,
+        RUN_TOKEN_BUDGET_EXCEEDED,
+        loaded,
+      )
+      if (failedResult.isErr()) return Result.err(failedResult.error)
+      return Result.ok({ kind: RUN_TOKEN_BUDGET_EXCEEDED })
+    }
+
+    return Result.ok({ kind: 'continue', usage: usage.value })
+  }
+
+  /**
+   * The run's terminal-tool stop conditions, then the run token budget. The
+   * budget is checked last so a step that both calls a terminal tool and
+   * crosses the budget settles normally instead of failing.
+   */
+  private turnStopWhen(
+    priorTurnTokens: number,
+  ): NonNullable<TurnConfig['stopWhen']> {
+    const terminal = [this.turnStopConditions()].flat()
+    const budget = runTokenBudgetStopCondition({ priorTurnTokens })
+    return async (options) => {
+      const results = await Promise.all(terminal.map((c) => c(options)))
+      if (results.some(Boolean)) return true
+      if (!(await budget(options))) return false
+      this.stoppedByTokenBudget = true
+      return true
+    }
+  }
+
+  /** Usage the run has already spent, summed across its earlier turns. */
+  private async loadRunUsage(
+    runId: string,
+  ): Promise<ResultValue<RunUsageSnapshot | null, RunSubAgentError>> {
+    const table = this.runTable()
+    const result = await Result.tryPromise({
+      try: async () =>
+        await this.getDb()
+          .select({ usageJson: table.usageJson })
+          .from(table)
+          .where(eq(table.id, runId))
+          .limit(1),
+      catch: (cause) =>
+        this.dbError(`load ${this.runConfig().kind} run usage`, cause),
+    })
+    return result.andThen((rows) =>
+      parsePersistedRunUsage(rows[0]?.usageJson).mapError((cause) =>
+        this.dbError(`parse ${this.runConfig().kind} run usage`, cause),
+      ),
+    )
   }
 
   private async loadRunTimeoutSec(
@@ -1156,10 +1538,41 @@ export abstract class RunSubAgentBase<
     this.currentRunId = null
     this.currentPermissions = null
     this.aggUsage = null
+    this.stoppedByTokenBudget = false
+    this.stoppedByOutputCap = false
   }
 
-  private getMcpController() {
-    const host: McpHost = {
+  /**
+   * One controller and preparer per run. A facet hosts successive runs, and
+   * the preparer skips its refresh while warm, so sharing them across runs
+   * would hand a new run the previous run's connector accounts.
+   */
+  private mcpConnectionPreparer() {
+    const runId = this.currentRunId
+    if (this.mcpRuntime?.runId === runId) return this.mcpRuntime.preparer
+
+    const controller = this.createMcpController()
+    const preparer = new RuntimeMcpConnectionPreparer({
+      getController: () => controller,
+      fullSyncIntervalMs: mcpRuntimeConfig.connectorFullSyncIntervalMs,
+      waitForConnections: async (timeoutMs) =>
+        await this.mcp.waitForConnections({ timeout: timeoutMs }),
+      getServerStates: () =>
+        this.getMcpServers().servers as RuntimeMcpServerStates,
+      connectionWaitTimeoutMs: mcpRuntimeConfig.connectionWaitTimeoutMs,
+      logger: this.runConfig().logger,
+      readinessPolicy: 'required',
+    })
+    this.mcpRuntime = { runId, preparer }
+    return preparer
+  }
+
+  private async prepareMcpForTurn(reason: string) {
+    return await this.mcpConnectionPreparer().ensureForTurn(reason)
+  }
+
+  private createMcpController() {
+    return new RuntimeMcpController({
       name: this.name,
       env: this.env,
       ctx: this.ctx,
@@ -1173,12 +1586,12 @@ export abstract class RunSubAgentBase<
         }),
       removeMcpServer: this.removeMcpServer.bind(this),
       resolveRuntimeIdentity: async () => await this.resolveMcpIdentity(),
-    }
-    return new RuntimeMcpController(host)
+      decideAnalysisOwner: () => this.decideAnalysisOwner(),
+    })
   }
 
   /** Loads MCP connections on demand for a tool that needs them mid-turn. */
   protected async ensureMcpConnectionsLoaded(reason: string) {
-    return await this.mcpConnectionPreparer.ensureLoaded(reason)
+    return await this.mcpConnectionPreparer().ensureLoaded(reason)
   }
 }

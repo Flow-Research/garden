@@ -4,6 +4,39 @@ import { withTracing } from '@posthog/ai/vercel'
 import { PostHog } from 'posthog-node'
 import { createWorkersAI } from 'workers-ai-provider'
 import { resolveGardenAnalyticsEnvironment } from '@garden/observability/analytics/events'
+import { observeRetiredAgentModel } from './model-retirement'
+
+// Grant-bearing generation telemetry has a fixed metadata boundary. New SDK
+// content/error fields remain excluded until they receive an explicit review.
+const generationMetadataKeys = new Set([
+  '$ai_model',
+  '$ai_provider',
+  '$ai_trace_id',
+  '$ai_session_id',
+  '$ai_span_id',
+  '$ai_parent_id',
+  '$ai_span_name',
+  '$ai_latency',
+  '$ai_input_tokens',
+  '$ai_output_tokens',
+  '$ai_total_tokens',
+  '$ai_input_cost_usd',
+  '$ai_output_cost_usd',
+  '$ai_total_cost_usd',
+  '$ai_cache_read_input_tokens',
+  '$ai_cache_creation_input_tokens',
+  '$ai_is_error',
+  '$ai_http_status',
+  '$groups',
+  'environment',
+  'workspace_id',
+  'garden_runtime_kind',
+  'agent_id',
+  'thread_id',
+  'issue_id',
+  'run_id',
+  'automation_id',
+])
 
 const DEFAULT_POSTHOG_HOST = 'https://us.i.posthog.com'
 
@@ -39,6 +72,7 @@ export type AgentModelProfile = {
   contextWindowTokens: number
   docs: string
   id: string
+  maxOutputTokens: number
   provider: AgentModelProvider
   compaction: AgentModelCompactionPolicy
   pricePerToken: {
@@ -49,6 +83,7 @@ export type AgentModelProfile = {
 }
 
 export type AgentModelTracing = {
+  privacyMode?: boolean
   distinctId: string
   traceId: string
   workspaceId: string
@@ -64,6 +99,7 @@ type AgentModelConfig = {
     VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
   }
   gatewayId?: string
+  onModelRetired?: () => void
   profile?: AgentModelProfile
   tracing?: AgentModelTracing
 }
@@ -81,26 +117,26 @@ const createPiStyleCompactionPolicy = (
 
 /**
  * Single source of truth for model IDs, compaction, and point-in-time pricing.
- * Prices are USD per token for Cloudflare Workers AI Kimi K2.7 Code as of
- * 2026-07-19: $0.95/M input, $4/M output, $0.19/M cached input.
+ * Prices are USD per token for Cloudflare Workers AI GLM-5.3 as of
+ * 2026-11-22: $1.40/M input, $4.40/M output, $0.26/M cached input.
  */
 export const agentModelProfiles = {
-  kimiK27CodeWorkersAi: {
-    contextWindowTokens: 262_144,
-    docs: 'Cloudflare Workers AI model docs: @cf/moonshotai/kimi-k2.7-code context window is 262,144 tokens.',
-    id: '@cf/moonshotai/kimi-k2.7-code',
+  glm53WorkersAi: {
+    contextWindowTokens: 1_048_576,
+    docs: 'Cloudflare Workers AI model docs: @cf/zai-org/glm-5.3 context window is 1,048,576 tokens.',
+    id: '@cf/zai-org/glm-5.3',
+    maxOutputTokens: 16_000,
     provider: 'workers-ai',
-    compaction: createPiStyleCompactionPolicy(262_144),
+    compaction: createPiStyleCompactionPolicy(1_048_576),
     pricePerToken: {
-      input: 0.00000095,
-      output: 0.000004,
-      cacheReadInput: 0.00000019,
+      input: 0.0000014,
+      output: 0.0000044,
+      cacheReadInput: 0.00000026,
     },
   },
 } as const satisfies Record<string, AgentModelProfile>
 
-export const DEFAULT_AGENT_MODEL_PROFILE =
-  agentModelProfiles.kimiK27CodeWorkersAi
+export const DEFAULT_AGENT_MODEL_PROFILE = agentModelProfiles.glm53WorkersAi
 
 export function getDefaultAgentModelProfile(): AgentModelProfile {
   return DEFAULT_AGENT_MODEL_PROFILE
@@ -121,8 +157,8 @@ const OPENAI_COMPATIBLE_DEFAULT_CONTEXT_WINDOW_TOKENS = 32_768
  *
  * The openai-compatible profile clamps the pi-style compaction policy
  * proportionally (`reserve = min(16384, window/8)`, `tail = min(20000,
- * window/4)`): the fixed 16,384-token response reserve assumes a 262k window
- * and would produce a non-positive compaction threshold for local models with
+ * window/4)`): the fixed 16,384-token response reserve assumes a large hosted
+ * window and would produce a non-positive compaction threshold for local models with
  * ≤16k contexts. Pricing is zero — local/self-hosted calls have no per-token
  * cost, and PostHog cost overrides read these fields.
  */
@@ -159,6 +195,7 @@ export function resolveAgentModelProfile(
     contextWindowTokens,
     docs: 'Local/OpenAI-compatible model configured via GARDEN_MODEL_* env; context window from GARDEN_MODEL_CONTEXT_WINDOW_TOKENS.',
     id: env?.GARDEN_MODEL_ID?.trim() || OPENAI_COMPATIBLE_DEFAULT_MODEL_ID,
+    maxOutputTokens: DEFAULT_AGENT_MODEL_PROFILE.maxOutputTokens,
     provider: 'openai-compatible',
     compaction: {
       responseReserveTokens,
@@ -193,6 +230,27 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
 
   const posthog = new PostHog(token, {
     host: config.env?.VITE_PUBLIC_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST,
+    ...(config.tracing.privacyMode
+      ? {
+          enableExceptionAutocapture: false,
+          before_send: (event) => {
+            if (!event || event.event === '$exception') return null
+            return {
+              ...event,
+              properties: {
+                ...Object.fromEntries(
+                  Object.entries(event.properties ?? {}).filter(([key]) =>
+                    generationMetadataKeys.has(key),
+                  ),
+                ),
+                $ai_error: event.properties?.$ai_is_error
+                  ? 'Agent model request failed.'
+                  : undefined,
+              },
+            }
+          },
+        }
+      : {}),
     flushAt: 1,
     flushInterval: 0,
     waitUntil: config.tracing.waitUntil,
@@ -210,7 +268,7 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
       workspace_id: config.tracing.workspaceId,
       ...config.tracing.properties,
     },
-    posthogPrivacyMode: false,
+    posthogPrivacyMode: config.tracing.privacyMode ?? false,
     posthogCaptureImmediate: false,
     posthogModelOverride: profile.id,
     posthogProviderOverride:
@@ -238,7 +296,10 @@ function createWorkersAiAgentModel(
     binding: config.ai,
     ...(gatewayId ? { gateway: { id: gatewayId } } : {}),
   })
-  return workersai(profile.id)
+  const model = workersai(profile.id)
+  return config.onModelRetired
+    ? observeRetiredAgentModel(model, config.onModelRetired)
+    : model
 }
 
 /**

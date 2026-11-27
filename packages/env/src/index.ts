@@ -20,6 +20,7 @@ const serverSchema = {
   GITHUB_WEBHOOK_SECRET: z.string().min(1).optional(),
   GOOGLE_AUTH_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_AUTH_CLIENT_SECRET: z.string().min(1).optional(),
+  WORKSTREAM_MCP_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   SLACK_CLIENT_ID: z.string().min(1).optional(),

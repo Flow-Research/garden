@@ -63,7 +63,11 @@ export async function startTestDb(
     })
     .withExposedPorts(5432)
     .withWaitStrategy(
-      Wait.forLogMessage(/database system is ready to accept connections/, 2),
+      // Logs can arrive before Docker's mapped host port accepts connections.
+      Wait.forAll([
+        Wait.forLogMessage(/database system is ready to accept connections/, 2),
+        Wait.forListeningPorts(),
+      ]),
     )
     .start()
 
@@ -72,6 +76,11 @@ export async function startTestDb(
   const databaseUrl = `postgres://test:test@${host}:${port}/test`
 
   const pool = new Pool({ connectionString: databaseUrl })
+  const shutdown = { started: false }
+  pool.on('error', (error) => {
+    if (shutdown.started && isAdminShutdown(error)) return
+    throw error
+  })
   const db = drizzle(pool, { schema })
 
   if (options.migrationsUpTo === undefined) {
@@ -89,8 +98,22 @@ export async function startTestDb(
     db,
     pool,
     databaseUrl,
-    cleanup: () => stopAll(pool, postgres),
+    cleanup: () => {
+      shutdown.started = true
+      return stopAll(pool, postgres)
+    },
   }
+}
+
+/**
+ * Stopping the container terminates any connection the pool is still closing,
+ * and Postgres reports that as `57P01`. With no pool `error` listener, Node
+ * raised it as an unhandled error and Vitest failed whichever test file was
+ * running (seen in `-inbox.test.ts` on CI). Only that shutdown error is
+ * expected once cleanup starts; anything else still surfaces.
+ */
+function isAdminShutdown(error: Error) {
+  return (error as Error & { code?: string }).code === '57P01'
 }
 
 /** A temporary copy of the migrations whose journal stops at `upTo`. */

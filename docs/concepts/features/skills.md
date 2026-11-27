@@ -1,0 +1,133 @@
+---
+title: Skills load on demand from R2 through Think skill sources
+description: Where skills are stored, how an agent sees only its assigned skills, and why a skill write never touches existing chat threads.
+status: current
+owner: "@Umoren"
+last_reviewed: 2026-11-15
+---
+
+A skill is a `SKILL.md` bundle of instructions and supporting files that teaches an agent a task. Skills belong to a workspace and are assigned to agents. An agent sees a catalog of its assigned skills and loads one only when a task calls for it.
+
+## Browse and edit the library on any screen
+
+The Skills page shows one pane at a time below the `md` breakpoint. It opens
+with a full-width library. Selecting a skill opens its detail; **Skills** returns
+to the library with the search and scroll position preserved.
+The `?focus=<skillId>` search parameter opens a skill directly. Desktop keeps
+the library beside the selected skill.
+At exactly 768px, the detail toolbar uses two rows: the breadcrumb and actions
+menu sit above compact Preview, Source, and Edit controls. Save controls wrap
+when needed so they remain reachable in the narrow detail pane.
+
+Mobile shows one continuous list with names and descriptions, without category
+filters, headings, rules between rows, or a rounded background enclosing the list.
+Only the selected or hovered row has a background. Search matches names and
+descriptions across the library.
+Desktop groups show compact names with categories from `config.metadata.category`.
+Skills without a category appear without a group heading on desktop.
+Skill details show a category badge only when the skill has a category.
+The Add control is a plus icon with a subtle hover background and an **Add skill** tooltip.
+
+Each bundle file is reachable through a horizontally scrolling file bar on
+both mobile and desktop. **Preview** renders Markdown, **Source** shows the
+complete saved or draft document, and **Edit** enables changes. On mobile the
+source control is labeled **SKILL.md**, or **Source** for a supporting file.
+Frontmatter is collapsed by default and can be expanded without losing fields.
+Desktop previews include an **On this page** outline built from rendered
+headings. As the active heading changes, the outline scrolls within its own
+panel just enough to keep that entry visible, without moving the document.
+Clicking an outline entry selects it immediately and keeps it selected throughout
+the scroll. Jumps are instant when reduced motion is enabled and smooth otherwise.
+Native scroll completion releases that selection for reading position tracking.
+An instant jump that leaves the reader in place releases it immediately because
+no scroll completion event occurs. Wheel, touch, pointer, or navigation-key input
+interrupts the jump and resumes tracking immediately.
+Long identifiers wrap; code blocks and wide tables scroll inside
+their own containers.
+
+Create, community import, source sync, file addition/removal, skill deletion,
+and keyboard save remain available. Leaving a dirty editor, including returning
+to the mobile library, asks before discarding changes. Failed saves keep the
+draft. A save from a discarded editor still updates the cached bundle, but cannot
+replace a newer dirty draft after that skill is reopened. Each dirty editor keeps
+its starting bundle until its own save succeeds or the draft is discarded.
+Within one browser tab, saves for the same workspace skill run in submission
+order, even when the editor is discarded and reopened. Each queued save waits
+for the previous request and its cache update to settle, including failed saves.
+Different skills can save independently. This ordering uses TanStack Query's
+shared mutation scope; timestamps are not used as bundle versions.
+Saving the main document does not replace supporting files unless those
+files changed. Adding a file is blocked while a save is pending, including
+the Add file dialog's button and Enter shortcut if the dialog was already open.
+A failed save keeps the dialog's path and allows adding the file again.
+These presentation changes use the existing Skills API and do
+not require Cloudflare credentials in local offline development.
+
+Supporting-file paths use the same canonical form in the Add file dialog and
+server validation. After rejecting absolute paths and parent traversal, they
+remove `.` and empty segments. Duplicate checks use that canonical path, and
+an empty path or any case variant of the root `SKILL.md` is rejected. For
+example, `./notes.md` conflicts with `notes.md`; `./SKILL.md` cannot be added
+as a supporting file.
+
+The reasons for this design, and the eager design it replaced, are in the decision record [Think-native skills](../../decisions/2026-06-think-native-skills.md).
+
+## R2 holds the bundles and Postgres holds the catalog
+
+The bundle files are the runtime source of truth. Skill writes store each workspace skill in the R2 `FILES` bucket under `agent-skills/workspaces/<workspaceId>/<slug>/`. `packages/agent-runtime/src/skill-storage-paths.ts` builds those keys. Built-in skills live under `builtin-skills/`.
+
+Postgres holds the catalog, index, and assignments in `packages/db/src/schema/skills.ts`:
+
+- `skill` stores the catalog entry and parsed frontmatter as JSON.
+- `skill_version` stores versions of a skill.
+- `skill_file` indexes the files in a bundle.
+- `skill_assignment` records which agents may use which skills.
+
+Imports and updates go through `apps/web/src/lib/server/skills-service.ts`. Imports from skills.sh go through `apps/web/src/lib/server/skills-sh.ts`.
+
+## Agents read skills through `getSkills()`
+
+Every Think agent in Garden overrides `getSkills()` and returns `loadRuntimeSkillSources(...)` from `packages/agent-runtime/src/skills.ts`. `ChatSubAgent` in `agent-do.ts` does this for chat. `RunSubAgentBase` in `run-sub-agent-base.ts` does it for issue and automation runs.
+
+`loadRuntimeSkillSources` returns two Think `SkillSource`s, both built on the `r2` source from `agents/skills`:
+
+1. A workspace source over the workspace prefix. It loads the agent's `skill_assignment` rows and filters `list`, `load`, and `readResource` to assigned skill names. Its fingerprint includes the assignment list, so Think notices when assignments change.
+2. A built-in source over `builtin-skills/`. `filterBuiltinSkillSource` in `skills-filter.ts` limits it to the agent's `allowed_skills` unless the agent has `full_access`.
+
+## The model activates a skill only when it needs it
+
+Think shows the model the catalog of skill names and descriptions. When a task matches, the model calls `activate_skill` to load the instructions and `read_skill_resource` to read a supporting file. Nothing is written into the thread's workspace ahead of time, and skills are not part of the always-on system prompt.
+
+## A skill write is a catalog write
+
+Importing, updating, or assigning a skill writes Postgres and R2 and returns. It does not wake or refresh existing chat threads. The next turn in any thread reads the current assignments through its skill source. A change never alters a turn that is already running.
+
+This splits errors cleanly:
+
+- **Write errors fail the API response.** An invalid skills.sh reference, a failed download, an invalid bundle, or a failed database or R2 write each return an error to the caller.
+- **Runtime errors stay with the turn.** A failed skill-source call raises `RuntimeSkillSourceError` inside the turn or run that used it. It never makes a successful catalog write look failed.
+
+## Questions still open
+
+- Should built-in document skills stay always available, or become assigned skills like the rest?
+- Should an old chat show the skill catalog it had at the time, for reproducibility, or always the latest assignment?
+- How should Garden gate skill scripts if it enables Think's `run_skill_script` later?
+
+## Read the catalog through an explicit client session
+
+The shared client slice uses the existing `GardenSkillsApi` list contract. Its
+client instance binds one API origin, workspace and session identity to an
+injected Fetch transport. It does not import React, browser storage, Node services
+or Cloudflare bindings. The host supplies credentials; client identity is a local
+scope marker and never grants server authority.
+
+Garden web supplies its cookie transport and invalidates the instance when the
+account, workspace or API configuration changes. Invalidated instances reject
+late responses and cannot clear a newer session after an old 401. Cancellation
+aborts the read. A 403 reports denied access without signing the member out.
+An explicit workspace parameter must match the active workspace.
+
+This slice covers the skills list only. It does not implement native sign-in,
+offline storage, direct execution-host launch or outside executable plugins.
+The [execution-host contract proposal](../../proposals/execution-host-contract.md)
+defines the later launch boundary separately.

@@ -6,8 +6,10 @@ import type {
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Executor } from '@executor-js/sdk/core'
+import { DECIDE_ANALYSIS_TIME_LIMIT_MS } from '@garden/agent-runtime/src/decide-analysis-types'
 import {
-  DECIDE_ANALYSIS_TIMEOUT_MS,
+  decideRequestOptions,
+  isDecideTimeLimitResult,
   DirectDecideMcpSessionManager,
   DirectDecideMcpError,
   type DirectDecideMcpSession,
@@ -166,6 +168,43 @@ describe('direct Decide MCP tools', () => {
 
     expect(returned).toEqual(started)
     expect(startAnalysis).toHaveBeenCalledOnce()
+    expect(calls).toEqual([])
+  })
+
+  it('rejects data and source together before any start or provider call', async () => {
+    const startAnalysis = vi.fn(async () => null)
+    const { calls, tools } = registerHarness(
+      { content: [] },
+      undefined,
+      startAnalysis,
+    )
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        data: 'a\n1',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
+    expect(startAnalysis).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+
+  it('refuses a source on the direct path, where Garden cannot read the file', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+
+    const returned = await tools.get('decide_analyze')?.callback(
+      {
+        question: 'Analyze this.',
+        source: { kind: 'brain_file', fileId: 'file_1' },
+      },
+      toolExtra().extra,
+    )
+
+    expect(returned?.isError).toBe(true)
     expect(calls).toEqual([])
   })
 
@@ -366,6 +405,20 @@ describe('direct Decide MCP tools', () => {
     })
   })
 
+  it('subscribes to Decide progress even when the caller sent no progress token', async () => {
+    const { calls, tools } = registerHarness({ content: [] })
+    const { extra, notifications } = toolExtra()
+
+    await tools
+      .get('decide_analyze')
+      ?.callback({ question: 'Analyze this.' }, extra)
+    calls[0]?.onProgress?.({ progress: 1, message: 'Reading the data.' })
+    await Promise.resolve()
+
+    expect(calls[0]?.onProgress).toBeTypeOf('function')
+    expect(notifications).toEqual([])
+  })
+
   it('forwards public MCP progress with the caller progress token', async () => {
     const { calls, tools } = registerHarness({ content: [] })
     const { extra, notifications } = toolExtra('garden-progress-1')
@@ -391,10 +444,6 @@ describe('direct Decide MCP tools', () => {
         },
       },
     ])
-  })
-
-  it('uses a timeout longer than Decide documented four-minute default', () => {
-    expect(DECIDE_ANALYSIS_TIMEOUT_MS).toBeGreaterThan(4 * 60_000)
   })
 
   it('keeps request IDs unique across repeated calls on one connection', async () => {
@@ -616,5 +665,43 @@ describe('direct Decide MCP tools', () => {
 
     expect(sessions).toHaveLength(2)
     expect(sessions[0]?.close).toHaveBeenCalledOnce()
+  })
+})
+
+describe('Decide request time limit', () => {
+  const onProgress = () => undefined
+
+  it('gives a background analysis one total limit that progress does not reset', () => {
+    expect(
+      decideRequestOptions({
+        onProgress,
+        timeoutMs: DECIDE_ANALYSIS_TIME_LIMIT_MS,
+      }),
+    ).toEqual({
+      onprogress: onProgress,
+      timeout: DECIDE_ANALYSIS_TIME_LIMIT_MS,
+    })
+  })
+
+  it('keeps the SDK silence timeout for calls without a limit', () => {
+    expect(decideRequestOptions({ onProgress })).toEqual({
+      onprogress: onProgress,
+      resetTimeoutOnProgress: true,
+    })
+    expect(decideRequestOptions({})).toEqual({})
+  })
+
+  it('recognises Garden ending the call, not a Decide error', () => {
+    const timedOut: CallToolResult = {
+      isError: true,
+      content: [{ type: 'text', text: 'MCP error -32001: Request timed out' }],
+      structuredContent: { details: { transportKind: 'timeout' } },
+    }
+    const decideError: CallToolResult = {
+      isError: true,
+      content: [{ type: 'text', text: 'Insufficient credits.' }],
+    }
+    expect(isDecideTimeLimitResult(timedOut)).toBe(true)
+    expect(isDecideTimeLimitResult(decideError)).toBe(false)
   })
 })

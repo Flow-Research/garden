@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { formatCompactNumber, formatDateTime } from '@garden/core/format'
+import { formatRunFailure } from '@garden/core/runs/failure'
 import type { Agent } from '@garden/core/types'
 import type { Automation, AutomationRun, AutomationTrigger } from '@/lib/api'
 import type { AutomationRunStatus } from '@/lib/api/automations'
@@ -49,6 +50,7 @@ import {
   useUpdateAutomation,
 } from './mutations'
 import { automationDetailOptions, automationRunsOptions } from './queries'
+import { DecideAnalysisStatusCard } from '../chat/components/chat-decide-analysis'
 import {
   TriggerConfigSection,
   getDefaultTriggerConfig,
@@ -268,7 +270,11 @@ function RunRow({
           {run.source}
         </span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {run.failure_reason ? (
+          {run.failure ? (
+            <span className="text-destructive">
+              {formatRunFailure(run.failure)}
+            </span>
+          ) : run.failure_reason ? (
             <span className="text-destructive">{run.failure_reason}</span>
           ) : output ? (
             output
@@ -294,6 +300,13 @@ function RunRow({
         <p className="mt-1 line-clamp-2 pl-[7.75rem] text-xs leading-5 text-muted-foreground">
           {output}
         </p>
+      ) : null}
+      {run.decide_analysis_run_ids.length > 0 ? (
+        <div className="mt-2 flex flex-col gap-2 pl-[7.75rem]">
+          {run.decide_analysis_run_ids.map((decideRunId) => (
+            <DecideAnalysisStatusCard key={decideRunId} runId={decideRunId} />
+          ))}
+        </div>
       ) : null}
       {debugMode && trace.length > 0 ? (
         <AutomationTraceTimeline trace={trace} />

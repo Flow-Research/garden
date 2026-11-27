@@ -1,5 +1,6 @@
 import { ApiError } from './errors'
 import { getApiTransport } from './state'
+import type { PublicRunFailure } from '@garden/core/runs/failure'
 
 export type AutomationStatus = 'active' | 'paused' | 'archived'
 export type AutomationPriority = 'urgent' | 'high' | 'medium' | 'low' | 'none'
@@ -80,10 +81,13 @@ export type AutomationRun = {
   triggered_at: string | null
   completed_at: string | null
   failure_reason: string | null
+  failure: PublicRunFailure | null
   trigger_payload: unknown
   created_at: string | null
   result_json?: Record<string, unknown> | null
   usage_json?: Record<string, unknown> | null
+  /** Decide analyses this run started, oldest first; each renders a card. */
+  decide_analysis_run_ids: string[]
 }
 
 export type AutomationListResponse = {

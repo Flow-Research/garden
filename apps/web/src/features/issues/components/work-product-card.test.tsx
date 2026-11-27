@@ -67,4 +67,24 @@ describe('WorkProductCard', () => {
       screen.getByRole('button', { name: /request changes/i }),
     ).toBeDisabled()
   })
+
+  it('offers approve and approve-and-close as separate actions', () => {
+    const onApprove = vi.fn()
+    const onApproveAndClose = vi.fn()
+    render(
+      <WorkProductCard
+        workProduct={workProduct({ status: 'review', review_state: 'pending' })}
+        onApprove={onApprove}
+        onApproveAndClose={onApproveAndClose}
+        onRequestChanges={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }))
+    expect(onApprove).toHaveBeenCalledTimes(1)
+    expect(onApproveAndClose).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Approve and close' }))
+    expect(onApproveAndClose).toHaveBeenCalledTimes(1)
+  })
 })

@@ -1,184 +1,154 @@
-# Formal verification plan: issue-run lifecycle and approval safety
+---
+title: Formal verification plan for issue runs and connector approvals
+description: Proposed model and proof checks for issue run control and connector approval.
+status: proposed
+owner: '@Umoren'
+last_reviewed: 2026-11-27
+---
 
-**Status:** proposed
+# Issue run and approval verification plan
 
-**Implementation date:** Friday
+This plan defines a bounded model of issue run control and connector approval.
+It does not claim that Garden satisfies the candidate rules. FLO-31 tracks the
+related staging proof for the run lifecycle. The owner must decide any change
+to approval reuse before a product fix is planned.
 
-**Product code changes:** none in this draft
+## Source boundaries
 
-## Goal
-
-Prove that an issue run cannot perform a sensitive external action unless the
-run is active and the exact tool call has valid permission.
-
-The first model should cover the interaction between the run lifecycle, the
-approval record, and the durable Workflow. It should focus on the event orders
-that are hard to cover with ordinary tests.
-
-## Why this target
-
-Garden already has the runtime for issue runs and approvals. The remaining
-confidence gap is the behavior across retries, cancellation, approval, and
-resumption.
-
-The failure would be serious. Garden could perform an external action after a
-user cancels a run, reuse approval for different arguments, or start the same
-run twice.
-
-The current staging gap is tracked in the issue-flow documentation as the need
-to prove start, wait, resume, cancel, failure, recovery, duplicate-start
-prevention, and terminal visibility through `RunWorkflow`.
-
-## Code covered
-
-The model must stay tied to these current boundaries:
-
-- `packages/server/src/issues/run-service.ts` creates, resumes, and cancels
-  issue runs.
+- `packages/server/src/issues/run-service.ts` creates run rows and sends
+  Workflow resume and cancel events.
 - `packages/agent-runtime/src/run-workflow.ts` owns durable turns, waits,
-  resume, cancellation, and terminal reporting.
-- `packages/agent-runtime/src/agent-do.ts` starts the Workflow and delegates
-  turns to the issue facet.
-- `packages/agent-runtime/src/issue-run-sub-agent.ts` owns the live issue-run
-  agent and tool boundary.
+  control events, and terminal reporting.
+- `packages/agent-runtime/src/agent-do.ts` starts the Workflow. Its instance ID
+  is the run ID.
+- `packages/agent-runtime/src/issue-run-sub-agent.ts` checks live run status
+  before a tool call.
+- `packages/agent-runtime/src/run-sub-agent-base.ts` checks cancellation at
+  turn boundaries and reads the agent's approval overrides.
 - `packages/agent-runtime/src/runtime-mcp-controller.ts` checks connector
-  permissions and creates pending approval records.
-- `packages/db/src/schema/capabilities.ts` defines the permission request
-  record and its `pending`, `approved`, and `denied` states.
-- `apps/web/src/routes/api/permission-requests/$id/resolve.ts` authorizes a
-  workspace member before resolving a connector approval.
+  approval and matches canonical arguments.
+- `packages/db/src/schema/capabilities.ts` defines approval rows.
+- `apps/web/src/routes/api/permission-requests/$id/resolve.ts` checks the
+  actor's authority and resolves connector approvals through
+  `apps/web/src/lib/server/permission-request.ts`.
 
-The canonical engine description is
-[`docs/core/workflows-engine.md`](../core/workflows-engine.md). The current
-issue-flow gaps are in
-[`docs/known-gaps/issue-flow.md`](../known-gaps/issue-flow.md).
+Read [the run engine](../concepts/architecture/run-engine.md),
+[permissions](../concepts/features/permissions.md), and
+[known gaps](../reference/known-gaps.md) before mapping model actions to code.
 
-## Model scope
+## Current behavior and decisions
 
-The first model should contain three small state machines:
+An issue run uses `queued`, `running`, `waiting_for_input`,
+`waiting_for_approval`, `succeeded`, `failed`, `cancelled`, and `blocked`.
+The last four are terminal for issue runs. A Workflow waits on `run-control`
+while approval is outstanding. A resume event starts another turn. A cancel
+event closes the run. A turn or Workflow failure can also close a waiting run
+as `failed`.
 
-### Run state
+An approval row uses `pending`, `approved`, or `denied`. It has an `expires_at`
+column, but the connector approval creation, resolution, and lookup paths do
+not set or enforce that timestamp. Approval expiry is not current behavior.
+The model must represent it only as a proposed extension and must not report
+the missing expiry transition as a runtime defect.
+
+The connector runtime first matches an approval by agent, capability, tool call
+ID, and canonical arguments. It also reuses a recent approved request for the
+same agent, capability, and canonical arguments, even when the run or tool call
+ID differs. This is the current approval reuse rule. A rule that requires the
+same run and tool call for every approval conflicts with that rule. The owner
+must decide whether to retain bounded reuse or require call-scoped approval.
+Until then, the model must check current reuse as a separate path and label
+strict run binding as a proposed property, not a verified invariant.
+
+The agent's `approval_overrides` can auto-approve `send_external` and
+`destructive` risk classes. The runtime also allows calls through an effective
+grant whose trust level is not `ask`. Team approval policy can require approval
+despite an override or grant. Model these as explicit policy inputs read for the
+acting agent at decision time, with the run and capability attached to the
+decision. Do not use an unconstrained auto-approval switch.
+
+## Model actions
+
+Use these explicit run edges. `terminal` means no later turn or tool action:
 
 ```text
-queued → running → waiting_for_approval → running → succeeded
-                                      ↘ cancelled
-queued → failed
-running → failed
-running → cancelled
+queued -> running
+queued -> failed | cancelled
+running -> waiting_for_approval | waiting_for_input
+running -> succeeded | failed | cancelled | blocked
+waiting_for_approval -> running | failed | cancelled
+waiting_for_input -> running | failed | cancelled
 ```
 
-The model may include `waiting_for_input` and `blocked` when the first run
-state is correct. It must include every terminal state that the current
-Workflow reports.
+The approval edges are `not_requested -> pending -> approved | denied`.
+Model an expiry edge only in a separate proposed variant after its product
+behavior is defined. The Workflow identity maps one run ID to one instance ID.
+Duplicate start requests must not create a second execution path.
 
-### Approval state
+Split each sensitive connector action into `ReadRunAndPolicy`,
+`ResolveApproval`, and `DispatchTool`. Allow cancellation and approval
+resolution between these actions. Record the run status, cancellation request,
+agent, capability, tool call ID, canonical arguments, policy source, and
+Workflow instance at each step. This exposes the check-then-act race: a guard
+can read a live run, then cancellation can land before dispatch. The model
+must report whether the current production boundary prevents that dispatch.
+Do not make the read and external action one atomic model step unless the code
+proves that they are atomic.
 
-```text
-not_requested → pending → approved
-                       ↘ denied
-                       ↘ expired
-```
+## Candidate properties
 
-The model must bind an approval to the agent, run, capability, tool call ID,
-and canonical tool arguments. An approval for one call must not authorize a
-different call.
+1. A sensitive action dispatches only when a matching approval, a current
+   effective grant, or a current agent override permits it. A Team policy that
+   requires approval wins over each automatic path.
+2. A tool action cannot dispatch after cancellation takes effect. Test a
+   cancellation between the live-run read and dispatch.
+3. A terminal run cannot resume or dispatch another action.
+4. A denied or still-pending request cannot count as approved.
+5. A reused approval must match the current runtime's agent, capability,
+   canonical arguments, and reuse window. The run-scoped alternative needs the
+   owner decision above.
+6. Duplicate Workflow creation for one run ID does not duplicate work.
+7. Every resume event reaches only the Workflow instance recorded for that
+   run. The web resolve route writes approval state. A later run-control
+   request sends the resume event through the run service.
 
-### Workflow identity
+If a property fails, replay its steps against the named production entry
+points. If the model permits an impossible step, correct the model. If code
+permits the steps, report the gap without weakening the property.
 
-One run ID must map to one Workflow instance. Repeating the start request must
-not create a second execution path or a second external action.
+## Event orders
 
-## Candidate invariants
+Check start, approval, and dispatch; start, cancellation, then approval;
+approval concurrent with cancellation; and live-run read, cancellation, then
+dispatch. Also check denial then retry, duplicate start, agent eviction then
+resume, tool submission retry, an approval for arguments A used with arguments
+B, and approval reuse across two runs. Include a waiting run that fails before
+resume. Test an expiry path only in the proposed expiry variant.
 
-The model should test these rules:
+## Proof work
 
-1. A sensitive tool call cannot execute without an approved matching request or
-   an explicit auto-approval policy.
-2. A cancelled run cannot execute a later sensitive tool call.
-3. A terminal run cannot resume and execute another turn.
-4. A denied or expired approval cannot be retried as if it were approved.
-5. An approval for one set of arguments cannot authorize a different set of
-   arguments.
-6. Duplicate Workflow creation for one run ID does not create duplicate work.
-7. A waiting run resumes only through the run control path for its own Workflow
-   instance.
+Use TLA+ with TLC to explore bounded event orders. Record the model and its
+configuration, exact command and tool versions, bounds, assumptions, source
+functions, counterexample replays, and the Git commit whose code was checked.
+At each later run, compare that commit with the covered files. If any covered
+file changed, review the action mapping and rerun the check before claiming
+that the result still applies. A passing model proves only its stated bounded
+properties.
 
-The implementation must not weaken an invariant to make the model pass. If an
-invariant does not match the intended product behavior, record the changed
-decision and its source before changing the invariant.
+The pstack `statechart` and `create-formal-verification-skill` helpers are
+optional. If installed, record their versions and commands. The model and
+replay steps must work without pstack, because pstack is not a Garden runtime
+dependency.
 
-## Event paths to check
+Test deliberate broken variants in a disposable checkout. Temporarily remove
+the live-run guard, treat pending as approved, skip argument matching, leave a
+cancelled Workflow resumable, generate a new Workflow ID for a repeated start,
+or bypass a Team-required approval with an override. The checker must find the
+matching counterexample. Restore every source file after each variant, verify
+the clean diff, and rerun the unchanged model. Never commit a broken variant.
 
-The model should explore at least these event orders:
-
-- start → approve → execute;
-- start → cancel → approve;
-- start → approve → cancel;
-- start → deny → retry;
-- start → approval expires → resume;
-- start → duplicate start;
-- start → agent eviction → resume;
-- start → tool submission retry → completion;
-- start → approval for arguments A → call with arguments B.
-
-For every counterexample, replay the same steps against the real Garden code.
-If a model step cannot happen in the code, fix the model. If every step can
-happen, report a product bug.
-
-## Tool and proof method
-
-Use TLA+ and the TLC model checker for the first model. This target is about
-event order, durable waiting, cancellation, and duplicate execution. A small
-model checker is a better fit than a proof assistant for this first question.
-
-Use the pstack `statechart` skill to render each invariant violation as a
-shortest path in Garden's terms. Use
-`pstack:create-formal-verification-skill` to create the project-local skill
-only after the model catches the deliberate broken variants.
-
-The final check must record:
-
-- the TLA+ and configuration files;
-- the command and tool versions;
-- the state bounds and assumptions;
-- the source files and functions covered;
-- the commit at which the verification last matched the code;
-- the counterexample replay or broken-variant result.
-
-A passing model proves only the stated properties within the stated bounds. It
-does not prove the complete Garden runtime, provider behavior, OAuth flow, or
-production database.
-
-## Deliberate broken variants
-
-Before calling the check ready, make temporary changes that should break it:
-
-- remove the active-run guard before a tool call;
-- allow a pending approval to count as approved;
-- remove the argument-match check;
-- allow cancellation to leave the Workflow resumable;
-- use a new Workflow ID for a repeated start request.
-
-The checker must find each broken rule. Remove the temporary changes after the
-check and rerun it.
-
-## Friday implementation plan
-
-1. Re-read the current `dev` versions of the covered files and this plan.
-2. Write the smallest TLA+ model that represents the real states and actions.
-3. Run TLC and inspect the statechart and report.
-4. Replay each counterexample against the real code.
-5. Test the deliberate broken variants.
-6. Create the project-local formal verification skill with its coverage record
-   and sync commit.
-7. Open a separate pull request for the runnable formal check. Keep product
-   fixes in separate pull requests.
-
-## Out of scope for this draft
-
-- No TLA+ model.
-- No TLC or Java setup.
-- No formal proof of the complete Garden system.
-- No product-code changes.
-- No CI merge check.
-- No claim that the issue-run lifecycle is already fully proved.
+The implementation sequence is to re-read these source files, write the
+smallest model, run TLC, replay real counterexamples, test broken variants,
+and record the coverage result. Put the runnable check in a separate pull
+request. Keep any product fix separate so its behavior and owner decision can
+be reviewed on their own.

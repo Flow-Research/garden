@@ -94,11 +94,14 @@ export class AiObservation {
   private state: AiTurnState | null = null
 
   constructor(
-    private readonly durableState: DurableObjectState,
+    private readonly durableState: Pick<DurableObjectState, 'waitUntil'>,
     private readonly env: AiRuntimeEnv,
   ) {}
 
-  startTurn(identity: AiTurnIdentity, ctx: TurnContext) {
+  startTurn(
+    identity: AiTurnIdentity,
+    ctx: Pick<TurnContext, 'messages' | 'system' | 'body'>,
+  ) {
     this.state = {
       ...identity,
       traceId: identity.traceId ?? crypto.randomUUID(),
@@ -121,6 +124,8 @@ export class AiObservation {
     if (!state) return undefined
 
     return {
+      // Grant-bearing runs cannot authorize a later provider callback to copy retained content.
+      privacyMode: state.runtimeKind !== 'chat',
       distinctId: state.distinctId,
       traceId: state.traceId,
       workspaceId: state.workspaceId,
@@ -202,6 +207,11 @@ export class AiObservation {
 
   stepFinished(_ctx: StepContext) {
     if (this.state) this.state.counts.steps += 1
+  }
+
+  /** Drops retained inputs and tool spans without an analytics emission. */
+  discardTurn() {
+    this.state = null
   }
 
   finishTurn(result: ChatResponseResult) {

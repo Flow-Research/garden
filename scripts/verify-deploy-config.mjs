@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import {
   deploymentTargets,
+  databaseEnvForTarget,
   deploymentTargetFromBranch,
   deploymentTargetFromEnv,
 } from '../deploy-targets.mjs'
@@ -22,6 +23,10 @@ const viteSource = readFileSync(
 )
 const devSource = readFileSync(
   resolve(root, 'apps/web/scripts/dev.mjs'),
+  'utf8',
+)
+const ciWorkflowSource = readFileSync(
+  resolve(root, '.github/workflows/ci.yml'),
   'utf8',
 )
 const publicWranglerSources = [
@@ -111,7 +116,7 @@ const modelSource = readFileSync(
 )
 assert.match(
   modelSource,
-  /DEFAULT_AGENT_MODEL_PROFILE =\s*\n?\s*agentModelProfiles\.kimiK27CodeWorkersAi/,
+  /DEFAULT_AGENT_MODEL_PROFILE =\s*\n?\s*agentModelProfiles\.glm53WorkersAi/,
 )
 assert.match(
   modelSource,
@@ -139,6 +144,8 @@ const uniqueFields = [
   'workflowName',
   'decideAnalysisWorkflowId',
   'decideAnalysisWorkflowName',
+  'githubRepoImportWorkflowId',
+  'githubRepoImportWorkflowName',
   'sandboxId',
   'sandboxName',
 ]
@@ -238,6 +245,22 @@ assert.match(
   alchemySource,
   /name:\s*'DECIDE_ANALYSIS_WORKFLOW',\s*workflowName:\s*deployedDecideAnalysisWorkflow\.workflowName,\s*className:\s*'DecideAnalysisWorkflow'/s,
 )
+assert.match(
+  alchemySource,
+  /Cloudflare\.WorkflowResource\(\s*deployTarget\.githubRepoImportWorkflowId,/s,
+)
+assert.match(
+  alchemySource,
+  /workflowName:\s*deployTarget\.githubRepoImportWorkflowName,\s*className:\s*'GitHubRepoImportWorkflow',\s*scriptName:\s*deployTarget\.workerName/s,
+)
+assert.match(
+  alchemySource,
+  /deployed\.bind\(deployTarget\.githubRepoImportWorkflowId,\s*\{/s,
+)
+assert.match(
+  alchemySource,
+  /name:\s*'GITHUB_REPO_IMPORT_WORKFLOW',\s*workflowName:\s*deployedGitHubRepoImportWorkflow\.workflowName,\s*className:\s*'GitHubRepoImportWorkflow'/s,
+)
 assert.match(alchemySource, /name:\s*'AgentDO',\s*className:\s*'AgentDO'/s)
 assert.match(alchemySource, /name:\s*'Sandbox',\s*className:\s*'Sandbox'/s)
 assert.match(
@@ -306,6 +329,7 @@ for (const field of [
   'executorBlobsBucket',
   'workflowName',
   'decideAnalysisWorkflowName',
+  'githubRepoImportWorkflowName',
   'sandboxName',
 ]) {
   assert.match(
@@ -351,6 +375,11 @@ assert.equal(
   packageJson.scripts['deploy:migrate'],
   'pnpm --filter @garden/db db:migrate',
 )
+// CI must gate migrations through the production runner. The db tests apply
+// migrations with drizzle-orm's migrator, so only this step proves a migration
+// survives drizzle-kit before it reaches the `main` deploy.
+assert.match(ciWorkflowSource, /^\s+run: pnpm --filter @garden\/db db:check$/m)
+assert.match(ciWorkflowSource, /^\s+run: pnpm run deploy:migrate$/m)
 assert.match(
   packageJson.scripts['deploy:alchemy'],
   /GARDEN_DEPLOY_TARGET=staging.*alchemy deploy --stage production --yes/,
@@ -399,10 +428,37 @@ assert.equal(deploymentTargets.preview.branch, null)
 assert.equal(packageJson.scripts['deploy:ci'], 'node scripts/deploy-ci.mjs')
 assert.equal(
   packageJson.scripts['deploy:dev'],
-  'pnpm typecheck && pnpm run deploy:dev:alchemy',
+  'pnpm typecheck && node scripts/deploy-dev.mjs',
+)
+// Dev migrates its own Neon branch and must never fall back to the shared URL.
+assert.equal(deploymentTargets.dev.databaseUrlEnv, 'DEV_DATABASE_URL')
+assert.equal(deploymentTargets.staging.databaseUrlEnv, 'DATABASE_URL')
+assert.equal(
+  databaseEnvForTarget(deploymentTargets.dev, {
+    DATABASE_URL: 'postgres://shared',
+    DEV_DATABASE_URL: 'postgres://dev',
+  }).DATABASE_URL,
+  'postgres://dev',
+)
+assert.throws(
+  () =>
+    databaseEnvForTarget(deploymentTargets.dev, {
+      DATABASE_URL: 'postgres://shared',
+    }),
+  /DEV_DATABASE_URL must be set to deploy garden-dev/,
 )
 assert.match(
   packageJson.scripts['deploy:dev:alchemy'],
   /GARDEN_DEPLOY_TARGET=dev.*alchemy deploy --stage dev --yes/,
 )
 assert.match(alchemySource, /Alchemy.Stack\(\s*deployTarget.stackName/)
+
+// Hyperdrive caches read queries by default (alchemy Cloudflare/Hyperdrive/
+// Connection.ts: maxAge 60s, staleWhileRevalidate 15s) and writes do not
+// invalidate it. Garden reads its own writes (cancel a run, then read the
+// issue and its active run), so cached reads served cancelled runs as live.
+assert.match(
+  alchemySource,
+  /Cloudflare\.Hyperdrive\.Connection\([^)]*caching:\s*\{\s*disabled:\s*true\s*\}/s,
+  'Hyperdrive query caching must be disabled for read-after-write correctness',
+)

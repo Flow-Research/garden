@@ -1,3 +1,10 @@
+import {
+  verifyBrainRunBinding,
+  authorizeBrainRunTool,
+  ensureBrainRunHistory,
+  loadBrainRunAuthority,
+  type BrainRunOrigin,
+} from './brain-run-authority'
 import type {
   ChatResponseResult,
   StepContext,
@@ -17,6 +24,7 @@ import {
   parseQaSweepRunPayload,
   type QaSweepClosureAction,
 } from '@garden/core/automations/templates'
+import { runFailure, type RunFailure } from '@garden/core/runs/failure'
 import {
   createGardenLogger,
   errorFields,
@@ -42,6 +50,21 @@ import { createSandboxTools } from './sandbox-tools'
 import { createWebTools, type WebToolsSqlValue } from './agent-tools/web'
 import { createBrainTools } from './agent-tools/brain'
 import type { RunUsageSnapshot } from './run-usage'
+import type { RunWorkflowWait } from './run-workflow'
+import {
+  getDecideAnalysisFinishedEventType,
+  type DecideAnalysisOwner,
+} from './decide-analysis-types'
+import {
+  decideAnalysisAutomationResumeText,
+  stopAfterAutomationDecideAnalysisStarts,
+} from './decide-analysis-automation'
+import {
+  automationDecidePausedMs,
+  cancelActiveAutomationDecideAnalysis,
+  readAutomationDecideWait,
+  takeAutomationDecideOutcome,
+} from './decide-analysis-run-state'
 import { errorMessage, objectOrNull } from './runtime-utils'
 import {
   RunSubAgentBase,
@@ -56,6 +79,12 @@ import {
 type AutomationRunEnv = RunSubAgentEnv & {
   BROWSER: Fetcher
 }
+
+/**
+ * A turn input. `decideRunId` is set on the resume turn after a Decide
+ * pause, naming the analysis whose outcome the turn hands to the agent.
+ */
+type AutomationRunTurnInput = RunTurnInput & { decideRunId?: string }
 
 type AutomationTraceEvent = {
   ts: string
@@ -115,6 +144,7 @@ const AUTOMATION_RUN_CONFIG: RunSubAgentConfig = {
 }
 const AUTOMATION_RUN_TERMINAL_TOOL_STOP_CONDITIONS = [
   hasToolCall('complete_automation'),
+  stopAfterAutomationDecideAnalysisStarts,
 ]
 const ACTIVE_AUTOMATION_RUN_STATUSES = ['queued', 'running'] as const
 const TERMINAL_AUTOMATION_RUN_STATUSES = [
@@ -179,7 +209,7 @@ function automationAllowsBrowser(
 
 export class AutomationRunSubAgent extends RunSubAgentBase<
   LoadedAutomationRunContext,
-  RunTurnInput,
+  AutomationRunTurnInput,
   AutomationRunEnv
 > {
   private currentBrowserAllowed = false
@@ -187,6 +217,87 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   private currentClosureControls: QaSweepClosureControls | null = null
   private currentLogContext: GardenLogFields | null = null
   private currentTrace: AutomationTraceEvent[] = []
+
+  private brainInjectionAllowed = false
+  private currentBrainOrigin: BrainRunOrigin | null = null
+
+  protected override async verifyRunEntry(runId: string) {
+    return (
+      await verifyBrainRunBinding(this.env.HYPERDRIVE.connectionString, {
+        runKind: 'automation',
+        runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      })
+    )
+      .map(() => undefined)
+      .mapError((cause) =>
+        this.runError({
+          code: 'runtime_failed',
+          message: cause.message,
+        }),
+      )
+  }
+
+  /** Revalidates the origin's durable exposure before a separate model sees its summary. */
+  async validateBrainSummaryAccess(runId: string): Promise<void> {
+    const validated = await Result.tryPromise({
+      try: async () => {
+        const runtimeName = this.parentPath.at(-1)?.name ?? ''
+        const binding = await verifyBrainRunBinding(
+          this.env.HYPERDRIVE.connectionString,
+          { runKind: 'automation', runId, runtimeName, objectId: this.name },
+        )
+        if (binding.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: binding.error.message,
+          })
+        const access = await this.ensureBrainGrantHistory({
+          runKind: 'automation',
+          runId,
+          runtimeName,
+          objectId: this.name,
+          workspaceId: binding.value.context.workspaceId,
+          agentId: binding.value.context.agentId,
+          ownerUserId: binding.value.context.userId ?? null,
+        })
+        if (access.isErr())
+          throw this.runError({
+            code: 'runtime_failed',
+            message: access.error.message,
+          })
+      },
+      catch: (cause) =>
+        cause instanceof AutomationRunSubAgentError && cause.cause === undefined
+          ? cause
+          : this.runError({
+              code: 'runtime_failed',
+              message: 'Brain summary authority is unavailable.',
+            }),
+    })
+    if (validated.isErr()) throw validated.error
+  }
+
+  /** Checks retained context before any outward dispatch, trace or final output. */
+  private async ensureBrainOutputAuthority(runId: string) {
+    return (
+      await Result.tryPromise({
+        try: () => this.validateBrainSummaryAccess(runId),
+        catch: () =>
+          this.runError({
+            code: 'runtime_failed',
+            message: 'Brain output authority is unavailable.',
+          }),
+      })
+    ).tapError(() => {
+      console.info('agent_runtime.brain_output_denied', { runId })
+    })
+  }
+
+  protected override async authorizeFinalObservation(runId: string) {
+    return this.ensureBrainOutputAuthority(runId)
+  }
 
   protected runConfig() {
     return AUTOMATION_RUN_CONFIG
@@ -211,6 +322,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
           'Complete the configured automation task directly, then call complete_automation exactly once with a non-empty output.',
           'Do not call complete_automation until required connector/tool work is finished.',
           'Only inspect or modify Garden issues when the automation prompt explicitly asks for issue work.',
+          "When decide_analyze starts an analysis, this turn ends. Garden resumes the run with Decide's findings, files, or failure reason when the analysis ends. Do not call complete_automation before that.",
         ].join('\n'),
     }
   }
@@ -220,6 +332,15 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   }
 
   protected activateRun(loaded: LoadedAutomationRunContext) {
+    this.currentBrainOrigin = {
+      runKind: 'automation',
+      runId: loaded.run.id,
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      workspaceId: loaded.run.workspaceId,
+      agentId: loaded.run.agentId,
+      ownerUserId: loaded.agent.ownerUserId,
+    }
     this.currentBrowserAllowed = automationAllowsBrowser(loaded.automation)
     this.applyClosureControls(loaded)
   }
@@ -251,7 +372,45 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     }
   }
 
-  protected brainInjectionIdentity(loaded: LoadedAutomationRunContext) {
+  /** Reuses shared prepare hook to deny revoked retained Brain context before every turn. */
+  protected override async prepareRun(
+    loaded: LoadedAutomationRunContext,
+    _initializeEmpty: boolean,
+  ): Promise<ResultValue<void, RunSubAgentError>> {
+    this.brainInjectionAllowed = false
+    const origin: BrainRunOrigin = {
+      runKind: 'automation',
+      runId: loaded.run.id,
+      runtimeName: this.parentPath.at(-1)?.name ?? '',
+      objectId: this.name,
+      workspaceId: loaded.run.workspaceId,
+      agentId: loaded.run.agentId,
+      ownerUserId: loaded.agent.ownerUserId,
+    }
+    const history = await this.ensureBrainGrantHistory(origin)
+    if (history.isErr()) return history
+    const read = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      origin,
+      'brain_search',
+    )
+    if (read.isErr()) return Result.ok(undefined)
+    const exposed = await this.ensureBrainGrantHistory(origin, 'brain_search')
+    // A grant revoked after the check above only withholds injection; the
+    // retained history stays verified and the run keeps its context.
+    if (exposed.isErr())
+      return exposed.error.code === 'history_unverified'
+        ? exposed
+        : Result.ok(undefined)
+    this.brainInjectionAllowed = true
+    return Result.ok(undefined)
+  }
+
+  protected async brainInjectionIdentity(loaded: LoadedAutomationRunContext) {
+    if (!this.brainInjectionAllowed) return null
+    // MCP preparation can overlap revocation; injection requires fresh authority.
+    const authority = await this.ensureBrainOutputAuthority(loaded.run.id)
+    if (authority.isErr()) return null
     return {
       workspaceId: loaded.run.workspaceId,
       userId: loaded.agent.ownerUserId,
@@ -267,6 +426,17 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ownerUserId: string | null
     summary: string
   }> {
+    const grant = await Result.tryPromise({
+      try: () => this.validateBrainSummaryAccess(runId),
+      catch: (cause) => cause,
+    })
+    if (grant.isErr()) {
+      console.info('agent_runtime.brain_summary_denied', {
+        runId,
+        reason: 'brain_summary_authority_unavailable',
+      })
+      return { workspaceId: null, ownerUserId: null, summary: '' }
+    }
     const result = await Result.tryPromise({
       try: async () => {
         const [row] = await this.getDb()
@@ -322,6 +492,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     ctx: StepContext,
     usage: RunUsageSnapshot,
   ) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return
+
     await this.recordTrace(runId, {
       ts: new Date().toISOString(),
       kind: 'step_finished',
@@ -340,6 +513,113 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     return mode === 'resume'
       ? 'Resume this automation run using the injected automation context. Complete required work, then call complete_automation with the final result.'
       : 'Start this automation run using the injected automation context. Complete the task directly, then call complete_automation. Respect the injected closure controls: do not create issues, update GitHub, draft PRs, update QA artifacts, or mutate source unless the run payload explicitly enables that closure action.'
+  }
+
+  /**
+   * An automation's `decide_analyze` calls belong to this run. Before, the
+   * MCP wrapper labelled every call as a chat call with the facet name as
+   * thread ID, so an automation's analysis had no owner the service could
+   * resolve. The facet name is the run ID (`AgentDO.subAgent(
+   * AutomationRunSubAgent, runId)`), so it is trusted, unlike model input.
+   */
+  protected override decideAnalysisOwner(): DecideAnalysisOwner {
+    return { kind: 'automation_run', automationRunId: this.name }
+  }
+
+  /**
+   * The resume turn after a Decide pause carries the analysis outcome.
+   * Before, an automation had no resume turn. The outcome is read from the
+   * Decide run by the ID the Workflow passed, not from the event payload, so
+   * a timed-out wait still gets an answer, and it is marked delivered so the
+   * run never waits on it again.
+   */
+  protected override async buildTurnPrompt(
+    mode: RunTurnMode,
+    input: AutomationRunTurnInput,
+  ): Promise<ResultValue<string, RunSubAgentError>> {
+    const decideRunId = input.decideRunId
+    if (mode !== 'resume' || decideRunId === undefined) {
+      return Result.ok(this.turnPrompt(mode))
+    }
+    return (
+      await Result.tryPromise({
+        try: () =>
+          takeAutomationDecideOutcome(this.getDb(), {
+            automationRunId: input.runId,
+            decideRunId,
+          }),
+        catch: (cause) => this.dbError('read automation Decide outcome', cause),
+      })
+    ).andThen((outcome) =>
+      outcome === null
+        ? Result.err(
+            new AutomationRunSubAgentError({
+              code: 'not_found',
+              message: `Decide analysis ${decideRunId} does not belong to automation run ${input.runId}.`,
+            }),
+          )
+        : Result.ok(decideAnalysisAutomationResumeText(outcome)),
+    )
+  }
+
+  /**
+   * After a turn that started a Decide analysis, the run waits on it. A
+   * lookup failure is thrown so the Workflow step retries instead of
+   * finishing a run that is still waiting.
+   */
+  protected override async readWorkflowWait(
+    runId: string,
+    status: string,
+  ): Promise<RunWorkflowWait | null> {
+    if (!isActiveAutomationRunStatus(status)) return null
+    const result = await Result.tryPromise({
+      try: () => readAutomationDecideWait(this.getDb(), runId),
+      catch: (cause) => this.dbError('read automation Decide wait', cause),
+    })
+    if (result.isErr()) throw result.error
+    return result.value
+  }
+
+  /** Time spent waiting on Decide does not count against `runTimeoutSec`. */
+  protected override async loadPausedMs(
+    loaded: LoadedAutomationRunContext,
+  ): Promise<ResultValue<number, RunSubAgentError>> {
+    return await Result.tryPromise({
+      try: () => automationDecidePausedMs(this.getDb(), loaded.run.id),
+      catch: (cause) => this.dbError('load automation Decide pause', cause),
+    })
+  }
+
+  /**
+   * Cancelling the run also requests cancel on its active Decide analysis.
+   * A run paused on Decide has no turn to abort, so the RunWorkflow is woken
+   * with the analysis's finished event; its next turn sees the cancel
+   * request and closes the run as cancelled, instead of waiting out the
+   * analysis. A failure here is logged: the run cancel itself has happened.
+   */
+  override async requestCancel(input: { runId: string }): Promise<void> {
+    await super.requestCancel(input)
+    const cancelled = await Result.tryPromise({
+      try: async () => {
+        const decideRunId = await cancelActiveAutomationDecideAnalysis(
+          this.getDb(),
+          input.runId,
+        )
+        if (decideRunId === null) return
+        const instance = await this.env.RUN_WORKFLOW.get(input.runId)
+        await instance.sendEvent({
+          type: getDecideAnalysisFinishedEventType(decideRunId),
+          payload: { decideRunId, status: 'cancel_requested' },
+        })
+      },
+      catch: (cause) => cause,
+    })
+    if (cancelled.isErr()) {
+      this.logRunWarning('decide_cancel_failed', {
+        runId: input.runId,
+        ...errorFields(cancelled.error),
+      })
+    }
   }
 
   protected turnMetadata(mode: RunTurnMode, input: RunTurnInput) {
@@ -407,22 +687,17 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
         },
         ai: this.env.AI,
         files: this.env.BRAIN_FILES,
-        getContext: () => {
-          const ctx = this.currentLogContext
-          if (ctx === null) return null
-          const { workspaceId, agentId, runId } = ctx
-          if (
-            typeof workspaceId !== 'string' ||
-            typeof agentId !== 'string' ||
-            typeof runId !== 'string'
-          ) {
-            return null
-          }
-          return {
-            workspaceId,
-            agentId,
-            runId,
-          }
+        getContext: async (toolName) => {
+          const origin = this.currentBrainOrigin
+          if (origin === null) return null
+          const allowed = await authorizeBrainRunTool(
+            this.env.HYPERDRIVE.connectionString,
+            origin,
+            toolName,
+          )
+          if (allowed.isErr()) return null
+          const history = await this.ensureBrainGrantHistory(origin, toolName)
+          return history.isOk() ? allowed.value : null
         },
       }),
       ...createBrowserTools({
@@ -436,7 +711,12 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     const activeResult = await this.assertRunActiveForTool()
     if (activeResult.isErr()) throw activeResult.error
 
-    const gateResult = this.assertToolAllowed(ctx.toolName)
+    const outputAuthority = await this.ensureBrainOutputAuthority(
+      this.currentRunId ?? '',
+    )
+    if (outputAuthority.isErr()) throw outputAuthority.error
+
+    const gateResult = this.assertToolAllowed(ctx.toolName, ctx.input)
     if (gateResult.isErr()) throw gateResult.error
 
     this.aiObservation.beforeToolCall(ctx)
@@ -463,6 +743,10 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     const runId = this.currentRunId
     if (!runId) return
 
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return
+    this.aiObservation.afterToolCall(ctx)
+
     automationRunLogger[ctx.success ? 'info' : 'warn'](
       'automation_run.tool.finished',
       {
@@ -486,7 +770,6 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       outputPreview: ctx.success ? previewUnknown(ctx.output) : undefined,
       error: ctx.success ? undefined : errorMessage(ctx.error),
     })
-    this.aiObservation.afterToolCall(ctx)
   }
 
   /**
@@ -495,6 +778,20 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
    * failed when there is none.
    */
   protected async finishSettledTurn(runId: string, result: ChatResponseResult) {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) {
+      const closed = await this.forceCloseFailed(
+        runId,
+        runFailure('brain_output_authority_denied'),
+      )
+      if (closed.isErr())
+        this.logRunWarning('close_failed', {
+          runId,
+          ...errorFields(closed.error),
+        })
+      return
+    }
+
     const statusResult = await this.readRunStatus(runId)
     if (
       statusResult.isOk() &&
@@ -503,16 +800,30 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       return
     }
 
+    // A turn that started a Decide analysis leaves the run running; the
+    // Workflow waits for the analysis and resumes the agent with it.
+    const decideWait = await Result.tryPromise({
+      try: () => readAutomationDecideWait(this.getDb(), runId),
+      catch: (cause) => this.dbError('read automation Decide wait', cause),
+    })
+    if (decideWait.isErr()) {
+      this.logRunWarning('decide_wait_read_failed', {
+        runId,
+        ...errorFields(decideWait.error),
+      })
+    }
+    if (decideWait.isOk() && decideWait.value !== null) return
+
     const output = result.message.parts
       .filter((part) => part.type === 'text')
       .map((part) => part.text.trim())
       .filter(Boolean)
       .join('\n\n')
     if (!output) {
-      const failedResult = await this.forceCloseFailed(
-        runId,
-        'automation_completed_without_output',
-      )
+      const failedResult = await this.forceCloseFailed(runId, {
+        ...runFailure('no_output'),
+        diagnostic: 'automation_completed_without_output',
+      })
       if (failedResult.isErr()) {
         this.logRunWarning('close_failed', {
           runId,
@@ -538,6 +849,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
 
   protected override assertToolAllowed(
     runtimeToolName: string,
+    input?: unknown,
   ): ResultValue<void, RunSubAgentError> {
     if (runtimeToolName === 'complete_automation') return Result.ok()
 
@@ -558,7 +870,7 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     )
     if (closureResult.isErr()) return closureResult
 
-    return super.assertToolAllowed(runtimeToolName)
+    return super.assertToolAllowed(runtimeToolName, input)
   }
 
   /**
@@ -642,6 +954,23 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
   protected async loadTurnContext(
     runId: string,
   ): Promise<ResultValue<LoadedAutomationRunContext, RunSubAgentError>> {
+    const binding = await verifyBrainRunBinding(
+      this.env.HYPERDRIVE.connectionString,
+      {
+        runKind: 'automation',
+        runId,
+        runtimeName: this.parentPath.at(-1)?.name ?? '',
+        objectId: this.name,
+      },
+    )
+    if (binding.isErr())
+      return Result.err(
+        this.runError({
+          code: 'runtime_failed',
+          message: binding.error.message,
+          cause: binding.error,
+        }),
+      )
     const db = this.getDb()
     const result = await Result.tryPromise({
       try: async () => {
@@ -744,6 +1073,47 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
         availableAgents: row.availableAgents,
       }),
     })
+  }
+
+  /** Rejects revoked retained context before submission and before model use. */
+  private async ensureBrainGrantHistory(
+    origin: BrainRunOrigin,
+    exposeTool?: string,
+  ) {
+    const authority = await loadBrainRunAuthority(
+      this.env.HYPERDRIVE.connectionString,
+      origin,
+    )
+    if (authority.isErr())
+      return Result.err(
+        new AutomationRunSubAgentError({
+          code: 'runtime_failed',
+          message: authority.error.message,
+          cause: authority.error,
+        }),
+      )
+    return (
+      await ensureBrainRunHistory({
+        identity: `${origin.runKind}:${origin.workspaceId}:${origin.agentId}:${origin.ownerUserId}`,
+        permissions: authority.value.permissions,
+        exposeTool,
+        marker: this.getConfig<{ brainGrantHistory?: unknown }>()
+          ?.brainGrantHistory,
+        readDurableHistory: () => this.session.getHistory(),
+        persist: (brainGrantHistory) =>
+          this.configure({
+            ...this.getConfig<Record<string, unknown>>(),
+            brainGrantHistory,
+          }),
+      })
+    ).mapError(
+      (error) =>
+        new AutomationRunSubAgentError({
+          code: error.code ?? 'runtime_failed',
+          message: error.message,
+          cause: error,
+        }),
+    )
   }
 
   private renderContextBlock(input: {
@@ -1057,6 +1427,9 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
       source: 'assistant' | 'complete_automation'
     },
   ): Promise<ResultValue<void, RunSubAgentError>> {
+    const outputAuthority = await this.ensureBrainOutputAuthority(runId)
+    if (outputAuthority.isErr()) return outputAuthority
+
     const db = this.getDb()
     const now = new Date()
     const output = completion.output.trim()
@@ -1200,15 +1573,20 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
 
   protected async forceCloseFailed(
     runId: string,
-    reason: string,
+    failure: RunFailure,
     loaded?: LoadedAutomationRunContext,
   ): Promise<ResultValue<void, RunSubAgentError>> {
     const db = this.getDb()
     const now = new Date()
+    this.logRunWarning('failed', {
+      runId,
+      cause: failure.cause,
+      ...(failure.diagnostic ? { diagnostic: failure.diagnostic } : {}),
+    })
     await this.recordTrace(runId, {
       ts: now.toISOString(),
       kind: 'run_failed',
-      error: reason,
+      error: failure.cause,
     })
     const writeResult = await Result.tryPromise({
       try: async () =>
@@ -1217,15 +1595,15 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
             .update(schema.automationRun)
             .set({
               status: 'failed',
-              error: reason,
+              error: failure.cause,
               resultJson: sql`coalesce(${schema.automationRun.resultJson}, '{}'::jsonb) || ${JSON.stringify(
                 {
                   resolution: 'failed',
-                  reason,
+                  reason: failure.cause,
                 },
               )}::jsonb`,
               completedAt: now,
-              failureReason: reason,
+              failureReason: failure.cause,
               updatedAt: now,
             })
             .where(
@@ -1255,7 +1633,10 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     })
     if (writeResult.isErr()) return Result.err(writeResult.error)
     if (writeResult.value) {
-      const properties = { reason, completed_at: now.toISOString() }
+      const properties = {
+        cause: failure.cause,
+        completed_at: now.toISOString(),
+      }
       if (loaded) {
         this.captureRunProduct(
           loaded,
@@ -1276,6 +1657,8 @@ export class AutomationRunSubAgent extends RunSubAgentBase<
     super.clearTurnState()
     this.currentBrowserAllowed = false
     this.currentLogContext = null
+    this.currentBrainOrigin = null
+    this.brainInjectionAllowed = false
     this.currentTrace = []
   }
 

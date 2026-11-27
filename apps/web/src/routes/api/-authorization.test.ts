@@ -20,7 +20,6 @@ const PERMISSION_CHECKS = [
   'requireWorkspacePermission(',
   'workspacePermissions.',
   // Helpers that perform the permission check themselves.
-  'setAgentStatus(',
   'updateIssueSubscription(',
   'requireTeamManage(',
   'requireTeamOwnerTransfer(',
@@ -34,7 +33,11 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
     'internal endpoint authenticated by the shared secret, not a user',
   'internal/executor/catalog.ts':
     'internal endpoint authenticated by the shared secret, not a user',
+  'github/webhook.ts':
+    'public GitHub App webhook; HMAC signature is the authorization gate',
   'me.ts': 'the caller updates only their own profile',
+  'github/identity/unlink.ts':
+    "the caller clears only their own member row's GitHub link",
   'workspaces.ts': 'any signed-in user may create a workspace',
   'workspaces/$id.ts': 'Better Auth organization API enforces the role',
   'workspaces/$id/invitations/$invitationId.ts':
@@ -57,8 +60,6 @@ const MEMBER_LEVEL_ROUTES: Record<string, string> = {
   'chat/threads/$id.ts': 'chat threads are private to their owner',
   'chat/threads/$id/documents.ts': 'chat threads are private to their owner',
   'chat/threads/$id/primary-issue.ts':
-    'chat threads are private to their owner',
-  'chat/threads/$threadId/decide-analyses/$runId.ts':
     'chat threads are private to their owner',
   'debug-stream.ts': "refreshes debug data for the caller's own session",
   'executor/preview.ts': 'read-only preview of a catalog integration',

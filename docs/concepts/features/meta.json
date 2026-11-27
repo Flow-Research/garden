@@ -1,0 +1,17 @@
+{
+  "title": "Features",
+  "pages": [
+    "issues",
+    "github-webhook-sync",
+    "github-issue-sync",
+    "chat",
+    "automations",
+    "decide",
+    "artifacts",
+    "skills",
+    "teams",
+    "settings",
+    "permissions",
+    "handbook"
+  ]
+}
