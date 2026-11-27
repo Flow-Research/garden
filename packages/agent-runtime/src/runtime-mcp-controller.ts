@@ -213,16 +213,15 @@ export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
 
 /**
  * Approval context shown in the Inbox. When several Teams' rules require the
- * same approval, the request names the first Team in `team_id` and lists the
- * rest here so the approver can see every rule that held the call.
+ * same approval, the context names every Team whose policy held the call.
  */
 function permissionRequestContext(
   toolLabel: string,
-  otherTeams: readonly { teamName: string }[],
+  teams: readonly { teamName: string }[],
 ) {
-  if (otherTeams.length === 0) return toolLabel
-  const names = otherTeams.map((team) => team.teamName).join(', ')
-  return `${toolLabel} (also required by ${names} Team policy)`
+  if (teams.length <= 1) return toolLabel
+  const names = teams.map((team) => team.teamName).join(', ')
+  return `${toolLabel} (required by ${names} Team policies)`
 }
 
 export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
@@ -1479,6 +1478,8 @@ export class RuntimeMcpController {
             argsJson: schema.permissionRequest.argsJson,
             resolvedAt: schema.permissionRequest.resolvedAt,
             status: schema.permissionRequest.status,
+            teamId: schema.permissionRequest.teamId,
+            context: schema.permissionRequest.context,
           })
           .from(schema.permissionRequest)
           .where(
@@ -1509,6 +1510,15 @@ export class RuntimeMcpController {
       }
 
       return (
+        request.teamId ===
+          (teamApproval?.otherTeams.length
+            ? null
+            : (teamApproval?.team.teamId ?? null)) &&
+        request.context ===
+          permissionRequestContext(
+            `${args.connectorId}.${args.toolName}`,
+            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
+          ) &&
         Date.now() - request.resolvedAt.getTime() <=
           PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
         canonicalJsonString(request.argsJson) === toolArgsSignature
@@ -1528,9 +1538,11 @@ export class RuntimeMcpController {
           runId: identityResult.value.runId ?? null,
           context: permissionRequestContext(
             `${args.connectorId}.${args.toolName}`,
-            teamApproval?.otherTeams ?? [],
+            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
           ),
-          teamId: teamApproval?.team.teamId ?? null,
+          teamId: teamApproval?.otherTeams.length
+            ? null
+            : (teamApproval?.team.teamId ?? null),
           issueId: identityResult.value.issueId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,

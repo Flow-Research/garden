@@ -14,15 +14,14 @@ The page follows the supplied All settings design: heading and description, hori
 
 `/settings` redirects to `/settings/profile`. Section links preserve browser history and support direct entry and reload. The authenticated app layout owns session and workspace access.
 
-| Section         | URL                                                                    | Existing content reused                                                       |
-| --------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| Profile         | `/settings/profile`                                                    | Redesigned; see [Profile](#profile)                                           |
-| User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins      |
-| Preferences     | `/settings/preferences`                                                | Appearance and theme selection                                                |
-| General         | `/settings/general`                                                    | Redesigned; see [General](#general)                                                            |
-| Execution hosts | `/settings/execution-hosts`                                            | [Execution-host status and operator decisions](./external-execution-hosts.md) |
+| Section         | URL                                                                    | Existing content reused                                                  |
+| --------------- | ---------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Profile         | `/settings/profile`                                                    | Redesigned; see [Profile](#profile)                                      |
+| User Management | `/settings/user-management/members`, `/settings/user-management/teams` | Workspace members and invitations; Team management for owners and admins |
+| Preferences     | `/settings/preferences`                                                | Redesigned; see [Preferences](#preferences)                              |
+| General         | `/settings/general`                                                    | Redesigned; see [General](#general)                                      |
 
-User Management and Preferences reuse the same components, queries and mutations as the modal and the Teams page. Their content redesigns are separate changes. Notifications has no tab or route until its behavior is implemented. This shell adds no new account operations, APIs or permissions.
+User Management uses the workspace and Team components. Preferences and General use the same stores and mutations as their modal controls. Notifications has no tab or route. Settings adds no new account operations, APIs or permissions.
 
 ## Profile
 
@@ -52,6 +51,17 @@ User Management has Members and Team sub-tabs, shown as pills, each with its own
 
 The design also shows Roles and Guests sub-tabs. Workspace roles are the fixed owner, admin and member set and Garden has no guest access, so neither sub-tab exists until the backend supports it.
 
+## Preferences
+
+The Preferences section is one card with two sections:
+
+- **Appearance.** A Theme row with a dropdown of Light, Dark and System. It calls `next-themes`, so the choice applies to this device only. Until `next-themes` reads the stored choice, the trigger shows no option.
+- **Developer.** A Debug mode switch bound to the client-side `useDevSettingsStore`. It shows the agent chat debug drawer on this device.
+
+The modal keeps its separate Appearance and Developer tabs, which read the same theme and store.
+
+Design elements without backend support are not shown: Agent preferences (communication style, proactivity, decision autonomy), Language and time, and Privacy (cookie settings, view history). Garden has no setting, schema or API for them. Notifications is also left out, as above.
+
 Teams also remains at `/teams` with its member view and detail pages. Implementing the remaining section designs and switching menu entries from the modal to this page are follow-up work. The modal's Developer and platform-specific tabs remain in the modal.
 
 ## General
@@ -66,3 +76,7 @@ The modal still renders the earlier `WorkspaceTab`. Both use `api.updateWorkspac
 ## Verification
 
 See the [Settings verification map](../../../.agents/skills/verify/features/settings.md) for direct-link, history, responsive and modal-entry checks.
+
+## Execution hosts
+
+Open `/settings/execution-hosts` to read the host status, review a paused run and choose whether to resume or stop it. See [Execution-host status and operator decisions](./external-execution-hosts.md).
