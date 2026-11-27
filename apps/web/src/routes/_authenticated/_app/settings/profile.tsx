@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { AccountTab } from '@/features/settings/components/account-tab'
+import { ProfileSettings } from '@/features/settings/components/profile-settings'
 
 export const Route = createFileRoute('/_authenticated/_app/settings/profile')({
-  component: AccountTab,
+  component: ProfileSettings,
 })

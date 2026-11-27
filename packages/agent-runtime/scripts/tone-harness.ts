@@ -25,7 +25,7 @@ const workersai = createWorkersAI({
     ? { gateway: { id: process.env.AI_GATEWAY_ID.trim() } }
     : {}),
 })
-const model = workersai('@cf/moonshotai/kimi-k2.7-code')
+const model = workersai('@cf/zai-org/glm-5.3')
 
 const promptVariant = process.argv[2] ?? 'current'
 
