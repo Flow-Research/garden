@@ -26,6 +26,8 @@
 - [ ] I updated the architecture or design document for infrastructure or
       system-boundary changes.
 - [ ] I updated the verification map for a new user path.
+- [ ] I updated the diagrams in `docs/diagrams/` that this change affects, or
+      wrote `Diagrams: not affected (<name>) — <reason>` for each one.
 - [ ] I documented missing proof and known gaps.
 
 ## Checks

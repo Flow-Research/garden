@@ -3,7 +3,7 @@ title: Pull request contract
 description: What the PR contract check enforces on a pull request body and diff, and what it cannot prove.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-27
 ---
 
 The `PR contract` job in `.github/workflows/pr-contract.yml` runs `pnpm verify:pr`, which runs `scripts/verify-pr-contract.mjs`.
@@ -66,6 +66,10 @@ The check reads the changed paths between the base and head commits.
 | Documentation | `docs/`, `.agents/skills/`, `AGENTS.md`, `CONTRIBUTING.md`                           |
 
 If the diff changes a behavior path and no documentation path, the Documentation section must state `Documentation: not needed`. Otherwise the check fails.
+
+## Architecture changes need a diagram check
+
+`docs/diagrams/manifest.json` lists the code paths each diagram in `docs/diagrams/` shows. If the diff changes one of those paths, the check fails unless the diff also changes that diagram's `.drawio.svg` file, or the PR body has a line `Diagrams: not affected (<name>) — <reason>` for that diagram. Each affected diagram needs its own line and a reason on that line. A file watch matches its exact path, including a deletion or rename. A directory watch ends in a slash and includes its descendants. A diff that touches no watched path is not checked. To update a diagram, follow `.agents/skills/diagrams/SKILL.md`.
 
 ## Run the check locally
 
