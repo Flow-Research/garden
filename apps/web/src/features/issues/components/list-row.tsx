@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import type { Issue } from '@garden/core/types'
-import { ChevronRight, FileText } from 'lucide-react'
+import { ExternalLink, FileText } from 'lucide-react'
 import { formatShortDate } from '@garden/core/format'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
@@ -17,26 +17,15 @@ export interface ChildProgress {
   total: number
 }
 
-/** Design pill used by the Team list variant's team/project/description chips. */
-function Chip({
-  children,
-  dot,
-  icon,
-}: {
-  children: React.ReactNode
-  dot?: string
-  icon?: React.ReactNode
-}) {
+/** Label for a Team or project in the Team issue list. */
+function Chip({ children, dot }: { children: React.ReactNode; dot: string }) {
   return (
     <span className="inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
-      {dot ? (
-        <span
-          aria-hidden
-          className="size-2 shrink-0 rounded-full"
-          style={{ background: dot }}
-        />
-      ) : null}
-      {icon}
+      <span
+        aria-hidden
+        className="size-2 shrink-0 rounded-full"
+        style={{ background: dot }}
+      />
       <span className="max-w-80 truncate">{children}</span>
     </span>
   )
@@ -111,23 +100,24 @@ export const ListRow = memo(function ListRow({
           </a>
           {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
           {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
-          {issue.description && isTodo ? (
+          {issue.description ? (
             <a
               href={href}
               onClick={handleOpen}
-              className="flex min-w-0 basis-full items-center gap-2 rounded-md border-[0.5px] border-border-default bg-background-main-default px-3 py-2 text-text-secondary"
+              className={cn(
+                'flex min-w-0 max-w-full items-center border-[0.5px] border-border-default bg-background-main-default px-3',
+                isTodo
+                  ? 'basis-full gap-2 rounded-md py-2 text-text-secondary'
+                  : 'h-[30px] gap-1.5 rounded-pill text-text-default',
+              )}
             >
               <FileText aria-hidden className="size-4 shrink-0" />
-              <span className="min-w-0 flex-1 truncate">
+              <span
+                className={cn('min-w-0 flex-1 truncate', !isTodo && 'max-w-80')}
+              >
                 {issue.description}
               </span>
-              <ChevronRight aria-hidden className="size-4 shrink-0" />
-            </a>
-          ) : issue.description ? (
-            <a href={href} onClick={handleOpen} className="min-w-0 max-w-full">
-              <Chip icon={<FileText className="size-3.5 shrink-0" />}>
-                {issue.description}
-              </Chip>
+              <ExternalLink aria-hidden className="size-4 shrink-0" />
             </a>
           ) : null}
         </div>
