@@ -129,7 +129,7 @@ Leave **Request user authorization (OAuth) during installation** off. Linking a 
 | `GARDEN_MODEL_BASE_URL`              | Base URL of the model endpoint.                        |
 | `GARDEN_MODEL_ID`                    | Model id.                                              |
 | `GARDEN_MODEL_API_KEY`               | Model API key.                                         |
-| `GARDEN_MODEL_CONTEXT_WINDOW_TOKENS` | Context window size in tokens.                         |
+| `GARDEN_MODEL_CONTEXT_WINDOW_TOKENS` | Context window size in tokens. The model server must run at least this context; for Ollama, set `OLLAMA_CONTEXT_LENGTH` to match. |
 
 ## Build and deploy variables
 

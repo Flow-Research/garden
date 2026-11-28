@@ -62,7 +62,7 @@ docker compose -f compose.dev.yaml exec ollama ollama pull qwen3:8b
 
 You should see three healthy containers: Postgres on port `55432`, HelixDB on port `6968`, and Ollama on port `11434`. The model download is about 5 GB.
 
-If you already run Ollama natively, run `ollama pull qwen3:8b` and then `pnpm offline:up` instead. That command starts only Postgres and HelixDB.
+If you already run Ollama natively, run `ollama pull qwen3:8b` and then `pnpm offline:up` instead. That command starts only Postgres and HelixDB. Native Ollama also needs `OLLAMA_CONTEXT_LENGTH=32768` before it starts, because its 4096-token default truncates Garden's prompts. The README's offline section shows how to set it.
 
 ## Step 4: create the database tables
 
