@@ -8,6 +8,7 @@ import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Effect, Schema } from 'effect'
 import { createAgentModel } from './model'
 import { configureThinkCompaction } from './think-compaction'
+import { thinkTurnTelemetry } from './think-telemetry'
 import {
   BRAIN_AUDIT_SYSTEM_PROMPT,
   BRAIN_AUDIT_TOOL_NAMES,
@@ -121,17 +122,14 @@ export class BrainAuditSubAgent extends Think<AgentRuntimeEnv> {
 
         return Effect.succeed({
           model: this.getModel(),
-          experimental_telemetry: {
+          experimental_telemetry: thinkTurnTelemetry({
             functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
-            isEnabled: true,
             metadata: {
               agentClass: 'BrainAuditSubAgent',
               itemId: this.name,
               runId: config.runId,
             },
-            recordInputs: false,
-            recordOutputs: false,
-          },
+          }),
           activeTools: [...BRAIN_AUDIT_TOOL_NAMES],
           maxRetries: THINK_TURN_MAX_RETRIES,
           maxSteps: this.maxSteps,

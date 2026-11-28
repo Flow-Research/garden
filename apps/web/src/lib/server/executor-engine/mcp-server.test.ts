@@ -58,6 +58,28 @@ const makeBehaviorEngine = (): ExecutionEngine<never> => ({
 })
 
 describe('Garden Executor MCP tool surface', () => {
+  it('keeps a multibyte Executor report within the MCP replay budget', async () => {
+    const report = '界'.repeat(50_000)
+    const engine = {
+      ...makeBehaviorEngine(),
+      executeWithPause: () =>
+        Effect.succeed({
+          status: 'completed' as const,
+          result: { result: report },
+        }),
+    }
+    await withMcpClient(boundExecutionEngine(engine), async (client) => {
+      const response = await client.callTool({
+        name: 'execute',
+        arguments: { code: 'report' },
+      })
+      const wire = JSON.stringify({ jsonrpc: '2.0', id: 4, result: response })
+      expect(new TextEncoder().encode(wire).length).toBeLessThan(120 * 1024)
+      expect(wire).toContain('truncated')
+      expect(wire).toContain('界')
+    })
+  })
+
   it('serves execute, skills, and model resume over real MCP transport', async () => {
     await withMcpClient(
       boundExecutionEngine(makeBehaviorEngine()),

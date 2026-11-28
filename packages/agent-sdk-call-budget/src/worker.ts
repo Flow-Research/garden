@@ -63,13 +63,10 @@ export class RunFacet extends Think<Env> {
 }
 
 export class RootAgent extends Agent<Env> {
-  counts = { setName: 0, broadcast: 0 }
+  counts = { broadcast: 0 }
 
-  override async setName(...args: Parameters<Agent<Env>['setName']>) {
-    this.counts.setName += 1
-    return super.setName(...args)
-  }
-
+  // agents@0.34 dropped PartyServer `setName`; root wake traffic for
+  // streamed facets now shows up as `_cf_broadcastToSubAgent` only.
   override async _cf_broadcastToSubAgent(
     ...args: Parameters<Agent<Env>['_cf_broadcastToSubAgent']>
   ) {
@@ -88,7 +85,7 @@ export class RootAgent extends Agent<Env> {
   }
 
   resetCounts() {
-    this.counts = { setName: 0, broadcast: 0 }
+    this.counts = { broadcast: 0 }
   }
 
   readCounts() {

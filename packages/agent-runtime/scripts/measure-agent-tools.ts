@@ -67,7 +67,7 @@ function reg(
   }
 }
 
-// ── Workspace tools (createWorkspaceTools) — both agents get these ──────
+// ── Workspace tools (createAITools) — both agents get these ──────
 const WORKSPACE_TOOL_SCHEMAS: Array<{
   name: string
   description: string
@@ -227,7 +227,7 @@ for (const tool of SANDBOX_TOOL_SCHEMAS) {
 // ── execute (codemode-style filesystem-only) — both agents get this ─────
 {
   const description =
-    'Run JavaScript in the sandbox for multi-step filesystem work. Use state.readFile(path), state.writeFile(path, content), state.glob(pattern), state.readDir(path), state.mkdir(path), state.rm(path), state.cp(from, to), and state.mv(from, to). Input is an async arrow function body as JavaScript, not TypeScript. Return the useful result.'
+    'Run JavaScript in the sandbox for multi-step filesystem work. Use tools.read, tools.ls, tools.find, tools.grep, tools.write, tools.edit, and tools.delete from the Computer workspace surface. Input is an async arrow function body as JavaScript, not TypeScript. Return the useful result.'
   // codemode passes a generated typed surface back; description includes the
   // {{types}} block in real usage. We measure the description-only baseline
   // because the dynamic types portion only gets large when `tools` is

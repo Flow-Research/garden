@@ -51,7 +51,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "catalog:",
     "@garden/connectors": "workspace:*",
-    "@modelcontextprotocol/sdk": "1.32.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@typescript/native": "catalog:",
     "alchemy": "2.0.0-beta.74",
     "oxc-parser": "0.95.0",
@@ -84,7 +84,7 @@
       "@effect/platform-node-shared": "4.0.0-rc.111",
       "@effect/vitest": "4.0.0-rc.111",
       "@babel/core": "7.29.6",
-      "@modelcontextprotocol/sdk": "1.32.0",
+      "@modelcontextprotocol/sdk": "1.32.2",
       "@modelcontextprotocol/sdk>@hono/node-server": "2.0.10",
       "zod@4": "4.6.6",
       "@tanstack/start-server-core": "1.169.39",
@@ -123,7 +123,6 @@
       "vite@8": "8.2.4"
     },
     "patchedDependencies": {
-      "agents@0.17.3": "patches/agents@0.17.3.patch",
       "@helix-db/helix-db@3.0.2": "patches/@helix-db__helix-db@3.0.2.patch",
       "@executor-js/sdk@1.5.40": "patches/@executor-js__sdk@1.5.40.patch",
       "@executor-js/config@1.5.40": "patches/@executor-js__config@1.5.40.patch",

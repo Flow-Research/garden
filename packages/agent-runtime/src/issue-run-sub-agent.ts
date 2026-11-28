@@ -543,6 +543,7 @@ export class IssueRunSubAgent extends RunSubAgentBase<
         databaseUrl: this.env.HYPERDRIVE.connectionString,
         threadId: this.name,
         workspace: this.workspace,
+        documentFiles: this.documentFiles,
         loader: this.env.LOADER,
         getSandbox: () => this.getAgentSandbox(),
         issueRunEnv: this.env,

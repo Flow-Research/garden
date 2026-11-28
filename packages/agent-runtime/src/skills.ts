@@ -1,6 +1,6 @@
 import { and, eq, or } from 'drizzle-orm'
 import { Context, Effect, Layer, Schema } from 'effect'
-import { r2, type SkillSource } from 'agents/skills'
+import { SkillResourceNotFoundError, r2, type SkillSource } from 'agents/skills'
 import {
   agentSkillTarget,
   workspaceChatSkillTarget,
@@ -78,6 +78,17 @@ export class RuntimeSkillSources extends Context.Service<
   RuntimeSkillSourcesService
 >()('@garden/agent-runtime/RuntimeSkillSources') {}
 
+const sourceOperation = <A>(operation: string, run: () => Promise<A>) =>
+  Effect.tryPromise({
+    try: run,
+    catch: (cause) =>
+      new RuntimeSkillSourceError({
+        operation,
+        message: `Failed to ${operation}.`,
+        cause,
+      }),
+  })
+
 function dynamicAssignedSource(input: {
   readonly bucket: R2Bucket
   readonly identity: RuntimeSkillIdentity
@@ -92,81 +103,56 @@ function dynamicAssignedSource(input: {
     refreshIntervalMs: 0,
   })
   let assignedNames: ReadonlySet<string> = new Set()
-  let assignmentFingerprint = ''
-  let loaded = false
 
+  // Think reuses SkillSource objects across turns, so assignments must be
+  // re-queried on each list/read — a one-shot load would freeze an empty set
+  // after the first turn with no assignments.
   const refreshAssignments = Effect.fn(
     'RuntimeSkillSources.refreshAssignments',
   )(function* () {
     const assignments = yield* input.loadAssignments()
-    const names = assignments
-      .map((assignment) => assignment.name)
-      .sort((left, right) => left.localeCompare(right))
-    assignedNames = new Set(names)
-    assignmentFingerprint = names.join(',')
-    loaded = true
+    assignedNames = new Set(assignments.map((assignment) => assignment.name))
   })
-
-  const ensureAssignments = () => (loaded ? Effect.void : refreshAssignments())
-
-  const sdkCall = <A>(operation: string, run: () => Promise<A>) =>
-    Effect.tryPromise({
-      try: run,
-      catch: (cause) =>
-        new RuntimeSkillSourceError({
-          operation,
-          message: `Skill source ${operation} failed.`,
-          cause,
-        }),
-    })
 
   return {
     id: base.id,
-    get fingerprint() {
-      return `${base.fingerprint}:assignments:${assignmentFingerprint}`
-    },
     list: () =>
       Effect.runPromise(
         Effect.gen(function* () {
-          yield* ensureAssignments()
-          if (assignedNames.size === 0) return []
-          const descriptors = yield* sdkCall('list', () => base.list())
-          return descriptors.filter((descriptor) =>
-            assignedNames.has(descriptor.name),
+          yield* refreshAssignments()
+          if (assignedNames.size === 0) {
+            return { ok: true as const, value: { skills: [], invalid: [] } }
+          }
+          const listed = yield* sourceOperation('list assigned skills', () =>
+            base.list(),
           )
+          if (!listed.ok) return listed
+          return {
+            ok: true as const,
+            value: {
+              skills: listed.value.skills.filter((entry) =>
+                assignedNames.has(entry.skill.name),
+              ),
+              // An invalid manifest has no verified skill identity.
+              invalid: [],
+            },
+          }
         }),
       ),
-    load: (name) =>
+    readResource: (skill, path) =>
       Effect.runPromise(
         Effect.gen(function* () {
-          yield* ensureAssignments()
-          if (!assignedNames.has(name)) return null
-          return yield* sdkCall('load', () => base.load(name))
-        }),
-      ),
-    readResource: (name, path) =>
-      Effect.runPromise(
-        Effect.gen(function* () {
-          yield* ensureAssignments()
-          if (!assignedNames.has(name) || !base.readResource) return null
-          return yield* sdkCall('read resource', () =>
-            base.readResource
-              ? base.readResource(name, path)
-              : Promise.resolve(null),
+          yield* refreshAssignments()
+          if (!assignedNames.has(skill)) {
+            return {
+              ok: false as const,
+              error: new SkillResourceNotFoundError(skill, path),
+            }
+          }
+          return yield* sourceOperation('read assigned skill resource', () =>
+            base.readResource(skill, path),
           )
         }),
-      ),
-    refresh: () =>
-      Effect.runPromise(
-        Effect.all(
-          [
-            base.refresh
-              ? sdkCall('refresh', () => base.refresh?.() ?? Promise.resolve())
-              : Effect.void,
-            refreshAssignments(),
-          ],
-          { discard: true },
-        ),
       ),
   }
 }
@@ -177,28 +163,19 @@ export const runtimeSkillSourcesLayer = Layer.effect(
     const environment = yield* RuntimeSkillEnvironment
     const db = getPooledDb(environment.databaseUrl)
 
-    const dbOperation = <A>(operation: string, run: () => Promise<A>) =>
-      Effect.tryPromise({
-        try: run,
-        catch: (cause) =>
-          new RuntimeSkillSourceError({
-            operation,
-            message: `Failed to ${operation}.`,
-            cause,
-          }),
-      })
-
     const identity = Effect.fn('RuntimeSkillSources.identity')(function* (
       subject: RuntimeSkillSubject,
     ) {
       if (subject.kind === 'target') {
         if (subject.target.kind === 'agent') {
-          const rows = yield* dbOperation('load target agent permissions', () =>
-            db
-              .select({ permissions: schema.agent.permissions })
-              .from(schema.agent)
-              .where(eq(schema.agent.id, subject.target.id))
-              .limit(1),
+          const rows = yield* sourceOperation(
+            'load target agent permissions',
+            () =>
+              db
+                .select({ permissions: schema.agent.permissions })
+                .from(schema.agent)
+                .where(eq(schema.agent.id, subject.target.id))
+                .limit(1),
           )
           const row = rows[0]
           return {
@@ -216,7 +193,7 @@ export const runtimeSkillSourcesLayer = Layer.effect(
         }
       }
       if (subject.kind === 'chat') {
-        const rows = yield* dbOperation('load chat skill target', () =>
+        const rows = yield* sourceOperation('load chat skill target', () =>
           db
             .select({
               workspaceId: schema.chatThread.workspaceId,
@@ -251,7 +228,7 @@ export const runtimeSkillSourcesLayer = Layer.effect(
         }
       }
       if (subject.kind === 'issue') {
-        const rows = yield* dbOperation('load issue skill target', () =>
+        const rows = yield* sourceOperation('load issue skill target', () =>
           db
             .select({
               workspaceId: schema.issueRun.workspaceId,
@@ -283,7 +260,7 @@ export const runtimeSkillSourcesLayer = Layer.effect(
             }
           : null
       }
-      const rows = yield* dbOperation('load automation skill target', () =>
+      const rows = yield* sourceOperation('load automation skill target', () =>
         db
           .select({
             workspaceId: schema.automationRun.workspaceId,
@@ -313,7 +290,7 @@ export const runtimeSkillSourcesLayer = Layer.effect(
     const assignmentsForIdentity = Effect.fn(
       'RuntimeSkillSources.assignmentsForIdentity',
     )(function* (resolved: RuntimeSkillIdentity) {
-      const rows = yield* dbOperation('load skill assignments', () =>
+      const rows = yield* sourceOperation('load skill assignments', () =>
         db
           .select({ name: schema.skill.name, slug: schema.skill.slug })
           .from(schema.skillAssignment)

@@ -35,9 +35,9 @@ A test checks that the installed query parser is in the declared range.
 Other query-parser branches retain their separate versions and audit findings.
 The package manager generates the dependency lock with lifecycle scripts disabled.
 
-The compatibility tests use the actual Executor OpenAPI importer, Think inspection command, AJV, Express body parser, multipart parser, and both Node transports.
+The compatibility tests use the actual Executor OpenAPI importer, wrangler's `smol-toml` owner, AJV, Express body parser, multipart parser, and both Node transports.
 TOML is a configuration file format.
-Think inspection reports whether its TOML parsed. That result does not establish a deployed application.
+The wrangler TOML owner parses a valid document and refuses incomplete input. That result does not establish a deployed application.
 The Executor OpenAPI importer reads YAML with the JSON schema of `js-yaml`, so it reads a merge key as plain data.
 The empty-merge input therefore adds no merge work in the importer. The default `js-yaml` loader refuses that input.
 DOCX is a Word document format.

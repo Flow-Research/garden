@@ -5,7 +5,7 @@ import { parseSync } from 'oxc-parser'
 import { describe, expect, it, vi } from 'vitest'
 import { Result } from 'better-result'
 import { buildMcpAiToolKey } from '@garden/connectors/capabilities'
-import { agentsSdk } from '@/test/agents-sdk-fixture'
+import { agentsSdk, createAgentTestContext } from '@/test/agents-sdk-fixture'
 import { extractExecutorToolRefsFromInput } from '../../../../../packages/agent-runtime/src/executor-codemode'
 import { isIntegrationToolAllowed } from '../../../../../packages/agent-runtime/src/integration-router'
 
@@ -82,14 +82,9 @@ const chatClass = await compileClass('ChatSubAgent')
 class DispatchAgent extends Agent {}
 
 function runtime(prototype: Record<string, unknown>) {
-  const context = {
+  const context = createAgentTestContext({
     id: { name: 'callability-proof' },
-    storage: {
-      sql: { exec: () => Object.assign([], { toArray: () => [] }) },
-      get: async () => undefined,
-    },
-    getWebSockets: () => [],
-  }
+  })
   const agent = Reflect.construct(DispatchAgent, [context, {}]) as InstanceType<
     typeof Agent
   >
