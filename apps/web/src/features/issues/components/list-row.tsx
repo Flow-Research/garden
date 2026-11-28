@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react'
 import type { Issue } from '@garden/core/types'
-import { FileText } from 'lucide-react'
+import { ExternalLink, FileText } from 'lucide-react'
 import { formatShortDate } from '@garden/core/format'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
@@ -16,27 +16,16 @@ export interface ChildProgress {
   total: number
 }
 
-/** Design pill used by the Team list variant's team/project/description chips. */
-function Chip({
-  children,
-  dot,
-  icon,
-}: {
-  children: React.ReactNode
-  dot?: string
-  icon?: React.ReactNode
-}) {
+/** Label for a Team or project in the Team issue list. */
+function Chip({ children, dot }: { children: React.ReactNode; dot: string }) {
   return (
-    <span className="inline-flex h-[30px] items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
-      {dot ? (
-        <span
-          aria-hidden
-          className="size-2 shrink-0 rounded-full"
-          style={{ background: dot }}
-        />
-      ) : null}
-      {icon}
-      {children}
+    <span className="inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
+      <span
+        aria-hidden
+        className="size-2 shrink-0 rounded-full"
+        style={{ background: dot }}
+      />
+      <span className="max-w-80 truncate">{children}</span>
     </span>
   )
 }
@@ -78,29 +67,38 @@ export const ListRow = memo(function ListRow({
   )
 
   if (variant === 'team') {
+    const href = issuePath(issue.id)
     return (
-      <div className="flex h-[54px] items-center gap-3 px-6 text-sm">
+      <div className="flex min-h-[54px] items-center gap-3 px-6 py-3 text-sm max-xl:items-start max-xl:py-4 max-sm:px-4">
         <StatusIcon
           status={issue.status}
-          className="size-4.5 text-icon-secondary"
+          className="size-4.5 shrink-0 text-icon-secondary max-xl:mt-0.5 max-xl:size-5"
           inheritColor
         />
-        <a
-          href={issuePath(issue.id)}
-          onClick={handleOpen}
-          className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-4"
-        >
-          <span className="truncate text-text-default">{issue.title}</span>
-          <span className="flex shrink-0 items-center gap-2">
-            {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
-            {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
-            {issue.description ? (
-              <Chip icon={<FileText className="size-3.5" />}>
-                <span className="max-w-80 truncate">{issue.description}</span>
-              </Chip>
-            ) : null}
-          </span>
-        </a>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <a
+            href={href}
+            onClick={handleOpen}
+            className="min-w-0 grow basis-48 text-text-default max-xl:basis-full max-xl:wrap-break-word max-xl:font-semibold xl:truncate"
+          >
+            {issue.title}
+          </a>
+          {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
+          {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
+          {issue.description ? (
+            <a
+              href={href}
+              onClick={handleOpen}
+              className="flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-text-default max-xl:h-auto max-xl:basis-full max-xl:gap-2 max-xl:py-2 max-xl:text-text-secondary"
+            >
+              <FileText aria-hidden className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate xl:max-w-80">
+                {issue.description}
+              </span>
+              <ExternalLink aria-hidden className="size-4 shrink-0" />
+            </a>
+          ) : null}
+        </div>
       </div>
     )
   }

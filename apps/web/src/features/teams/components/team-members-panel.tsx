@@ -16,7 +16,6 @@ export function TeamMembersPanel({
   search,
   onRemove,
   onAddMember,
-  onAgentSettings,
   onSeeIssues,
 }: {
   team: Team
@@ -26,7 +25,6 @@ export function TeamMembersPanel({
   search: string
   onRemove: (member: TeamMember) => void
   onAddMember: () => void
-  onAgentSettings: () => void
   /** Omitted where the Team's Issues tab is not shown, which hides the link. */
   onSeeIssues?: () => void
 }) {
@@ -64,21 +62,12 @@ export function TeamMembersPanel({
             ) : undefined
           }
         />
-        <TeamSummaryCard
-          label="Total Activity"
-          value={team.activity_count}
-          action={
-            <TeamSummaryMenu
-              items={[{ label: 'See activity', disabled: true }]}
-            />
-          }
-        />
+        <TeamSummaryCard label="Total Activity" value={team.activity_count} />
       </div>
 
       <TeamMembersTable
         canManage={canManage}
         members={visibleMembers}
-        onAgentSettings={onAgentSettings}
         onRemove={onRemove}
         ownerUserId={team.owner_user_id}
         search={search}

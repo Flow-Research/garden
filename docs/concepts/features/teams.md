@@ -3,7 +3,7 @@ title: Teams group people and agents, and scope who sees which issues
 description: How Teams work in a workspace, who can manage them, how invites add people to Teams, how admins reach them from Settings, how a Team agent policy caps agents, and why Team realtime events carry identifiers only.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-18
+last_reviewed: 2026-11-28
 ---
 
 Related issue: [#155](https://github.com/Flow-Research/garden/issues/155)
@@ -85,22 +85,30 @@ The Teams overview has no **Invites** section or **Default team for new members*
 
 Teams has one home in the app:
 
-| Route            | What it shows                                                                                                                                                                                                                                                                                      |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/teams`         | Owners and admins see one card holding **Create a Team** and the Team grid (or the **No Teams** empty state). Each Team card menu has **Add team member** and **Delete**. Members see a Team selector and their Team's issues.                                                                     |
-| `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md). |
-| `/teams/issues`  | Issues across every Team, for owners and admins                                                                                                                                                                                                                                                    |
+| Route            | What it shows                                                                                                                                                                                                                                                                                                                                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/teams`         | Owners and admins see **Create a Team**, summary cards, and the **All teams** grid. An empty workspace shows **No Teams** in place of the summary and grid. Each Team card menu has **Add team member** and **Delete**. Members see a Team selector and their Team's issues. |
+| `/teams/$teamId` | Team detail with **Members**, **Issues**, and **Repositories** tabs. The tab is URL state (`?tab=members`, `?tab=issues`, or `?tab=repositories`), and an unknown value falls back to Members. **Repositories** lists linked GitHub repositories; see [GitHub issue sync](./github-issue-sync.md).                                               |
+| `/teams/issues`  | Issues across every Team, for owners and admins                                                                                                                                                                                                                                                                                                  |
 
 The sidebar links to `/teams`. Settings links to it too.
 
 ## Team management screens
 
-The admin screens follow the admin designs 25 to 33, with "Team" in place of the design's "Department".
+The admin screens follow the November 2026 Teams designs, with "Team" in place of the design's "Department". Design controls with no backing in Garden are left out rather than rendered as placeholders.
 
-- **Create a Team** opens one screen titled **Create New Team**. It has **Team name** (required), **Description**, and a **TEAM MEMBERS** checklist of workspace members and active agents with a "No select" or "N select" counter. The creator is not listed because the server always adds them as owner. With nobody else in the workspace, the list shows **No team member**. **Create team** stays disabled until the name is set. Success shows the toast "A new team has been added".
+- The overview header reads **Teams** and "See teams within your organisation", with **Create a Team** on the right. The design's **Manage Teams** button is not built: it has no defined action.
+- The overview summary cards and Team grid fill the content width below 1280px. A padded frame surrounds them at 1280px and above.
+- The overview summary cards read from `GET /api/teams`. **Total Teams** is `total`. **Total Members** is `unique_member_count`, and **See members** opens `/settings/user-management/members`. **Total Issues** sums each Team's `issue_count`; an issue belongs to at most one Team and managers see every Team, so the sum is the Team issue total. **See issues** opens `/teams/issues`. The cards and the **All teams** heading hide while there are no Teams.
+- **Create a Team** opens one screen titled **Create New Team**. It has **Team name** (required), **Description**, and a **TEAM MEMBERS** checklist of workspace members and active agents with a "No select" or "N select" counter. The creator is not listed because the server always adds them as owner. With nobody else in the workspace, the list shows **No team member**. **Create team** stays disabled until the name is set. Success shows the toast "<name> team has been created".
 - The Team detail page puts the title, description, **Add a team member**, **Setup Owner**, and the ⋯ menu in one card. The ⋯ menu has **View details** (edit name and description), **Team settings** (the agent policy sheet), **Copy link**, and **Delete team**.
 - **Setup Owner** opens a popover anchored to the button. It has **Search for team member**, radio rows of human members, and **Make Team Owner**. The owner's role badge reads **Team Owner**.
-- The Members tab has **Search for anything...**, **Filter** by role, and **Export Data**, which downloads the filtered member table as CSV in the browser. The summary cards are **Total members**, **Total Assigned Tasks**, and **Total Activity**. Managers get an **Agent settings** button on every row, which opens the same Team settings sheet, and a remove action on every row except the owner's.
+- The **Members**, **Issues**, and **Repositories** pills sit on the left of the row under the header; the active tab's toolbar sits on the right.
+- The Members tab has **Search members...**, **Filter** by role, and **Export Data**, which downloads the filtered member table as CSV in the browser. The summary cards are **Total members**, **Total Assigned Tasks**, and **Total Activity**, which has no menu because no endpoint lists a Team's activity events yet, only the count. The design's **Total Roles** card has no backing, so **Total Assigned Tasks** keeps its place. Managers get a remove action on every row except the owner's.
+- The Issues tab has **Search issues...** and **Filter** only. Its cards are **Todo**, **In Progress**, **In Review**, and **Done**; Garden has no Backlog status, so the design's Backlog card is **In Review**. Issues render as the collapsible status list, and each group's **+** creates an issue on the Team. The Team page has no board view; the member Teams view keeps its list/board toggle and **New Issue**.
+- The Repositories tab has **Search repositories...**, **Filter** by import state, and **Export Data**, which downloads the filtered repository list as CSV. Its cards are **Total Repositories**, **Total Issues** (the Team's `issue_count`), and **Total Activity** (`activity_count`).
+- Below 1280px, the Team detail card fills the space under the breadcrumb edge to edge. At 1280px and above, the card sits inside a padded frame. On phones, summary cards stack, the tab pills scroll sideways, and each toolbar wraps below the pills.
+- Below 1280px, issue rows stack the title, labels, and description preview, with dividers between rows. On wider screens, rows use an inline layout and wrap chips when space runs out. The title and preview open the issue. Team and project chips are plain labels.
 
 ## Settings opens the Teams page
 
@@ -178,7 +186,7 @@ A policy is a ceiling. It can switch tools off and add approvals. It never grant
 | Team owner               | Read it. The panel is read-only and says only workspace admins can change it. |
 | Team member              | Nothing. `GET` returns 403.                                                   |
 
-The Team detail page's ⋯ menu has **Team settings** for workspace managers, and each member row has **Agent settings**. It opens a **Team settings** side sheet with the three tabs, **Cancel**, and **Save Changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
+The Team detail page's ⋯ menu has **Team settings** for workspace managers. It opens a **Team settings** side sheet with the three tabs, **Cancel**, and **Save Changes**. Saving updates the cached policy at once and rolls it back if the server refuses. `TeamAgentPolicySheet` in `apps/web/src/features/teams/components/team-agent-policy-sheet.tsx` implements it.
 
 On narrow screens, Team settings fills the viewport, restriction tiles stack, and approval selects sit below their labels. The tabs stay on one row and scroll horizontally when they exceed the width of the sheet. The active panel scrolls between the tabs and the footer so **Cancel** and **Save Changes** stay visible.
 

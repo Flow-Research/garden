@@ -15,16 +15,18 @@ export function memberRoleLabel(
   return member.workspace_role === 'admin' ? 'Admin' : 'Member'
 }
 
+/** Header cells stick to the top of the scrolling table frame. */
+const HEAD_CELL =
+  'sticky top-0 z-10 border-border-default bg-background-main-secondary py-4 text-center font-semibold text-text-default'
+
 /**
- * The Teams design's member table (User / Role / Assigned Tasks / Activity)
- * from designs 30 and 33. The owner's role renders as the blue "Team Owner"
- * badge; everyone else gets the gray badge. Managers get the design's
- * per-row Agent settings button, which opens the Team agent policy sheet.
- * Remove is absent from the design but must stay reachable, so removable rows
- * keep a ghost trash action after View all. The Activity column gets a fixed
- * width so all three actions fit inside the cell; below a 40rem minimum the
- * frame scrolls sideways instead of crushing the other columns. View all stays disabled
- * (no activity history surface exists yet) and says so via its wrapper title.
+ * The Teams design's member table (User / Role / Assigned Tasks / Action).
+ * The owner's role renders as the blue "Team Owner" badge; everyone else gets
+ * the gray badge. Managers get a ghost trash action on every row except the
+ * owner's. The design's per-member View all is left out because no member
+ * activity history exists yet. The frame caps at 32rem and scrolls with a
+ * sticky header; below a 40rem minimum it also scrolls sideways instead of
+ * crushing the columns.
  */
 export function TeamMembersTable({
   members,
@@ -32,35 +34,25 @@ export function TeamMembersTable({
   canManage,
   search,
   onRemove,
-  onAgentSettings,
 }: {
   members: TeamMember[]
   ownerUserId: string
   canManage: boolean
   search: string
   onRemove: (member: TeamMember) => void
-  onAgentSettings: () => void
 }) {
   return (
     <div
       id="team-members-table"
-      className="overflow-x-auto rounded-2xl border border-border-default"
+      className="max-h-[32rem] overflow-auto rounded-2xl border border-border-default"
     >
       <table className="w-full min-w-[40rem] table-fixed text-sm">
         <thead>
-          <tr className="bg-background-main-secondary">
-            <th className="px-6 py-4 text-center font-semibold text-text-default">
-              User
-            </th>
-            <th className="border-l border-border-default px-6 py-4 text-center font-semibold text-text-default">
-              Role
-            </th>
-            <th className="border-l border-border-default px-6 py-4 text-center font-semibold text-text-default">
-              Assigned Tasks
-            </th>
-            <th className="w-[18rem] border-l border-border-default px-4 py-4 text-center font-semibold text-text-default">
-              Activity
-            </th>
+          <tr>
+            <th className={`${HEAD_CELL} px-6`}>User</th>
+            <th className={`${HEAD_CELL} border-l px-6`}>Role</th>
+            <th className={`${HEAD_CELL} border-l px-6`}>Assigned Tasks</th>
+            <th className={`${HEAD_CELL} w-[10rem] border-l px-4`}>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -100,24 +92,6 @@ export function TeamMembersTable({
                 </td>
                 <td className="border-l border-border-default px-4 py-4">
                   <span className="flex items-center justify-center gap-2 whitespace-nowrap">
-                    {canManage ? (
-                      <Button
-                        className="h-8 rounded-md px-3 shadow-1"
-                        onClick={onAgentSettings}
-                        variant="outline"
-                      >
-                        Agent settings
-                      </Button>
-                    ) : null}
-                    <span title="Member activity history is not available yet">
-                      <Button
-                        className="h-8 rounded-md px-3 shadow-1"
-                        disabled
-                        variant="outline"
-                      >
-                        View all
-                      </Button>
-                    </span>
                     {canManage ? (
                       removable ? (
                         <Button

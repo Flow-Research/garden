@@ -4,7 +4,7 @@ import { useSuspenseQueries, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
-import type { TeamMember } from '@garden/core/types'
+import type { Issue, IssueStatus, TeamMember } from '@garden/core/types'
 import {
   Copy,
   Eye,
@@ -53,13 +53,18 @@ import {
 import { TeamAgentPolicySheet } from './team-agent-policy-sheet'
 import { TeamIssuesPanel } from './team-issues-panel'
 import { TeamMembersPanel } from './team-members-panel'
-import { TeamRepositoriesPanel } from './team-repositories-panel'
+import {
+  RepositoriesToolbar,
+  TeamRepositoriesPanel,
+  type RepositoryStateFilter,
+} from './team-repositories-panel'
+import { csvCell, downloadCsv } from './csv'
 import { memberRoleLabel, type MemberRoleLabel } from './team-members-table'
 import { StatusIcon } from '@/features/issues/components/status-icon'
 import { TeamSummaryCard } from './team-summary-card'
 import {
   ExportDataButton,
-  IssuesToolbar,
+  IssueFilterButton,
   SearchField,
   TEAM_TAB_TRIGGER_CLASS,
   TEAM_TABS_LIST_CLASS,
@@ -101,10 +106,6 @@ const TAB_ITEMS: readonly {
   { value: 'repositories', label: 'Repositories', icon: FolderGit2 },
 ]
 
-/** Quotes one CSV cell so commas, quotes and newlines survive. */
-const csvCell = (value: string | number) =>
-  `"${String(value).replaceAll('"', '""')}"`
-
 /**
  * Builds the Export Data CSV for the member rows currently on screen. Before,
  * Export Data was a disabled placeholder; now it exports exactly the
@@ -126,16 +127,6 @@ export function membersToCsv(members: TeamMember[], ownerUserId: string) {
   )
 }
 
-/** Hands the CSV to the browser as a file download. */
-function downloadCsv(filename: string, csv: string) {
-  const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
-}
-
 /** Members toolbar from design 30: search, role filter, Export Data. */
 function MembersToolbar({
   onSearchChange,
@@ -155,7 +146,7 @@ function MembersToolbar({
       <SearchField
         label="Search members"
         onChange={onSearchChange}
-        placeholder="Search for anything..."
+        placeholder="Search members..."
         value={search}
       />
       <DropdownMenu>
@@ -191,29 +182,25 @@ function MembersToolbar({
   )
 }
 
-/** Status summary cards for the Issues tab (Backlog maps to Todo). */
-function StatusCards({
-  counts,
-}: {
-  counts: { todo: number; in_progress: number; done: number }
-}) {
+const STATUS_CARDS: readonly { status: IssueStatus; label: string }[] = [
+  { status: 'todo', label: 'Todo' },
+  { status: 'in_progress', label: 'In Progress' },
+  { status: 'in_review', label: 'In Review' },
+  { status: 'done', label: 'Done' },
+]
+
+/** Issues tab status cards, one per board status the design shows. */
+function StatusCards({ issues }: { issues: Issue[] }) {
   return (
-    <div className="grid grid-cols-1 gap-3 @lg:grid-cols-3">
-      <TeamSummaryCard
-        icon={<StatusIcon status="todo" className="size-4.5" />}
-        label="Todo"
-        value={counts.todo}
-      />
-      <TeamSummaryCard
-        icon={<StatusIcon status="in_progress" className="size-4.5" />}
-        label="In Progress"
-        value={counts.in_progress}
-      />
-      <TeamSummaryCard
-        icon={<StatusIcon status="done" className="size-4.5" />}
-        label="Done"
-        value={counts.done}
-      />
+    <div className="grid grid-cols-1 gap-3 @md:grid-cols-2 @4xl:grid-cols-4">
+      {STATUS_CARDS.map(({ status, label }) => (
+        <TeamSummaryCard
+          icon={<StatusIcon status={status} className="size-4.5" />}
+          key={status}
+          label={label}
+          value={issues.filter((issue) => issue.status === status).length}
+        />
+      ))}
     </div>
   )
 }
@@ -274,6 +261,9 @@ export function TeamDetailCard({
   const [memberSearch, setMemberSearch] = useState('')
   const [memberRole, setMemberRole] = useState<MemberRoleFilter>('all')
   const [issueSearch, setIssueSearch] = useState('')
+  const [repositorySearch, setRepositorySearch] = useState('')
+  const [repositoryState, setRepositoryState] =
+    useState<RepositoryStateFilter>('all')
   const removeMember = useRemoveTeamMember()
 
   const canAssignOthers =
@@ -334,20 +324,13 @@ export function TeamDetailCard({
     return map
   }, [issues, team.id, team.name])
 
-  const statusCounts = {
-    todo: issues.filter((issue) => issue.status === 'todo').length,
-    in_progress: issues.filter((issue) => issue.status === 'in_progress')
-      .length,
-    done: issues.filter((issue) => issue.status === 'done').length,
-  }
-
   return (
     <>
       <div
         className={cn(
           // @container: summary cards and the toolbar size by this card's width,
           // not the viewport, since the app sidebar narrows it on tablets.
-          '@container flex flex-col rounded-xl bg-background-main-default p-6',
+          '@container flex flex-col rounded-xl bg-background-main-default p-4 sm:p-6',
           className,
         )}
       >
@@ -425,6 +408,25 @@ export function TeamDetailCard({
             value={tab}
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
+              {showTabs ? (
+                <TabsList
+                  className={cn(
+                    TEAM_TABS_LIST_CLASS,
+                    'max-w-full justify-start overflow-x-auto',
+                  )}
+                >
+                  {TAB_ITEMS.map((item) => (
+                    <TabsTrigger
+                      className={TEAM_TAB_TRIGGER_CLASS}
+                      key={item.value}
+                      value={item.value}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              ) : null}
               {tab === 'members' ? (
                 <MembersToolbar
                   onExport={() =>
@@ -439,29 +441,25 @@ export function TeamDetailCard({
                   search={memberSearch}
                 />
               ) : tab === 'issues' ? (
-                <IssuesToolbar
-                  issues={issues}
-                  onCreateIssue={() => openCreateIssue(null)}
-                  onSearchChange={setIssueSearch}
-                  search={issueSearch}
-                />
+                <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @2xl:w-auto">
+                  <SearchField
+                    label="Search issues"
+                    onChange={setIssueSearch}
+                    placeholder="Search issues..."
+                    value={issueSearch}
+                  />
+                  <IssueFilterButton issues={issues} />
+                </div>
               ) : (
-                <span />
+                <RepositoriesToolbar
+                  onSearchChange={setRepositorySearch}
+                  onStateChange={setRepositoryState}
+                  search={repositorySearch}
+                  state={repositoryState}
+                  teamId={team.id}
+                  teamName={team.name}
+                />
               )}
-              {showTabs ? (
-                <TabsList className={TEAM_TABS_LIST_CLASS}>
-                  {TAB_ITEMS.map((item) => (
-                    <TabsTrigger
-                      className={TEAM_TAB_TRIGGER_CLASS}
-                      key={item.value}
-                      value={item.value}
-                    >
-                      <item.icon className="size-4" />
-                      {item.label}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              ) : null}
             </div>
 
             <TabsContent className="mt-8 flex flex-col" value="members">
@@ -469,7 +467,6 @@ export function TeamDetailCard({
                 canManage={team.can_manage}
                 members={members}
                 onAddMember={() => setAddMemberOpen(true)}
-                onAgentSettings={() => setAgentPolicyOpen(true)}
                 onRemove={setMemberToRemove}
                 onSeeIssues={showTabs ? () => onTabChange('issues') : undefined}
                 search={memberSearch}
@@ -483,9 +480,10 @@ export function TeamDetailCard({
               value="issues"
             >
               <div className="flex flex-col gap-8">
-                <StatusCards counts={statusCounts} />
+                <StatusCards issues={issues} />
                 <TeamIssuesPanel
                   issues={issues}
+                  listOnly
                   onCreateIssue={openCreateIssue}
                   searchQuery={issueSearch}
                   teamChips={teamChips}
@@ -495,7 +493,11 @@ export function TeamDetailCard({
 
             <TabsContent className="mt-8 flex flex-col" value="repositories">
               <TeamRepositoriesPanel
+                activityCount={team.activity_count}
                 canManage={team.can_manage}
+                issueCount={team.issue_count}
+                search={repositorySearch}
+                state={repositoryState}
                 teamId={team.id}
               />
             </TabsContent>
@@ -558,7 +560,7 @@ export function TeamDetailCard({
   )
 }
 
-/** `/teams/$teamId`: top-bar breadcrumb and secondary-surface shell. */
+/** Team detail page with a breadcrumb back to Teams. */
 export function TeamDetail({
   teamId,
   tab,
@@ -588,9 +590,10 @@ export function TeamDetail({
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[80rem] px-6 pt-6 pb-12">
-          <div className="rounded-2xl bg-background-main-secondary p-10">
+        <div className="mx-auto w-full max-w-[80rem] max-xl:flex max-xl:min-h-full max-xl:flex-col xl:px-6 xl:pt-6 xl:pb-12">
+          <div className="max-xl:contents xl:rounded-2xl xl:bg-background-main-secondary xl:p-10">
             <TeamDetailCard
+              className="max-xl:flex-1 max-xl:rounded-none"
               teamId={teamId}
               tab={tab}
               onTabChange={onTabChange}

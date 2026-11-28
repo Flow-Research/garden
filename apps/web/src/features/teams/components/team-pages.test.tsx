@@ -44,13 +44,22 @@ vi.mock('@/features/issues/components/list-view', () => ({
   ListView: ({
     issues,
     variant,
+    onCreateIssue,
   }: {
     issues: Array<{ id: string }>
     variant?: string
+    onCreateIssue?: (data: Record<string, unknown>) => void
   }) => (
-    <div data-testid="team-list" data-variant={variant ?? 'default'}>
-      {issues.map((issue) => issue.id).join(',')}
-    </div>
+    <>
+      <div data-testid="team-list" data-variant={variant ?? 'default'}>
+        {issues.map((issue) => issue.id).join(',')}
+      </div>
+      {onCreateIssue ? (
+        <button type="button" onClick={() => onCreateIssue({ status: 'todo' })}>
+          Add Todo issue
+        </button>
+      ) : null}
+    </>
   ),
 }))
 
@@ -522,7 +531,9 @@ describe('teams UI', () => {
       screen.queryByRole('button', { name: 'Team actions' }),
     ).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /New Issue/ }))
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Add Todo issue' }),
+    )
     const modal = await screen.findByTestId('create-issue-modal')
     expect(modal.textContent).toContain('"team_id":"team-1"')
     expect(modal.textContent).toContain('"lock_assignee_user_id":"user-1"')
@@ -675,8 +686,22 @@ describe('teams UI', () => {
     renderWithQuery(<TeamOverview />)
 
     expect(await screen.findByText('3 members')).toBeInTheDocument()
-    expect(screen.queryByText('Total Members')).toBeNull()
-    expect(screen.queryByText('All teams')).toBeNull()
+    expect(screen.getByRole('heading', { name: 'Teams' })).toBeInTheDocument()
+    expect(
+      screen.getByText('See teams within your organisation'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Total Teams')).toBeInTheDocument()
+    expect(screen.getByText('Total Members')).toBeInTheDocument()
+    expect(screen.getByText('4')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'See issues' })).toHaveAttribute(
+      'href',
+      '/teams/issues',
+    )
+    expect(screen.getByRole('link', { name: 'See members' })).toHaveAttribute(
+      'href',
+      '/settings/user-management/members',
+    )
+    expect(screen.getByText('All teams')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Engineering actions' }))
     expect(
       await screen.findByRole('menuitem', { name: 'Add team member' }),
@@ -915,22 +940,18 @@ describe('teams UI', () => {
     expect(
       screen.getByRole('button', { name: 'Team actions' }),
     ).toBeInTheDocument()
-    expect(screen.getByPlaceholderText('Search for anything...')).toBeVisible()
+    expect(screen.getByPlaceholderText('Search members...')).toBeVisible()
     expect(screen.getByText('Team Owner')).toBeInTheDocument()
-    expect(
-      screen.getAllByRole('button', { name: 'Agent settings' }),
-    ).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Agent settings' })).toBeNull()
 
-    for (const header of ['User', 'Role', 'Assigned Tasks', 'Activity']) {
+    for (const header of ['User', 'Role', 'Assigned Tasks', 'Action']) {
       expect(
         screen.getByRole('columnheader', { name: header }),
       ).toBeInTheDocument()
     }
     expect(screen.getByText('casey@test.com')).toBeInTheDocument()
     expect(screen.getByText('None')).toBeInTheDocument()
-    const viewAll = screen.getAllByRole('button', { name: 'View all' })
-    expect(viewAll).toHaveLength(2)
-    for (const button of viewAll) expect(button).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'View all' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Export Data' })).toBeEnabled()
     expect(
       screen.queryByRole('button', { name: 'Remove Owner' }),
@@ -939,8 +960,9 @@ describe('teams UI', () => {
     expect(screen.getByText('Total members')).toBeInTheDocument()
     expect(screen.getByText('Total Assigned Tasks')).toBeInTheDocument()
     expect(screen.getByText('Total Activity')).toBeInTheDocument()
-    expect(screen.getAllByText('02')).toHaveLength(2)
-    expect(screen.getByText('07')).toBeInTheDocument()
+    // Two summary cards plus the owner's Assigned Tasks cell.
+    expect(screen.getAllByText('2')).toHaveLength(3)
+    expect(screen.getByText('7')).toBeInTheDocument()
   })
 
   it('links Total Assigned Tasks to Issues only where the Issues tab exists', async () => {
@@ -957,7 +979,7 @@ describe('teams UI', () => {
     const menus = await screen.findAllByRole('button', {
       name: 'Summary actions',
     })
-    expect(menus).toHaveLength(3)
+    expect(menus).toHaveLength(2)
     withTabs.unmount()
 
     renderWithQuery(
@@ -971,7 +993,7 @@ describe('teams UI', () => {
     )
     expect(
       await screen.findAllByRole('button', { name: 'Summary actions' }),
-    ).toHaveLength(2)
+    ).toHaveLength(1)
     expect(screen.getByText('Total Assigned Tasks')).toBeInTheDocument()
   })
 
@@ -982,36 +1004,6 @@ describe('teams UI', () => {
       '"Owner","owner@test.com","Team Owner","2"',
       '"Casey","casey@test.com","Member","0"',
     ])
-  })
-
-  it('opens Team settings from a member row', async () => {
-    apiMocks.getTeam.mockResolvedValue(makeTeam())
-    apiMocks.listTeamMembers.mockResolvedValue({
-      members: [makeMember()],
-      total: 1,
-    })
-    apiMocks.getTeamAgentPolicy.mockResolvedValue({
-      team_id: 'team-1',
-      policy: {
-        allowed_areas: ['tasks'],
-        blocked_risk_classes: [],
-        blocked_connector_ids: [],
-        approval_required: [],
-      },
-      can_edit: true,
-      updated_at: null,
-    })
-
-    renderWithQuery(
-      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
-    )
-
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Agent settings' }),
-    )
-    expect(
-      await screen.findByRole('dialog', { name: 'Team settings' }),
-    ).toBeInTheDocument()
   })
 
   it('opens Agent policy from the Team actions menu', async () => {
@@ -1232,12 +1224,16 @@ describe('teams UI', () => {
       'data-variant',
       'team',
     )
-    expect(screen.getByText('Todo')).toBeInTheDocument()
-    expect(screen.getByText('02')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Export Data' })).toBeDisabled()
+    for (const label of ['Todo', 'In Progress', 'In Review', 'Done']) {
+      expect(screen.getByText(label)).toBeInTheDocument()
+    }
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Filter/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Export Data' })).toBeNull()
+    expect(screen.queryByRole('button', { name: /New Issue/ })).toBeNull()
     expect(
-      screen.getByRole('button', { name: /New Issue/ }),
-    ).toBeInTheDocument()
+      screen.queryByRole('button', { name: /Switch to board view/ }),
+    ).toBeNull()
 
     fireEvent.change(screen.getByLabelText('Search issues'), {
       target: { value: 'login' },

@@ -31,11 +31,17 @@ export function TeamIssuesPanel({
   searchQuery,
   teamChips,
   onCreateIssue,
+  listOnly = false,
 }: {
   issues: Issue[]
   searchQuery: string
   teamChips?: Map<string, { name: string; color: string }>
   onCreateIssue: (data?: Record<string, unknown> | null) => void
+  /**
+   * Always render the list. The Team detail page has no view toggle, and the
+   * shared view store may still hold the member view's board mode.
+   */
+  listOnly?: boolean
 }) {
   const wsId = useWorkspaceId()
   const deferredSearch = useDeferredValue(searchQuery.trim())
@@ -127,7 +133,7 @@ export function TeamIssuesPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      {viewMode === 'board' ? (
+      {viewMode === 'board' && !listOnly ? (
         <BoardView
           allIssues={filteredIssues}
           doneTotal={doneTotal}

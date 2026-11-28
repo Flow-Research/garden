@@ -4,7 +4,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
 import type { TeamRepository } from '@garden/core/types'
-import { TeamRepositoriesPanel } from './team-repositories-panel'
+import {
+  TeamRepositoriesPanel,
+  repositoriesToCsv,
+  type RepositoryStateFilter,
+} from './team-repositories-panel'
 
 vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
@@ -34,7 +38,10 @@ function linked(overrides: Partial<TeamRepository> = {}): TeamRepository {
   }
 }
 
-function renderPanel(canManage: boolean) {
+function renderPanel(
+  canManage: boolean,
+  filters: { search?: string; state?: RepositoryStateFilter } = {},
+) {
   const qc = new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
@@ -45,7 +52,14 @@ function renderPanel(canManage: boolean) {
     <QueryClientProvider client={qc}>
       <WorkspaceIdProvider wsId="ws-1">
         <Suspense fallback={<p>loading</p>}>
-          <TeamRepositoriesPanel canManage={canManage} teamId="team-1" />
+          <TeamRepositoriesPanel
+            activityCount={3029}
+            canManage={canManage}
+            issueCount={12}
+            search={filters.search ?? ''}
+            state={filters.state ?? 'all'}
+            teamId="team-1"
+          />
         </Suspense>
       </WorkspaceIdProvider>
     </QueryClientProvider>,
@@ -55,6 +69,42 @@ function renderPanel(canManage: boolean) {
 describe('TeamRepositoriesPanel', () => {
   beforeEach(() => {
     for (const mock of Object.values(apiMocks)) mock.mockReset()
+  })
+
+  it('shows the summary cards and applies search and status filters', async () => {
+    apiMocks.listTeamRepositories.mockResolvedValue({
+      repositories: [
+        linked(),
+        linked({
+          id: 'link-3',
+          full_name: 'Flow-Research/blockchain',
+          import_state: 'failed',
+          imported_at: null,
+        }),
+      ],
+    })
+
+    const view = renderPanel(false, { state: 'failed' })
+    expect(
+      await screen.findByText('Flow-Research/blockchain'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Flow-Research/garden')).toBeNull()
+    expect(screen.getByText('Total Repositories')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+    expect(screen.getByText('12')).toBeInTheDocument()
+    expect(screen.getByText('3,029')).toBeInTheDocument()
+    view.unmount()
+
+    renderPanel(false, { search: 'nothing-matches' })
+    expect(
+      await screen.findByText('No repositories match.'),
+    ).toBeInTheDocument()
+  })
+
+  it('exports repository rows as CSV', () => {
+    expect(repositoriesToCsv([linked()])).toBe(
+      'Repository,Status,Imported at\n"Flow-Research/garden","Synced","2026-11-06T10:00:00.000Z"',
+    )
   })
 
   it('links a repository picked from the installation and disables taken ones', async () => {
@@ -89,7 +139,9 @@ describe('TeamRepositoriesPanel', () => {
     ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Link repository' }))
-    const lms = await screen.findByRole('radio', { name: /Flow-Research\/lms/ })
+    const lms = await screen.findByRole('radio', {
+      name: /Flow-Research\/lms/,
+    })
     const workstream = screen.getByRole('radio', {
       name: /Flow-Research\/workstream/,
     })

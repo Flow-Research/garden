@@ -111,21 +111,11 @@ export function ViewModeToggle() {
 }
 
 /**
- * Issues toolbar shared by the Team detail tab and the member Teams view.
- * Lives inside the shared `teamIssueViewStore` provider so its Filter
- * popover, the view toggle, and the panel below read the same view state.
+ * Filter popover for the Team issue surfaces. Reads and writes the
+ * surrounding `teamIssueViewStore` provider, so the panel below applies the
+ * same filters.
  */
-export function IssuesToolbar({
-  issues,
-  onCreateIssue,
-  onSearchChange,
-  search,
-}: {
-  issues: Issue[]
-  onCreateIssue: () => void
-  onSearchChange: (value: string) => void
-  search: string
-}) {
+export function IssueFilterButton({ issues }: { issues: Issue[] }) {
   const actions = useViewStoreApi().getState()
   const statusFilters = useViewStore((s) => s.statusFilters)
   const priorityFilters = useViewStore((s) => s.priorityFilters)
@@ -146,46 +136,67 @@ export function IssuesToolbar({
   })
 
   return (
-    <div className="flex items-center gap-3">
+    <Popover>
+      <PopoverTrigger
+        render={
+          <Button className={TOOLBAR_BUTTON_CLASS} variant="outline">
+            <Funnel className="size-4" />
+            Filter
+            {filterCount ? (
+              <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                {filterCount}
+              </span>
+            ) : null}
+          </Button>
+        }
+      />
+      <PopoverContent
+        align="end"
+        className="max-h-[min(70vh,38rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto p-4"
+      >
+        <IssueFilterTray
+          actions={actions}
+          counts={counts}
+          state={{
+            statusFilters,
+            priorityFilters,
+            assigneeFilters,
+            includeNoAssignee,
+            creatorFilters,
+            projectFilters,
+            includeNoProject,
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/**
+ * Issues toolbar for the member Teams view: search, filter, list/board
+ * toggle and New Issue. Lives inside the shared `teamIssueViewStore`
+ * provider. The Team detail page uses search and filter only.
+ */
+export function IssuesToolbar({
+  issues,
+  onCreateIssue,
+  onSearchChange,
+  search,
+}: {
+  issues: Issue[]
+  onCreateIssue: () => void
+  onSearchChange: (value: string) => void
+  search: string
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
       <SearchField
         label="Search issues"
         onChange={onSearchChange}
         placeholder="Search issues..."
         value={search}
       />
-      <Popover>
-        <PopoverTrigger
-          render={
-            <Button className={TOOLBAR_BUTTON_CLASS} variant="outline">
-              <Funnel className="size-4" />
-              Filter
-              {filterCount ? (
-                <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
-                  {filterCount}
-                </span>
-              ) : null}
-            </Button>
-          }
-        />
-        <PopoverContent
-          align="end"
-          className="max-h-[min(70vh,38rem)] w-[min(34rem,calc(100vw-2rem))] overflow-y-auto p-4"
-        >
-          <IssueFilterTray
-            actions={actions}
-            counts={counts}
-            state={{
-              statusFilters,
-              priorityFilters,
-              assigneeFilters,
-              includeNoAssignee,
-              creatorFilters,
-              projectFilters,
-              includeNoProject,
-            }}
-          />
-        </PopoverContent>
-      </Popover>
+      <IssueFilterButton issues={issues} />
       <ExportDataButton />
       <ViewModeToggle />
       <Button className="h-8 gap-2 rounded-md px-3" onClick={onCreateIssue}>

@@ -91,7 +91,11 @@ export function CreateTeamDialog({ onClose }: { onClose: () => void }) {
       .then(
         () => {
           toast.custom(
-            () => <TeamCreatedToast title="A new team has been added" />,
+            () => (
+              <TeamCreatedToast
+                title={`${name.trim()} team has been created`}
+              />
+            ),
             { position: 'top-center' },
           )
           onClose()
