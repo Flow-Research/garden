@@ -108,7 +108,7 @@ The admin screens follow the November 2026 Teams designs, with "Team" in place o
 - The Issues tab has **Search issues...** and **Filter** only. Its cards are **Todo**, **In Progress**, **In Review**, and **Done**; Garden has no Backlog status, so the design's Backlog card is **In Review**. Issues render as the collapsible status list, and each group's **+** creates an issue on the Team. The Team page has no board view; the member Teams view keeps its list/board toggle and **New Issue**.
 - The Repositories tab has **Search repositories...**, **Filter** by import state, and **Export Data**, which downloads the filtered repository list as CSV. Its cards are **Total Repositories**, **Total Issues** (the Team's `issue_count`), and **Total Activity** (`activity_count`).
 - Below 1280px, the Team detail card fills the space under the breadcrumb edge to edge. At 1280px and above, the card sits inside a padded frame. On phones, summary cards stack, the tab pills scroll sideways, and each toolbar wraps below the pills.
-- Todo rows stack the title, labels, and description preview with dividers between rows. The title and preview open the issue. Team and project chips are plain labels. Other issue rows wrap their chips when the list is narrow. Below 1280px, dividers separate rows in all status groups.
+- Below 1280px, Todo rows stack the title, labels, and description preview, and dividers separate rows in all status groups. On wider screens, every status uses the same inline layout and wraps chips when space runs out. The title and preview open the issue. Team and project chips are plain labels.
 
 ## Settings opens the Teams page
 

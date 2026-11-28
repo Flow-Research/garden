@@ -74,14 +74,14 @@ export const ListRow = memo(function ListRow({
       <div
         className={cn(
           'flex min-h-[54px] items-center gap-3 px-6 py-3 text-sm',
-          isTodo && 'items-start px-4 py-4 sm:px-6',
+          isTodo && 'max-xl:items-start max-xl:py-4 max-sm:px-4',
         )}
       >
         <StatusIcon
           status={issue.status}
           className={cn(
             'size-4.5 shrink-0 text-icon-secondary',
-            isTodo && 'mt-0.5 size-5',
+            isTodo && 'max-xl:mt-0.5 max-xl:size-5',
           )}
           inheritColor
         />
@@ -90,10 +90,10 @@ export const ListRow = memo(function ListRow({
             href={href}
             onClick={handleOpen}
             className={cn(
-              'min-w-0 grow text-text-default',
+              'min-w-0 grow basis-48 text-text-default',
               isTodo
-                ? 'basis-full wrap-break-word font-semibold'
-                : 'basis-48 truncate',
+                ? 'max-xl:basis-full max-xl:wrap-break-word max-xl:font-semibold xl:truncate'
+                : 'truncate',
             )}
           >
             {issue.title}
@@ -105,15 +105,17 @@ export const ListRow = memo(function ListRow({
               href={href}
               onClick={handleOpen}
               className={cn(
-                'flex min-w-0 max-w-full items-center rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3',
-                isTodo
-                  ? 'basis-full gap-2 py-2 text-text-secondary'
-                  : 'h-[30px] gap-1.5 text-text-default',
+                'flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-text-default',
+                isTodo &&
+                  'max-xl:h-auto max-xl:basis-full max-xl:gap-2 max-xl:py-2 max-xl:text-text-secondary',
               )}
             >
               <FileText aria-hidden className="size-4 shrink-0" />
               <span
-                className={cn('min-w-0 flex-1 truncate', !isTodo && 'max-w-80')}
+                className={cn(
+                  'min-w-0 flex-1 truncate',
+                  isTodo ? 'xl:max-w-80' : 'max-w-80',
+                )}
               >
                 {issue.description}
               </span>
