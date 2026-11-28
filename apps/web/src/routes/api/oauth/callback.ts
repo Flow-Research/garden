@@ -26,7 +26,7 @@ if (window.opener) {
   window.opener.postMessage({ type: 'executor-oauth', ...result }, window.location.origin);
   window.close();
 } else {
-  window.location.replace('/home');
+  window.location.replace('/chats');
 }
 </script></body></html>`
 

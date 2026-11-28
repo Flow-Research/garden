@@ -254,7 +254,7 @@ export const Route = createFileRoute('/api/executor/oauth/start')({
         if (outcome.value.status === 'redirect') {
           return Response.redirect(outcome.value.authorizationUrl)
         }
-        return Response.redirect('/home')
+        return Response.redirect('/chats')
       },
     },
   },

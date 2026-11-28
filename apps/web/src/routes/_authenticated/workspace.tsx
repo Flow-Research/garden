@@ -5,7 +5,7 @@ import { sanitizeRedirectTarget } from '@/lib/redirect'
 /**
  * Back-compat redirect from the retired dock route. The FlexLayout workspace
  * dock was removed in the shell rebuild (2026-09 redesign): surfaces are
- * routed pages now. Old links land on /home; issue deep links (?issue=<id>,
+ * routed pages now. Old links land on /chats; issue deep links (?issue=<id>,
  * e.g. from assignment emails) forward to the task detail route; connector
  * flow links forward to the connectors surface.
  *
@@ -36,7 +36,7 @@ export const Route = createFileRoute('/_authenticated/workspace')({
     if (!session) {
       throw redirect({
         to: '/login',
-        search: { redirect: sanitizeRedirectTarget(location.href, '/home') },
+        search: { redirect: sanitizeRedirectTarget(location.href, '/chats') },
       })
     }
     if (search.issue) {
@@ -59,7 +59,7 @@ export const Route = createFileRoute('/_authenticated/workspace')({
     }
     // Forward workspace_id — bootstrap reads it at SSR and persists it as the active org.
     throw redirect({
-      to: '/home',
+      to: '/chats',
       search: search.workspace_id ? { workspace_id: search.workspace_id } : {},
     })
   },

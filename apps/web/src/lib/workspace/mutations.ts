@@ -26,9 +26,9 @@ export function useCreateWorkspace() {
         ...old.filter((workspace) => workspace.id !== newWs.id),
         newWs,
       ])
-      // Land on /home first — the old workspace's entity route would fire
+      // Land on /chats first — the old workspace's entity route would fire
       // detail queries with ids the new workspace doesn't own.
-      await navigate({ to: '/home', search: {} })
+      await navigate({ to: '/chats', search: {} })
       // The workspace exists even when Better Auth setActive fails. Opening the
       // shell locally avoids trapping a first-time user on the empty
       // "Create a workspace" screen, which has no workspace menu to recover
@@ -37,7 +37,7 @@ export function useCreateWorkspace() {
         useWorkspaceStore.getState().switchWorkspace(newWs),
       )
       await switched.match({
-        ok: () => navigate({ to: '/home', search: { workspace_id: newWs.id } }),
+        ok: () => navigate({ to: '/chats', search: { workspace_id: newWs.id } }),
         err: async () => {
           const listed = qc.getQueryData<Workspace[]>(workspaceKeys.list()) ?? [
             newWs,

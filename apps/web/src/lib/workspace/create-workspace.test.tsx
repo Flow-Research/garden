@@ -69,8 +69,8 @@ describe('useCreateWorkspace', () => {
     expect(useWorkspaceStore.getState().workspace).toEqual(created)
     expect(setWorkspaceId).toHaveBeenCalledWith(created.id)
     expect(mocks.navigate.mock.calls).toEqual([
-      [{ to: '/home', search: {} }],
-      [{ to: '/home', search: { workspace_id: created.id } }],
+      [{ to: '/chats', search: {} }],
+      [{ to: '/chats', search: { workspace_id: created.id } }],
     ])
     queryClient.clear()
   })

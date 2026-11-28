@@ -21,10 +21,10 @@ export function workspaceSwitchTarget(
       const section = `/${segments.slice(0, splat).join('/')}`
       return splat > 0 && pathname.startsWith(`${section}/`)
         ? pathname
-        : '/home'
+        : '/chats'
     }
     return `/${segments.join('/')}`
   }
-  if (entityIndex === 0) return '/home'
+  if (entityIndex === 0) return '/chats'
   return `/${segments.slice(0, entityIndex).join('/')}`
 }
