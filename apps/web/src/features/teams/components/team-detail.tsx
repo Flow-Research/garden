@@ -560,7 +560,7 @@ export function TeamDetailCard({
   )
 }
 
-/** `/teams/$teamId`: top-bar breadcrumb and secondary-surface shell. */
+/** Team detail page with a breadcrumb back to Teams. */
 export function TeamDetail({
   teamId,
   tab,
@@ -591,7 +591,7 @@ export function TeamDetail({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[80rem] px-4 pt-6 pb-12 sm:px-6">
-          <div className="rounded-2xl bg-background-main-secondary p-2 sm:p-6 lg:p-10">
+          <div className="xl:rounded-2xl xl:bg-background-main-secondary xl:p-10">
             <TeamDetailCard
               teamId={teamId}
               tab={tab}

@@ -106,7 +106,7 @@ The admin screens follow the November 2026 Teams designs, with "Team" in place o
 - The Members tab has **Search members...**, **Filter** by role, and **Export Data**, which downloads the filtered member table as CSV in the browser. The summary cards are **Total members**, **Total Assigned Tasks**, and **Total Activity**, which has no menu because no endpoint lists a Team's activity events yet, only the count. The design's **Total Roles** card has no backing, so **Total Assigned Tasks** keeps its place. Managers get a remove action on every row except the owner's.
 - The Issues tab has **Search issues...** and **Filter** only. Its cards are **Todo**, **In Progress**, **In Review**, and **Done**; Garden has no Backlog status, so the design's Backlog card is **In Review**. Issues render as the collapsible status list, and each group's **+** creates an issue on the Team. The Team page has no board view; the member Teams view keeps its list/board toggle and **New Issue**.
 - The Repositories tab has **Search repositories...**, **Filter** by import state, and **Export Data**, which downloads the filtered repository list as CSV. Its cards are **Total Repositories**, **Total Issues** (the Team's `issue_count`), and **Total Activity** (`activity_count`).
-- On phones, the page shells drop to tight padding, summary cards stack, the tab pills scroll sideways, and each toolbar wraps below the pills.
+- The Team detail card has an outer frame at viewport widths of 1280px and above. On phones, summary cards stack, the tab pills scroll sideways, and each toolbar wraps below the pills.
 
 ## Settings opens the Teams page
 
