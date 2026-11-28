@@ -41,6 +41,8 @@ function useConversationContext() {
 }
 
 export type ConversationProps<TItem> = ComponentProps<'div'> & {
+  /** Width of the centered message column; pass the composer's width so both edges line up. */
+  columnClassName: string
   data: readonly TItem[]
   drawDistance?: number
   estimatedListSize?: { height: number; width: number }
@@ -60,6 +62,7 @@ export type ConversationProps<TItem> = ComponentProps<'div'> & {
 export function Conversation<TItem>({
   children,
   className,
+  columnClassName,
   data,
   drawDistance,
   estimatedListSize = DEFAULT_ESTIMATED_LIST_SIZE,
@@ -125,16 +128,14 @@ export function Conversation<TItem>({
 
   const renderItem = useCallback(
     ({ index, item }: { index: number; item: ConversationRow<TItem> }) => (
-      <div
-        className={cn(
-          'mx-auto w-full max-w-2xl px-4',
-          index === 0 ? 'pt-4 pb-4' : 'pb-4',
-        )}
-      >
-        {renderDataItem({ index, item: item.item })}
+      // Same px-4 + mx-auto column structure as the composer wrapper.
+      <div className={cn('px-4', index === 0 ? 'pt-4 pb-4' : 'pb-4')}>
+        <div className={cn('mx-auto w-full', columnClassName)}>
+          {renderDataItem({ index, item: item.item })}
+        </div>
       </div>
     ),
-    [renderDataItem],
+    [columnClassName, renderDataItem],
   )
 
   /** Records upward wheel movement before LegendList reports the new offset. */

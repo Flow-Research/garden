@@ -569,7 +569,60 @@ export function productToolLabel(
   if (toolName.includes('executor') && toolName.endsWith('_skills')) {
     return 'Preparing integration tools'
   }
+  const path = stringField(record, 'path', 'file_path', 'filePath')
+  const fileName = path ? basename(path) : null
+  const query = stringField(record, 'query', 'pattern')
+  if (toolName.startsWith('fetch_')) return 'Reading a web page'
   switch (toolName) {
+    // Think's built-in workspace file tools.
+    case 'read':
+    case 'sandboxReadFile':
+    case 'brain_read_file':
+      return fileName ? `Reading ${fileName}` : 'Reading a file'
+    case 'write':
+    case 'sandboxWriteFile':
+      return fileName ? `Writing ${fileName}` : 'Writing a file'
+    case 'edit':
+      return fileName ? `Editing ${fileName}` : 'Editing a file'
+    case 'delete':
+      return fileName ? `Deleting ${fileName}` : 'Deleting a file'
+    case 'ls':
+    case 'sandboxListFiles':
+      return 'Listing files'
+    case 'find':
+      return 'Finding files'
+    case 'grep':
+      return query ? `Searching files for “${query}”` : 'Searching files'
+    case 'execute':
+    case 'sandboxExec':
+    case 'sandboxRunCode':
+      return 'Running code'
+    case 'web_search':
+      return query ? `Searching the web for “${query}”` : 'Searching the web'
+    case 'fetch_content':
+    case 'get_search_content':
+      return 'Reading a web page'
+    case 'brain_search':
+    case 'brain_neighborhood':
+      return 'Searching the brain'
+    case 'add_to_brain':
+    case 'brain_link':
+    case 'brain_observe_mention':
+      return 'Saving to the brain'
+    case 'list_workspace_inventory':
+      return 'Checking the workspace'
+    case 'list_issues':
+      return 'Checking tasks'
+    case 'read_issue':
+      return 'Reading a task'
+    case 'create_issue':
+      return 'Creating a task'
+    case 'update_issue_status':
+      return 'Updating a task'
+    case 'assign_issue':
+      return 'Assigning a task'
+    case 'post_issue_comment':
+      return 'Commenting on a task'
     case 'listDocuments':
       return 'Checking available documents'
     case 'readDocument':
@@ -583,8 +636,28 @@ export function productToolLabel(
     case 'askUserInput':
       return 'Waiting for your input'
     default:
-      return formatApprovalToolName(toolName)
+      return humanizeToolName(toolName)
   }
+}
+
+function stringField(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return null
+}
+
+function basename(path: string) {
+  return path.replace(/\/+$/, '').split('/').pop() || path
+}
+
+/** `list_open_prs` / `listOpenPrs` → "List open prs", for tools without a label. */
+function humanizeToolName(toolName: string) {
+  const words = formatApprovalToolName(toolName)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+  return words.charAt(0).toUpperCase() + words.slice(1)
 }
 
 /**
@@ -604,7 +677,6 @@ type MessageRenderNode =
       key: string
       entries: ToolActivityItem[]
       active: boolean
-      stepCount: number
     }
   | { kind: 'artifact'; key: string; artifact: GardenArtifactData }
   | { kind: 'decide'; key: string; runId: string }
@@ -659,7 +731,6 @@ export function buildMessageRenderModel(
       key: `${message.id}:work:${workFirstIndex}`,
       entries: work,
       active: workActive,
-      stepCount: work.length,
     })
     work = []
     workFirstIndex = -1

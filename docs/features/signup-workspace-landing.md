@@ -2,7 +2,7 @@
 
 **Status:** current
 
-**Last updated:** 2026-11-10
+**Last updated:** 2026-11-27
 
 **Related issue:** [#208](https://github.com/Flow-Research/garden/issues/208)
 
@@ -32,10 +32,10 @@ different org or the empty create-workspace screen.
 ## User behavior
 
 1. New user signs up with no memberships → sees "Create a workspace".
-2. User creates a workspace → shell opens that workspace; session active org
-   matches it.
+2. User creates a workspace → shell opens that workspace on Chats (`/chats`);
+   session active org matches it.
 3. Hard reload → same workspace; session still has that active org.
-4. Invite accept → redirect to `/home?workspace_id=…` and that workspace is
+4. Invite accept → redirect to `/chats?workspace_id=…` and that workspace is
    active.
 5. If setActive fails after create → shell still opens the new workspace
    locally and shows an error toast (not the empty setup screen).
@@ -62,6 +62,8 @@ the signed-in user.
 
 ## Design decisions
 
+- Chats is the landing after create, invite accept, sign-in, and `/`, so a new
+  member starts at the composer rather than an empty dashboard.
 - Preference order: `workspace_id` query → session active org → first
   membership. Never leave preferred null while memberships exist.
 - Persist every bootstrap selection that differs from the session active org,

@@ -18,7 +18,6 @@ import {
   getToolPartState,
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
-import { cn } from '@garden/ui/lib/utils'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { resolveToolApproval as resolveToolApprovalRequest } from '@/lib/api'
@@ -51,25 +50,25 @@ import {
   type ChatWorkEntry,
 } from './chat-message-model'
 
+/** Tool steps behind a collapsed "Thoughts" toggle; only the member opens it. */
 export function PreResponseWrapper({
   children,
   isStreaming,
-  shouldMinimize,
-  stepCount,
 }: {
   children: React.ReactNode
   isStreaming: boolean
-  shouldMinimize: boolean
-  stepCount: number
 }) {
-  const stepWord = `step${stepCount === 1 ? '' : 's'}`
-  const label = isStreaming
-    ? 'Working'
-    : `Completed in ${stepCount} ${stepWord}`
-
   return (
-    <ChainOfThought defaultOpen={!shouldMinimize}>
-      <ChainOfThoughtHeader>{label}</ChainOfThoughtHeader>
+    <ChainOfThought>
+      <ChainOfThoughtHeader>
+        {isStreaming ? (
+          <Shimmer as="span" className="font-medium">
+            Thoughts
+          </Shimmer>
+        ) : (
+          'Thoughts'
+        )}
+      </ChainOfThoughtHeader>
       <ChainOfThoughtContent>{children}</ChainOfThoughtContent>
     </ChainOfThought>
   )
@@ -86,14 +85,7 @@ export function StreamingWorkEntryRow({
   return (
     <ChainOfThoughtStep
       label={
-        <span
-          className={cn(
-            'font-medium text-foreground/80',
-            isDone && 'line-through decoration-muted-foreground/70',
-          )}
-        >
-          {entry.label}
-        </span>
+        <span className="font-medium text-foreground/80">{entry.label}</span>
       }
       description={
         entry.detail && !showDetailBlock && !isDone ? entry.detail : undefined
@@ -109,20 +101,10 @@ export function StreamingWorkEntryRow({
   )
 }
 
-/**
- * The "Thinking…" row between steps. Before, it drew a dot-sized custom
- * spinner next to plain text, which read as weaker than the Decide card's
- * running state. It now uses the same `Spinner` and shimmering label as that
- * card, so every loading state in chat looks alike.
- */
+/** The "Thinking…" row between steps: a shimmering label, no icon. */
 export function PendingAssistantActivity({ label }: { label: string }) {
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      className="flex items-center gap-3 font-sans text-sm"
-    >
-      <Spinner className="shrink-0 text-muted-foreground" aria-hidden="true" />
+    <div role="status" aria-live="polite" className="font-sans text-sm">
       <Shimmer as="span" className="font-medium">
         {label}
       </Shimmer>

@@ -27,6 +27,22 @@ describe('chat integration tool presentation', () => {
     ).toBe('Analyzing your data')
   })
 
+  it('names built-in and Garden tools in plain words', () => {
+    expect(productToolLabel('ls', { path: '/' })).toBe('Listing files')
+    expect(productToolLabel('read', { path: '/notes/plan.md' })).toBe(
+      'Reading plan.md',
+    )
+    expect(productToolLabel('web_search', { query: 'garden' })).toBe(
+      'Searching the web for “garden”',
+    )
+    expect(productToolLabel('create_issue', {})).toBe('Creating a task')
+    expect(productToolLabel('fetch_docs', {})).toBe('Reading a web page')
+    expect(productToolLabel('sandboxKillProcess', {})).toBe(
+      'Sandbox kill process',
+    )
+    expect(productToolLabel('list_open_prs', {})).toBe('List open prs')
+  })
+
   it('shows the exact MCP error and failure stage', () => {
     expect(
       extractMcpFailure({
@@ -187,7 +203,7 @@ describe('Decide run in the message render model', () => {
 
     expect(nodes.map((node) => node.kind)).toEqual(['work', 'decide'])
     const [work, decide] = nodes
-    expect(work?.kind === 'work' && work.stepCount).toBe(1)
+    expect(work?.kind === 'work' && work.entries.length).toBe(1)
     expect(
       work?.kind === 'work' && work.entries.some((entry) => entry.decideRunId),
     ).toBe(false)

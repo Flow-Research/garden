@@ -113,7 +113,7 @@ function MembershipView() {
  * history. Cached parent loaders previously survived invite redirects, so a
  * server-only acceptance test could not expose the missing membership in UI.
  */
-function startMembershipRouter(initialEntry = '/home') {
+function startMembershipRouter(initialEntry = '/chats') {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { staleTime: Infinity, retry: false } },
   })
@@ -124,9 +124,9 @@ function startMembershipRouter(initialEntry = '/home') {
     getParentRoute: () => root,
     id: '/_authenticated',
   })
-  const home = createRoute({
+  const chats = createRoute({
     getParentRoute: () => auth,
-    path: 'home',
+    path: 'chats',
     component: MembershipView,
   })
   const invite = createRoute({
@@ -135,7 +135,7 @@ function startMembershipRouter(initialEntry = '/home') {
     path: '/invitations/$id',
   })
   const router = createRouter({
-    routeTree: root.addChildren([auth.addChildren([home, invite])]),
+    routeTree: root.addChildren([auth.addChildren([chats, invite])]),
     context: { queryClient },
     history: createMemoryHistory({ initialEntries: [initialEntry] }),
   })
@@ -184,7 +184,7 @@ describe('membership changes through client navigation', () => {
 
     await act(() =>
       router.preloadRoute({
-        to: '/home',
+        to: '/chats',
         search: { workspace_id: invitedWorkspace.id },
       }),
     )
@@ -192,7 +192,7 @@ describe('membership changes through client navigation', () => {
     expect(useWorkspaceStore.getState().workspace?.id).toBe(oldWorkspace.id)
     await act(() =>
       router.navigate({
-        to: '/home',
+        to: '/chats',
         search: { workspace_id: invitedWorkspace.id },
       }),
     )
@@ -247,7 +247,7 @@ describe('membership changes through client navigation', () => {
       invitedWorkspace,
     ])
     expect(server.bootstrap).toHaveBeenLastCalledWith(invitedWorkspace.id)
-    await act(() => router.navigate({ to: '/home', search: {} }))
+    await act(() => router.navigate({ to: '/chats', search: {} }))
     expect(useWorkspaceStore.getState().workspace?.id).toBe(invitedWorkspace.id)
     expect(queryClient.getQueryData(workspaceKeys.list())).toEqual([
       oldWorkspace,
@@ -331,8 +331,8 @@ describe('membership changes through client navigation', () => {
     ])
     expect(server.bootstrap).toHaveBeenLastCalledWith(invitedWorkspace.id)
     expect(server.bootstrap).toHaveBeenNthCalledWith(1, undefined)
-    expect(router.state.location.pathname).toBe('/home')
-    await act(() => router.navigate({ to: '/home', search: {} }))
+    expect(router.state.location.pathname).toBe('/chats')
+    await act(() => router.navigate({ to: '/chats', search: {} }))
     expect(useWorkspaceStore.getState().workspace?.id).toBe(invitedWorkspace.id)
     expect(queryClient.getQueryData(workspaceKeys.list())).toEqual([
       oldWorkspace,

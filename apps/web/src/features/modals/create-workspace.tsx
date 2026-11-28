@@ -48,7 +48,7 @@ export function CreateWorkspaceModal({ onClose }: { onClose: () => void }) {
       setSlugServerError(null)
 
       // The mutation owns navigation and the destination workspace_id. A second
-      // bare /home push cleared that id and could restore the old auth snapshot.
+      // bare /chats push cleared that id and could restore the old auth snapshot.
       const result = await Result.tryPromise(() =>
         createWorkspace.mutateAsync({ name, slug }),
       )

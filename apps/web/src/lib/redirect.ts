@@ -10,7 +10,7 @@ function hasControlCharacter(value: string) {
  * otherwise slip past a plain `//` check and leave the site. The target is
  * resolved against a fixed base and must keep that origin.
  */
-export function sanitizeRedirectTarget(target: unknown, fallback = '/home') {
+export function sanitizeRedirectTarget(target: unknown, fallback = '/chats') {
   if (
     typeof target !== 'string' ||
     !target.startsWith('/') ||

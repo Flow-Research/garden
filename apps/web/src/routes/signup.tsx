@@ -23,7 +23,7 @@ export const Route = createFileRoute('/signup')({
     if (!session) return
 
     throw redirect({
-      href: search.redirect ?? '/home',
+      href: search.redirect ?? '/chats',
     })
   },
   loaderDeps: ({ search }) => ({ redirect: search.redirect }),
@@ -67,7 +67,7 @@ function SignUpRoute() {
       }
       redirectTarget={search.redirect}
       onSuccess={() =>
-        void navigate({ href: search.redirect ?? '/home', replace: true })
+        void navigate({ href: search.redirect ?? '/chats', replace: true })
       }
     />
   )

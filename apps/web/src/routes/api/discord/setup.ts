@@ -46,7 +46,7 @@ const workspaceRedirect = (
   request: Request,
   status: 'connected' | 'degraded' | 'error',
 ): Response => {
-  const url = new URL('/home', discordRedirectOrigin({ env: appEnv, request }))
+  const url = new URL('/chats', discordRedirectOrigin({ env: appEnv, request }))
   url.searchParams.set('connection', 'discord')
   url.searchParams.set('status', status)
   return new Response(null, {

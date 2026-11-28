@@ -280,7 +280,7 @@ export function AppShell() {
       const leaf = router.state.matches.at(-1)
       void Result.tryPromise(async () => {
         await navigate({
-          href: leaf ? workspaceSwitchTarget(leaf.fullPath, pathname) : '/home',
+          href: leaf ? workspaceSwitchTarget(leaf.fullPath, pathname) : '/chats',
         })
         await switchWorkspace(nextWorkspace)
       }).then((result) =>

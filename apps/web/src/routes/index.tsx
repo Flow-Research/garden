@@ -6,7 +6,7 @@ export const Route = createFileRoute('/')({
     const session = await getRouteSession()
 
     throw redirect({
-      href: session ? '/home' : '/login',
+      href: session ? '/chats' : '/login',
     })
   },
   component: IndexRoute,

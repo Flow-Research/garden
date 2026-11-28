@@ -33,10 +33,10 @@ describe('workspaceSwitchTarget', () => {
 
   it('uses the matched section when the current pathname differs', () => {
     expect(workspaceSwitchTarget('/teams/', '/agents/old')).toBe('/teams')
-    expect(workspaceSwitchTarget('/handbook/$', '/agents/old')).toBe('/home')
+    expect(workspaceSwitchTarget('/handbook/$', '/agents/old')).toBe('/chats')
   })
 
-  it('lands on home when the entity has no parent section', () => {
-    expect(workspaceSwitchTarget('/$id', '/x1')).toBe('/home')
+  it('lands on chats when the entity has no parent section', () => {
+    expect(workspaceSwitchTarget('/$id', '/x1')).toBe('/chats')
   })
 })

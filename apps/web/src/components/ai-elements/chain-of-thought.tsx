@@ -7,7 +7,7 @@ import {
 } from '@garden/ui/components/ui/collapsible'
 import { cn } from '@garden/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
-import { BrainIcon, ChevronDownIcon, DotIcon } from 'lucide-react'
+import { ChevronRightIcon, DotIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, memo, useCallback, useContext, useMemo } from 'react'
 
@@ -90,19 +90,16 @@ export const ChainOfThoughtHeader = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          'flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground',
+          'flex w-fit items-center gap-1 text-muted-foreground text-sm transition-colors hover:text-foreground',
           className,
         )}
         {...props}
       >
-        <BrainIcon className="size-4" />
-        <span className="flex-1 text-left">
-          {children ?? 'Chain of Thought'}
-        </span>
-        <ChevronDownIcon
+        <span className="text-left">{children ?? 'Chain of Thought'}</span>
+        <ChevronRightIcon
           className={cn(
             'size-4 transition-transform',
-            isOpen ? 'rotate-180' : 'rotate-0',
+            isOpen ? 'rotate-90' : 'rotate-0',
           )}
         />
       </CollapsibleTrigger>

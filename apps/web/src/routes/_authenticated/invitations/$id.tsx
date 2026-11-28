@@ -29,7 +29,7 @@ export const Route = createFileRoute('/_authenticated/invitations/$id')({
 
     if (result.status === 'accepted') {
       throw redirect({
-        to: '/home',
+        to: '/chats',
         search: {
           workspace_id: result.workspaceId,
         },
@@ -69,7 +69,7 @@ function InvitationRoute() {
             variant="outline"
             onClick={() =>
               void navigate({
-                to: '/home',
+                to: '/chats',
                 search: {},
               })
             }
@@ -91,7 +91,7 @@ function InvitationRoute() {
         className="mt-8"
         onClick={() =>
           void navigate({
-            to: '/home',
+            to: '/chats',
             search: {},
           })
         }

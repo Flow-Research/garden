@@ -53,7 +53,9 @@ On a wide screen the sidebar can collapse to icons (`AppSidebar` `collapsed`). H
 
 Settings opens as a dialog from `apps/web/src/features/settings`. It is not a sidebar page.
 
-Switching workspace keeps you on the same page. On a page for one item, such as `/agents/<id>` or `/tasks/<id>`, you go to that item's section instead (`/agents`), because the item belongs to the old workspace. Garden clears search parameters and closes local selections, including file previews, when the workspace changes. `workspaceSwitchTarget` in `apps/web/src/components/shell/workspace-switch-target.ts` picks the destination.
+Chats (`/chats`) is the default landing. Signing in, opening `/`, creating a workspace, accepting an invite, and finishing a connector OAuth flow all open the new-chat composer. Home stays in the sidebar as an ordinary page.
+
+Switching workspace keeps you on the same page. On a page for one item, such as `/agents/<id>` or `/tasks/<id>`, you go to that item's section instead (`/agents`), because the item belongs to the old workspace. When the item has no section, you land on Chats. Garden clears search parameters and closes local selections, including file previews, when the workspace changes. `workspaceSwitchTarget` in `apps/web/src/components/shell/workspace-switch-target.ts` picks the destination.
 
 ## Each product primitive has one source of truth
 
