@@ -18,7 +18,6 @@ import {
   getToolPartState,
 } from '@cloudflare/ai-chat/react'
 import { getToolName, isToolUIPart } from 'ai'
-import { cn } from '@garden/ui/lib/utils'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { Shimmer } from '@/components/ai-elements/shimmer'
 import { resolveToolApproval as resolveToolApprovalRequest } from '@/lib/api'
@@ -86,14 +85,7 @@ export function StreamingWorkEntryRow({
   return (
     <ChainOfThoughtStep
       label={
-        <span
-          className={cn(
-            'font-medium text-foreground/80',
-            isDone && 'line-through decoration-muted-foreground/70',
-          )}
-        >
-          {entry.label}
-        </span>
+        <span className="font-medium text-foreground/80">{entry.label}</span>
       }
       description={
         entry.detail && !showDetailBlock && !isDone ? entry.detail : undefined
