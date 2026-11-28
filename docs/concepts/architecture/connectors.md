@@ -3,7 +3,7 @@ title: Connectors run through Executor inside the Garden Worker
 description: How Garden installs external integrations, gates their tools, and exposes them to agents through scoped Executor MCP sessions and the direct Decide path.
 status: current
 owner: '@Flow-Research/security'
-last_reviewed: 2026-11-16
+last_reviewed: 2026-11-28
 ---
 
 Garden has one application Worker. Executor v1.5.40 (`@executor-js/sdk` and its plugins in `apps/web/package.json`) runs inside that Worker. Executor handles the connector catalog, installation, OAuth, connections, execution, and hibernating MCP sessions. Garden API routes call the Executor SDK directly. The Worker also exports Executor's MCP session and execution-owner Durable Objects, bound as `EXECUTOR_MCP_SESSION` and `EXECUTOR_MCP_EXECUTION_OWNER` in `apps/web/wrangler.jsonc`.
@@ -34,9 +34,9 @@ Executor stores integration and connection state in the `EXECUTOR_DB` D1 databas
 
 ## Every tool has a risk class and a trust level
 
-`packages/connectors/src/sdk.ts` defines four risk classes: `read`, `write`, `send_external`, and `destructive`. An agent's trust level for a tool is `auto`, `allow`, or `ask`. `packages/connectors/src/capabilities.ts` maps a risk class to its default trust and resolves the effective trust for a connection.
+`packages/connectors/src/sdk.ts` defines four risk classes: `read`, `write`, `send_external`, and `destructive`. An agent's trust level for a tool is `auto`, `allow`, or `ask`. `packages/connectors/src/capabilities.ts` maps a risk class to its default trust and resolves the effective trust for a connection. Team agent policy can also require approval for a risk class, and it is checked before any rule that skips approval.
 
-Unknown tools fail closed. A tool with no risk class defaults to `ask`. Unclassified native or hosted GitHub tools are not exposed at all. Executor receives tenant and member identity from Garden, and it never replaces Garden's workspace authorization checks.
+Capability sync refuses to store a tool it cannot classify, a tool with no risk class defaults to `ask`, and unclassified native or hosted GitHub tools are not exposed. The runtime approval check only gates tools that have a capability row, so an Executor tool added after the last sync, or one from a source Garden does not register, runs without a Garden approval. Executor receives tenant and member identity from Garden, and it never replaces Garden's workspace authorization checks.
 
 ## Each runtime gets its own Executor MCP session
 
@@ -49,6 +49,10 @@ executor:<workspaceId>:<userId>:<agentId>:<threadId>:<issueId or "chat">:<runId 
 ```
 
 Two runtimes with different identities therefore never share an Executor session. If a facet wakes with an older registration under a different name, the controller removes it and adds the scoped one. The name is an address, not an access check. Garden still enforces permissions at its API and tool boundaries. The [scoped Executor MCP sessions decision](../../decisions/2026-10-scoped-executor-mcp-sessions.md) records why.
+
+![Connector call path](../../diagrams/connectors.drawio.svg)
+
+An agent's connector call passes Garden's trust check, then runs in the agent's own Executor session, which uses the stored credential to call the outside service.
 
 ## Whose GitHub access a run uses
 

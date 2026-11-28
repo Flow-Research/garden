@@ -3,7 +3,7 @@ title: One permission story covers direct tools, codemode, and connectors
 description: How agent permissions, capability risk classes, and trust levels decide whether a tool call runs, asks for approval, or is blocked, and the rules that keep approvals out of codemode.
 status: current
 owner: "@Flow-Research/security"
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-28
 ---
 
 An agent can act through direct tools, through codemode, and through connector tools that Executor serves over MCP. Approval behavior should not depend on which of those paths a call took. Garden is not fully there yet, but every path already reads the same two inputs: the agent's permissions and the capability's trust level.
@@ -15,7 +15,7 @@ An agent can act through direct tools, through codemode, and through connector t
 - `full_access` turns every limit off. It defaults to `true`.
 - `allowed_tools` and `allowed_connectors` limit tools when they have entries. An empty list means no limit, because the agent settings UI never writes these lists.
 - `allowed_skills` limits skills. Here an empty list means no skills, because the UI fills it.
-- `approval_overrides` sets `send_external` and `destructive` approval to `auto` or `manual`.
+- `approval_overrides` can set `send_external` and `destructive` calls to `auto`, which skips an approval unless a Team policy requires one. `manual` keeps the trust-level decision.
 
 `evaluateToolPermission` is the single tool gate for chat, issue runs, and automation runs. `derivePermissions` merges an issue's `permissions_override` over the agent's permissions. If stored permissions cannot be parsed, the agent loses full access and every skill. Corrupt settings never grant more than an admin chose.
 
@@ -49,16 +49,20 @@ Every connector tool is a row in the `capability` table (`packages/db/src/schema
 Grants attach a trust level to a capability. `permission_grant` and `connection_grant` store `trust_level` as one of three values, enforced by a check constraint:
 
 - `auto` runs silently. It is meant only for safe reads.
-- `allow` runs and writes an audit record.
+- `allow` runs without asking. Garden writes `tool_call_audit` rows only when a person approves or denies a request.
 - `ask` creates a `permission_request` and waits for a person to decide.
 
 Older planning documents used `ask_always`, `ask_on_risky`, and `never_ask`. Those names do not exist in the code. A future product setting for connector posture must compile down to per-capability `auto`, `allow`, or `ask` rows.
 
 ## The runtime turns trust levels into approvals
 
-`packages/agent-runtime/src/runtime-mcp-controller.ts` wraps each MCP tool with a `needsApproval` check. For a connector call, it looks up the capability's risk class and the grant's trust level. If no grant row exists, it uses the same risk-based default that Executor and the Connectors page use (`defaultTrustLevelForRisk`), so read tools do not raise stale approval cards. Calls routed through Executor are resolved to their connector first and then checked the same way.
+`packages/agent-runtime/src/runtime-mcp-controller.ts` wraps each MCP tool with a `needsApproval` check. For a connector call, it looks up the capability's risk class, then takes the trust level from the agent's tool grant, else its connection grant, else the risk-based default that Executor and the Connectors page use (`resolveEffectiveTrust`), so read tools do not raise stale approval cards. Calls routed through Executor are resolved to their connector first and then checked the same way.
 
 An approval surfaces in the chat timeline through `apps/web/src/features/chat/use-tool-approvals.ts` and in the Inbox as a `permission_request`. Approval decisions write `tool_call_audit` rows (`packages/db/src/schema/audit.ts`) through `apps/web/src/lib/server/permission-request.ts`, and the agent and connector activity routes read them. You manage grants on the Connectors page, `apps/web/src/features/connections/components/connections-page.tsx`.
+
+![Permission decision](../../diagrams/permission-decision.drawio.svg)
+
+Garden runs a connector call only when the tool gate allows it and the trust level or a person's approval clears it.
 
 ## Codemode and the container sandbox are separate surfaces
 

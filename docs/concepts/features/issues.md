@@ -3,7 +3,7 @@ title: Issues are the shared ledger of work for people and agents
 description: How an issue becomes an agent run, where that run's events and outputs live, and how issues connect to chat and the Inbox.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-24
+last_reviewed: 2026-11-27
 ---
 
 An issue is a unit of work that a person or an agent owns. The UI calls issues Tasks and shows them at `/tasks`. Assigning an issue to an agent turns it into a run: the agent works on the issue in the background, records what it did, and returns reviewable outputs to the same issue.
@@ -13,7 +13,7 @@ An issue is a unit of work that a person or an agent owns. The UI calls issues T
 `packages/db/src/schema/issues.ts` holds the issue model. These tables matter most:
 
 - `issue` stores the work item. Its `status` is one of `todo`, `in_progress`, `in_review`, `done`, `blocked`, or `cancelled`. Its assignee is a user or an agent.
-- `issue_run` stores one attempt by an agent to do the work. Its status is one of `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, or `blocked`.
+- `issue_run` stores one attempt by an agent to do the work. Its status is one of `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, or `blocked`. No code writes `waiting_for_approval` yet.
 - `issue_run_event` stores the timeline of a run.
 - `issue_work_product` stores the outputs a run produces for review.
 - `issue_source_binding` links an issue to the external item it came from, such as a GitHub pull request or a Slack thread.
@@ -21,6 +21,10 @@ An issue is a unit of work that a person or an agent owns. The UI calls issues T
 The value lists live in `packages/db/src/schema/issue-values.ts`.
 
 Keeping the issue apart from its runs lets one issue carry several attempts. A failed run does not erase the issue, and a person can retry or reassign without losing history.
+
+![Issue and issue run states](../../diagrams/issue-states.drawio.svg)
+
+An issue keeps one status for the work. Each agent attempt is an `issue_run`, and its transitions move the issue.
 
 ## A run flows from the service to a Think facet through a Workflow
 
@@ -76,17 +80,21 @@ Approving a work product offers two choices, and the review request must name on
 
 Apply sends an approved work product out of Garden. **Apply** posts the body as a comment on the bound GitHub issue. **Apply as PR** (`action: 'apply_pr'`) turns the body into a repository file. It needs `payload.pr_target`, a typed object (`workProductPrTargetSchema` in `packages/core/src/issues/work-product-pr-target.ts`) with `repository` (`owner/repo`), a repo-relative `path`, and an optional `base_branch` that defaults to `dev`. The agent sets it through `create_work_product`; it lives in the existing `payload` column because only the apply path reads it. The repository must be linked to the issue's Team in `team_repository`, or the request fails before any GitHub call.
 
-The server then reads the head of the base branch, creates `garden/work-product-<id>`, writes the body to the file (updating it when it already exists), and opens a pull request into the base branch. Each call runs through the workspace GitHub App installation, with the approving person as actor, through the same approval gate as the comment path. The PR body fills `.github/pull_request_template.md` so `scripts/verify-pr-contract.mjs` passes, and it says `Closes #N` when the bound GitHub issue is in the same repository, which lets the PR webhook move the board card. Garden records the PR URL and number as `applied_external_url` and `applied_external_id` and appends `issue_run:work_product_applied`. Apply as PR is safe to retry after a partial failure: an existing `garden/work-product-<id>` branch is reused, and an open PR from it is recorded instead of opening a second one. Merging stays a human step on GitHub. The work-product card shows **Apply as PR** next to Apply when a target is set, and **View pull request** afterwards.
+The server then reads the head of the base branch, creates `garden/work-product-<first 8 characters of id>`, writes the body to the file (updating it when it already exists), and opens a pull request into the base branch. Each call runs through the workspace GitHub App installation, with the approving person as actor, through the same approval gate as the comment path. The PR body fills `.github/pull_request_template.md` so `scripts/verify-pr-contract.mjs` passes, and it says `Closes #N` when the bound GitHub issue is in the same repository, which lets the PR webhook move the board card. Garden records the PR URL and number as `applied_external_url` and `applied_external_id` and appends `issue_run:work_product_applied`. Apply as PR is safe to retry after a partial failure: an existing branch with that name is reused, and an open PR from it is recorded instead of opening a second one. Merging stays a human step on GitHub. The work-product card shows **Apply as PR** next to Apply when a target is set, and **View pull request** afterwards.
 
 Approving a workspace-wide document saves it to Files & Folders. When a `brief`, `plan`, `report`, or `checklist` work product is approved, through either **Approve** or **Approve and close**, the server writes the approved body (the edited body when the reviewer edited it) as `<title-slug>.md` through `saveBrainFileUpload` in `apps/web/src/lib/server/brain-file-upload.ts`. That is the same stage, index, and audit path that `POST /api/brain/files` uses, so the file is owned by the approving person and is indexed and searchable like an upload. `pull_request` and `connector_reply` work products are not saved. There is no manual save control and no folder picker.
 
 Team issue documents stay on the issue because Brain files are readable by all workspace members. A workspace issue saves to the shared folder named after the workspace. Names longer than 50 characters use the shared folder “Approved workspace documents”. If the shared folder does not exist, concurrent approvals in the same workspace create one folder and use it for every document. The file is added to the folder, Garden records `payload.saved_file` (`workProductSavedFileSchema` in `packages/core/src/issues/work-product-saved-file.ts`: file id, name, folder id, content URL, who saved it, when), and it appends `issue_run:work_product_saved_to_files` with the approving person as `actor_user_id`.
 
-Saving preserves `status` and `applied_external_*`, so Apply and Apply as PR stay available. The system save event identifies the file for this work product. When a person approves a revision, Garden updates that file only if the person owns it and still has access to its scope. The file keeps its ID and R2 key. `Brain.replaceFileContent` updates the size and time and marks it for indexing. The run event records `overwritten: true`. If the file was deleted or belongs to another person, Garden saves a copy for the current approver and records its link. A retry uses that approver’s existing copy, including a partial save that has no save event yet. Only an approved work product can be saved.
+Saving preserves `status` and `applied_external_*`, so Apply stays available. Apply as PR never applies here, because it needs an issue on a Team and saving needs an issue with no Team. The system save event identifies the file for this work product. When a person approves a revision, Garden updates that file only if the person owns it and still has access to its scope. The file keeps its ID and R2 key. `Brain.replaceFileContent` updates the size and time and marks it for indexing. The run event records `overwritten: true`. If the file was deleted or belongs to another person, Garden saves a copy for the current approver and records its link. A retry uses that approver’s existing copy, including a partial save that has no save event yet. Only an approved work product can be saved.
 
-A failed save does not undo the approval. The approve response carries `files`, which is `{ status: 'saved', ... }`, `{ status: 'skipped' }` for a type that is not saved, or `{ status: 'failed', message }`. On failure the client shows the toast "Approved, but saving to Files failed" with the message, and the run gets an `issue_run:work_product_save_failed` event at level `error`, so the failure stays on the run timeline after the toast is gone. The issue and inbox cards offer Retry saving to Files for unsaved workspace documents after approval, including documents already applied. A retry leaves the approval and issue status intact.
+A failed save does not undo the approval. The approve response carries `files`, which is `{ status: 'saved', ... }`, `{ status: 'skipped' }` for a type that is not saved or an issue on a Team, or `{ status: 'failed', message }`. On failure the client shows the toast "Approved, but saving to Files failed" with the message, and the run gets an `issue_run:work_product_save_failed` event at level `error`, so the failure stays on the run timeline after the toast is gone. The issue and inbox cards offer Retry saving to Files for unsaved workspace documents after approval, including documents already applied. A retry leaves the approval and issue status intact.
 
 The Markdown file is the source of truth. After a save the card links the file and offers **Markdown** and **Word** downloads. `GET /api/brain/files/$id/docx` renders Word on each request from the stored Markdown with `markdownToDocx` (`packages/agent-runtime/src/documents/markdown-docx.ts`), keeping headings, bullet and numbered lists, tables, and bold, italic, and code text. The .docx is never stored.
+
+![Work product review flow](../../diagrams/work-product-flow.drawio.svg)
+
+Reviewers approve or request changes. Approval saves workspace documents to Files, and only an approved work product can be applied as a comment or a pull request.
 
 ## Chat and issues link in both directions
 

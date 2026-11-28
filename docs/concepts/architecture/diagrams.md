@@ -1,9 +1,9 @@
 ---
 title: Architecture diagrams show how Garden's parts connect
-description: Six draw.io diagrams of Garden's components, deployment, run flow, connector access, and host protocol, and how to edit them.
+description: Draw.io diagrams of Garden's components, runtime, runs, issues, automations, deployment, connector access, and host protocol, and how to edit them.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-26
+last_reviewed: 2026-11-28
 ---
 
 These diagrams show Garden's moving parts in one picture each. Each diagram lives in `docs/diagrams/` as a `.drawio.svg` file, so it renders on GitHub and here and still opens in draw.io. The date line on each diagram names the Garden commit it was last checked against.
@@ -43,6 +43,84 @@ This diagram answers why a launch receipt alone cannot start a worker on an exec
 This diagram answers how a host applies a person's answer exactly once and recovers when it is unsure a process stopped. It is a proposal. Its Garden side is on the unmerged `feat/engineering-host-interventions` branch and is not on `dev`. Read the [execution host contract](../../proposals/execution-host-contract.md).
 
 ![Garden host intervention and recovery](../../diagrams/garden-host-intervention.drawio.svg)
+
+## Garden overview
+
+This diagram answers which parts make up Garden and what calls what, from the browser to the stores. It sits on [how Garden is built](./how-garden-is-built.mdx).
+
+![Garden overview](../../diagrams/garden-overview.drawio.svg)
+
+## AgentDO and its Think facets
+
+This diagram answers how one `AgentDO` creates a Think facet for each chat, run, and Brain pass, and how each facet is keyed. It sits on [agent runtime](./agent-runtime.md).
+
+![AgentDO and its Think facets](../../diagrams/agent-runtime.drawio.svg)
+
+## RunWorkflow turn loop
+
+This diagram answers how `RunWorkflow` submits a turn, waits for it, and then retries, waits for a person, resumes, or cancels. It sits on [run engine](./run-engine.md).
+
+![RunWorkflow turn loop](../../diagrams/run-engine-turns.drawio.svg)
+
+## Run states
+
+This diagram answers which statuses an `issue_run` and an `automation_run` move through, and which code writes each one. It sits on [run engine](./run-engine.md).
+
+![Run states](../../diagrams/run-states.drawio.svg)
+
+## Issue and issue run states
+
+This diagram answers how an issue's status relates to the statuses of its runs. It sits on [issues](../features/issues.md).
+
+![Issue and issue run states](../../diagrams/issue-states.drawio.svg)
+
+## Work product review flow
+
+This diagram answers what happens when a reviewer approves, requests changes, applies, or applies a work product as a pull request. It sits on [issues](../features/issues.md).
+
+![Work product review flow](../../diagrams/work-product-flow.drawio.svg)
+
+## Automation run
+
+This diagram answers how a scheduled or manual trigger becomes one automation run and where its output is stored. It sits on [automations](../features/automations.md).
+
+![Automation run](../../diagrams/automation-run.drawio.svg)
+
+## Permission decision
+
+This diagram answers when an agent tool call runs, asks a person, or is refused. It sits on [permissions](../features/permissions.md).
+
+![Permission decision](../../diagrams/permission-decision.drawio.svg)
+
+## Brain flow
+
+This diagram answers how knowledge enters the Brain, goes to review, and is read back by agents. It sits on [Brain](./brain.md).
+
+![Brain flow](../../diagrams/brain-flow.drawio.svg)
+
+## Connector call path
+
+This diagram answers how an agent call reaches an outside service through Executor. It sits on [connectors](./connectors.md).
+
+![Connector call path](../../diagrams/connectors.drawio.svg)
+
+## Realtime paths
+
+This diagram answers how a write reaches other browsers, and how chat and runs take their own path. It sits on [realtime](./realtime.md).
+
+![Realtime paths](../../diagrams/realtime.drawio.svg)
+
+## One chat turn
+
+This diagram answers how one chat message reaches its facet and how the reply comes back. It sits on [chat](../features/chat.md).
+
+![One chat turn](../../diagrams/chat-turn.drawio.svg)
+
+## Execution runtimes
+
+This diagram answers which runtime runs which kind of agent code. It sits on [execution runtimes](./execution-runtimes.md).
+
+![Execution runtimes](../../diagrams/execution-runtimes.drawio.svg)
 
 ## Edit a diagram
 
