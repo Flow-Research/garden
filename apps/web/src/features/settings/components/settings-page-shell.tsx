@@ -4,6 +4,7 @@ import { MotionConfig, motion } from 'motion/react'
 import { cn } from '@garden/ui/lib/utils'
 import {
   CircleUserRound,
+  Server,
   Settings,
   SlidersHorizontal,
   UsersRound,
@@ -23,6 +24,11 @@ const sections = [
     icon: SlidersHorizontal,
   },
   { to: '/settings/general', label: 'General', icon: Settings },
+  {
+    to: '/settings/execution-hosts',
+    label: 'Execution hosts',
+    icon: Server,
+  },
 ] as const
 
 const SECTION_MOTION = { duration: 0.32, ease: ANIMATE_EASE }

@@ -236,6 +236,7 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     ),
     ...optionalPlainBindings([
       'WORKSTREAM_MCP_CLIENT_ID',
+      'ENGINEERING_PILOT_OPERATOR_ID',
       'GITHUB_CLIENT_ID',
       'GITHUB_APP_ID',
       'GITHUB_APP_SLUG',

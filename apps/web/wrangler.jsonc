@@ -162,6 +162,8 @@
     "GITHUB_APP_PRIVATE_KEY": "",
     "GITHUB_WEBHOOK_SECRET": "",
     "WORKSTREAM_MCP_CLIENT_ID": "",
+    // Empty keeps external execution controls disabled. Activation is separately approved.
+    "ENGINEERING_PILOT_OPERATOR_ID": "",
     "GOOGLE_CLIENT_ID": "",
     "GOOGLE_CLIENT_SECRET": "",
     "SLACK_CLIENT_ID": "",

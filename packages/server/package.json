@@ -11,6 +11,7 @@
     "lint:fix": "oxlint -c ../../.oxlintrc.json --fix ."
   },
   "exports": {
+    "./execution-hosts": "./src/execution-hosts/service.ts",
     "./connectors/availability": "./src/connectors/availability.ts",
     "./automations/run-service": "./src/automations/run-service.ts",
     "./issues/server": "./src/issues/server.ts",
