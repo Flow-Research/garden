@@ -123,6 +123,7 @@
       "vite@8": "8.2.4"
     },
     "patchedDependencies": {
+      "agents@0.34.0": "patches/agents@0.34.0.patch",
       "@helix-db/helix-db@3.0.2": "patches/@helix-db__helix-db@3.0.2.patch",
       "@executor-js/sdk@1.5.40": "patches/@executor-js__sdk@1.5.40.patch",
       "@executor-js/config@1.5.40": "patches/@executor-js__config@1.5.40.patch",
