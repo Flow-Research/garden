@@ -172,12 +172,7 @@ export function ListView({
                     >
                       {cfg.label}
                     </span>
-                    <span
-                      className={cn(
-                        'text-sm text-text-default',
-                        isTodo && 'rounded-md bg-background-main-default px-2',
-                      )}
-                    >
+                    <span className="text-sm text-text-default">
                       {statusCount}
                     </span>
                   </Accordion.Trigger>
