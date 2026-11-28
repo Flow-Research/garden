@@ -40,6 +40,7 @@ import {
   PendingAssistantActivity,
 } from './chat-tool-activity'
 import { MessageFiles } from './chat-message-files'
+import { COMPOSER_WIDTH_CLASS_NAME } from './composer'
 import { isToolUIPart } from 'ai'
 import { isToolPartActive } from './chat-tool-state'
 import { useDevSettingsStore } from '@/features/settings/dev-settings-store'
@@ -433,6 +434,7 @@ const ChatTimelineComponent = ({
     <Conversation
       key={sessionId}
       className="min-h-0 flex-1"
+      columnClassName={COMPOSER_WIDTH_CLASS_NAME}
       data={rows}
       drawDistance={600}
       estimateItemSize={90}

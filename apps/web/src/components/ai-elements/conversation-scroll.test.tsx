@@ -72,6 +72,7 @@ type ConversationEventHandlers = Pick<
 function renderConversation(handlers: ConversationEventHandlers = {}) {
   return render(
     <Conversation<Item>
+      columnClassName="max-w-[808px]"
       data={[{ id: 'one' }, { id: 'two' }]}
       getItemKey={(item) => item.id}
       renderItem={({ item }) => <div>{item.id}</div>}
@@ -109,6 +110,7 @@ describe('Conversation scroll stickiness', () => {
     act(() => {
       rerender(
         <Conversation<Item>
+          columnClassName="max-w-[808px]"
           data={[{ id: 'one' }, { id: 'two' }, { id: 'three' }]}
           getItemKey={(item) => item.id}
           renderItem={({ item }) => <div>{item.id}</div>}
@@ -135,6 +137,7 @@ describe('Conversation scroll stickiness', () => {
     act(() => {
       rerender(
         <Conversation<Item>
+          columnClassName="max-w-[808px]"
           data={[{ id: 'one' }, { id: 'two' }, { id: 'three' }]}
           getItemKey={(item) => item.id}
           renderItem={({ item }) => <div>{item.id}</div>}
