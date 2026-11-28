@@ -27,7 +27,7 @@ function Chip({
   icon?: React.ReactNode
 }) {
   return (
-    <span className="inline-flex h-[30px] items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
+    <span className="inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
       {dot ? (
         <span
           aria-hidden
@@ -36,7 +36,7 @@ function Chip({
         />
       ) : null}
       {icon}
-      {children}
+      <span className="max-w-80 truncate">{children}</span>
     </span>
   )
 }
@@ -79,27 +79,27 @@ export const ListRow = memo(function ListRow({
 
   if (variant === 'team') {
     return (
-      <div className="flex h-[54px] items-center gap-3 px-6 text-sm">
+      <div className="flex min-h-[54px] items-center gap-3 px-6 py-3 text-sm">
         <StatusIcon
           status={issue.status}
-          className="size-4.5 text-icon-secondary"
+          className="size-4.5 shrink-0 text-icon-secondary"
           inheritColor
         />
         <a
           href={issuePath(issue.id)}
           onClick={handleOpen}
-          className="flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-4"
+          className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2"
         >
-          <span className="truncate text-text-default">{issue.title}</span>
-          <span className="flex shrink-0 items-center gap-2">
-            {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
-            {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
-            {issue.description ? (
-              <Chip icon={<FileText className="size-3.5" />}>
-                <span className="max-w-80 truncate">{issue.description}</span>
-              </Chip>
-            ) : null}
+          <span className="min-w-0 grow basis-48 truncate text-text-default">
+            {issue.title}
           </span>
+          {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
+          {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
+          {issue.description ? (
+            <Chip icon={<FileText className="size-3.5 shrink-0" />}>
+              {issue.description}
+            </Chip>
+          ) : null}
         </a>
       </div>
     )
