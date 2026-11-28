@@ -14,9 +14,8 @@ import { TeamSummaryCard } from './team-summary-card'
 const SUMMARY_ACTION_CLASS = 'h-8 shrink-0 rounded-md px-3 shadow-1'
 
 /**
- * Owner/admin Teams overview: title row with Create a Team, then one
- * secondary-surface card holding the Total Teams / Members / Issues summary
- * and the Team grid. Members see the combined member view instead.
+ * Teams overview with summary cards and the Team grid for owners and admins.
+ * Members see the combined Team view.
  */
 export function TeamOverview() {
   const wsId = useWorkspaceId()
@@ -70,7 +69,7 @@ export function TeamOverview() {
             <CreateTeamButton />
           </div>
 
-          <div className="@container flex flex-col gap-6 rounded-2xl bg-background-main-secondary p-4 sm:p-6 lg:p-10">
+          <div className="@container flex flex-col gap-6 xl:rounded-2xl xl:bg-background-main-secondary xl:p-10">
             {teams.length > 0 ? (
               <>
                 <div className="grid grid-cols-1 gap-3 @2xl:grid-cols-3">
