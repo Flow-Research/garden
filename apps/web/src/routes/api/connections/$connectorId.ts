@@ -4,7 +4,6 @@ import {
   deleteGitHubAppInstallation,
   getGitHubAppInstallation,
 } from '@garden/connectors/github-app'
-import { eq } from 'drizzle-orm'
 import { GARDEN_ANALYTICS_EVENTS } from '@garden/observability/analytics/events'
 import {
   AuthTemplateSlug,
@@ -19,8 +18,12 @@ import {
   mirrorExecutorConnection,
   unmirrorExecutorConnection,
 } from '@/lib/server/executor-engine/connection-mirror'
-import { schema } from '@/lib/server/db'
 import { appEnv } from '@/lib/server/env'
+import {
+  deleteGithubInstallationByWorkspace,
+  getGithubInstallationByWorkspace,
+  updateGithubInstallationStatus,
+} from '@/lib/server/queries/connections'
 import { captureApiFailure, logApiFailure } from '@/lib/server/api-logging'
 import {
   deleteDiscordInstallation,
@@ -243,17 +246,11 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             return badRequest('Use Add to GitHub to connect this integration')
           }
           const db = await appContext.db()
-          const [installation] = await db
-            .select()
-            .from(schema.githubAppInstallation)
-            .where(
-              eq(
-                schema.githubAppInstallation.workspaceId,
-                workspaceContext.workspaceId,
-              ),
-            )
-            .limit(1)
-          if (installation === undefined) {
+          const installation = await getGithubInstallationByWorkspace(
+            db,
+            workspaceContext.workspaceId,
+          )
+          if (installation === null) {
             return notFound('GitHub App installation not found')
           }
 
@@ -283,14 +280,10 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
             bodyResult.value.action === 'delete' ||
             bodyResult.value.action === 'disconnect'
           ) {
-            await db
-              .delete(schema.githubAppInstallation)
-              .where(
-                eq(
-                  schema.githubAppInstallation.workspaceId,
-                  workspaceContext.workspaceId,
-                ),
-              )
+            await deleteGithubInstallationByWorkspace(
+              db,
+              workspaceContext.workspaceId,
+            )
             capturePostHogEvent(appContext, {
               distinctId: workspaceContext.session.user.id,
               event: GARDEN_ANALYTICS_EVENTS.connectorDisconnected,
@@ -344,15 +337,10 @@ export const Route = createFileRoute('/api/connections/$connectorId')({
               })
             }
           }
-          await db
-            .update(schema.githubAppInstallation)
-            .set({ status, updatedAt: new Date() })
-            .where(
-              eq(
-                schema.githubAppInstallation.workspaceId,
-                workspaceContext.workspaceId,
-              ),
-            )
+          await updateGithubInstallationStatus(db, {
+            workspaceId: workspaceContext.workspaceId,
+            status,
+          })
           capturePostHogEvent(appContext, {
             distinctId: workspaceContext.session.user.id,
             event: GARDEN_ANALYTICS_EVENTS.connectorResyncCompleted,
