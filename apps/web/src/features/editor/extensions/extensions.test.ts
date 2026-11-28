@@ -175,6 +175,7 @@ describe('createMentionSuggestion types filter', () => {
     const items = await createMentionSuggestion(qc).items!({
       query: '',
       editor: null as never,
+      signal: new AbortController().signal,
     })
     expect(new Set(items.map((i) => i.type))).toEqual(
       new Set(['all', 'member', 'agent', 'issue']),
@@ -187,6 +188,7 @@ describe('createMentionSuggestion types filter', () => {
       .items!({
       query: '',
       editor: null as never,
+      signal: new AbortController().signal,
     })
     expect(items.every((i) => i.type === 'member')).toBe(true)
   })

@@ -116,7 +116,7 @@ const modelSource = readFileSync(
 )
 assert.match(
   modelSource,
-  /DEFAULT_AGENT_MODEL_PROFILE =\s*\n?\s*agentModelProfiles\.glm53WorkersAi/,
+  /DEFAULT_AGENT_MODEL_PROFILE =\s*\n?\s*agentModelProfiles\.deepseekV41FlashWorkersAi/,
 )
 assert.match(
   modelSource,

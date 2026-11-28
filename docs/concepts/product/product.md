@@ -53,6 +53,8 @@ On a wide screen the sidebar can collapse to icons (`AppSidebar` `collapsed`). H
 
 Settings opens as a dialog from `apps/web/src/features/settings`. It is not a sidebar page.
 
+Switching workspace keeps you on the same page. On a page for one item, such as `/agents/<id>` or `/tasks/<id>`, you go to that item's section instead (`/agents`), because the item belongs to the old workspace. Garden clears search parameters and closes local selections, including file previews, when the workspace changes. `workspaceSwitchTarget` in `apps/web/src/components/shell/workspace-switch-target.ts` picks the destination.
+
 ## Each product primitive has one source of truth
 
 The table names where each primitive lives and how it runs.

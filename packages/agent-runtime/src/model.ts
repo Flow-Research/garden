@@ -4,6 +4,7 @@ import { withTracing } from '@posthog/ai/vercel'
 import { PostHog } from 'posthog-node'
 import { createWorkersAI } from 'workers-ai-provider'
 import { resolveGardenAnalyticsEnvironment } from '@garden/observability/analytics/events'
+import { traceV4Model } from './model-v4-tracing'
 import { observeRetiredAgentModel } from './model-retirement'
 
 // Grant-bearing generation telemetry has a fixed metadata boundary. New SDK
@@ -72,6 +73,7 @@ export type AgentModelProfile = {
   contextWindowTokens: number
   docs: string
   id: string
+  maxOutputTokens: number
   provider: AgentModelProvider
   compaction: AgentModelCompactionPolicy
   pricePerToken: {
@@ -79,6 +81,8 @@ export type AgentModelProfile = {
     input: number
     output: number
   }
+  /** Workers AI `reasoning_effort`; omitted for providers that do not take it. */
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 export type AgentModelTracing = {
@@ -116,25 +120,29 @@ const createPiStyleCompactionPolicy = (
 
 /**
  * Single source of truth for model IDs, compaction, and point-in-time pricing.
- * Prices are USD per token for Cloudflare Workers AI GLM-5.3 as of
- * 2026-11-22: $1.40/M input, $4.40/M output, $0.26/M cached input.
+ * Prices are USD per token for Cloudflare Workers AI DeepSeek V4.1 Flash as of
+ * 2026-11-25: $0.30/M input, $1.20/M output, $0.006/M cached input.
+ * https://developers.cloudflare.com/workers-ai/models/deepseek-v4.1-flash-1017/
  */
 export const agentModelProfiles = {
-  glm53WorkersAi: {
+  deepseekV41FlashWorkersAi: {
     contextWindowTokens: 1_048_576,
-    docs: 'Cloudflare Workers AI model docs: @cf/zai-org/glm-5.3 context window is 1,048,576 tokens.',
-    id: '@cf/zai-org/glm-5.3',
+    docs: 'Cloudflare Workers AI model docs: @cf/deepseek-ai/deepseek-v4.1-flash-1017 context window is 1,048,576 tokens.',
+    id: '@cf/deepseek-ai/deepseek-v4.1-flash-1017',
+    maxOutputTokens: 16_000,
     provider: 'workers-ai',
     compaction: createPiStyleCompactionPolicy(1_048_576),
     pricePerToken: {
-      input: 0.0000014,
-      output: 0.0000044,
-      cacheReadInput: 0.00000026,
+      input: 0.0000003,
+      output: 0.0000012,
+      cacheReadInput: 0.000000006,
     },
+    reasoningEffort: 'high',
   },
 } as const satisfies Record<string, AgentModelProfile>
 
-export const DEFAULT_AGENT_MODEL_PROFILE = agentModelProfiles.glm53WorkersAi
+export const DEFAULT_AGENT_MODEL_PROFILE =
+  agentModelProfiles.deepseekV41FlashWorkersAi
 
 export function getDefaultAgentModelProfile(): AgentModelProfile {
   return DEFAULT_AGENT_MODEL_PROFILE
@@ -193,6 +201,7 @@ export function resolveAgentModelProfile(
     contextWindowTokens,
     docs: 'Local/OpenAI-compatible model configured via GARDEN_MODEL_* env; context window from GARDEN_MODEL_CONTEXT_WINDOW_TOKENS.',
     id: env?.GARDEN_MODEL_ID?.trim() || OPENAI_COMPATIBLE_DEFAULT_MODEL_ID,
+    maxOutputTokens: DEFAULT_AGENT_MODEL_PROFILE.maxOutputTokens,
     provider: 'openai-compatible',
     compaction: {
       responseReserveTokens,
@@ -254,36 +263,53 @@ export function createAgentModel(config: AgentModelConfig): LanguageModel {
     waitUntilDebounceMs: 0,
   })
 
+  const properties = {
+    environment: resolveGardenAnalyticsEnvironment({
+      environment: config.env?.ENVIRONMENT,
+    }),
+    workspace_id: config.tracing.workspaceId,
+    ...config.tracing.properties,
+  }
+  const provider =
+    profile.provider === 'openai-compatible'
+      ? 'openai-compatible.chat'
+      : 'workersai.chat'
+  const costs = {
+    inputCost: profile.pricePerToken.input,
+    outputCost: profile.pricePerToken.output,
+  }
+  if (model.specificationVersion === 'v4') {
+    return traceV4Model(
+      model,
+      posthog,
+      {
+        distinctId: config.tracing.distinctId,
+        traceId: config.tracing.traceId,
+        groups: { workspace: config.tracing.workspaceId },
+        properties,
+        privacyMode: config.tracing.privacyMode ?? false,
+        model: profile.id,
+        provider,
+        costOverride: costs,
+      },
+      config.tracing.waitUntil,
+    )
+  }
+
   return withTracing(model, posthog, {
     posthogDistinctId: config.tracing.distinctId,
     posthogTraceId: config.tracing.traceId,
     posthogGroups: { workspace: config.tracing.workspaceId },
-    posthogProperties: {
-      environment: resolveGardenAnalyticsEnvironment({
-        environment: config.env?.ENVIRONMENT,
-      }),
-      workspace_id: config.tracing.workspaceId,
-      ...config.tracing.properties,
-    },
+    posthogProperties: properties,
     posthogPrivacyMode: config.tracing.privacyMode ?? false,
     posthogCaptureImmediate: false,
     posthogModelOverride: profile.id,
-    posthogProviderOverride:
-      profile.provider === 'openai-compatible'
-        ? 'openai-compatible.chat'
-        : 'workersai.chat',
-    posthogCostOverride: {
-      inputCost: profile.pricePerToken.input,
-      outputCost: profile.pricePerToken.output,
-    },
+    posthogProviderOverride: provider,
+    posthogCostOverride: costs,
   })
 }
 
-/**
- * Workers AI factory — the pre-offline-mode behavior, extracted verbatim so
- * the default path stays byte-equivalent while `createAgentModel` branches
- * on provider.
- */
+/** Workers AI factory for profiles served through the `AI` binding. */
 function createWorkersAiAgentModel(
   profile: AgentModelProfile,
   config: AgentModelConfig,
@@ -293,7 +319,9 @@ function createWorkersAiAgentModel(
     binding: config.ai,
     ...(gatewayId ? { gateway: { id: gatewayId } } : {}),
   })
-  const model = workersai(profile.id)
+  const model = workersai(profile.id, {
+    reasoning_effort: profile.reasoningEffort,
+  })
   return config.onModelRetired
     ? observeRetiredAgentModel(model, config.onModelRetired)
     : model

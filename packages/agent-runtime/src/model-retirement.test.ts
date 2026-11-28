@@ -3,7 +3,6 @@ import { MockLanguageModelV3 } from 'ai/test'
 import { describe, expect, it, vi } from 'vitest'
 import { DEFAULT_AGENT_MODEL_PROFILE } from './model'
 import {
-  RETIRED_AGENT_MODEL_MESSAGE,
   createRetiredModelTracker,
   observeRetiredAgentModel,
 } from './model-retirement'
@@ -34,7 +33,9 @@ describe('retired agent model', () => {
     expect(DEFAULT_AGENT_MODEL_PROFILE.id).not.toBe(
       '@cf/moonshotai/kimi-k2.7-code',
     )
-    expect(DEFAULT_AGENT_MODEL_PROFILE.id).toBe('@cf/zai-org/glm-5.3')
+    expect(DEFAULT_AGENT_MODEL_PROFILE.id).toBe(
+      '@cf/deepseek-ai/deepseek-v4.1-flash-1017',
+    )
   })
 
   it('turns the SDK-masked 410/5028 failure into a clear reason', async () => {
@@ -45,9 +46,7 @@ describe('retired agent model', () => {
     )
 
     expect(masked).toBe('An error occurred.')
-    expect(tracker.failureReason('run-1', masked ?? '')).toBe(
-      RETIRED_AGENT_MODEL_MESSAGE,
-    )
+    expect(tracker.wasRetired('run-1', masked ?? '')).toBe(true)
   })
 
   it('recognizes the deprecation text without an HTTP wrapper', async () => {
@@ -67,16 +66,14 @@ describe('retired agent model', () => {
       tracker.observeTurn('run-1'),
     )
 
-    expect(tracker.failureReason('run-1', masked ?? '')).toBe(
-      'An error occurred.',
-    )
+    expect(tracker.wasRetired('run-1', masked ?? '')).toBe(false)
   })
 
   it('does not relabel a different failure on a retired run', () => {
     const tracker = createRetiredModelTracker()
     tracker.observeTurn('run-1')()
 
-    expect(tracker.failureReason('run-1', 'turn_aborted')).toBe('turn_aborted')
+    expect(tracker.wasRetired('run-1', 'turn_aborted')).toBe(false)
   })
 
   it('does not leak a retirement to another run in the same facet', () => {
@@ -84,9 +81,7 @@ describe('retired agent model', () => {
     tracker.observeTurn('run-1')()
     tracker.observeTurn('run-2')
 
-    expect(tracker.failureReason('run-2', 'An error occurred.')).toBe(
-      'An error occurred.',
-    )
+    expect(tracker.wasRetired('run-2', 'An error occurred.')).toBe(false)
   })
 
   it('does not leak a retirement to a later turn of the same run', () => {
@@ -94,8 +89,6 @@ describe('retired agent model', () => {
     tracker.observeTurn('run-1')()
     tracker.observeTurn('run-1')
 
-    expect(tracker.failureReason('run-1', 'An error occurred.')).toBe(
-      'An error occurred.',
-    )
+    expect(tracker.wasRetired('run-1', 'An error occurred.')).toBe(false)
   })
 })

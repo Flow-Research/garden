@@ -38,7 +38,7 @@ If `qwen3:8b` is missing, pull it. To use a different model or a hosted OpenAI-c
 
 ## Use Workers AI instead of a local model
 
-Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare. You need a Cloudflare account on the Workers paid plan. The default model, `@cf/zai-org/glm-5.3`, is not available on the free plan. Usage can create charges.
+Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare. You need a Cloudflare account on the Workers paid plan. The default model, `@cf/deepseek-ai/deepseek-v4.1-flash-1017`, is not available on the free plan. Usage can create charges.
 
 1. Sign in and print your account id:
 
@@ -58,7 +58,7 @@ Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare
 
 ## Workers AI does not respond
 
-If a run fails with "The configured AI model was retired by its provider", Cloudflare has removed the model that Garden is configured to use. Update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts` to a supported model.
+If a run fails with "The configured AI model was retired by its provider", Cloudflare has removed the model that Garden is configured to use. Update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts` to a supported model. Deployed targets report this daily through the [model health check](../../concepts/features/model-health-check.md).
 
 Run `wrangler whoami` again. Confirm that `CLOUDFLARE_ACCOUNT_ID` matches the signed-in account. If the account is not on the Workers paid plan, use `pnpm dev:offline`.
 

@@ -1,6 +1,6 @@
 import { useDeferredValue, useMemo, useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useSuspenseQueries } from '@tanstack/react-query'
+import { useSuspenseQueries, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { ViewStoreProvider } from '@garden/app-state/issues/stores/view-store-context'
@@ -17,6 +17,7 @@ import {
   Users,
 } from 'lucide-react'
 import { Button } from '@garden/ui/components/ui/button'
+import { cn } from '@garden/ui/lib/utils'
 import { ConfirmDialog } from '@garden/ui/components/common/confirm-dialog'
 import {
   DropdownMenu,
@@ -67,6 +68,19 @@ import {
 import { teamColor } from './team-tokens'
 
 export type TeamTab = 'members' | 'issues' | 'repositories'
+
+/** Route `validateSearch` for Team detail pages: keeps a known `tab` only. */
+export function validateTeamSearch(search: Record<string, unknown>) {
+  const out: { tab?: TeamTab } = {}
+  if (
+    search.tab === 'members' ||
+    search.tab === 'issues' ||
+    search.tab === 'repositories'
+  ) {
+    out.tab = search.tab
+  }
+  return out
+}
 
 type MemberRoleFilter = 'all' | MemberRoleLabel
 
@@ -137,7 +151,7 @@ function MembersToolbar({
   search: string
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @2xl:w-auto">
       <SearchField
         label="Search members"
         onChange={onSearchChange}
@@ -184,7 +198,7 @@ function StatusCards({
   counts: { todo: number; in_progress: number; done: number }
 }) {
   return (
-    <div className="flex gap-3">
+    <div className="grid grid-cols-1 gap-3 @lg:grid-cols-3">
       <TeamSummaryCard
         icon={<StatusIcon status="todo" className="size-4.5" />}
         label="Todo"
@@ -205,8 +219,7 @@ function StatusCards({
 }
 
 /**
- * Team detail, matched to designs 30–33. A secondary-surface shell holds one
- * white card: the Team title and description with Add a team member, Setup
+ * Team detail card, matched to designs 30–33: the Team title and description with Add a team member, Setup
  * Owner and ⋯ (View details / Team settings / Copy link / Delete team), a
  * hairline, the per-tab toolbar, then the tab content. Before, the header
  * sat outside any card with an "Owner: name" button and Edit / Agent policy
@@ -214,18 +227,30 @@ function StatusCards({
  * design; they stay right-aligned on the toolbar row so Issues and
  * Repositories remain reachable. Controls render from the server-computed
  * `can_manage` / `can_transfer_owner` flags; the API stays the authority.
+ * Shared by `/teams/$teamId` and Settings › User Management, which each
+ * supply their own breadcrumb and surroundings.
  */
-export function TeamDetail({
+export function TeamDetailCard({
   teamId,
   tab,
   onTabChange,
+  onDeleted,
+  showTabs = true,
+  className,
 }: {
   teamId: string
   tab: TeamTab
   onTabChange: (tab: TeamTab) => void
+  /** Where to go once the Team is deleted; its detail page no longer exists. */
+  onDeleted: () => void
+  /**
+   * Members / Issues / Repositories pills. Settings hides them and shows the
+   * Members view only.
+   */
+  showTabs?: boolean
+  className?: string
 }) {
   const wsId = useWorkspaceId()
-  const navigate = useNavigate()
   const currentUserId = useAuthStore((s) => s.user?.id ?? '')
 
   const [{ data: team }, { data: members }, { data: issues }] =
@@ -317,180 +342,165 @@ export function TeamDetail({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader className="gap-1.5">
-        <Link
-          to="/teams"
-          className="text-sm text-text-secondary hover:underline"
-        >
-          Teams
-        </Link>
-        <span className="text-sm text-text-tertiary">/</span>
-        <span className="text-sm font-medium text-text-default">
-          {team.name}
-        </span>
-      </PageHeader>
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[80rem] px-6 pt-6 pb-12">
-          <div className="rounded-2xl bg-background-main-secondary p-10">
-            <div className="flex flex-col rounded-xl bg-background-main-default p-6">
-              <header className="flex flex-wrap items-start justify-between gap-4">
-                <div className="flex min-w-0 flex-col gap-3">
-                  <h1 className="text-base">{team.name}</h1>
-                  <p className="text-sm text-text-secondary">
-                    {team.description ?? 'No description'}
-                  </p>
-                </div>
-                {team.can_manage ? (
-                  <div className="flex items-center gap-3">
-                    <Button
-                      className="h-10 rounded-md px-3"
-                      onClick={() => setAddMemberOpen(true)}
-                    >
-                      Add a team member
-                    </Button>
-                    {team.can_transfer_owner ? (
-                      <TransferOwnerPopover members={members} team={team} />
-                    ) : null}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        render={
-                          <Button
-                            aria-label="Team actions"
-                            className="size-10 rounded-md shadow-1"
-                            size="icon"
-                            variant="outline"
-                          />
-                        }
-                      >
-                        <MoreHorizontal className="size-4" />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-42">
-                        <DropdownMenuItem onClick={() => setEditOpen(true)}>
-                          <Eye className="size-4" />
-                          View details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => setAgentPolicyOpen(true)}
-                        >
-                          <Settings className="size-4" />
-                          Team settings
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => void copyLink()}>
-                          <Copy className="size-4" />
-                          Copy link
-                        </DropdownMenuItem>
-                        {team.can_transfer_owner ? (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              variant="destructive"
-                              onClick={() => setDeleteOpen(true)}
-                            >
-                              <Trash2 className="size-4" />
-                              Delete team
-                            </DropdownMenuItem>
-                          </>
-                        ) : null}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                ) : null}
-              </header>
-
-              <div
-                aria-hidden
-                className="mt-8 h-px w-full shrink-0 bg-border-default"
-              />
-
-              <ViewStoreProvider store={teamIssueViewStore}>
-                <Tabs
-                  className="mt-8 flex min-h-0 flex-1 flex-col gap-0"
-                  onValueChange={(value) => onTabChange(value as TeamTab)}
-                  value={tab}
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    {tab === 'members' ? (
-                      <MembersToolbar
-                        onExport={() =>
-                          downloadCsv(
-                            `${team.name}-members.csv`,
-                            membersToCsv(visibleMembers, team.owner_user_id),
-                          )
-                        }
-                        onRoleChange={setMemberRole}
-                        onSearchChange={setMemberSearch}
-                        role={memberRole}
-                        search={memberSearch}
-                      />
-                    ) : tab === 'issues' ? (
-                      <IssuesToolbar
-                        issues={issues}
-                        onCreateIssue={() => openCreateIssue(null)}
-                        onSearchChange={setIssueSearch}
-                        search={issueSearch}
-                      />
-                    ) : (
-                      <span />
-                    )}
-                    <TabsList className={TEAM_TABS_LIST_CLASS}>
-                      {TAB_ITEMS.map((item) => (
-                        <TabsTrigger
-                          className={TEAM_TAB_TRIGGER_CLASS}
-                          key={item.value}
-                          value={item.value}
-                        >
-                          <item.icon className="size-4" />
-                          {item.label}
-                        </TabsTrigger>
-                      ))}
-                    </TabsList>
-                  </div>
-
-                  <TabsContent className="mt-8 flex flex-col" value="members">
-                    <TeamMembersPanel
-                      canManage={team.can_manage}
-                      members={members}
-                      onAddMember={() => setAddMemberOpen(true)}
-                      onAgentSettings={() => setAgentPolicyOpen(true)}
-                      onRemove={setMemberToRemove}
-                      onSeeIssues={() => onTabChange('issues')}
-                      search={memberSearch}
-                      team={team}
-                      visibleMembers={visibleMembers}
-                    />
-                  </TabsContent>
-
-                  <TabsContent
-                    className="mt-8 flex min-h-0 flex-1 flex-col"
-                    value="issues"
-                  >
-                    <div className="flex flex-col gap-8">
-                      <StatusCards counts={statusCounts} />
-                      <TeamIssuesPanel
-                        issues={issues}
-                        onCreateIssue={openCreateIssue}
-                        searchQuery={issueSearch}
-                        teamChips={teamChips}
-                      />
-                    </div>
-                  </TabsContent>
-
-                  <TabsContent
-                    className="mt-8 flex flex-col"
-                    value="repositories"
-                  >
-                    <TeamRepositoriesPanel
-                      canManage={team.can_manage}
-                      teamId={team.id}
-                    />
-                  </TabsContent>
-                </Tabs>
-              </ViewStoreProvider>
-            </div>
+    <>
+      <div
+        className={cn(
+          // @container: summary cards and the toolbar size by this card's width,
+          // not the viewport, since the app sidebar narrows it on tablets.
+          '@container flex flex-col rounded-xl bg-background-main-default p-6',
+          className,
+        )}
+      >
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex min-w-0 flex-col gap-3">
+            <h1 className="text-base">{team.name}</h1>
+            <p className="text-sm text-text-secondary">
+              {team.description ?? 'No description'}
+            </p>
           </div>
-        </div>
+          {team.can_manage ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                className="h-10 rounded-md px-3"
+                onClick={() => setAddMemberOpen(true)}
+              >
+                Add a team member
+              </Button>
+              {team.can_transfer_owner ? (
+                <TransferOwnerPopover members={members} team={team} />
+              ) : null}
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      aria-label="Team actions"
+                      className="size-10 rounded-md shadow-1"
+                      size="icon"
+                      variant="outline"
+                    />
+                  }
+                >
+                  <MoreHorizontal className="size-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-42">
+                  <DropdownMenuItem onClick={() => setEditOpen(true)}>
+                    <Eye className="size-4" />
+                    View details
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => setAgentPolicyOpen(true)}>
+                    <Settings className="size-4" />
+                    Team settings
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => void copyLink()}>
+                    <Copy className="size-4" />
+                    Copy link
+                  </DropdownMenuItem>
+                  {team.can_transfer_owner ? (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        variant="destructive"
+                        onClick={() => setDeleteOpen(true)}
+                      >
+                        <Trash2 className="size-4" />
+                        Delete team
+                      </DropdownMenuItem>
+                    </>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          ) : null}
+        </header>
+
+        <div
+          aria-hidden
+          className="mt-8 h-px w-full shrink-0 bg-border-default"
+        />
+
+        <ViewStoreProvider store={teamIssueViewStore}>
+          <Tabs
+            className="mt-8 flex min-h-0 flex-1 flex-col gap-0"
+            onValueChange={(value) => onTabChange(value as TeamTab)}
+            value={tab}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              {tab === 'members' ? (
+                <MembersToolbar
+                  onExport={() =>
+                    downloadCsv(
+                      `${team.name}-members.csv`,
+                      membersToCsv(visibleMembers, team.owner_user_id),
+                    )
+                  }
+                  onRoleChange={setMemberRole}
+                  onSearchChange={setMemberSearch}
+                  role={memberRole}
+                  search={memberSearch}
+                />
+              ) : tab === 'issues' ? (
+                <IssuesToolbar
+                  issues={issues}
+                  onCreateIssue={() => openCreateIssue(null)}
+                  onSearchChange={setIssueSearch}
+                  search={issueSearch}
+                />
+              ) : (
+                <span />
+              )}
+              {showTabs ? (
+                <TabsList className={TEAM_TABS_LIST_CLASS}>
+                  {TAB_ITEMS.map((item) => (
+                    <TabsTrigger
+                      className={TEAM_TAB_TRIGGER_CLASS}
+                      key={item.value}
+                      value={item.value}
+                    >
+                      <item.icon className="size-4" />
+                      {item.label}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              ) : null}
+            </div>
+
+            <TabsContent className="mt-8 flex flex-col" value="members">
+              <TeamMembersPanel
+                canManage={team.can_manage}
+                members={members}
+                onAddMember={() => setAddMemberOpen(true)}
+                onAgentSettings={() => setAgentPolicyOpen(true)}
+                onRemove={setMemberToRemove}
+                onSeeIssues={showTabs ? () => onTabChange('issues') : undefined}
+                search={memberSearch}
+                team={team}
+                visibleMembers={visibleMembers}
+              />
+            </TabsContent>
+
+            <TabsContent
+              className="mt-8 flex min-h-0 flex-1 flex-col"
+              value="issues"
+            >
+              <div className="flex flex-col gap-8">
+                <StatusCards counts={statusCounts} />
+                <TeamIssuesPanel
+                  issues={issues}
+                  onCreateIssue={openCreateIssue}
+                  searchQuery={issueSearch}
+                  teamChips={teamChips}
+                />
+              </div>
+            </TabsContent>
+
+            <TabsContent className="mt-8 flex flex-col" value="repositories">
+              <TeamRepositoriesPanel
+                canManage={team.can_manage}
+                teamId={team.id}
+              />
+            </TabsContent>
+          </Tabs>
+        </ViewStoreProvider>
       </div>
 
       {createIssueOpen ? (
@@ -524,7 +534,7 @@ export function TeamDetail({
           onClose={() => setDeleteOpen(false)}
           onDeleted={() => {
             setDeleteOpen(false)
-            void navigate({ to: '/teams' })
+            onDeleted()
           }}
         />
       ) : null}
@@ -544,6 +554,51 @@ export function TeamDetail({
             : Promise.resolve()
         }
       />
+    </>
+  )
+}
+
+/** `/teams/$teamId`: top-bar breadcrumb and secondary-surface shell. */
+export function TeamDetail({
+  teamId,
+  tab,
+  onTabChange,
+}: {
+  teamId: string
+  tab: TeamTab
+  onTabChange: (tab: TeamTab) => void
+}) {
+  const wsId = useWorkspaceId()
+  const navigate = useNavigate()
+  const { data: team } = useSuspenseQuery(teamDetailOptions(wsId, teamId))
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PageHeader className="gap-1.5">
+        <Link
+          to="/teams"
+          className="text-sm text-text-secondary hover:underline"
+        >
+          Teams
+        </Link>
+        <span className="text-sm text-text-tertiary">/</span>
+        <span className="text-sm font-medium text-text-default">
+          {team.name}
+        </span>
+      </PageHeader>
+
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[80rem] px-6 pt-6 pb-12">
+          <div className="rounded-2xl bg-background-main-secondary p-10">
+            <TeamDetailCard
+              teamId={teamId}
+              tab={tab}
+              onTabChange={onTabChange}
+              onDeleted={() => void navigate({ to: '/teams' })}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   )
 }

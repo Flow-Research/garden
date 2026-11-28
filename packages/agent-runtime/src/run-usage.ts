@@ -1,16 +1,19 @@
 import type { StepContext } from '@cloudflare/think'
+import { z } from 'zod'
 
-export type RunUsageSnapshot = {
-  input_tokens: number
-  output_tokens: number
-  cached_input_tokens: number
-  reasoning_tokens?: number
-  total_tokens: number
-  model: string
-  model_provider: string
-  step_count: number
-  recorded_at_ms: number
-}
+export const runUsageSnapshotSchema = z.object({
+  input_tokens: z.number(),
+  output_tokens: z.number(),
+  cached_input_tokens: z.number(),
+  reasoning_tokens: z.number().optional(),
+  total_tokens: z.number(),
+  model: z.string(),
+  model_provider: z.string(),
+  step_count: z.number(),
+  recorded_at_ms: z.number(),
+})
+
+export type RunUsageSnapshot = z.infer<typeof runUsageSnapshotSchema>
 
 export function emptyRunUsage(ctx: StepContext): RunUsageSnapshot {
   return {
@@ -32,14 +35,8 @@ export function addStepUsage(
   const nextUsage = current ?? emptyRunUsage(ctx)
   const inputTokens = ctx.usage.inputTokens ?? 0
   const outputTokens = ctx.usage.outputTokens ?? 0
-  const cachedInputTokens =
-    ctx.usage.inputTokenDetails?.cacheReadTokens ??
-    ctx.usage.cachedInputTokens ??
-    0
-  const reasoningTokens =
-    ctx.usage.outputTokenDetails?.reasoningTokens ??
-    ctx.usage.reasoningTokens ??
-    0
+  const cachedInputTokens = ctx.usage.inputTokenDetails?.cacheReadTokens ?? 0
+  const reasoningTokens = ctx.usage.outputTokenDetails?.reasoningTokens ?? 0
   const stepTotal = ctx.usage.totalTokens ?? inputTokens + outputTokens
 
   nextUsage.input_tokens += inputTokens

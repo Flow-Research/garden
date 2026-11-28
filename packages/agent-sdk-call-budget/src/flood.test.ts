@@ -3,9 +3,9 @@ import { beforeAll, expect, it, vi } from 'vitest'
 
 declare const __CHUNKS__: number
 
-const UNWATCHED_ROOT_CALLS_PER_CHUNK_MAX = 2.02
-const WATCHED_ROOT_CALLS_PER_CHUNK_MAX = 2.02
-// #436 should set these targets to 0 for unwatched runs and 1 for watched runs.
+const UNWATCHED_ROOT_CALLS_PER_CHUNK_MAX = 0
+// ~1.002 measured (a few non-chunk root RPCs with a viewer); keep tiny headroom.
+const WATCHED_ROOT_CALLS_PER_CHUNK_MAX = 1.01
 
 const expected = Array.from(
   { length: __CHUNKS__ },
@@ -27,7 +27,8 @@ function collectText(socket: WebSocket) {
 
 async function runTurn(name: string, withViewer: boolean) {
   const root = env.RootAgent.get(env.RootAgent.idFromName(name))
-  await root.setName(name)
+  // idFromName already binds the DO name; agents@0.34 no longer has setName.
+  await root.status('none')
   let viewer: ReturnType<typeof collectText> | undefined
   if (withViewer) {
     const response = await exports.default.fetch(
@@ -59,7 +60,7 @@ async function runTurn(name: string, withViewer: boolean) {
     )
   }
   const counts = await root.readCounts()
-  const rootRpc = counts.setName + counts.broadcast
+  const rootRpc = counts.broadcast
   const result = {
     viewers: withViewer ? 1 : 0,
     chunks: __CHUNKS__,
@@ -76,7 +77,6 @@ async function runTurn(name: string, withViewer: boolean) {
 // The pool transforms the SDK lazily on first facet load, which takes minutes.
 beforeAll(async () => {
   const warm = env.RootAgent.get(env.RootAgent.idFromName('warm'))
-  await warm.setName('warm')
   await warm.status('none')
 }, 600_000)
 

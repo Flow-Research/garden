@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import { generateText, tool, stepCountIs } from 'ai'
 import { z } from 'zod'
 import { createWorkersAI } from 'workers-ai-provider'
+import { DEFAULT_AGENT_MODEL_PROFILE } from '../src/model'
 import { assembleFoundationPrompt } from '../src/prompt'
 import { DOC_BUILTIN_SKILLS } from '../src/bundled-skills'
 
@@ -25,7 +26,9 @@ const workersai = createWorkersAI({
     ? { gateway: { id: process.env.AI_GATEWAY_ID.trim() } }
     : {}),
 })
-const model = workersai('@cf/zai-org/glm-5.3')
+const model = workersai(DEFAULT_AGENT_MODEL_PROFILE.id, {
+  reasoning_effort: DEFAULT_AGENT_MODEL_PROFILE.reasoningEffort,
+})
 
 const promptVariant = process.argv[2] ?? 'current'
 

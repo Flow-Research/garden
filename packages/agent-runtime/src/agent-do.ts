@@ -1,3 +1,4 @@
+import { thinkTurnTelemetry } from './think-telemetry'
 import {
   BrainRunAuthorityError,
   resolveBrainRuntimeAgentId,
@@ -45,8 +46,9 @@ import {
   type ToolSet,
   type UIMessage,
 } from 'ai'
-import { createWorkspaceTools } from '@cloudflare/think/tools/workspace'
-import { Workspace } from '@cloudflare/shell'
+import { Workspace } from '@cloudflare/computer'
+import { Workspace as ShellWorkspace } from '@cloudflare/shell'
+import { createAITools } from '@cloudflare/computer/tools/ai-sdk'
 import { getSandbox, type Sandbox as SandboxDO } from '@cloudflare/sandbox'
 import { getPooledDb } from '@garden/db/runtime'
 import { and, asc, eq, or } from 'drizzle-orm'
@@ -61,6 +63,8 @@ import {
   derivePermissions,
   type AgentPermissions,
 } from '@garden/core/agents/permissions'
+import type { RunFailure } from '@garden/core/runs/failure'
+import { formatRunFailure, parseRunFailure } from '@garden/core/runs/failure'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import * as schema from '@garden/db/schema'
 import {
@@ -406,7 +410,6 @@ type DebugPromptPayload = {
   lineCount: number
   charCount: number
   contextBlocks: ContextBlockEntry[]
-  loadedSkillKeys: string[]
 }
 
 type RuntimeOkPayload = { ok: true }
@@ -1316,7 +1319,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   async failRunTurn(input: {
     runId: string
     issueId: string
-    reason: string
+    failure: RunFailure
   }): Promise<{ status: string }> {
     await this.requireIssueAccess(input.issueId)
     const issueAgent = await this.issueRunFacet(input.issueId)
@@ -1326,7 +1329,7 @@ export class AgentDO extends Agent<AgentRuntimeEnv> {
   /** Automation counterpart of `failRunTurn`. */
   async failAutomationRunTurn(input: {
     runId: string
-    reason: string
+    failure: RunFailure
   }): Promise<{ status: string }> {
     await this.requireAutomationRunAccess(input.runId)
     const automationAgent = await this.subAgent(
@@ -1649,7 +1652,6 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   )
 
   override messageConcurrency: MessageConcurrency = 'merge'
-  override chatRecovery = true
   override contextOverflow = createGardenContextOverflow(
     // Field initializers run after super(), so this.env is populated: offline
     // local models need overflow bounds scaled to their context window, not
@@ -1692,7 +1694,10 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       await this.pauseMcpRuntime(reason, controller),
   })
 
-  override workspace = new Workspace({
+  // Each facet owns its filesystem. The shared FILES bucket also holds
+  // documents from other facets and must never be mounted in its sandbox.
+  override workspace = new Workspace({ storage: this.ctx.storage })
+  protected readonly documentFiles = new ShellWorkspace({
     sql: this.ctx.storage.sql,
     r2: this.env.FILES,
     name: () => this.name,
@@ -1800,6 +1805,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return createChatSubAgentTools({
       ctx: this.ctx,
       documentArtifacts: this.getDocumentArtifactToolAuthority(),
+      documentFiles: this.documentFiles,
       ...(this.env.EXA_API_KEY ? { exaApiKey: this.env.EXA_API_KEY } : {}),
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       threadId: this.name,
@@ -2046,7 +2052,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
     return {
       databaseUrl: this.env.HYPERDRIVE.connectionString,
       documentArtifacts: this.getDocumentArtifactToolAuthority(),
-      workspace: this.workspace,
+      workspace: this.documentFiles,
       threadId: this.name,
     }
   }
@@ -2353,18 +2359,15 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         gatewayId: this.env.AI_GATEWAY_ID,
         tracing: this.aiObservation.modelTracing(),
       }),
-      experimental_telemetry: {
+      experimental_telemetry: thinkTurnTelemetry({
         functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
-        isEnabled: true,
         metadata: {
           agentClass: 'ChatSubAgent',
           hasDocumentContext: Boolean(documentContext),
           hasIntegrationRoute: routeDecision.status === 'selected',
           selectedIntegration: routeDecision.routes[0]?.slug ?? '',
         },
-        recordInputs: false,
-        recordOutputs: false,
-      },
+      }),
       maxRetries: THINK_TURN_MAX_RETRIES,
       sendReasoning: true,
       ...(systemAdditions
@@ -2609,6 +2612,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
         id: schema.issueRunEvent.id,
         eventType: schema.issueRunEvent.eventType,
         message: schema.issueRunEvent.message,
+        payload: schema.issueRunEvent.payload,
         stream: schema.issueRunEvent.stream,
         createdAt: schema.issueRunEvent.createdAt,
       })
@@ -2620,7 +2624,12 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       )
 
     return events.flatMap((event) => {
-      const text = event.message?.trim()
+      const text =
+        event.eventType === 'issue_run:failed'
+          ? formatRunFailure(
+              parseRunFailure(event.payload).unwrapOr({ cause: 'unknown' }),
+            )
+          : event.message?.trim()
       if (!text) return []
       if (
         event.eventType !== 'issue_run:started' &&
@@ -2696,28 +2705,39 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   }
 
   async debugWorkspace(): Promise<DebugWorkspacePayload> {
-    const [rootEntries, allPaths, statsSettled] = await Promise.all([
-      this.workspace.readDir('/', { limit: 50 }),
-      this.workspace.glob('**/*'),
-      this.workspace
-        .getWorkspaceInfo()
-        .then((info) => ({ ok: true as const, info }))
-        .catch(() => ({ ok: false as const })),
+    const [rootDirents, found] = await Promise.all([
+      this.workspace.fs.readdir('/', { limit: 50 }),
+      this.workspace.fs.find('/', '**/*', { limit: 200 }),
     ])
-    const samplePaths = allPaths.slice(0, 50)
-    const toEntry = (entry: WorkspaceEntry): WorkspaceEntry => ({
-      path: entry.path,
+    const rootEntries: WorkspaceEntry[] = rootDirents.map((entry) => ({
+      path: `${entry.parentPath === '/' ? '' : entry.parentPath}/${entry.name}`.replace(
+        /\/+/g,
+        '/',
+      ),
       name: entry.name,
-      type: entry.type,
+      type: entry.isDirectory ? 'directory' : 'file',
       size: entry.size,
-      mimeType: entry.mimeType,
-      updatedAt: entry.updatedAt,
-    })
+      mimeType: '',
+      updatedAt: entry.mtime,
+    }))
+    const samplePaths = await Promise.all(
+      found.slice(0, 50).map(async (entry) => {
+        const stat = await this.workspace.fs.lstat(entry.path)
+        return {
+          path: entry.path,
+          name: stat.name,
+          type: stat.isDirectory ? ('directory' as const) : ('file' as const),
+          size: stat.size,
+          mimeType: '',
+          updatedAt: stat.mtime,
+        }
+      }),
+    )
     return {
-      rootEntries: rootEntries.map(toEntry),
-      samplePaths: samplePaths.map(toEntry),
-      samplePathCount: allPaths.length,
-      stats: statsSettled.ok ? statsSettled.info : null,
+      rootEntries,
+      samplePaths,
+      samplePathCount: found.length,
+      stats: null,
     }
   }
 
@@ -2830,7 +2850,9 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
   async debugTools(): Promise<DebugToolsPayload> {
     // Mirror what Think does inside `_runInferenceLoop` — the merged ToolSet
     // that actually reaches the model. No hand-written inventories here.
-    const workspaceTools = createWorkspaceTools(this.workspace) as ToolSet
+    const workspaceTools = createAITools({
+      workspace: this.workspace,
+    }) as ToolSet
     const baseTools = (this.getTools() ?? {}) as ToolSet
     const sessionTools = (await this.session
       .tools()
@@ -3097,16 +3119,11 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
       }
     })
 
-    const loadedSkillKeys = Array.from(
-      (await this.session.getLoadedSkillKeys?.()) ?? [],
-    )
-
     return {
       prompt,
       lineCount: prompt.split('\n').length,
       charCount: prompt.length,
       contextBlocks,
-      loadedSkillKeys,
     }
   }
 

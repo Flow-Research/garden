@@ -6,6 +6,7 @@
     { "path": "./tsconfig.server.json" },
     { "path": "./tsconfig.entry.json" },
     { "path": "./tsconfig.client.json" },
-    { "path": "./tsconfig.tooling.json" }
+    { "path": "./tsconfig.tooling.json" },
+    { "path": "./tsconfig.test.json" }
   ]
 }

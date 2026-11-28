@@ -93,5 +93,9 @@ describe('handbook source module', () => {
 
     expect(code).toContain('"/handbook/')
     expect(code).toContain('toc')
+    // `docs/concepts/architecture/diagrams.md` embeds `../../diagrams/*.drawio.svg`;
+    // the page must import each one as a bundled asset, not keep the raw path.
+    expect(code).toMatch(/garden-components\.drawio[^"']*\.svg/)
+    expect(code).not.toContain('"../../diagrams/garden-components.drawio.svg"')
   })
 })

@@ -7,6 +7,28 @@ import type {
 import type * as Cause from 'effect/Cause'
 
 export const MAX_EXECUTOR_OUTPUT_CHARACTERS = 30_000
+// Executor puts the result in both text and structured content. Leave room for
+// both copies and the MCP envelope below the 120 KiB event-store threshold.
+const MAX_RESULT_JSON_BYTES = 56 * 1024
+const encoder = new TextEncoder()
+
+function prefixLength(rendered: string, byteBudget: number) {
+  const max = Math.min(rendered.length, MAX_EXECUTOR_OUTPUT_CHARACTERS)
+  const size = (end: number) =>
+    encoder.encode(JSON.stringify(rendered.slice(0, end))).length
+
+  let low = 0
+  let high = max
+  if (size(max) <= byteBudget) low = max
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (size(mid) <= byteBudget) low = mid
+    else high = mid - 1
+  }
+  // Keep the complete Unicode character when the cut falls within a pair.
+  if (low > 0 && (rendered.codePointAt(low - 1) ?? 0) > 0xffff) return low - 1
+  return low
+}
 
 export class ExecutorOutputEncodingError extends Schema.TaggedError<ExecutorOutputEncodingError>()(
   'ExecutorOutputEncodingError',
@@ -20,6 +42,7 @@ export class ExecutorOutputEncodingError extends Schema.TaggedError<ExecutorOutp
  */
 export const boundExecutorOutput = Effect.fn('ExecutorOutput.bound')(function* (
   value: unknown,
+  byteBudget = MAX_RESULT_JSON_BYTES,
 ) {
   const rendered = yield* Effect.try({
     try: () => {
@@ -29,10 +52,11 @@ export const boundExecutorOutput = Effect.fn('ExecutorOutput.bound')(function* (
     },
     catch: () => new ExecutorOutputEncodingError(),
   })
-  const truncated = rendered.length > MAX_EXECUTOR_OUTPUT_CHARACTERS
+  const length = prefixLength(rendered, byteBudget)
+  const truncated = length < rendered.length
   return {
     text: truncated
-      ? `${rendered.slice(0, MAX_EXECUTOR_OUTPUT_CHARACTERS)}\n... [truncated ${rendered.length - MAX_EXECUTOR_OUTPUT_CHARACTERS} chars]`
+      ? `${rendered.slice(0, length)}\n... [truncated ${rendered.length - length} chars]`
       : rendered,
     truncated,
     originalCharacters: rendered.length,
@@ -44,11 +68,16 @@ const boundExecuteResult = (
   result: ExecuteResult,
 ): Effect.Effect<ExecuteResult> =>
   Effect.all({
-    result: boundExecutorOutput(result.result),
+    result: boundExecutorOutput(
+      result.result,
+      result.error === undefined
+        ? MAX_RESULT_JSON_BYTES
+        : MAX_RESULT_JSON_BYTES / 2,
+    ),
     error:
       result.error === undefined
         ? Effect.succeed(undefined)
-        : boundExecutorOutput(result.error).pipe(
+        : boundExecutorOutput(result.error, MAX_RESULT_JSON_BYTES / 2).pipe(
             Effect.map((bounded) => bounded.text),
           ),
   }).pipe(
