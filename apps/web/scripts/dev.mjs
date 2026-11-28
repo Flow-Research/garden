@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { loadEnv } from 'vite'
+import { checkOllamaContext } from './ollama-context.mjs'
 
 const HYPERDRIVE_BINDING = 'HYPERDRIVE'
 const LOCAL_HYPERDRIVE_ENV = `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_${HYPERDRIVE_BINDING}`
@@ -63,6 +64,13 @@ const child = spawn('pnpm', ['exec', 'vite', 'dev'], {
   shell: true,
   stdio: 'inherit',
 })
+
+if (offline) {
+  // Runs beside Vite startup and only prints when Ollama needs fixing.
+  void checkOllamaContext(process.env).then((warning) => {
+    if (warning) console.warn(warning)
+  })
+}
 
 child.on('exit', (code, signal) => {
   if (signal) {

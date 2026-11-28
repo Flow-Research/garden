@@ -43,6 +43,11 @@ services:
     profiles: [ollama]
     ports:
       - '11434:11434'
+    environment:
+      # Ollama defaults to a 4096-token context and silently truncates longer
+      # prompts; Garden's first turn alone is ~11k tokens. Matches the default
+      # GARDEN_MODEL_CONTEXT_WINDOW_TOKENS.
+      OLLAMA_CONTEXT_LENGTH: '32768'
     volumes:
       - garden-ollama-data:/root/.ollama
 

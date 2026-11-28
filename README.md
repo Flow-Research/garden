@@ -120,6 +120,16 @@ ollama pull qwen3:8b
 pnpm offline:up                                           # starts Postgres and HelixDB
 ```
 
+Native Ollama needs a larger context than its 4096-token default, or it
+silently truncates Garden's prompts and the agent loses its instructions and
+tools. Give it 32768 tokens, then restart Ollama:
+
+- **macOS app or Homebrew service:** `launchctl setenv OLLAMA_CONTEXT_LENGTH 32768`
+- **`ollama serve` in a terminal:** `OLLAMA_CONTEXT_LENGTH=32768 ollama serve`
+
+The Docker option already sets this in `compose.dev.yaml`. `pnpm dev:offline`
+prints a warning when Ollama runs with less context than Garden expects.
+
 Heads up: `qwen3:8b` is a one-time **~5 GB download**, and the Docker images
 on the first `pnpm offline:up` add a few hundred MB more. On a slow
 connection, start the pull and get coffee.
@@ -181,6 +191,10 @@ AI binding. Two things to know about that binding:
   error. Use offline mode if you don't have a paid plan.
 
 ### Troubleshooting
+
+**Offline chats ignore instructions or never finish:** Ollama is probably
+truncating the prompt. Run `ollama ps`; the `CONTEXT` column must be at least
+`GARDEN_MODEL_CONTEXT_WINDOW_TOKENS` (default 32768). See Option B above.
 
 **Model calls fail in offline mode:** check the endpoint answers
 (`curl http://localhost:11434/v1/models`) and the model is pulled

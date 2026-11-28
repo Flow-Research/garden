@@ -36,6 +36,16 @@ docker compose -f compose.dev.yaml exec ollama ollama list
 
 If `qwen3:8b` is missing, pull it. To use a different model or a hosted OpenAI-compatible endpoint, set `GARDEN_MODEL_BASE_URL`, `GARDEN_MODEL_ID`, and `GARDEN_MODEL_API_KEY` in `.env`. The commented block at the end of `.env.example` shows the format.
 
+## Offline chats ignore instructions or never finish
+
+Ollama defaults to a 4096-token context and silently truncates longer prompts. Garden's first turn is about 11,000 tokens, so the model never sees most of its instructions or tools. Check the loaded context:
+
+```bash
+ollama ps
+```
+
+The `CONTEXT` column must be at least `GARDEN_MODEL_CONTEXT_WINDOW_TOKENS` (default `32768`). `pnpm dev:offline` prints a warning when it is not. Set `OLLAMA_CONTEXT_LENGTH=32768` and restart Ollama: run `launchctl setenv OLLAMA_CONTEXT_LENGTH 32768` for the macOS app or Homebrew service, or start `OLLAMA_CONTEXT_LENGTH=32768 ollama serve`. The Docker service in `compose.dev.yaml` already sets it.
+
 ## Use Workers AI instead of a local model
 
 Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare. You need a Cloudflare account on the Workers paid plan. The default model, `@cf/deepseek-ai/deepseek-v4.1-flash-1017`, is not available on the free plan. Usage can create charges.
