@@ -128,6 +128,78 @@
         "apps/web/src/routes/api/automations/$id/trigger.ts",
         "packages/db/src/schema/automation-values.ts"
       ]
+    },
+    "permission-decision": {
+      "title": "Permission decision",
+      "watches": [
+        "packages/agent-runtime/src/runtime-mcp-controller.ts",
+        "packages/agent-runtime/src/chat-permissions.ts",
+        "packages/connectors/src/capabilities.ts",
+        "packages/core/src/agents/permissions.ts",
+        "packages/core/src/teams/agent-policy.ts",
+        "apps/web/src/lib/server/permission-request.ts",
+        "apps/web/src/routes/api/permission-requests/$id/resolve.ts"
+      ]
+    },
+    "brain-flow": {
+      "title": "Brain flow",
+      "watches": [
+        "packages/brain/src/services/Brain.ts",
+        "packages/brain/src/services/write-back.ts",
+        "packages/brain/src/domain/scope.ts",
+        "packages/agent-runtime/src/brain-write-back.ts",
+        "packages/agent-runtime/src/brain-injection.ts",
+        "packages/agent-runtime/src/agent-tools/brain.ts",
+        "apps/web/src/lib/server/brain-file-ingestion.ts",
+        "apps/web/src/routes/api/brain/proposals/"
+      ]
+    },
+    "connectors": {
+      "title": "Connector call path",
+      "watches": [
+        "packages/agent-runtime/src/runtime-mcp-controller.ts",
+        "packages/connectors/src/capabilities.ts",
+        "apps/web/src/lib/server/executor-engine/mcp.ts",
+        "apps/web/src/lib/server/executor-engine/plugins.ts",
+        "apps/web/src/lib/server/executor-engine/direct-decide-mcp.ts",
+        "apps/web/wrangler.jsonc",
+        "packages/core/src/teams/"
+      ]
+    },
+    "realtime": {
+      "title": "Realtime paths",
+      "watches": [
+        "packages/agent-runtime/src/workspace-realtime-do.ts",
+        "packages/agent-runtime/src/realtime-audience.ts",
+        "apps/web/src/lib/server/realtime.ts",
+        "apps/web/src/lib/realtime/",
+        "apps/web/src/features/chat/chat-runtime-provider.tsx",
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/core/src/types/events.ts"
+      ]
+    },
+    "chat-turn": {
+      "title": "One chat turn",
+      "watches": [
+        "apps/web/src/features/chat/chat-runtime-provider.tsx",
+        "apps/web/src/server.ts",
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/chat-sub-agent-tools.ts",
+        "packages/agent-runtime/src/chat-permissions.ts"
+      ]
+    },
+    "execution-runtimes": {
+      "title": "Execution runtimes",
+      "watches": [
+        "packages/agent-runtime/src/chat-sub-agent-tools.ts",
+        "packages/agent-runtime/src/sandbox-tools.ts",
+        "packages/agent-runtime/src/automation-run-sub-agent.ts",
+        "packages/agent-runtime/src/issue-run-sub-agent.ts",
+        "packages/agent-runtime/src/run-sub-agent-base.ts",
+        "packages/agent-runtime/src/agent-do.ts",
+        "apps/web/wrangler.jsonc"
+      ]
     }
   }
 }

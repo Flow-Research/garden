@@ -3,7 +3,7 @@ title: Codemode and the container sandbox solve different jobs
 description: Why Garden agents have two execution paths, Think codemode and a Cloudflare Sandbox container, and when each one fits.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-28
 ---
 
 Garden agents can run code in two places. Codemode runs JavaScript in a Dynamic Worker against the agent's Think workspace. The container sandbox runs shell commands and programs in a Cloudflare Sandbox Linux container. The two paths look alike from the model's side, but they have different file systems, limits, and risks. Mixing them up leads to bugs where a file "disappears" between tools.
@@ -18,7 +18,7 @@ Inside `execute`, the model writes JavaScript. That code reads and writes the Th
 
 Codemode fits tasks such as "read these docs, update three workspace files, and summarize what changed".
 
-Codemode is not a computer. It cannot run native binaries, install packages, host a preview server, or keep a process alive. Tool calls made inside codemode are inner RPC calls, not outer AI SDK tool calls. That means a tool that needs user approval cannot rely on the normal AI SDK approval step inside codemode. Approval has to be enforced where the call is dispatched, or the tool has to stay out of the codemode surface. For how Garden gates Executor tools inside codemode, see [connectors](./connectors.md).
+Codemode is not a computer. It cannot run native binaries, install packages, host a preview server, or keep a process alive. Tool calls made inside codemode are inner RPC calls, not outer AI SDK tool calls. That means a tool that needs user approval cannot rely on the normal AI SDK approval step inside codemode. Approval has to be enforced where the call is dispatched, or the tool has to stay out of the codemode surface. Garden passes codemode no tools today, so its code reaches only the workspace through `state.*`.
 
 ## The container sandbox is a real machine
 
@@ -51,6 +51,10 @@ The table below sets the two paths side by side.
 | Persistence | Durable Object storage | Container state, which sleeps when idle |
 | Processes and ports | None | `sandboxStartProcess`, `sandboxExposePort` |
 | Approval | Must be enforced at dispatch | Outer tools, gated like other tools |
+
+![Execution runtimes](../../diagrams/execution-runtimes.drawio.svg)
+
+Every Garden agent can script its durable workspace through codemode or run real programs in the sandbox container, and no bridge copies files between the two.
 
 ## Keep both, and name them precisely
 

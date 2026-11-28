@@ -3,7 +3,7 @@ title: Brain keeps HelixDB private behind a gateway and Garden's server
 description: How Garden's Brain reaches HelixDB through an authenticated Caddy gateway, and why workspace isolation lives in Garden's server code rather than the gateway.
 status: current
 owner: '@Flow-Research/security'
-last_reviewed: 2026-11-10
+last_reviewed: 2026-11-28
 ---
 
 Brain is Garden's graph and vector memory. It stores workspace knowledge in HelixDB. HelixDB accepts query payloads that the caller builds, so whoever can reach it can read or write any record. The whole design follows from that fact: HelixDB is never public, and only Garden's server builds queries.
@@ -54,6 +54,10 @@ The rules this layer follows:
 - Every read and write carries the workspace id.
 - One workspace cannot read or change another workspace's records.
 - Agents and automations use typed Brain operations, not raw queries.
+
+![Brain flow](../../diagrams/brain-flow.drawio.svg)
+
+Files and finished runs add knowledge to the Brain, write-back rules send uncertain or personal claims to a member for review, and agents read back only what their workspace and scope allow.
 
 ## Storage is local for now
 

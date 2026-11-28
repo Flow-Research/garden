@@ -3,7 +3,7 @@ title: Chat opens one live connection per visible thread
 description: How a chat thread maps to a Think facet, how the web app connects to it, and why only the visible thread and one prewarmed thread hold sockets.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-28
 ---
 
 A chat thread is a conversation between you and one agent. Its metadata lives in the Postgres `chat_thread` table. Its messages live in a Think facet, `ChatSubAgent`, under the agent's `AgentDO`. The facet is named by `chat_thread.runtime_key`. For a thread linked to an issue, `runtime_key` equals the issue ID.
@@ -22,6 +22,10 @@ Open chats appear as tabs above the content. `useSurfaceTabsStore` in `packages/
 - `useAgent` with `sub: [{ agent: 'ChatSubAgent', name: session.runtime_key }]`, passed to `useAgentChat`, reaches the thread's Think facet and its message stream.
 
 Hidden and unopened threads hold no socket. Think keeps their messages durable, and they reattach when you open them. This keeps idle socket, facet, and MCP load low.
+
+![One chat turn](../../diagrams/chat-turn.drawio.svg)
+
+One chat message goes from the chat screen through the Worker and AgentDO to the thread's ChatSubAgent facet, and the reply streams back on the same socket.
 
 ## Sends wait for the first history sync
 
