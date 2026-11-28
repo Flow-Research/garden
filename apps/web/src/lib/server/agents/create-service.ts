@@ -72,7 +72,10 @@ function agentCreateLogFields(cause: unknown) {
   return fields
 }
 
-/** Inserts an agent and seeds its default capability grants. */
+/**
+ * Inserts an agent and seeds its default capability grants in one
+ * transaction, so a failed grant write leaves no agent row behind.
+ */
 export async function createWorkspaceAgent(
   input: CreateAgentInput,
 ): Promise<ResultValue<ReturnType<typeof toAgent>, AgentCreateError>> {
@@ -97,11 +100,14 @@ export async function createWorkspaceAgent(
         permissions: DEFAULT_AGENT_PERMISSIONS,
       } as typeof schema.agent.$inferInsert
 
-      const agent = await insertAgent(input.db, agentValues)
-      await bindExistingCapabilitiesToAgent({
-        db: input.db,
-        agentId: agent.id,
-        grantedBy: input.ownerUserId,
+      const agent = await input.db.transaction(async (tx) => {
+        const inserted = await insertAgent(tx, agentValues)
+        await bindExistingCapabilitiesToAgent({
+          db: tx,
+          agentId: inserted.id,
+          grantedBy: input.ownerUserId,
+        })
+        return inserted
       })
       return toAgent(agent)
     },
