@@ -590,9 +590,10 @@ export function TeamDetail({
       </PageHeader>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-[80rem] px-4 pt-6 pb-12 sm:px-6">
-          <div className="xl:rounded-2xl xl:bg-background-main-secondary xl:p-10">
+        <div className="mx-auto w-full max-w-[80rem] max-xl:flex max-xl:min-h-full max-xl:flex-col xl:px-6 xl:pt-6 xl:pb-12">
+          <div className="max-xl:contents xl:rounded-2xl xl:bg-background-main-secondary xl:p-10">
             <TeamDetailCard
+              className="max-xl:flex-1 max-xl:rounded-none"
               teamId={teamId}
               tab={tab}
               onTabChange={onTabChange}
