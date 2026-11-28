@@ -467,7 +467,6 @@ export function TeamDetailCard({
                 canManage={team.can_manage}
                 members={members}
                 onAddMember={() => setAddMemberOpen(true)}
-                onAgentSettings={() => setAgentPolicyOpen(true)}
                 onRemove={setMemberToRemove}
                 onSeeIssues={showTabs ? () => onTabChange('issues') : undefined}
                 search={memberSearch}

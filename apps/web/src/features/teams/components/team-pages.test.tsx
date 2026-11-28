@@ -942,9 +942,7 @@ describe('teams UI', () => {
     ).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Search members...')).toBeVisible()
     expect(screen.getByText('Team Owner')).toBeInTheDocument()
-    expect(
-      screen.getAllByRole('button', { name: 'Agent settings' }),
-    ).toHaveLength(2)
+    expect(screen.queryByRole('button', { name: 'Agent settings' })).toBeNull()
 
     for (const header of ['User', 'Role', 'Assigned Tasks', 'Activity']) {
       expect(
@@ -1007,36 +1005,6 @@ describe('teams UI', () => {
       '"Owner","owner@test.com","Team Owner","2"',
       '"Casey","casey@test.com","Member","0"',
     ])
-  })
-
-  it('opens Team settings from a member row', async () => {
-    apiMocks.getTeam.mockResolvedValue(makeTeam())
-    apiMocks.listTeamMembers.mockResolvedValue({
-      members: [makeMember()],
-      total: 1,
-    })
-    apiMocks.getTeamAgentPolicy.mockResolvedValue({
-      team_id: 'team-1',
-      policy: {
-        allowed_areas: ['tasks'],
-        blocked_risk_classes: [],
-        blocked_connector_ids: [],
-        approval_required: [],
-      },
-      can_edit: true,
-      updated_at: null,
-    })
-
-    renderWithQuery(
-      <TeamDetail teamId="team-1" tab="members" onTabChange={() => {}} />,
-    )
-
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Agent settings' }),
-    )
-    expect(
-      await screen.findByRole('dialog', { name: 'Team settings' }),
-    ).toBeInTheDocument()
   })
 
   it('opens Agent policy from the Team actions menu', async () => {
