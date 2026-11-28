@@ -431,3 +431,98 @@ extendedKeyUsage = serverAuth
     )
   })
 }
+
+{
+  // Every Garden DOCX read loads Mammoth, and Mammoth loads its own xmldom.
+  // These checks exercise the patched copies that `patches/` installs (#449).
+  const mammothRequire = createRequire(
+    new URL('../packages/agent-runtime/package.json', import.meta.url),
+  )
+  const xmldomRequire = createRequire(mammothRequire.resolve('mammoth'))
+  const mammothXml = xmldomRequire('./xml/xmldom.js')
+  const { DOMImplementation, DOMParser } = xmldomRequire('@xmldom/xmldom')
+  const { ParseError } = xmldomRequire('@xmldom/xmldom/lib/sax')
+
+  const diagnostics = (xml) => {
+    const reported = []
+    new DOMParser({
+      errorHandler: (level, message) => reported.push(`${level}: ${message}`),
+    }).parseFromString(xml)
+    return reported
+  }
+
+  test('the Mammoth XML reader parses valid markup with every node kind', () => {
+    const document = mammothXml.parseFromString(
+      '<?xml version="1.0"?><a b="1 &amp; 2"><?pi data?><!-- note --><![CDATA[<raw>]]>text &lt;x&gt;</a>',
+    )
+    assert.equal(document.documentElement.getAttribute('b'), '1 & 2')
+    assert.equal(document.documentElement.textContent, '<raw>text <x>')
+    assert.equal(document.documentElement.childNodes.length, 4)
+  })
+
+  test('the Mammoth XML reader stops at the first parser diagnostic', () => {
+    // A recovering parse reports one diagnostic per malformed tag.
+    const xml = `<a>${'<b c="'.repeat(4_000)}</a>`
+    const [first, ...rest] = diagnostics(xml)
+    assert.ok(rest.length > 4_000)
+    assert.throws(
+      () => mammothXml.parseFromString(xml),
+      (error) => error instanceof ParseError && error.message === first,
+    )
+  })
+
+  test('the Mammoth xmldom reports an unclosed processing instruction', () => {
+    assert.match(
+      diagnostics('<a><?pi data</a>')[0],
+      /^error: .*Unclosed processing instruction/,
+    )
+    assert.deepEqual(diagnostics('<a><?pi data?></a>'), [])
+  })
+
+  test('the Mammoth xmldom reports an unclosed CDATA section', () => {
+    assert.match(
+      diagnostics('<a><![CDATA[data</a>')[0],
+      /^error: .*Unclosed CDATA section/,
+    )
+    assert.deepEqual(diagnostics('<a><![CDATA[data]]></a>'), [])
+  })
+
+  test('the Mammoth xmldom merges text runs in normalize() in linear time', () => {
+    const document = new DOMImplementation().createDocument(null, 'root', null)
+    const parentWithRuns = (runs) => {
+      const parent = document.createElement('p')
+      for (let index = 0; index < runs; index += 1) {
+        parent.appendChild(document.createTextNode('a'))
+        parent.appendChild(document.createTextNode('b'))
+        parent.appendChild(document.createElement('x'))
+      }
+      return parent
+    }
+    // The fastest of three runs filters scheduler noise from each size.
+    const normalizeMs = (runs) =>
+      Math.min(
+        ...[0, 1, 2].map(() => {
+          const parent = parentWithRuns(runs)
+          const started = performance.now()
+          parent.normalize()
+          return performance.now() - started
+        }),
+      )
+
+    const merged = parentWithRuns(3)
+    merged.normalize()
+    assert.equal(merged.childNodes.length, 6)
+    assert.equal(merged.childNodes[4].data, 'ab')
+    assert.equal(merged.childNodes[5].tagName, 'x')
+    assert.equal(merged.lastChild, merged.childNodes[5])
+
+    // Eight times the runs costs about eight times the work when linear and
+    // about 64 times when quadratic. Unpatched 0.8.15 measured over 100 times.
+    normalizeMs(2_000)
+    const ratio = normalizeMs(16_000) / Math.max(normalizeMs(2_000), 0.5)
+    assert.ok(
+      ratio < 32,
+      `normalize() scaled ${ratio.toFixed(1)}x for 8x input`,
+    )
+  })
+}

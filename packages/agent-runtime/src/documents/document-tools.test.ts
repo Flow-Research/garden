@@ -7,7 +7,13 @@ const mocks = vi.hoisted(() => ({ getPooledDb: vi.fn() }))
 vi.mock('@garden/db/runtime', () => ({ getPooledDb: mocks.getPooledDb }))
 
 import {
+  XML_PARSE_BUDGET_MS,
+  pathologicalWordDocuments,
+  storedDocx,
+} from '../../fixtures/word-xml'
+import {
   editDocument,
+  extractDocumentMetadata,
   findInDocument,
   generateDocx,
   getDocumentVersionBytes,
@@ -649,4 +655,24 @@ describe('PDF document reads', () => {
     expect(result).toMatchObject({ ok: false, reason: 'unsupported' })
     expect(result.error).toContain('Legacy.doc is a doc file')
   })
+})
+
+describe('extractDocumentMetadata', () => {
+  // Uploads build a DOCX outline with Mammoth before any editable import.
+  it.each(pathologicalWordDocuments)(
+    'builds no DOCX outline for word XML with %s within the parse budget',
+    async (_label, documentXml) => {
+      const bytes = Buffer.from(storedDocx(documentXml))
+      // Load Mammoth first so the budget measures parsing, not module loading.
+      await import('mammoth')
+      const started = performance.now()
+      const metadata = await extractDocumentMetadata(bytes, 'docx')
+      const elapsed = performance.now() - started
+
+      expect(metadata).toEqual({ pageCount: null, structureTree: null })
+      expect(elapsed).toBeLessThan(XML_PARSE_BUDGET_MS)
+    },
+    // An unpatched parser takes up to 25 seconds on these inputs.
+    60_000,
+  )
 })
