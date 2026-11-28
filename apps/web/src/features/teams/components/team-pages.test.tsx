@@ -697,9 +697,10 @@ describe('teams UI', () => {
       'href',
       '/teams/issues',
     )
-    expect(
-      screen.getByRole('button', { name: 'See members' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'See members' })).toHaveAttribute(
+      'href',
+      '/settings/user-management/members',
+    )
     expect(screen.getByText('All teams')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Engineering actions' }))
     expect(

@@ -1,7 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
-import { Button, buttonVariants } from '@garden/ui/components/ui/button'
-import { useSettingsDialogStore } from '@/features/settings'
+import { buttonVariants } from '@garden/ui/components/ui/button'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import { useAuthStore } from '@garden/app-state/auth'
 import { PageHeader } from '@/features/layout/page-header'
@@ -25,7 +24,6 @@ export function TeamOverview() {
 
   const { data: teamsResponse } = useSuspenseQuery(teamListOptions(wsId))
   const teams = teamsResponse.teams
-  const openSettings = useSettingsDialogStore((s) => s.openSettings)
   const {
     data: members,
     isPending: membersPending,
@@ -84,13 +82,15 @@ export function TeamOverview() {
                     label="Total Members"
                     value={teamsResponse.unique_member_count}
                     action={
-                      <Button
-                        className={SUMMARY_ACTION_CLASS}
-                        onClick={() => openSettings('members')}
-                        variant="outline"
+                      <Link
+                        className={buttonVariants({
+                          className: SUMMARY_ACTION_CLASS,
+                          variant: 'outline',
+                        })}
+                        to="/settings/user-management/members"
                       >
                         See members
-                      </Button>
+                      </Link>
                     }
                   />
                   <TeamSummaryCard
