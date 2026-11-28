@@ -27,11 +27,6 @@ vi.mock('@/lib/api', async (importActual) => ({
   ...(await importActual<Record<string, unknown>>()),
   api: new Proxy({}, { get: () => vi.fn(() => new Promise(() => {})) }),
 }))
-vi.mock('@/features/settings', () => ({
-  SettingsDialog: () => null,
-  useSettingsDialogStore: (select: (state: object) => unknown) =>
-    select({ openSettings: vi.fn() }),
-}))
 vi.mock('@/features/search', () => ({ SearchCommand: () => null }))
 vi.mock('@/features/chat/chat-runtime-provider', () => ({
   ChatRuntimeProvider: ({ children }: { children: React.ReactNode }) => (

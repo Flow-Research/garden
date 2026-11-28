@@ -11,7 +11,7 @@ const {
   mockRecentItems,
   mockAllIssues,
   mockOpenPanel,
-  mockOpenSettingsDialog,
+  mockNavigate,
   mockGetNextIdleSession,
 } = vi.hoisted(() => ({
   mockSearchIssues: vi.fn(),
@@ -19,7 +19,7 @@ const {
   mockRecentItems: { current: [] as Array<{ id: string; visitedAt: number }> },
   mockAllIssues: { current: [] as Array<Record<string, unknown>> },
   mockOpenPanel: vi.fn(),
-  mockOpenSettingsDialog: vi.fn(),
+  mockNavigate: vi.fn(),
   mockGetNextIdleSession: vi
     .fn()
     .mockResolvedValue({ id: 'session-new', title: 'New Chat' }),
@@ -98,7 +98,7 @@ vi.mock('@/features/navigation/use-surface-navigation', () => ({
       }),
     openConnections: () =>
       mockOpenPanel({ kind: 'capabilities', title: 'Connections' }),
-    navigate: vi.fn(),
+    navigate: mockNavigate,
   }),
 }))
 
@@ -106,17 +106,6 @@ vi.mock('@/features/chat/use-agent-chat-sessions', () => ({
   useAgentSessions: () => ({
     claimWarmSession: mockGetNextIdleSession,
   }),
-}))
-
-vi.mock('@/features/settings', () => ({
-  useSettingsDialogStore: (
-    selector?: (state: {
-      openSettings: typeof mockOpenSettingsDialog
-    }) => unknown,
-  ) => {
-    const state = { openSettings: mockOpenSettingsDialog }
-    return selector ? selector(state) : state
-  },
 }))
 
 describe('SearchCommand', () => {
@@ -188,7 +177,7 @@ describe('SearchCommand', () => {
     expect(screen.queryByText('Projects')).not.toBeInTheDocument()
   })
 
-  it('opens settings dialog via quick action', async () => {
+  it('opens the settings page via quick action', async () => {
     const user = userEvent.setup()
     render(<SearchCommand />)
 
@@ -196,10 +185,7 @@ describe('SearchCommand', () => {
     const settingsItem = await screen.findByText('Open Settings')
     await user.click(settingsItem)
 
-    expect(mockOpenSettingsDialog).toHaveBeenCalled()
-    expect(mockOpenPanel).not.toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'settings' }),
-    )
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/settings' })
     expect(useSearchStore.getState().open).toBe(false)
   })
 

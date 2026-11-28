@@ -44,7 +44,7 @@ Components use the compat and semantic layers through Tailwind classes such as `
 
 ## Dark mode is a first-class mode
 
-The parchment direction treated light as canonical and deferred dark mode. The token system ships both. `:root` holds the light semantic set and `:root.dark` overrides it. Users choose in Settings under Appearance (`apps/web/src/features/settings/components/appearance-tab.tsx`).
+The parchment direction treated light as canonical and deferred dark mode. The token system ships both. `:root` holds the light semantic set and `:root.dark` overrides it. Users choose in Settings under Preferences → Appearance (`apps/web/src/features/settings/components/preferences-settings.tsx`).
 
 ## Fonts are owned by the app
 

@@ -40,7 +40,6 @@ import { Kbd, KbdGroup } from '@garden/ui/components/ui/kbd'
 import { Spinner } from '@garden/ui/components/ui/spinner'
 import { useAgentSessions } from '@/features/chat/use-agent-chat-sessions'
 import { useSurfaceNavigation } from '@/features/navigation/use-surface-navigation'
-import { useSettingsDialogStore } from '@/features/settings'
 import { useSearchStore } from './search-store'
 import { useIssueSearch } from '@/features/issues/hooks/use-issue-search'
 
@@ -171,7 +170,6 @@ const NO_ISSUES: Issue[] = []
 export function SearchCommand() {
   const { openIssue, openChatSession, navigate } = useSurfaceNavigation()
   const { claimWarmSession } = useAgentSessions()
-  const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
   const open = useSearchStore((s) => s.open)
   const setOpen = useSearchStore((s) => s.setOpen)
   const recentItems = useRecentIssuesStore((s) => s.items)
@@ -300,11 +298,11 @@ export function SearchCommand() {
         shortcut: ['⌘', ','],
         onSelect: ({ setOpen }) => {
           setOpen(false)
-          openSettingsDialog()
+          void navigate({ to: '/settings' })
         },
       },
     ],
-    [claimWarmSession, openChatSession, openSettingsDialog],
+    [claimWarmSession, openChatSession, navigate],
   )
 
   return (

@@ -31,8 +31,6 @@ import {
   memberListOptions,
   skillListOptions,
 } from '@/lib/workspace/queries'
-import { useSettingsDialogStore } from '@/features/settings'
-import { SettingsDialog } from '@/features/settings'
 import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
 import { CreateWorkspaceModal } from '@/features/modals/create-workspace'
@@ -130,7 +128,6 @@ export function AppShell() {
   const workspace = useWorkspaceStore((state) => state.workspace)
   const switchWorkspace = useWorkspaceStore((state) => state.switchWorkspace)
   const clearWorkspace = useWorkspaceStore((state) => state.clearWorkspace)
-  const openSettingsDialog = useSettingsDialogStore((s) => s.openSettings)
 
   const { openIssue, openChatSession } = useSurfaceNavigation()
   const [collapsed, setCollapsed] = useState(false)
@@ -177,6 +174,10 @@ export function AppShell() {
   const unreadCount = unreadInboxItems.length
 
   const openInbox = useCallback(() => navigate({ to: '/inbox' }), [navigate])
+  const openMembersSettings = useCallback(() => {
+    setMobileNavOpen(false)
+    void navigate({ to: '/settings/user-management/members' })
+  }, [navigate])
   const subscribeInbox = useCallback(
     () =>
       subscribeInboxToasts({
@@ -349,10 +350,12 @@ export function AppShell() {
                 header={
                   <WorkspaceMenu
                     collapsed={sidebarCollapsed}
-                    onInviteMembers={() => openSettingsDialog('members')}
-                    // "Workspace settings" used to land on the Profile tab.
-                    onOpenSettings={() => openSettingsDialog('workspace')}
-                    onOpenMembers={() => openSettingsDialog('members')}
+                    onInviteMembers={openMembersSettings}
+                    onOpenSettings={() => {
+                      setMobileNavOpen(false)
+                      void navigate({ to: '/settings/general' })
+                    }}
+                    onOpenMembers={openMembersSettings}
                   />
                 }
                 items={navItems}
@@ -378,7 +381,7 @@ export function AppShell() {
                       setMobileNavOpen(false)
                       void navigate({ to: '/settings' })
                     }}
-                    onInviteMembers={() => openSettingsDialog('members')}
+                    onInviteMembers={openMembersSettings}
                     onLogout={() => void handleLogout()}
                     onSwitchWorkspace={handleSwitchWorkspace}
                     onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
@@ -422,7 +425,6 @@ export function AppShell() {
               </main>
             </div>
             <SearchCommand />
-            <SettingsDialog />
           </ChatRuntimeProvider>
         </>
       ) : (

@@ -124,6 +124,13 @@ describe('ProfileSettings', () => {
     expect(screen.getByText('Verified')).toBeInTheDocument()
   })
 
+  it('names the avatar button', () => {
+    renderProfile()
+    expect(
+      screen.getByRole('button', { name: 'Change avatar' }),
+    ).toBeInTheDocument()
+  })
+
   it('edits the name in a dialog and saves only a changed name', async () => {
     const user = userEvent.setup()
     mockUpdateMe.mockResolvedValue({ ...USER, name: 'Ada Lovelace' })

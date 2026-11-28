@@ -102,13 +102,9 @@ The admin screens follow the admin designs 25 to 33, with "Team" in place of the
 - **Setup Owner** opens a popover anchored to the button. It has **Search for team member**, radio rows of human members, and **Make Team Owner**. The owner's role badge reads **Team Owner**.
 - The Members tab has **Search for anything...**, **Filter** by role, and **Export Data**, which downloads the filtered member table as CSV in the browser. The summary cards are **Total members**, **Total Assigned Tasks**, and **Total Activity**. Managers get an **Agent settings** button on every row, which opens the same Team settings sheet, and a remove action on every row except the owner's.
 
-## Settings opens the Teams page
+## Settings manages Teams
 
-Workspace owners and admins see a **Teams** entry under the workspace section of Settings. It is not a Settings tab. Clicking it closes Settings, then navigates to `/teams`, so the Teams page never mounts under the open modal. Members do not see the entry, and it stays hidden while the member list loads.
-
-The entry exists so admins who look for Team management in Settings find it. Settings does not copy the Teams pages, and there is no Settings-specific Teams API. `TeamsSettingsLink` in `apps/web/src/features/settings/components/settings-page.tsx` implements it.
-
-Settings remembers its selected tab. `useSettingsDialogStore` keeps `activeTab` while the dialog is closed, so reopening Settings returns to the last tab. `openSettings('members')` still deep-links to a tab.
+Workspace owners and admins manage Teams from Settings at `/settings/user-management/teams`, described in [Settings](./settings.md#user-management). It reuses the Teams panel and queries; there is no Settings-specific Teams API.
 
 ## The client caches one Team list shape
 
