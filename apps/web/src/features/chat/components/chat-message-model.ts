@@ -604,7 +604,6 @@ type MessageRenderNode =
       key: string
       entries: ToolActivityItem[]
       active: boolean
-      stepCount: number
     }
   | { kind: 'artifact'; key: string; artifact: GardenArtifactData }
   | { kind: 'decide'; key: string; runId: string }
@@ -659,7 +658,6 @@ export function buildMessageRenderModel(
       key: `${message.id}:work:${workFirstIndex}`,
       entries: work,
       active: workActive,
-      stepCount: work.length,
     })
     work = []
     workFirstIndex = -1

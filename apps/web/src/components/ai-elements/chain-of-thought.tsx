@@ -7,7 +7,7 @@ import {
 } from '@garden/ui/components/ui/collapsible'
 import { cn } from '@garden/ui/lib/utils'
 import type { LucideIcon } from 'lucide-react'
-import { BrainIcon, ChevronDownIcon, DotIcon } from 'lucide-react'
+import { ChevronDownIcon, DotIcon } from 'lucide-react'
 import type { ComponentProps, ReactNode } from 'react'
 import { createContext, memo, useCallback, useContext, useMemo } from 'react'
 
@@ -95,7 +95,6 @@ export const ChainOfThoughtHeader = memo(
         )}
         {...props}
       >
-        <BrainIcon className="size-4" />
         <span className="flex-1 text-left">
           {children ?? 'Chain of Thought'}
         </span>

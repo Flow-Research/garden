@@ -147,8 +147,6 @@ export function MessageOrderedParts({
               <PreResponseWrapper
                 key={node.key}
                 isStreaming={node.active}
-                shouldMinimize={false}
-                stepCount={node.stepCount}
               >
                 {node.entries.map((entry) => (
                   <StreamingWorkEntryRow

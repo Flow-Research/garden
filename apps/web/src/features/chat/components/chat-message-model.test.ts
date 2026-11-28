@@ -187,7 +187,7 @@ describe('Decide run in the message render model', () => {
 
     expect(nodes.map((node) => node.kind)).toEqual(['work', 'decide'])
     const [work, decide] = nodes
-    expect(work?.kind === 'work' && work.stepCount).toBe(1)
+    expect(work?.kind === 'work' && work.entries.length).toBe(1)
     expect(
       work?.kind === 'work' && work.entries.some((entry) => entry.decideRunId),
     ).toBe(false)
