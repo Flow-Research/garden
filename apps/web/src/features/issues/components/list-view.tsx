@@ -119,6 +119,7 @@ export function ListView({
           const statusCount =
             status === 'done' ? displayDoneTotal : statusIssues.length
           const expanded = expandedStatuses.includes(status)
+          const isTodo = status === 'todo'
 
           const rows =
             statusIssues.length > 0 ? (
@@ -158,15 +159,27 @@ export function ListView({
                   className={cn(
                     'flex h-[54px] items-center bg-background-main-secondary',
                     expanded ? 'rounded-t-xl' : 'rounded-xl',
+                    isTodo && 'bg-background-brand-tertiary',
                   )}
                 >
                   <Accordion.Trigger className="group/trigger flex h-full flex-1 items-center gap-2 px-4 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset">
                     <ChevronRight className="size-3.5 shrink-0 text-icon-secondary transition-transform group-aria-expanded/trigger:rotate-90" />
                     <StatusIcon status={status} className="size-4.5" />
-                    <span className="text-sm text-text-default">
+                    <span
+                      className={cn(
+                        'text-sm text-text-default',
+                        isTodo && 'font-semibold',
+                      )}
+                    >
                       {cfg.label}
                     </span>
-                    <span className="text-sm text-text-default">
+                    <span
+                      className={cn(
+                        'text-sm text-text-default',
+                        isTodo &&
+                          'rounded-md bg-background-main-default px-2 text-text-brand-secondary',
+                      )}
+                    >
                       {statusCount}
                     </span>
                   </Accordion.Trigger>
@@ -176,10 +189,12 @@ export function ListView({
                         <TooltipTrigger
                           render={
                             <Button
-                              variant="ghost"
+                              variant={isTodo ? 'default' : 'ghost'}
                               size="icon-sm"
                               aria-label={`Add ${cfg.label} issue`}
-                              className="text-icon-default"
+                              className={
+                                isTodo ? undefined : 'text-icon-default'
+                              }
                               onClick={() => onCreateIssue({ status })}
                             />
                           }
@@ -253,7 +268,14 @@ export function ListView({
 
               {isTeam ? (
                 <Accordion.Panel>
-                  <div className="-mt-1 rounded-b-xl border-[0.5px] border-border-default bg-background-main-default max-xl:divide-y max-xl:divide-border-default/60">
+                  <div
+                    className={cn(
+                      '-mt-1 rounded-b-xl border-[0.5px] border-border-default bg-background-main-default',
+                      isTodo
+                        ? 'divide-y divide-border-default/60'
+                        : 'max-xl:divide-y max-xl:divide-border-default/60',
+                    )}
+                  >
                     {rows}
                   </div>
                 </Accordion.Panel>

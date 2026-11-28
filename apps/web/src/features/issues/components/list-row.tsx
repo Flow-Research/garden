@@ -1,9 +1,10 @@
 import { memo, useCallback } from 'react'
 import type { Issue } from '@garden/core/types'
-import { FileText } from 'lucide-react'
+import { ChevronRight, FileText } from 'lucide-react'
 import { formatShortDate } from '@garden/core/format'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
+import { cn } from '@garden/ui/lib/utils'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { PriorityIcon } from './priority-icon'
@@ -19,15 +20,22 @@ export interface ChildProgress {
 /** Design pill used by the Team list variant's team/project/description chips. */
 function Chip({
   children,
+  className,
   dot,
   icon,
 }: {
   children: React.ReactNode
+  className?: string
   dot?: string
   icon?: React.ReactNode
 }) {
   return (
-    <span className="inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
+    <span
+      className={cn(
+        'inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default',
+        className,
+      )}
+    >
       {dot ? (
         <span
           aria-hidden
@@ -78,11 +86,20 @@ export const ListRow = memo(function ListRow({
   )
 
   if (variant === 'team') {
+    const isTodo = issue.status === 'todo'
     return (
-      <div className="flex min-h-[54px] items-center gap-3 px-6 py-3 text-sm">
+      <div
+        className={cn(
+          'flex min-h-[54px] items-center gap-3 px-6 py-3 text-sm',
+          isTodo && 'items-start px-4 py-4 sm:px-6',
+        )}
+      >
         <StatusIcon
           status={issue.status}
-          className="size-4.5 shrink-0 text-icon-secondary"
+          className={cn(
+            'size-4.5 shrink-0 text-icon-secondary',
+            isTodo && 'mt-0.5 size-5',
+          )}
           inheritColor
         />
         <a
@@ -90,12 +107,38 @@ export const ListRow = memo(function ListRow({
           onClick={handleOpen}
           className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2"
         >
-          <span className="min-w-0 grow basis-48 truncate text-text-default">
+          <span
+            className={cn(
+              'min-w-0 grow text-text-default',
+              isTodo
+                ? 'basis-full wrap-break-word font-semibold'
+                : 'basis-48 truncate',
+            )}
+          >
             {issue.title}
           </span>
-          {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
+          {team ? (
+            <Chip
+              className={
+                isTodo
+                  ? 'border-transparent bg-background-brand-tertiary text-text-brand-secondary'
+                  : undefined
+              }
+              dot={team.color}
+            >
+              {team.name}
+            </Chip>
+          ) : null}
           {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
-          {issue.description ? (
+          {issue.description && isTodo ? (
+            <span className="flex min-w-0 basis-full items-center gap-2 rounded-md border-[0.5px] border-border-default bg-muted/40 px-3 py-2 text-text-secondary">
+              <FileText aria-hidden className="size-4 shrink-0" />
+              <span className="min-w-0 flex-1 truncate">
+                {issue.description}
+              </span>
+              <ChevronRight aria-hidden className="size-4 shrink-0" />
+            </span>
+          ) : issue.description ? (
             <Chip icon={<FileText className="size-3.5 shrink-0" />}>
               {issue.description}
             </Chip>
