@@ -655,6 +655,7 @@ describe('POST /api/brain/files', () => {
         files: {
           get: async () => null,
         },
+        modelEnv: {},
       }),
     )
     const hits = await runtime.runPromise(

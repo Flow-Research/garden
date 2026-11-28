@@ -7,6 +7,7 @@ import {
 } from '@garden/agent-runtime'
 import { ItemId, WorkspaceId, type BrainItem } from '@garden/brain/domain'
 import { Brain } from '@garden/brain/services/brain'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import { makeWebBrainLive } from '@garden/brain/services/web'
 import { createGardenLogger, errorFields } from '@garden/observability/logger'
 import { makeBrainAuditClientLayer } from '@/lib/server/brain-audit-runtime'
@@ -269,6 +270,7 @@ function brainRuntime(env: AppEnv) {
     apiKey: env.HELIX_API_KEY,
     ai: env.AI,
     files: env.BRAIN_FILES,
+    modelEnv: embeddingsRuntimeEnv(env),
   })
   const ingestionLive = makeBrainFileIngestionLayer(env).pipe(
     Layer.provide(

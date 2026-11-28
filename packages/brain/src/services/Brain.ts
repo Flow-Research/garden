@@ -606,7 +606,7 @@ const FRESHNESS_HALF_LIFE_DAYS = 90
 const FRESHNESS_FLOOR = 0.25
 export const RRF_K = 60
 const MAX_EMBED_CHARS = 2000
-const EMBED_BATCH_SIZE = 100
+const DEFAULT_EMBED_BATCH_SIZE = 100
 const MAX_INDEX_SECTIONS = 1000
 const NEIGHBORHOOD_MAX_ITEMS = 50
 const NEIGHBORHOOD_MAX_EDGES = 100
@@ -629,10 +629,9 @@ const embedBatched = (
 ): Effect.Effect<number[][], EmbedError> =>
   Effect.gen(function* () {
     const vectors: number[][] = []
-    for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
-      const result = yield* embeddings.embed(
-        texts.slice(i, i + EMBED_BATCH_SIZE),
-      )
+    const batchSize = embeddings.maxBatchSize ?? DEFAULT_EMBED_BATCH_SIZE
+    for (let i = 0; i < texts.length; i += batchSize) {
+      const result = yield* embeddings.embed(texts.slice(i, i + batchSize))
       vectors.push(...result)
     }
 

@@ -29,6 +29,7 @@ import {
   type GardenLogFields,
   type GardenLogger,
 } from '@garden/observability/logger'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import {
   evaluateExecutorCallTeamPolicy,
   evaluateRuntimeToolPermission,
@@ -584,6 +585,7 @@ export abstract class RunSubAgentBase<
                   ...(this.env.HELIX_API_KEY === undefined
                     ? {}
                     : { HELIX_API_KEY: this.env.HELIX_API_KEY }),
+                  ...embeddingsRuntimeEnv(this.env),
                 },
                 ai: this.env.AI,
                 files: this.env.BRAIN_FILES,

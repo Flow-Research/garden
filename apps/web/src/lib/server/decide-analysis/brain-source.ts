@@ -2,8 +2,12 @@ import { Result } from 'better-result'
 import { Effect, Result as EffectResult, type Layer } from 'effect'
 import { ItemId, WorkspaceId } from '@garden/brain/domain'
 import { Brain } from '@garden/brain/services/brain'
+import {
+  embeddingsRuntimeEnv,
+  type EmbeddingsRuntimeEnv,
+  type WorkersAiBinding,
+} from '@garden/brain/services/embeddings'
 import { makeWebBrainLive } from '@garden/brain/services/web'
-import type { WorkersAiBinding } from '@garden/brain/services/embeddings'
 import type { R2BucketLike } from '@garden/brain/services/raw-file-store'
 import {
   DecideAnalysisServiceError,
@@ -15,7 +19,7 @@ export type BrainSourceEnvironment = {
   HELIX_API_KEY?: string
   AI: WorkersAiBinding
   BRAIN_FILES: R2BucketLike
-}
+} & EmbeddingsRuntimeEnv
 
 const unavailable = (message: string, cause?: unknown) =>
   new DecideAnalysisServiceError({
@@ -80,6 +84,7 @@ export const makeBrainSourceReader = (
       apiKey: env.HELIX_API_KEY,
       ai: env.AI,
       files: env.BRAIN_FILES,
+      modelEnv: embeddingsRuntimeEnv(env),
     }),
   )
 }

@@ -2,6 +2,7 @@ import { DateTime, Effect, Result as EffectResult } from 'effect'
 import { inArray } from 'drizzle-orm'
 import { ItemId, WorkspaceId, type BrainItem } from '@garden/brain/domain'
 import { Brain } from '@garden/brain/services/brain'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import { makeWebBrainLive } from '@garden/brain/services/web'
 import type { BrainFileSummary } from '@/features/brain/contract'
 import { brainFileStatusOf } from '@/features/brain/contract'
@@ -89,6 +90,7 @@ export async function loadBrainItemsByIds(args: {
     apiKey: args.env.HELIX_API_KEY,
     ai: args.env.AI,
     files: args.env.BRAIN_FILES,
+    modelEnv: embeddingsRuntimeEnv(args.env),
   })
   const tenantId = WorkspaceId.make(args.workspaceId)
 

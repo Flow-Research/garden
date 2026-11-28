@@ -139,6 +139,11 @@
     "GARDEN_MODEL_ID": "",
     "GARDEN_MODEL_API_KEY": "",
     "GARDEN_MODEL_CONTEXT_WINDOW_TOKENS": "",
+    // Offline mode uses local embeddings. This setting overrides the embedding provider.
+    // Empty means "unset". Offline mode uses Ollama `all-minilm` (384-d).
+    "GARDEN_EMBEDDING_MODEL": "",
+    "GARDEN_EMBEDDING_PROVIDER": "",
+    "GARDEN_EMBEDDING_TIMEOUT_SECONDS": "",
   },
   "migrations": [
     {

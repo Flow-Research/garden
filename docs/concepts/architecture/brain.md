@@ -8,6 +8,8 @@ last_reviewed: 2026-11-10
 
 Brain is Garden's graph and vector memory. It stores workspace knowledge in HelixDB. HelixDB accepts query payloads that the caller builds, so whoever can reach it can read or write any record. The whole design follows from that fact: HelixDB is never public, and only Garden's server builds queries.
 
+Brain's vector indexes use 384 values per vector. Workers AI and `all-minilm` both meet that width, but their vectors do not share a model space. The current Brain records do not store a model identity. Changing the embedding provider or model for a populated Helix database can mix incompatible vectors without an error. A model identity guard needs an owner decision about where to store that identity and how to handle existing records before this PR can merge.
+
 ## Three hops, one public
 
 A Brain call takes this path:

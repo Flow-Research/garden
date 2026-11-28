@@ -109,6 +109,7 @@ First, get a local model running. Pick one of these:
 ```bash
 pnpm offline:up:ollama                                    # starts Postgres + HelixDB + Ollama
 docker compose -f compose.dev.yaml exec ollama ollama pull qwen3:8b
+docker compose -f compose.dev.yaml exec ollama ollama pull all-minilm
 ```
 
 **Option B — the Ollama app** (recommended on Apple Silicon: Docker
@@ -117,6 +118,7 @@ containers can't use the Mac GPU, so the native app is much faster):
 ```bash
 # install from https://ollama.com, then:
 ollama pull qwen3:8b
+ollama pull all-minilm
 pnpm offline:up                                           # starts Postgres and HelixDB
 ```
 
@@ -144,9 +146,13 @@ ones when you want a stronger model without a Cloudflare account:
 | `GARDEN_MODEL_ID`                   | `qwen3:8b`                     | Must support tool calling               |
 | `GARDEN_MODEL_API_KEY`              | unset                          | Required by hosted endpoints            |
 | `GARDEN_MODEL_CONTEXT_WINDOW_TOKENS`| `32768`                        | Sizes context compaction                |
+| `GARDEN_EMBEDDING_MODEL`            | `all-minilm`                   | 384-d embeddings for file indexing. Not the chat model |
+| `GARDEN_EMBEDDING_PROVIDER`         | Workers AI unless `GARDEN_OFFLINE=1` | Set `openai-compatible` to opt into an external embedding endpoint |
+| `GARDEN_EMBEDDING_TIMEOUT_SECONDS`  | `30`                           | Timeout for each OpenAI-compatible embedding request |
 
 Offline limitations:
 
+- With `GARDEN_OFFLINE=1`, file and note indexing uses the OpenAI-compatible endpoint and `all-minilm` (384 dimensions). Pull the model once with the commands above. `GARDEN_MODEL_PROVIDER` only selects chat. These vectors are not interchangeable with Workers AI embeddings; keep one embedding provider per Helix database.
 - DOCX import uses a local converter (mammoth) instead of Workers AI document
   conversion — fidelity is slightly reduced.
 - Agent quality tracks the model you point at; small local models may fumble
@@ -155,21 +161,9 @@ Offline limitations:
 
 ### 4. Standard mode — Cloudflare Workers AI
 
-Sign in to Cloudflare and note your Account ID:
-
-```bash
-pnpm --filter @garden/web exec wrangler login
-pnpm --filter @garden/web exec wrangler whoami
-```
-
-Copy the Account ID from `wrangler whoami` into `CLOUDFLARE_ACCOUNT_ID` in
-`.env`. Then:
-
-```bash
-pnpm offline:up                        # local Postgres (skip if already running)
-pnpm --filter @garden/db db:migrate    # skip if already migrated
-pnpm dev
-```
+Use a separate local Helix database for Workers AI. Follow the
+[Workers AI setup](docs/development/onboarding.md#use-workers-ai-when-required)
+to sign in, select the separate Compose project and start Garden.
 
 `pnpm dev` starts the app on port 3000 with local D1, R2, Durable Object, and
 Workflow state, Hyperdrive pointed at `DATABASE_URL`, and the remote Workers
@@ -187,6 +181,8 @@ AI binding. Two things to know about that binding:
 (`ollama list`, or
 `docker compose -f compose.dev.yaml exec ollama ollama list` for the Docker
 option).
+
+**File upload fails while indexing:** offline mode embeds with `GARDEN_EMBEDDING_MODEL` (`all-minilm` by default) at `GARDEN_MODEL_BASE_URL` (`POST /v1/embeddings`). Pull that model, then retry the upload. A 404 means the embedding model is missing. A dimension error means the model is not 384-d. If a local request times out, increase `GARDEN_EMBEDDING_TIMEOUT_SECONDS`. `Binding AI needs to be run remotely` means this process is not in offline mode or explicitly set to `GARDEN_EMBEDDING_PROVIDER=openai-compatible`; [return to the local model](docs/development/onboarding.md#return-to-the-local-model).
 
 **Workers AI fails in standard mode:** run `wrangler whoami` again and check
 that `CLOUDFLARE_ACCOUNT_ID` in `.env` belongs to the authenticated account.
@@ -221,7 +217,8 @@ deliberately.
 
 `pnpm dev:containers` enables Cloudflare Sandbox containers. Core application
 state still runs locally and Workers AI remains remote. This mode requires
-Docker:
+Docker. Follow the [Workers AI setup](docs/development/onboarding.md#use-workers-ai-when-required)
+to select the correct Helix database, then use this command in place of `pnpm dev`:
 
 ```bash
 pnpm dev:containers

@@ -10,7 +10,10 @@ import {
   decideWriteBack,
   type WriteCandidate,
 } from '@garden/brain/services/write-back'
-import type { WorkersAiBinding } from '@garden/brain/services/embeddings'
+import type {
+  EmbeddingsRuntimeEnv,
+  WorkersAiBinding,
+} from '@garden/brain/services/embeddings'
 import type { R2BucketLike } from '@garden/brain/services/raw-file-store'
 import { getPooledDb } from '@garden/db/runtime'
 import * as schema from '@garden/db/schema'
@@ -78,7 +81,10 @@ export function brainWriteBackToolContext(
 }
 
 export type BrainWriteBackToolDependencies = {
-  readonly env: { HELIX_URL?: string; HELIX_API_KEY?: string }
+  readonly env: {
+    HELIX_URL?: string
+    HELIX_API_KEY?: string
+  } & EmbeddingsRuntimeEnv
   readonly ai: WorkersAiBinding
   readonly files: R2BucketLike
   readonly databaseUrl: string
@@ -205,6 +211,7 @@ export function createBrainWriteBackTools(
               apiKey: dependencies.env.HELIX_API_KEY,
               ai: dependencies.ai,
               files: dependencies.files,
+              modelEnv: dependencies.env,
             })
       if (layer !== undefined) {
         if ((await dependencies.getContext('brain_search')) === null)

@@ -40,27 +40,14 @@ If `qwen3:8b` is missing, pull it. To use a different model or a hosted OpenAI-c
 
 Workers AI has no local simulator, so `pnpm dev` sends model calls to Cloudflare. You need a Cloudflare account on the Workers paid plan. The default model, `@cf/deepseek-ai/deepseek-v4.1-flash-1017`, is not available on the free plan. Usage can create charges.
 
-1. Sign in and print your account id:
-
-   ```bash
-   pnpm --filter @garden/web exec wrangler login
-   pnpm --filter @garden/web exec wrangler whoami
-   ```
-
-2. Put the account id in `CLOUDFLARE_ACCOUNT_ID` in `.env`.
-3. Start the services, migrate, and run Garden:
-
-   ```bash
-   pnpm offline:up
-   pnpm --filter @garden/db db:migrate
-   pnpm dev
-   ```
+Follow the [Workers AI setup](../../development/onboarding.md#use-workers-ai-when-required).
+It starts a separate Compose project so Workers AI searches its own Helix data.
 
 ## Workers AI does not respond
 
 If a run fails with "The configured AI model was retired by its provider", Cloudflare has removed the model that Garden is configured to use. Update `DEFAULT_AGENT_MODEL_PROFILE` in `packages/agent-runtime/src/model.ts` to a supported model. Deployed targets report this daily through the [model health check](../../concepts/features/model-health-check.md).
 
-Run `wrangler whoami` again. Confirm that `CLOUDFLARE_ACCOUNT_ID` matches the signed-in account. If the account is not on the Workers paid plan, use `pnpm dev:offline`.
+Run `wrangler whoami` again. Confirm that `CLOUDFLARE_ACCOUNT_ID` matches the signed-in account. If the account is not on the Workers paid plan, [return to the local model](../../development/onboarding.md#return-to-the-local-model).
 
 ## A connector is unavailable
 

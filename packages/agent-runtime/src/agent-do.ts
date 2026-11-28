@@ -72,6 +72,7 @@ import {
   probeSandboxCommand,
   type SandboxExecResult,
 } from './sandbox-debug'
+import { embeddingsRuntimeEnv } from '@garden/brain/services/embeddings'
 import {
   type AgentModelEnv,
   createAgentModel,
@@ -1823,6 +1824,7 @@ export class ChatSubAgent extends Think<AgentRuntimeEnv> {
           : { helixApiKey: this.env.HELIX_API_KEY }),
         ai: this.env.AI,
         files: this.env.BRAIN_FILES,
+        modelEnv: embeddingsRuntimeEnv(this.env),
       },
       cancelIssueRun: async (input) => {
         const instance = await this.env.RUN_WORKFLOW.get(input.runId)

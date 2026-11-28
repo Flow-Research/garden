@@ -4,23 +4,11 @@ TanStack Start app for Garden's tabbed workspace, auth surface, API routes, Clou
 
 ## Getting Started
 
-From the repository root:
-
-```bash
-pnpm install --frozen-lockfile
-cp .env.example .env
-
-# Fill the required values in .env, then authenticate Wrangler:
-pnpm --filter @garden/web exec wrangler login
-pnpm --filter @garden/web exec wrangler whoami
-
-pnpm --filter @garden/db db:migrate
-pnpm dev
-```
-
-The [root setup guide](../../README.md#run-garden-locally) explains each
-required value and the two secrets you need to generate. The root dev command
-starts the Garden Worker through Turbo's TUI. The web app runs at
+Use the [root setup guide](../../README.md#run-garden-locally) to install
+the workspace and create the two secrets. Choose the
+[local model setup](../../docs/development/onboarding.md#start-garden-with-a-local-model)
+or the [Workers AI setup](../../docs/development/onboarding.md#use-workers-ai-when-required).
+Each model uses its own Helix database. The web app runs at
 `http://localhost:3000` by default.
 
 ## Environment
@@ -49,7 +37,7 @@ Workers AI has no local simulator, so normal local development uses that one
 remote binding and may incur account usage. Set `AI_GATEWAY_ID` only to route
 requests through an AI Gateway owned by your account. Root `pnpm dev:offline`
 avoids the remote binding entirely — no Cloudflare account or
-`CLOUDFLARE_ACCOUNT_ID` needed — by routing model calls to an
+`CLOUDFLARE_ACCOUNT_ID` needed — by routing chat and brain embeddings to an
 OpenAI-compatible endpoint (see the root README's "Offline mode" section).
 
 `RESEND_API_KEY`, `EXA_API_KEY`, and connector credentials are optional until
