@@ -57,6 +57,9 @@ jobs:
       - name: Verify code policy
         run: pnpm verify:code-policy
 
+      - name: Verify pinned host contract
+        run: pnpm verify:host-contract
+
       - name: Typecheck
         run: pnpm typecheck
 

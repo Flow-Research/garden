@@ -101,14 +101,23 @@ describe('0069 populated Brain proposal migration (PostgreSQL CLI)', () => {
     fullFolder = resolve(directory, 'candidate')
     await cp(migrations, preFolder, { recursive: true })
     await cp(migrations, fullFolder, { recursive: true })
-    const journal = JSON.parse(
-      await readFile(resolve(migrations, 'meta/_journal.json'), 'utf8'),
-    )
+    const journal: { entries: Array<{ idx: number; tag: string }> } =
+      JSON.parse(
+        await readFile(resolve(migrations, 'meta/_journal.json'), 'utf8'),
+      )
     const candidateIndex = journal.entries.findIndex(
-      (entry: { tag: string }) => entry.tag === migrationTag,
+      (entry) => entry.tag === migrationTag && entry.idx === 69,
     )
-    if (candidateIndex < 0)
-      throw new Error(`Journal has no ${migrationTag} entry`)
+    if (
+      candidateIndex < 0 ||
+      journal.entries.filter((entry) => entry.tag === migrationTag).length !==
+        1 ||
+      journal.entries.filter((entry) => entry.idx === 69).length !== 1
+    )
+      throw new Error(
+        `Expected one ${migrationTag} journal entry with index 69`,
+      )
+    // This retained-data fixture qualifies 0069, independently of later migrations.
     const writeJournal = (folder: string, end: number) =>
       writeFile(
         resolve(folder, 'meta/_journal.json'),

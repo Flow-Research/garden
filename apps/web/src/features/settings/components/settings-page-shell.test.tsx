@@ -22,13 +22,18 @@ async function renderSettings(path = '/settings/profile') {
       </SettingsPageShell>
     ),
   })
-  const routes = ['profile', 'user-management', 'preferences', 'general'].map(
-    (section) =>
-      createRoute({
-        getParentRoute: () => settings,
-        path: section,
-        component: () => <h2>{section} content</h2>,
-      }),
+  const routes = [
+    'profile',
+    'user-management',
+    'preferences',
+    'general',
+    'execution-hosts',
+  ].map((section) =>
+    createRoute({
+      getParentRoute: () => settings,
+      path: section,
+      component: () => <h2>{section} content</h2>,
+    }),
   )
   const history = createMemoryHistory({ initialEntries: [path] })
   const router = createRouter({
@@ -58,6 +63,9 @@ describe('Settings page shell', () => {
       'aria-current',
       'page',
     )
+    expect(
+      screen.getByRole('link', { name: 'Execution hosts' }),
+    ).toHaveAttribute('href', '/settings/execution-hosts')
     expect(screen.queryByRole('link', { name: 'Notifications' })).toBeNull()
     expect(screen.queryByRole('link', { name: 'Teams' })).toBeNull()
   })

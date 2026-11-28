@@ -48,6 +48,9 @@ export type AppEnv = AgentModelEnv & {
   GOOGLE_AUTH_CLIENT_ID?: string
   GOOGLE_AUTH_CLIENT_SECRET?: string
   WORKSTREAM_MCP_CLIENT_ID?: string
+  ENGINEERING_PILOT_OPERATOR_ID?: ReturnType<
+    typeof parseServerEnv
+  >['ENGINEERING_PILOT_OPERATOR_ID']
   GOOGLE_CLIENT_ID?: string
   GOOGLE_CLIENT_SECRET?: string
   SLACK_CLIENT_ID?: string

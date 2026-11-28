@@ -11,6 +11,9 @@
     "test": "vitest run"
   },
   "exports": {
+    "./execution-host/contracts": "./src/execution-host/generated/host-contract.ts",
+    "./execution-host/interventions": "./src/execution-host/interventions.ts",
+    "./execution-host/auth": "./src/execution-host/generated/host-auth.ts",
     "./types": "./src/types/index.ts",
     "./types/*": "./src/types/*.ts",
     "./agents/permissions": "./src/agents/permissions.ts",

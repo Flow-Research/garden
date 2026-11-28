@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/Flow-Research/harnessy-v2",
+  "baseRevision": "302dd6c65f6036d82d989be7745796ea2a11d7d7",
+  "qualification": "Reviewed working-tree snapshot. File hashes identify the actual source; baseRevision alone does not.",
+  "files": {
+    "host-contract.ts": "0206c29fa6cd4e85aa9267a566bee60915b804068dfb5a35676d9eea4271d38f",
+    "host-auth.ts": "8e90d11f4e192e8e381a116b2cb9c42bb92cb2faf1834a3e13d09a6de54b51ef",
+    "LICENSE": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+  }
+}

@@ -66,6 +66,11 @@ import { Route as ApiDecideAnalysesRunIdRouteImport } from './routes/api/decide-
 import { Route as ApiDevIssueRunPlanRouteImport } from './routes/api/dev/issue-run-plan'
 import { Route as ApiDiscordInstallRouteImport } from './routes/api/discord/install'
 import { Route as ApiDiscordSetupRouteImport } from './routes/api/discord/setup'
+import { Route as ApiExecutionHostsIndexRouteImport } from './routes/api/execution-hosts/index'
+import { Route as ApiExecutionHostsEnrollRouteImport } from './routes/api/execution-hosts/enroll'
+import { Route as ApiExecutionHostsLaunchRouteImport } from './routes/api/execution-hosts/launch'
+import { Route as ApiExecutionHostsReceiveRouteImport } from './routes/api/execution-hosts/receive'
+import { Route as ApiExecutionHostsRevokeRouteImport } from './routes/api/execution-hosts/revoke'
 import { Route as ApiExecutorInstallRouteImport } from './routes/api/executor/install'
 import { Route as ApiExecutorPreviewRouteImport } from './routes/api/executor/preview'
 import { Route as ApiExecutorRegistryRouteImport } from './routes/api/executor/registry'
@@ -94,6 +99,7 @@ import { Route as AuthenticatedAppAgentsAgentIdRouteImport } from './routes/_aut
 import { Route as AuthenticatedAppChatsIndexRouteImport } from './routes/_authenticated/_app/chats.index'
 import { Route as AuthenticatedAppChatsThreadIdRouteImport } from './routes/_authenticated/_app/chats.$threadId'
 import { Route as AuthenticatedAppSettingsIndexRouteImport } from './routes/_authenticated/_app/settings/index'
+import { Route as AuthenticatedAppSettingsExecutionHostsRouteImport } from './routes/_authenticated/_app/settings/execution-hosts'
 import { Route as AuthenticatedAppSettingsGeneralRouteImport } from './routes/_authenticated/_app/settings/general'
 import { Route as AuthenticatedAppSettingsPreferencesRouteImport } from './routes/_authenticated/_app/settings/preferences'
 import { Route as AuthenticatedAppSettingsProfileRouteImport } from './routes/_authenticated/_app/settings/profile'
@@ -166,6 +172,9 @@ import { Route as ApiChatThreadsIdPermissionRequestsRouteImport } from './routes
 import { Route as ApiChatThreadsIdPrimaryIssueRouteImport } from './routes/api/chat/threads/$id/primary-issue'
 import { Route as ApiChatThreadsIdToolApprovalRouteImport } from './routes/api/chat/threads/$id/tool-approval'
 import { Route as ApiChatThreadsThreadIdDecideAnalysesRouteImport } from './routes/api/chat/threads/$threadId/decide-analyses'
+import { Route as ApiExecutionHostsRunsLaunchIdIndexRouteImport } from './routes/api/execution-hosts/runs/$launchId/index'
+import { Route as ApiExecutionHostsRunsLaunchIdCancelRouteImport } from './routes/api/execution-hosts/runs/$launchId/cancel'
+import { Route as ApiExecutionHostsRunsLaunchIdInterventionsRouteImport } from './routes/api/execution-hosts/runs/$launchId/interventions'
 import { Route as ApiIssuesIdSourceBindingsBindingIdRouteImport } from './routes/api/issues/$id/source-bindings/$bindingId'
 import { Route as ApiTeamsTeamIdMembersMembershipIdRouteImport } from './routes/api/teams/$teamId/members/$membershipId'
 import { Route as ApiTeamsTeamIdRepositoriesRepositoryIdRouteImport } from './routes/api/teams/$teamId/repositories/$repositoryId'
@@ -470,6 +479,32 @@ const ApiDiscordSetupRoute = ApiDiscordSetupRouteImport.update({
   path: '/api/discord/setup',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiExecutionHostsIndexRoute = ApiExecutionHostsIndexRouteImport.update({
+  id: '/api/execution-hosts/',
+  path: '/api/execution-hosts/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiExecutionHostsEnrollRoute = ApiExecutionHostsEnrollRouteImport.update({
+  id: '/api/execution-hosts/enroll',
+  path: '/api/execution-hosts/enroll',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiExecutionHostsLaunchRoute = ApiExecutionHostsLaunchRouteImport.update({
+  id: '/api/execution-hosts/launch',
+  path: '/api/execution-hosts/launch',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiExecutionHostsReceiveRoute =
+  ApiExecutionHostsReceiveRouteImport.update({
+    id: '/api/execution-hosts/receive',
+    path: '/api/execution-hosts/receive',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiExecutionHostsRevokeRoute = ApiExecutionHostsRevokeRouteImport.update({
+  id: '/api/execution-hosts/revoke',
+  path: '/api/execution-hosts/revoke',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiExecutorInstallRoute = ApiExecutorInstallRouteImport.update({
   id: '/api/executor/install',
   path: '/api/executor/install',
@@ -615,6 +650,12 @@ const AuthenticatedAppSettingsIndexRoute =
   AuthenticatedAppSettingsIndexRouteImport.update({
     id: '/',
     path: '/',
+    getParentRoute: () => AuthenticatedAppSettingsRoute,
+  } as any)
+const AuthenticatedAppSettingsExecutionHostsRoute =
+  AuthenticatedAppSettingsExecutionHostsRouteImport.update({
+    id: '/execution-hosts',
+    path: '/execution-hosts',
     getParentRoute: () => AuthenticatedAppSettingsRoute,
   } as any)
 const AuthenticatedAppSettingsGeneralRoute =
@@ -1009,6 +1050,24 @@ const ApiChatThreadsThreadIdDecideAnalysesRoute =
     path: '/$threadId/decide-analyses',
     getParentRoute: () => ApiChatThreadsRoute,
   } as any)
+const ApiExecutionHostsRunsLaunchIdIndexRoute =
+  ApiExecutionHostsRunsLaunchIdIndexRouteImport.update({
+    id: '/api/execution-hosts/runs/$launchId/',
+    path: '/api/execution-hosts/runs/$launchId/',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiExecutionHostsRunsLaunchIdCancelRoute =
+  ApiExecutionHostsRunsLaunchIdCancelRouteImport.update({
+    id: '/api/execution-hosts/runs/$launchId/cancel',
+    path: '/api/execution-hosts/runs/$launchId/cancel',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiExecutionHostsRunsLaunchIdInterventionsRoute =
+  ApiExecutionHostsRunsLaunchIdInterventionsRouteImport.update({
+    id: '/api/execution-hosts/runs/$launchId/interventions',
+    path: '/api/execution-hosts/runs/$launchId/interventions',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiIssuesIdSourceBindingsBindingIdRoute =
   ApiIssuesIdSourceBindingsBindingIdRouteImport.update({
     id: '/$bindingId',
@@ -1126,6 +1185,10 @@ export interface FileRoutesByFullPath {
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/discord/setup': typeof ApiDiscordSetupRoute
+  '/api/execution-hosts/enroll': typeof ApiExecutionHostsEnrollRoute
+  '/api/execution-hosts/launch': typeof ApiExecutionHostsLaunchRoute
+  '/api/execution-hosts/receive': typeof ApiExecutionHostsReceiveRoute
+  '/api/execution-hosts/revoke': typeof ApiExecutionHostsRevokeRoute
   '/api/executor/install': typeof ApiExecutorInstallRoute
   '/api/executor/preview': typeof ApiExecutorPreviewRoute
   '/api/executor/registry': typeof ApiExecutorRegistryRoute
@@ -1149,8 +1212,10 @@ export interface FileRoutesByFullPath {
   '/api/runs/$id': typeof ApiRunsIdRoute
   '/api/teams/$teamId': typeof ApiTeamsTeamIdRouteWithChildren
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
+  '/api/execution-hosts/': typeof ApiExecutionHostsIndexRoute
   '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/settings/execution-hosts': typeof AuthenticatedAppSettingsExecutionHostsRoute
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
@@ -1225,6 +1290,8 @@ export interface FileRoutesByFullPath {
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
+  '/api/execution-hosts/runs/$launchId/cancel': typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  '/api/execution-hosts/runs/$launchId/interventions': typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
@@ -1232,6 +1299,7 @@ export interface FileRoutesByFullPath {
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/settings/user-management/': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/api/execution-hosts/runs/$launchId/': typeof ApiExecutionHostsRunsLaunchIdIndexRoute
   '/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
   '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
@@ -1287,6 +1355,10 @@ export interface FileRoutesByTo {
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/discord/setup': typeof ApiDiscordSetupRoute
+  '/api/execution-hosts/enroll': typeof ApiExecutionHostsEnrollRoute
+  '/api/execution-hosts/launch': typeof ApiExecutionHostsLaunchRoute
+  '/api/execution-hosts/receive': typeof ApiExecutionHostsReceiveRoute
+  '/api/execution-hosts/revoke': typeof ApiExecutionHostsRevokeRoute
   '/api/executor/install': typeof ApiExecutorInstallRoute
   '/api/executor/preview': typeof ApiExecutorPreviewRoute
   '/api/executor/registry': typeof ApiExecutorRegistryRoute
@@ -1310,8 +1382,10 @@ export interface FileRoutesByTo {
   '/api/runs/$id': typeof ApiRunsIdRoute
   '/api/teams/$teamId': typeof ApiTeamsTeamIdRouteWithChildren
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
+  '/api/execution-hosts': typeof ApiExecutionHostsIndexRoute
   '/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/settings/execution-hosts': typeof AuthenticatedAppSettingsExecutionHostsRoute
   '/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
@@ -1386,6 +1460,8 @@ export interface FileRoutesByTo {
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
+  '/api/execution-hosts/runs/$launchId/cancel': typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  '/api/execution-hosts/runs/$launchId/interventions': typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
@@ -1393,6 +1469,7 @@ export interface FileRoutesByTo {
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/settings/user-management': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/api/execution-hosts/runs/$launchId': typeof ApiExecutionHostsRunsLaunchIdIndexRoute
   '/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
   '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
@@ -1457,6 +1534,10 @@ export interface FileRoutesById {
   '/api/dev/issue-run-plan': typeof ApiDevIssueRunPlanRoute
   '/api/discord/install': typeof ApiDiscordInstallRoute
   '/api/discord/setup': typeof ApiDiscordSetupRoute
+  '/api/execution-hosts/enroll': typeof ApiExecutionHostsEnrollRoute
+  '/api/execution-hosts/launch': typeof ApiExecutionHostsLaunchRoute
+  '/api/execution-hosts/receive': typeof ApiExecutionHostsReceiveRoute
+  '/api/execution-hosts/revoke': typeof ApiExecutionHostsRevokeRoute
   '/api/executor/install': typeof ApiExecutorInstallRoute
   '/api/executor/preview': typeof ApiExecutorPreviewRoute
   '/api/executor/registry': typeof ApiExecutorRegistryRoute
@@ -1480,8 +1561,10 @@ export interface FileRoutesById {
   '/api/runs/$id': typeof ApiRunsIdRoute
   '/api/teams/$teamId': typeof ApiTeamsTeamIdRouteWithChildren
   '/api/workspaces/$id': typeof ApiWorkspacesIdRouteWithChildren
+  '/api/execution-hosts/': typeof ApiExecutionHostsIndexRoute
   '/_authenticated/_app/agents/$agentId': typeof AuthenticatedAppAgentsAgentIdRoute
   '/_authenticated/_app/chats/$threadId': typeof AuthenticatedAppChatsThreadIdRoute
+  '/_authenticated/_app/settings/execution-hosts': typeof AuthenticatedAppSettingsExecutionHostsRoute
   '/_authenticated/_app/settings/general': typeof AuthenticatedAppSettingsGeneralRoute
   '/_authenticated/_app/settings/preferences': typeof AuthenticatedAppSettingsPreferencesRoute
   '/_authenticated/_app/settings/profile': typeof AuthenticatedAppSettingsProfileRoute
@@ -1556,6 +1639,8 @@ export interface FileRoutesById {
   '/api/chat/threads/$id/primary-issue': typeof ApiChatThreadsIdPrimaryIssueRoute
   '/api/chat/threads/$id/tool-approval': typeof ApiChatThreadsIdToolApprovalRoute
   '/api/chat/threads/$threadId/decide-analyses': typeof ApiChatThreadsThreadIdDecideAnalysesRoute
+  '/api/execution-hosts/runs/$launchId/cancel': typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  '/api/execution-hosts/runs/$launchId/interventions': typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
   '/api/issues/$id/source-bindings/$bindingId': typeof ApiIssuesIdSourceBindingsBindingIdRoute
   '/api/teams/$teamId/members/$membershipId': typeof ApiTeamsTeamIdMembersMembershipIdRoute
   '/api/teams/$teamId/repositories/$repositoryId': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRouteWithChildren
@@ -1563,6 +1648,7 @@ export interface FileRoutesById {
   '/api/workspaces/$id/invitations/$invitationId': typeof ApiWorkspacesIdInvitationsInvitationIdRoute
   '/api/workspaces/$id/members/$memberId': typeof ApiWorkspacesIdMembersMemberIdRoute
   '/_authenticated/_app/settings/user-management/': typeof AuthenticatedAppSettingsUserManagementIndexRoute
+  '/api/execution-hosts/runs/$launchId/': typeof ApiExecutionHostsRunsLaunchIdIndexRoute
   '/_authenticated/_app/settings/user-management/teams/$teamId': typeof AuthenticatedAppSettingsUserManagementTeamsTeamIdRoute
   '/api/connections/$connectorId/tools/$name/grant': typeof ApiConnectionsConnectorIdToolsNameGrantRoute
   '/api/teams/$teamId/repositories/$repositoryId/retry': typeof ApiTeamsTeamIdRepositoriesRepositoryIdRetryRoute
@@ -1626,6 +1712,10 @@ export interface FileRouteTypes {
     | '/api/dev/issue-run-plan'
     | '/api/discord/install'
     | '/api/discord/setup'
+    | '/api/execution-hosts/enroll'
+    | '/api/execution-hosts/launch'
+    | '/api/execution-hosts/receive'
+    | '/api/execution-hosts/revoke'
     | '/api/executor/install'
     | '/api/executor/preview'
     | '/api/executor/registry'
@@ -1649,8 +1739,10 @@ export interface FileRouteTypes {
     | '/api/runs/$id'
     | '/api/teams/$teamId'
     | '/api/workspaces/$id'
+    | '/api/execution-hosts/'
     | '/agents/$agentId'
     | '/chats/$threadId'
+    | '/settings/execution-hosts'
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
@@ -1725,6 +1817,8 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/chat/threads/$threadId/decide-analyses'
+    | '/api/execution-hosts/runs/$launchId/cancel'
+    | '/api/execution-hosts/runs/$launchId/interventions'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/teams/$teamId/repositories/$repositoryId'
@@ -1732,6 +1826,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/settings/user-management/'
+    | '/api/execution-hosts/runs/$launchId/'
     | '/settings/user-management/teams/$teamId'
     | '/api/connections/$connectorId/tools/$name/grant'
     | '/api/teams/$teamId/repositories/$repositoryId/retry'
@@ -1787,6 +1882,10 @@ export interface FileRouteTypes {
     | '/api/dev/issue-run-plan'
     | '/api/discord/install'
     | '/api/discord/setup'
+    | '/api/execution-hosts/enroll'
+    | '/api/execution-hosts/launch'
+    | '/api/execution-hosts/receive'
+    | '/api/execution-hosts/revoke'
     | '/api/executor/install'
     | '/api/executor/preview'
     | '/api/executor/registry'
@@ -1810,8 +1909,10 @@ export interface FileRouteTypes {
     | '/api/runs/$id'
     | '/api/teams/$teamId'
     | '/api/workspaces/$id'
+    | '/api/execution-hosts'
     | '/agents/$agentId'
     | '/chats/$threadId'
+    | '/settings/execution-hosts'
     | '/settings/general'
     | '/settings/preferences'
     | '/settings/profile'
@@ -1886,6 +1987,8 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/chat/threads/$threadId/decide-analyses'
+    | '/api/execution-hosts/runs/$launchId/cancel'
+    | '/api/execution-hosts/runs/$launchId/interventions'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/teams/$teamId/repositories/$repositoryId'
@@ -1893,6 +1996,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/settings/user-management'
+    | '/api/execution-hosts/runs/$launchId'
     | '/settings/user-management/teams/$teamId'
     | '/api/connections/$connectorId/tools/$name/grant'
     | '/api/teams/$teamId/repositories/$repositoryId/retry'
@@ -1956,6 +2060,10 @@ export interface FileRouteTypes {
     | '/api/dev/issue-run-plan'
     | '/api/discord/install'
     | '/api/discord/setup'
+    | '/api/execution-hosts/enroll'
+    | '/api/execution-hosts/launch'
+    | '/api/execution-hosts/receive'
+    | '/api/execution-hosts/revoke'
     | '/api/executor/install'
     | '/api/executor/preview'
     | '/api/executor/registry'
@@ -1979,8 +2087,10 @@ export interface FileRouteTypes {
     | '/api/runs/$id'
     | '/api/teams/$teamId'
     | '/api/workspaces/$id'
+    | '/api/execution-hosts/'
     | '/_authenticated/_app/agents/$agentId'
     | '/_authenticated/_app/chats/$threadId'
+    | '/_authenticated/_app/settings/execution-hosts'
     | '/_authenticated/_app/settings/general'
     | '/_authenticated/_app/settings/preferences'
     | '/_authenticated/_app/settings/profile'
@@ -2055,6 +2165,8 @@ export interface FileRouteTypes {
     | '/api/chat/threads/$id/primary-issue'
     | '/api/chat/threads/$id/tool-approval'
     | '/api/chat/threads/$threadId/decide-analyses'
+    | '/api/execution-hosts/runs/$launchId/cancel'
+    | '/api/execution-hosts/runs/$launchId/interventions'
     | '/api/issues/$id/source-bindings/$bindingId'
     | '/api/teams/$teamId/members/$membershipId'
     | '/api/teams/$teamId/repositories/$repositoryId'
@@ -2062,6 +2174,7 @@ export interface FileRouteTypes {
     | '/api/workspaces/$id/invitations/$invitationId'
     | '/api/workspaces/$id/members/$memberId'
     | '/_authenticated/_app/settings/user-management/'
+    | '/api/execution-hosts/runs/$launchId/'
     | '/_authenticated/_app/settings/user-management/teams/$teamId'
     | '/api/connections/$connectorId/tools/$name/grant'
     | '/api/teams/$teamId/repositories/$repositoryId/retry'
@@ -2104,6 +2217,10 @@ export interface RootRouteChildren {
   ApiDevIssueRunPlanRoute: typeof ApiDevIssueRunPlanRoute
   ApiDiscordInstallRoute: typeof ApiDiscordInstallRoute
   ApiDiscordSetupRoute: typeof ApiDiscordSetupRoute
+  ApiExecutionHostsEnrollRoute: typeof ApiExecutionHostsEnrollRoute
+  ApiExecutionHostsLaunchRoute: typeof ApiExecutionHostsLaunchRoute
+  ApiExecutionHostsReceiveRoute: typeof ApiExecutionHostsReceiveRoute
+  ApiExecutionHostsRevokeRoute: typeof ApiExecutionHostsRevokeRoute
   ApiExecutorInstallRoute: typeof ApiExecutorInstallRoute
   ApiExecutorPreviewRoute: typeof ApiExecutorPreviewRoute
   ApiExecutorRegistryRoute: typeof ApiExecutorRegistryRoute
@@ -2117,6 +2234,7 @@ export interface RootRouteChildren {
   ApiInternalCapabilitySyncRoute: typeof ApiInternalCapabilitySyncRoute
   ApiOauthCallbackRoute: typeof ApiOauthCallbackRoute
   ApiRunsIdRoute: typeof ApiRunsIdRoute
+  ApiExecutionHostsIndexRoute: typeof ApiExecutionHostsIndexRoute
   ApiDocumentsIdDisplayRoute: typeof ApiDocumentsIdDisplayRoute
   ApiDocumentsIdDocxRoute: typeof ApiDocumentsIdDocxRoute
   ApiDocumentsIdMetadataRoute: typeof ApiDocumentsIdMetadataRoute
@@ -2130,6 +2248,9 @@ export interface RootRouteChildren {
   ApiPermissionRequestsIdResolveRoute: typeof ApiPermissionRequestsIdResolveRoute
   ApiWorkProductsIdReviewRoute: typeof ApiWorkProductsIdReviewRoute
   ApiBrainProposalsIdResolveRoute: typeof ApiBrainProposalsIdResolveRoute
+  ApiExecutionHostsRunsLaunchIdCancelRoute: typeof ApiExecutionHostsRunsLaunchIdCancelRoute
+  ApiExecutionHostsRunsLaunchIdInterventionsRoute: typeof ApiExecutionHostsRunsLaunchIdInterventionsRoute
+  ApiExecutionHostsRunsLaunchIdIndexRoute: typeof ApiExecutionHostsRunsLaunchIdIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -2533,6 +2654,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiDiscordSetupRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/execution-hosts/': {
+      id: '/api/execution-hosts/'
+      path: '/api/execution-hosts'
+      fullPath: '/api/execution-hosts/'
+      preLoaderRoute: typeof ApiExecutionHostsIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/execution-hosts/enroll': {
+      id: '/api/execution-hosts/enroll'
+      path: '/api/execution-hosts/enroll'
+      fullPath: '/api/execution-hosts/enroll'
+      preLoaderRoute: typeof ApiExecutionHostsEnrollRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/execution-hosts/launch': {
+      id: '/api/execution-hosts/launch'
+      path: '/api/execution-hosts/launch'
+      fullPath: '/api/execution-hosts/launch'
+      preLoaderRoute: typeof ApiExecutionHostsLaunchRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/execution-hosts/receive': {
+      id: '/api/execution-hosts/receive'
+      path: '/api/execution-hosts/receive'
+      fullPath: '/api/execution-hosts/receive'
+      preLoaderRoute: typeof ApiExecutionHostsReceiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/execution-hosts/revoke': {
+      id: '/api/execution-hosts/revoke'
+      path: '/api/execution-hosts/revoke'
+      fullPath: '/api/execution-hosts/revoke'
+      preLoaderRoute: typeof ApiExecutionHostsRevokeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/executor/install': {
       id: '/api/executor/install'
       path: '/api/executor/install'
@@ -2727,6 +2883,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/settings/'
       preLoaderRoute: typeof AuthenticatedAppSettingsIndexRouteImport
+      parentRoute: typeof AuthenticatedAppSettingsRoute
+    }
+    '/_authenticated/_app/settings/execution-hosts': {
+      id: '/_authenticated/_app/settings/execution-hosts'
+      path: '/execution-hosts'
+      fullPath: '/settings/execution-hosts'
+      preLoaderRoute: typeof AuthenticatedAppSettingsExecutionHostsRouteImport
       parentRoute: typeof AuthenticatedAppSettingsRoute
     }
     '/_authenticated/_app/settings/general': {
@@ -3233,6 +3396,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiChatThreadsThreadIdDecideAnalysesRouteImport
       parentRoute: typeof ApiChatThreadsRoute
     }
+    '/api/execution-hosts/runs/$launchId/': {
+      id: '/api/execution-hosts/runs/$launchId/'
+      path: '/api/execution-hosts/runs/$launchId'
+      fullPath: '/api/execution-hosts/runs/$launchId/'
+      preLoaderRoute: typeof ApiExecutionHostsRunsLaunchIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/execution-hosts/runs/$launchId/cancel': {
+      id: '/api/execution-hosts/runs/$launchId/cancel'
+      path: '/api/execution-hosts/runs/$launchId/cancel'
+      fullPath: '/api/execution-hosts/runs/$launchId/cancel'
+      preLoaderRoute: typeof ApiExecutionHostsRunsLaunchIdCancelRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/execution-hosts/runs/$launchId/interventions': {
+      id: '/api/execution-hosts/runs/$launchId/interventions'
+      path: '/api/execution-hosts/runs/$launchId/interventions'
+      fullPath: '/api/execution-hosts/runs/$launchId/interventions'
+      preLoaderRoute: typeof ApiExecutionHostsRunsLaunchIdInterventionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/issues/$id/source-bindings/$bindingId': {
       id: '/api/issues/$id/source-bindings/$bindingId'
       path: '/$bindingId'
@@ -3338,6 +3522,7 @@ const AuthenticatedAppChatsRouteWithChildren =
   )
 
 interface AuthenticatedAppSettingsRouteChildren {
+  AuthenticatedAppSettingsExecutionHostsRoute: typeof AuthenticatedAppSettingsExecutionHostsRoute
   AuthenticatedAppSettingsGeneralRoute: typeof AuthenticatedAppSettingsGeneralRoute
   AuthenticatedAppSettingsPreferencesRoute: typeof AuthenticatedAppSettingsPreferencesRoute
   AuthenticatedAppSettingsProfileRoute: typeof AuthenticatedAppSettingsProfileRoute
@@ -3350,6 +3535,8 @@ interface AuthenticatedAppSettingsRouteChildren {
 
 const AuthenticatedAppSettingsRouteChildren: AuthenticatedAppSettingsRouteChildren =
   {
+    AuthenticatedAppSettingsExecutionHostsRoute:
+      AuthenticatedAppSettingsExecutionHostsRoute,
     AuthenticatedAppSettingsGeneralRoute: AuthenticatedAppSettingsGeneralRoute,
     AuthenticatedAppSettingsPreferencesRoute:
       AuthenticatedAppSettingsPreferencesRoute,
@@ -3962,6 +4149,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiDevIssueRunPlanRoute: ApiDevIssueRunPlanRoute,
   ApiDiscordInstallRoute: ApiDiscordInstallRoute,
   ApiDiscordSetupRoute: ApiDiscordSetupRoute,
+  ApiExecutionHostsEnrollRoute: ApiExecutionHostsEnrollRoute,
+  ApiExecutionHostsLaunchRoute: ApiExecutionHostsLaunchRoute,
+  ApiExecutionHostsReceiveRoute: ApiExecutionHostsReceiveRoute,
+  ApiExecutionHostsRevokeRoute: ApiExecutionHostsRevokeRoute,
   ApiExecutorInstallRoute: ApiExecutorInstallRoute,
   ApiExecutorPreviewRoute: ApiExecutorPreviewRoute,
   ApiExecutorRegistryRoute: ApiExecutorRegistryRoute,
@@ -3975,6 +4166,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiInternalCapabilitySyncRoute: ApiInternalCapabilitySyncRoute,
   ApiOauthCallbackRoute: ApiOauthCallbackRoute,
   ApiRunsIdRoute: ApiRunsIdRoute,
+  ApiExecutionHostsIndexRoute: ApiExecutionHostsIndexRoute,
   ApiDocumentsIdDisplayRoute: ApiDocumentsIdDisplayRoute,
   ApiDocumentsIdDocxRoute: ApiDocumentsIdDocxRoute,
   ApiDocumentsIdMetadataRoute: ApiDocumentsIdMetadataRoute,
@@ -3988,6 +4180,12 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPermissionRequestsIdResolveRoute: ApiPermissionRequestsIdResolveRoute,
   ApiWorkProductsIdReviewRoute: ApiWorkProductsIdReviewRoute,
   ApiBrainProposalsIdResolveRoute: ApiBrainProposalsIdResolveRoute,
+  ApiExecutionHostsRunsLaunchIdCancelRoute:
+    ApiExecutionHostsRunsLaunchIdCancelRoute,
+  ApiExecutionHostsRunsLaunchIdInterventionsRoute:
+    ApiExecutionHostsRunsLaunchIdInterventionsRoute,
+  ApiExecutionHostsRunsLaunchIdIndexRoute:
+    ApiExecutionHostsRunsLaunchIdIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

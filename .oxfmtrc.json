@@ -5,6 +5,7 @@
   "printWidth": 80,
   "sortPackageJson": false,
   "ignorePatterns": [
+    "packages/core/src/execution-host/generated/**",
     "**/.alchemy/**",
     "**/.turbo/**",
     "**/.output/**",

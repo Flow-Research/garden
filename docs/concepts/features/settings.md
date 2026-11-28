@@ -84,3 +84,7 @@ The modal still renders the earlier `WorkspaceTab`. Both use `api.updateWorkspac
 ## Verification
 
 See the [Settings verification map](../../../.agents/skills/verify/features/settings.md) for direct-link, history, responsive and modal-entry checks.
+
+## Execution hosts
+
+Open `/settings/execution-hosts` to read the host status, review a paused run and choose whether to resume or stop it. See [Execution-host status and operator decisions](./external-execution-hosts.md).
