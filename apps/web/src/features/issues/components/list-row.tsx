@@ -20,22 +20,15 @@ export interface ChildProgress {
 /** Design pill used by the Team list variant's team/project/description chips. */
 function Chip({
   children,
-  className,
   dot,
   icon,
 }: {
   children: React.ReactNode
-  className?: string
   dot?: string
   icon?: React.ReactNode
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default',
-        className,
-      )}
-    >
+    <span className="inline-flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-sm text-text-default">
       {dot ? (
         <span
           aria-hidden
@@ -117,21 +110,10 @@ export const ListRow = memo(function ListRow({
           >
             {issue.title}
           </span>
-          {team ? (
-            <Chip
-              className={
-                isTodo
-                  ? 'border-transparent bg-background-brand-tertiary text-text-brand-secondary'
-                  : undefined
-              }
-              dot={team.color}
-            >
-              {team.name}
-            </Chip>
-          ) : null}
+          {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
           {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
           {issue.description && isTodo ? (
-            <span className="flex min-w-0 basis-full items-center gap-2 rounded-md border-[0.5px] border-border-default bg-muted/40 px-3 py-2 text-text-secondary">
+            <span className="flex min-w-0 basis-full items-center gap-2 rounded-md border-[0.5px] border-border-default bg-background-main-default px-3 py-2 text-text-secondary">
               <FileText aria-hidden className="size-4 shrink-0" />
               <span className="min-w-0 flex-1 truncate">
                 {issue.description}
