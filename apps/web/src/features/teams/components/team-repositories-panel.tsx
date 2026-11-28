@@ -1,4 +1,4 @@
-import { useDeferredValue, useState } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { useQuery, useSuspenseQuery } from '@tanstack/react-query'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type {
@@ -15,7 +15,15 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@garden/ui/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '@garden/ui/components/ui/dropdown-menu'
 import { Input } from '@garden/ui/components/ui/input'
+import { Funnel } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   useLinkTeamRepository,
@@ -26,12 +34,134 @@ import {
   availableTeamRepositoryListOptions,
   teamRepositoryListOptions,
 } from '../queries'
+import { csvCell, downloadCsv } from './csv'
+import { TeamSummaryCard } from './team-summary-card'
+import {
+  ExportDataButton,
+  SearchField,
+  TOOLBAR_BUTTON_CLASS,
+} from './team-tab-toolbar'
 
 const IMPORT_STATE_LABEL: Record<TeamRepositoryImportState, string> = {
   pending: 'Import queued',
   importing: 'Importing issues…',
   ready: 'Synced',
   failed: 'Import failed',
+}
+
+export type RepositoryStateFilter = 'all' | TeamRepositoryImportState
+
+const STATE_FILTERS: readonly TeamRepositoryImportState[] = [
+  'ready',
+  'importing',
+  'pending',
+  'failed',
+]
+
+/** Linked repositories matching the toolbar's search and import-state filter. */
+function useVisibleRepositories(
+  teamId: string,
+  search: string,
+  state: RepositoryStateFilter,
+) {
+  const wsId = useWorkspaceId()
+  const { data: repositories } = useSuspenseQuery(
+    teamRepositoryListOptions(wsId, teamId),
+  )
+  const query = useDeferredValue(search.trim().toLowerCase())
+  const visible = useMemo(
+    () =>
+      repositories.filter(
+        (repository) =>
+          (state === 'all' || repository.import_state === state) &&
+          repository.full_name.toLowerCase().includes(query),
+      ),
+    [repositories, query, state],
+  )
+  return { repositories, visible }
+}
+
+/** Builds the Export Data CSV for the repository rows on screen. */
+export function repositoriesToCsv(repositories: TeamRepository[]) {
+  const rows = repositories.map((repository) =>
+    [
+      repository.full_name,
+      IMPORT_STATE_LABEL[repository.import_state],
+      repository.imported_at ?? '',
+    ]
+      .map(csvCell)
+      .join(','),
+  )
+  return [['Repository', 'Status', 'Imported at'].join(','), ...rows].join('\n')
+}
+
+/** Repositories tab toolbar: search, import-state filter, Export Data. */
+export function RepositoriesToolbar({
+  teamId,
+  teamName,
+  search,
+  onSearchChange,
+  state,
+  onStateChange,
+}: {
+  teamId: string
+  teamName: string
+  search: string
+  onSearchChange: (value: string) => void
+  state: RepositoryStateFilter
+  onStateChange: (state: RepositoryStateFilter) => void
+}) {
+  const { visible } = useVisibleRepositories(teamId, search, state)
+  return (
+    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @2xl:w-auto">
+      <SearchField
+        label="Search repositories"
+        onChange={onSearchChange}
+        placeholder="Search repositories..."
+        value={search}
+      />
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button className={TOOLBAR_BUTTON_CLASS} variant="outline">
+              <Funnel className="size-4" />
+              Filter
+              {state !== 'all' ? (
+                <span className="flex size-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground">
+                  1
+                </span>
+              ) : null}
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-44">
+          <DropdownMenuRadioGroup
+            onValueChange={(value) =>
+              onStateChange(value as RepositoryStateFilter)
+            }
+            value={state}
+          >
+            <DropdownMenuRadioItem value="all">
+              All statuses
+            </DropdownMenuRadioItem>
+            {STATE_FILTERS.map((value) => (
+              <DropdownMenuRadioItem key={value} value={value}>
+                {IMPORT_STATE_LABEL[value]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <ExportDataButton
+        onExport={() =>
+          downloadCsv(
+            `${teamName}-repositories.csv`,
+            repositoriesToCsv(visible),
+          )
+        }
+      />
+    </div>
+  )
 }
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -174,13 +304,22 @@ function LinkRepositoryDialog({
 export function TeamRepositoriesPanel({
   teamId,
   canManage,
+  issueCount,
+  activityCount,
+  search,
+  state,
 }: {
   teamId: string
   canManage: boolean
+  issueCount: number
+  activityCount: number
+  search: string
+  state: RepositoryStateFilter
 }) {
-  const wsId = useWorkspaceId()
-  const { data: repositories } = useSuspenseQuery(
-    teamRepositoryListOptions(wsId, teamId),
+  const { repositories, visible } = useVisibleRepositories(
+    teamId,
+    search,
+    state,
   )
   const unlink = useUnlinkTeamRepository()
   const retry = useRetryTeamRepositoryImport()
@@ -200,6 +339,14 @@ export function TeamRepositoriesPanel({
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 gap-3 @lg:grid-cols-3">
+        <TeamSummaryCard
+          label="Total Repositories"
+          value={repositories.length}
+        />
+        <TeamSummaryCard label="Total Issues" value={issueCount} />
+        <TeamSummaryCard label="Total Activity" value={activityCount} />
+      </div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-text-secondary">
           Issues from linked repositories land on this Team&apos;s board and are
@@ -215,13 +362,15 @@ export function TeamRepositoriesPanel({
         ) : null}
       </div>
 
-      {repositories.length === 0 ? (
+      {visible.length === 0 ? (
         <p className="rounded-md border border-dashed px-6 py-10 text-center text-sm text-text-secondary">
-          No repositories linked yet.
+          {repositories.length === 0
+            ? 'No repositories linked yet.'
+            : 'No repositories match.'}
         </p>
       ) : (
         <ul className="divide-y rounded-md border">
-          {repositories.map((repository) => (
+          {visible.map((repository) => (
             <li
               className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
               key={repository.id}

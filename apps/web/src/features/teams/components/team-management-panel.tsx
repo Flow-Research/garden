@@ -109,25 +109,36 @@ export type TeamLink =
   | '/teams/$teamId'
   | '/settings/user-management/teams/$teamId'
 
+/** The Create a Team button and the Create New Team dialog it opens. */
+export function CreateTeamButton() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <Button
+        className="h-10 gap-2 rounded-md px-3"
+        onClick={() => setOpen(true)}
+      >
+        <Plus className="size-4" />
+        Create a Team
+      </Button>
+      {open ? <CreateTeamDialog onClose={() => setOpen(false)} /> : null}
+    </>
+  )
+}
+
 /**
- * Owner/admin Team management from designs 25 and 29: the Create a Team
- * action, the "No Teams" empty state or three-column Team grid, and the
- * create, add-member and delete dialogs. Shared by the Teams overview and
- * Settings › User Management so both surfaces stay identical. `toolbar`
- * fills the left of the action row; Settings puts its sub-tab pills there.
- * `teamLink` is the route each card opens.
+ * The "No Teams" empty state or the Team card grid, with the add-member and
+ * delete dialogs the card menus open. Wrap it in an `@container` so the grid
+ * sizes by its column, not the viewport.
  */
-export function TeamManagementPanel({
+export function TeamGrid({
   teams,
   teamLink,
-  toolbar,
 }: {
   teams: TeamSummary[]
   teamLink: TeamLink
-  toolbar?: ReactNode
 }) {
   const wsId = useWorkspaceId()
-  const [createOpen, setCreateOpen] = useState(false)
   const [addMemberTeam, setAddMemberTeam] = useState<TeamSummary | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<TeamSummary | null>(null)
   // No placeholder: the shared options keep the previous Team's members,
@@ -140,18 +151,10 @@ export function TeamManagementPanel({
   })
 
   return (
-    <div className="@container flex flex-col gap-8">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        {toolbar}
-        <Button
-          className="ml-auto h-10 rounded-md px-3"
-          onClick={() => setCreateOpen(true)}
-        >
-          Create a Team
-        </Button>
-      </div>
+    <>
       {teams.length === 0 ? (
-        <div className="flex min-h-[14rem] flex-col items-center justify-center gap-1 pb-20 text-center">
+        <div className="flex min-h-[14rem] flex-col items-center justify-center gap-1 px-4 pb-10 text-center">
+          <Users className="mb-2 size-5 text-icon-neutral-secondary" />
           <span className="text-sm">No Teams</span>
           <span className="text-xs text-text-secondary">
             You don&apos;t have any teams. Create one and add members in.
@@ -170,10 +173,6 @@ export function TeamManagementPanel({
           ))}
         </div>
       )}
-
-      {createOpen ? (
-        <CreateTeamDialog onClose={() => setCreateOpen(false)} />
-      ) : null}
       {addMemberTeam && addMemberExisting ? (
         <AddTeamMemberDialog
           teamId={addMemberTeam.id}
@@ -188,6 +187,33 @@ export function TeamManagementPanel({
           onDeleted={() => setDeleteTarget(null)}
         />
       ) : null}
+    </>
+  )
+}
+
+/**
+ * Settings › User Management Team management: `toolbar` (the sub-tab pills)
+ * and Create a Team on one row over the Team grid. The `/teams` overview
+ * composes `CreateTeamButton` and `TeamGrid` into its own layout.
+ */
+export function TeamManagementPanel({
+  teams,
+  teamLink,
+  toolbar,
+}: {
+  teams: TeamSummary[]
+  teamLink: TeamLink
+  toolbar?: ReactNode
+}) {
+  return (
+    <div className="@container flex flex-col gap-8">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        {toolbar}
+        <span className="ml-auto">
+          <CreateTeamButton />
+        </span>
+      </div>
+      <TeamGrid teams={teams} teamLink={teamLink} />
     </div>
   )
 }
