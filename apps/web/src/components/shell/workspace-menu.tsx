@@ -15,9 +15,10 @@ import {
   ChevronRight,
   Settings,
   Info,
-  Send,
   Users,
 } from 'lucide-react'
+import { AddTeam02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 
 /**
  * Menu row metrics from the design file (Enterprise flyout, measured):
@@ -84,7 +85,7 @@ export function WorkspaceMenu({
         </div>
         <DropdownMenuGroup className="py-1">
           <DropdownMenuItem className={menuItemClass} onClick={onInviteMembers}>
-            <Send />
+            <HugeiconsIcon icon={AddTeam02Icon} />
             Invite members
           </DropdownMenuItem>
           <DropdownMenuSeparator />

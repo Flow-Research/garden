@@ -66,6 +66,8 @@
     "@garden/observability": "workspace:*",
     "@garden/server": "workspace:*",
     "@garden/ui": "workspace:*",
+    "@hugeicons/core-free-icons": "catalog:",
+    "@hugeicons/react": "catalog:",
     "@legendapp/list": "3.0.0-beta.44",
     "@modelcontextprotocol/ext-apps": "1.7.4",
     "@modelcontextprotocol/sdk": "1.32.2",
