@@ -23,22 +23,25 @@ import {
   Send,
   Plus,
   LogOut,
+  Monitor,
+  MoonStar,
+  Sun,
 } from 'lucide-react'
 import type { MemberRole } from '@garden/core/types'
 
 /**
  * Account flyout — the sidebar's bottom user card per the design's
  * User-profile_Flyout (Penpot "Admin Profile" page): profile header, User ID
- * copy + role badge, Settings / Invite members actions, Theme segmented
- * control (System/Light/Dark), an expandable "Workspaces" row that carries
+ * copy + role badge, stacked Settings and Invite members rows, a Theme icon
+ * toggle (System/Light/Dark), an expandable "Workspaces" row that carries
  * workspace switching + creation, and Sign out. The card itself shows avatar +
  * name only; the role badge is exclusive to the flyout's User ID row.
  */
 
 const themeOptions = [
-  { value: 'system', label: 'System' },
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System', icon: Monitor },
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'dark', label: 'Dark', icon: MoonStar },
 ] as const
 
 export function UserCard({
@@ -129,7 +132,7 @@ export function UserCard({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent
-        className="w-[378px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl p-0 shadow-5"
+        className="w-[288px] max-w-[calc(100vw-1rem)] overflow-hidden rounded-xl p-0 shadow-5"
         side="top"
         align="start"
         sideOffset={8}
@@ -174,50 +177,53 @@ export function UserCard({
         </div>
 
         {/* Settings + Invite */}
-        <div className="flex gap-2 border-t border-border-default px-4 py-3">
-          <button
-            type="button"
-            onClick={runAndClose(onAccount)}
-            className="cursor-pointer flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-background-main-default text-sm whitespace-nowrap text-text-neutral-default shadow-1 transition-colors hover:bg-background-main-secondary"
-          >
-            <Settings className="size-4 text-icon-neutral-secondary" />
-            Settings
-          </button>
-          <button
-            type="button"
-            onClick={runAndClose(onInviteMembers)}
-            className="cursor-pointer flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-background-main-default text-sm whitespace-nowrap text-text-neutral-default shadow-1 transition-colors hover:bg-background-main-secondary"
-          >
-            <Send className="size-4 text-icon-neutral-secondary" />
-            Invite members
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={runAndClose(onAccount)}
+          className={cn(MENU_ROW_CLASS_NAME, 'border-t border-border-default')}
+        >
+          <Settings className="size-4 text-icon-neutral-secondary" />
+          Settings
+        </button>
+        <button
+          type="button"
+          onClick={runAndClose(onInviteMembers)}
+          className={MENU_ROW_CLASS_NAME}
+        >
+          <Send className="size-4 text-icon-neutral-secondary" />
+          Invite members
+        </button>
 
         {/* Theme */}
-        <div className="border-t border-border-default px-4 py-3">
-          <p className="mb-2 text-xs text-text-secondary">Theme</p>
+        <div className="flex items-center justify-between border-t border-border-default px-4 py-2.5">
+          <p className="text-xs font-medium tracking-[0.12em] text-text-secondary uppercase">
+            Theme
+          </p>
           <div
             role="radiogroup"
             aria-label="Theme"
-            className="cursor-pointer flex rounded-md bg-background-main-secondary p-0.5"
+            className="flex gap-0.5 rounded-pill border border-border-default bg-background-main-secondary p-0.5"
           >
             {themeOptions.map((opt) => {
               const active = theme === opt.value
+              const Icon = opt.icon
               return (
                 <button
                   key={opt.value}
                   type="button"
                   role="radio"
                   aria-checked={active}
+                  aria-label={opt.label}
+                  title={opt.label}
                   onClick={() => setTheme(opt.value)}
                   className={cn(
-                    'h-7 flex-1 cursor-pointer rounded-[5px] text-sm transition-colors',
+                    'flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors',
                     active
-                      ? 'bg-background-brand-default font-medium text-text-brand-on-brand'
-                      : 'text-text-secondary hover:text-text-neutral-default',
+                      ? 'bg-background-main-default text-text-neutral-default shadow-1'
+                      : 'text-icon-neutral-tertiary hover:text-text-neutral-default',
                   )}
                 >
-                  {opt.label}
+                  <Icon className="size-4" aria-hidden="true" />
                 </button>
               )
             })}
@@ -235,7 +241,7 @@ export function UserCard({
               setWorkspacesOpen((value) => !value)
             }}
             aria-expanded={workspacesOpen}
-            className="cursor-pointer flex h-10 w-full items-center gap-3 px-2 text-sm tracking-wider text-text-neutral-default transition-colors hover:bg-background-main-secondary [&_svg]:size-[18px]"
+            className={MENU_ROW_CLASS_NAME}
           >
             <Building2 className="size-4 text-icon-neutral-secondary" />
             <span className="flex-1 text-left">Workspaces</span>
@@ -286,7 +292,7 @@ export function UserCard({
         <button
           type="button"
           onClick={runAndClose(onLogout)}
-          className="cursor-pointer flex h-10 w-full items-center gap-3 border-t border-border-default px-2 text-sm tracking-wider text-text-neutral-default transition-colors hover:bg-background-main-secondary [&_svg]:size-[18px]"
+          className={cn(MENU_ROW_CLASS_NAME, 'border-t border-border-default')}
         >
           <LogOut className="size-4 text-icon-neutral-secondary" />
           Sign out
@@ -300,6 +306,9 @@ export function UserCard({
  * Masks the middle of the user id in the UI (first 8 … last 4). The full id
  * still lands on the clipboard via the copy button.
  */
+const MENU_ROW_CLASS_NAME =
+  'cursor-pointer flex h-10 w-full items-center gap-3 px-2 text-sm tracking-wider text-text-neutral-default transition-colors hover:bg-background-main-secondary [&_svg]:size-[18px]'
+
 function redactUserId(id: string) {
   if (id.length <= 12) return id
   return `${id.slice(0, 8)}…${id.slice(-4)}`
