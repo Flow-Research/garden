@@ -171,9 +171,13 @@ describe('ListView variants', () => {
     expect(screen.queryByText('TES-1')).not.toBeInTheDocument()
     expect(screen.getByText('Todo')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
-    expect(screen.getByText('Implement auth')).toBeInTheDocument()
-    expect(screen.getByText('Add JWT authentication')).toBeInTheDocument()
-    expect(screen.getByText('Engineering')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: 'Implement auth' }),
+    ).toHaveAttribute('href', '/issues/issue-1')
+    expect(
+      screen.getByRole('link', { name: 'Add JWT authentication' }),
+    ).toHaveAttribute('href', '/issues/issue-1')
+    expect(screen.getByText('Engineering').closest('a')).toBeNull()
   })
 
   it('team variant renders the project chip when the issue has a project', () => {
@@ -188,6 +192,6 @@ describe('ListView variants', () => {
       />,
     )
 
-    expect(screen.getByText('Research')).toBeInTheDocument()
+    expect(screen.getByText('Research').closest('a')).toBeNull()
   })
 })

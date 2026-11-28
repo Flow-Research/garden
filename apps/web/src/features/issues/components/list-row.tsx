@@ -80,6 +80,7 @@ export const ListRow = memo(function ListRow({
 
   if (variant === 'team') {
     const isTodo = issue.status === 'todo'
+    const href = issuePath(issue.id)
     return (
       <div
         className={cn(
@@ -95,12 +96,10 @@ export const ListRow = memo(function ListRow({
           )}
           inheritColor
         />
-        <a
-          href={issuePath(issue.id)}
-          onClick={handleOpen}
-          className="flex min-w-0 flex-1 cursor-pointer flex-wrap items-center gap-2"
-        >
-          <span
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <a
+            href={href}
+            onClick={handleOpen}
             className={cn(
               'min-w-0 grow text-text-default',
               isTodo
@@ -109,23 +108,29 @@ export const ListRow = memo(function ListRow({
             )}
           >
             {issue.title}
-          </span>
+          </a>
           {team ? <Chip dot={team.color}>{team.name}</Chip> : null}
           {project ? <Chip dot={project.color}>{project.title}</Chip> : null}
           {issue.description && isTodo ? (
-            <span className="flex min-w-0 basis-full items-center gap-2 rounded-md border-[0.5px] border-border-default bg-background-main-default px-3 py-2 text-text-secondary">
+            <a
+              href={href}
+              onClick={handleOpen}
+              className="flex min-w-0 basis-full items-center gap-2 rounded-md border-[0.5px] border-border-default bg-background-main-default px-3 py-2 text-text-secondary"
+            >
               <FileText aria-hidden className="size-4 shrink-0" />
               <span className="min-w-0 flex-1 truncate">
                 {issue.description}
               </span>
               <ChevronRight aria-hidden className="size-4 shrink-0" />
-            </span>
+            </a>
           ) : issue.description ? (
-            <Chip icon={<FileText className="size-3.5 shrink-0" />}>
-              {issue.description}
-            </Chip>
+            <a href={href} onClick={handleOpen} className="min-w-0 max-w-full">
+              <Chip icon={<FileText className="size-3.5 shrink-0" />}>
+                {issue.description}
+              </Chip>
+            </a>
           ) : null}
-        </a>
+        </div>
       </div>
     )
   }
