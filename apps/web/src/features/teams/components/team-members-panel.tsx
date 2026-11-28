@@ -62,15 +62,7 @@ export function TeamMembersPanel({
             ) : undefined
           }
         />
-        <TeamSummaryCard
-          label="Total Activity"
-          value={team.activity_count}
-          action={
-            <TeamSummaryMenu
-              items={[{ label: 'See activity', disabled: true }]}
-            />
-          }
-        />
+        <TeamSummaryCard label="Total Activity" value={team.activity_count} />
       </div>
 
       <TeamMembersTable

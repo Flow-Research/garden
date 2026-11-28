@@ -44,7 +44,7 @@ export function TeamSummaryCard({
 /**
  * The ⋯ menu the design puts on every Team detail summary card. Items are
  * caller-supplied so each tab can cross-link to the surface that explains the
- * number (P1-only destinations render disabled).
+ * number.
  */
 export function TeamSummaryMenu({
   items,

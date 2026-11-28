@@ -978,7 +978,7 @@ describe('teams UI', () => {
     const menus = await screen.findAllByRole('button', {
       name: 'Summary actions',
     })
-    expect(menus).toHaveLength(3)
+    expect(menus).toHaveLength(2)
     withTabs.unmount()
 
     renderWithQuery(
@@ -992,7 +992,7 @@ describe('teams UI', () => {
     )
     expect(
       await screen.findAllByRole('button', { name: 'Summary actions' }),
-    ).toHaveLength(2)
+    ).toHaveLength(1)
     expect(screen.getByText('Total Assigned Tasks')).toBeInTheDocument()
   })
 
