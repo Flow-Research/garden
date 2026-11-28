@@ -3,22 +3,24 @@ title: Codemode and the container sandbox solve different jobs
 description: Why Garden agents have two execution paths, Think codemode and a Cloudflare Sandbox container, and when each one fits.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-28
 ---
 
 Garden agents can run code in two places. Codemode runs JavaScript in a Dynamic Worker against the agent's Think workspace. The container sandbox runs shell commands and programs in a Cloudflare Sandbox Linux container. The two paths look alike from the model's side, but they have different file systems, limits, and risks. Mixing them up leads to bugs where a file "disappears" between tools.
 
-The versions in the `pnpm-workspace.yaml` catalog are `@cloudflare/think` 0.10.0, `@cloudflare/shell` 0.4.0, `@cloudflare/codemode` 0.4.3, and `@cloudflare/sandbox` 0.12.4.
+The versions in the `pnpm-workspace.yaml` catalog are `@cloudflare/think` 0.24.0, `@cloudflare/computer` 0.10.0, `@cloudflare/codemode` 0.5.6, and `@cloudflare/sandbox` 0.12.4.
 
 ## Codemode scripts the workspace
 
-`ChatSubAgent` gets its `execute` tool from `createExecuteTool` in `packages/agent-runtime/src/chat-sub-agent-tools.ts`. The call passes `state: createWorkspaceStateBackend(workspace)` and the `LOADER` Worker Loader binding. `AutomationRunSubAgent` and `IssueRunSubAgent` also pass `LOADER` to their codemode tools.
+`ChatSubAgent` gets its `execute` tool from `createExecuteTool` in `packages/agent-runtime/src/chat-sub-agent-tools.ts`. The call passes `tools: createAITools({ workspace })` and the `LOADER` Worker Loader binding. `AutomationRunSubAgent` and `IssueRunSubAgent` also pass `LOADER` to their codemode tools.
 
-Inside `execute`, the model writes JavaScript. That code reads and writes the Think and Shell `Workspace` through `state.*`. The workspace is durable state stored by the Durable Object. One `execute` call can read many files, edit several, transform JSON, and return a structured result. That keeps the outer model loop short, because twenty file operations count as one tool call.
+Inside `execute`, the model writes JavaScript. That code reaches workspace tools through `tools.*` (from `@cloudflare/computer/tools/ai-sdk`). Each facet stores execution files in its own Durable Object through `@cloudflare/computer`. Use the document tools to open or change Garden documents. These tools use the facet’s existing Shell SQLite index and its R2 spill keys. Execution code has no mount into the shared `FILES` bucket. One `execute` call can read many files, edit several, transform JSON, and return a structured result. That keeps the outer model loop short, because twenty file operations count as one tool call.
+
+The document tools read existing document versions through the facet's Shell index, including versions stored in R2. Older chat transcripts can also contain media paths under `/attachments/evicted/`. The chat and codemode `read` tools resolve these paths in the same facet's Shell workspace. This read does not copy files into Computer storage. Other files that an earlier chat or run wrote with Shell workspace tools remain in the old storage. The Computer tools cannot list or open those files. Before a production switch, identify threads and runs that need those files. The release owner must approve how to preserve them and verify a representative existing thread.
 
 Codemode fits tasks such as "read these docs, update three workspace files, and summarize what changed".
 
-Codemode is not a computer. It cannot run native binaries, install packages, host a preview server, or keep a process alive. Tool calls made inside codemode are inner RPC calls, not outer AI SDK tool calls. That means a tool that needs user approval cannot rely on the normal AI SDK approval step inside codemode. Approval has to be enforced where the call is dispatched, or the tool has to stay out of the codemode surface. For how Garden gates Executor tools inside codemode, see [connectors](./connectors.md).
+Codemode is not a computer. It cannot run native binaries, install packages, host a preview server, or keep a process alive. Tool calls made inside codemode are inner RPC calls, not outer AI SDK tool calls. That means a tool that needs user approval cannot rely on the normal AI SDK approval step inside codemode. Approval has to be enforced where the call is dispatched, or the tool has to stay out of the codemode surface. Garden passes codemode only the workspace file tools (`read`, `ls`, `find`, `grep`, `write`, `edit`, and `delete`), so its code reaches only the workspace.
 
 ## The container sandbox is a real machine
 
@@ -35,7 +37,7 @@ That power has costs. The container has its own file system, cold starts, and cl
 
 ## The two file systems do not share files
 
-A file written through Think workspace tools or codemode `state.*` is not visible to `sandboxExec`. A file created in the container `/workspace` is not visible in the Think workspace unless a tool copies it back. No bridge exists.
+A file written through Think workspace tools or codemode `tools.*` is not visible to `sandboxExec`. A file created in the container `/workspace` is not visible in the Think workspace unless a tool copies it back. No bridge exists.
 
 Until one does, treat container files as scratch output and Think workspace files as durable Garden artifacts.
 
@@ -47,10 +49,14 @@ The table below sets the two paths side by side.
 | --- | --- | --- |
 | Runtime | Dynamic Worker through `LOADER` | Cloudflare Sandbox container |
 | Language | JavaScript | Shell, Python, JavaScript, and TypeScript |
-| File system | Think and Shell `Workspace` | Container `/workspace` |
-| Persistence | Durable Object storage | Container state, which sleeps when idle |
+| File system | Facet-owned Computer `Workspace` | Container `/workspace` |
+| Persistence | Facet-owned DO storage for execution files | Container state, which sleeps when idle |
 | Processes and ports | None | `sandboxStartProcess`, `sandboxExposePort` |
 | Approval | Must be enforced at dispatch | Outer tools, gated like other tools |
+
+![Execution runtimes](../../diagrams/execution-runtimes.drawio.svg)
+
+Every Garden agent can script its durable workspace through codemode or run real programs in the sandbox container, and no bridge copies files between the two.
 
 ## Keep both, and name them precisely
 

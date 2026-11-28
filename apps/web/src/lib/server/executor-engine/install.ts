@@ -31,7 +31,10 @@ import {
   CatalogProvider,
   providerSourceInstallSlug,
 } from '@/lib/server/executor-engine/catalog'
-import { modelExecutorAuthMethods } from '@/lib/server/executor-engine/auth-contract'
+import {
+  modelExecutorAuthMethods,
+  WORKSTREAM_MCP_RESOURCE,
+} from '@/lib/server/executor-engine/auth-contract'
 import type { GardenExecutor } from '@/lib/server/executor-runtime'
 import type {
   IntegrationsShDomainSurface,
@@ -191,7 +194,8 @@ export const mcpAuthenticationTemplates = Effect.fn(
   candidate: CatalogCandidate,
   endpoint: string,
 ) {
-  if (candidate.kind === 'mcp' && candidate.bearerToken) {
+  const workstream = endpoint === WORKSTREAM_MCP_RESOURCE
+  if (!workstream && candidate.kind === 'mcp' && candidate.bearerToken) {
     const templates: readonly McpAuthMethodInput[] = [bearerTemplate()]
     return templates
   }
@@ -202,6 +206,13 @@ export const mcpAuthenticationTemplates = Effect.fn(
       { slug: 'oauth2', kind: 'oauth2' },
     ]
     return templates
+  }
+  if (workstream) {
+    return yield* new ExecutorInstallUnavailableError({
+      reasons: [
+        'Workstream OAuth discovery is unavailable. Retry when Flow Identity metadata is reachable.',
+      ],
+    })
   }
   if (probe.requiresAuthentication) {
     const templates: readonly McpAuthMethodInput[] = [
@@ -453,6 +464,9 @@ const attemptCandidate = Effect.fn('ExecutorInstall.attemptCandidate')(
       }
     }
 
+    if (outcome.failure instanceof ExecutorInstallUnavailableError) {
+      return yield* outcome.failure
+    }
     return yield* new ExecutorCandidateError({
       reason: actionableMessage(
         outcome.failure,

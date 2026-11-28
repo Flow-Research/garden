@@ -2,8 +2,8 @@
 title: The run engine pairs Think submissions with Cloudflare Workflows
 description: How Garden turns an issue_run or automation_run row into a durable, resumable, cancellable Think agent loop, and which work does not belong there.
 status: current
-owner: "@Umoren"
-last_reviewed: 2026-11-05
+owner: '@Umoren'
+last_reviewed: 2026-11-27
 ---
 
 Garden runs two product surfaces, issues and automations, through one durable executor. The engine turns an `issue_run` or `automation_run` row into a Think agent loop that survives Durable Object eviction, waits for people, and stops when cancelled.
@@ -20,18 +20,9 @@ The Workflow owns durability: retries, durable waits, resume, cancel, and termin
 
 Run rows start in `startIssueRun` (`packages/server/src/issues/run-service.ts`) and `startAutomationRun` (`packages/server/src/automations/run-service.ts`). For the full code map, see the [architecture map](../../reference/architecture-map.md).
 
-```mermaid
-flowchart LR
-  Route[Server route or service] --> Ledger[(issue_run / automation_run)]
-  Route --> AgentDO[AgentDO RPC: start*RunWorkflow]
-  AgentDO --> Workflow[RUN_WORKFLOW id = runId]
-  Workflow -->|executeRunTurn / executeAutomationRunTurn| AgentDO
-  AgentDO --> IssueFacet[IssueRunSubAgent]
-  AgentDO --> AutomationFacet[AutomationRunSubAgent]
-  IssueFacet -->|onSubmissionStatus then sendEvent| Workflow
-  AutomationFacet -->|onSubmissionStatus then sendEvent| Workflow
-  Workflow -->|completeRunTurn / completeAutomationRunTurn| AgentDO
-```
+![RunWorkflow turn loop](../../diagrams/run-engine-turns.drawio.svg)
+
+`RunWorkflow` runs each turn as a retried step, waits on a Think event instead of a DO timer, and then ends, waits for a person, or fails, based on the run status the facet writes.
 
 ## A run, turn by turn
 
@@ -41,24 +32,57 @@ A run moves through these steps:
 2. **Create the Workflow.** The DO calls `this.runWorkflow('RUN_WORKFLOW', ...)` with the run id as the instance id. The instance id is the idempotency boundary. A duplicate create counts as success.
 3. **Submit a turn.** `RunWorkflow.run()` loops up to `MAX_TURNS` (200). Each turn runs a `step.do` with `TURN_RETRIES` (3 tries, 5 second exponential backoff). The step calls `AgentDO.executeRunTurn` or `executeAutomationRunTurn`, which calls the facet.
 4. **Hand the turn to Think.** The facet calls `this.submitMessages([message], ...)` with the submission id as the idempotency key and the run id in metadata. It returns at once instead of blocking until the turn ends.
-5. **Wait durably.** If the submission is not already terminal, the Workflow calls `step.waitForEvent` on the event type `run-turn-complete:<submissionId>`. No timer or in-memory waiter exists in the DO.
+5. **Wait durably.** If the submission is not already terminal, the Workflow calls `step.waitForEvent` on the event type `run-turn-complete-<submissionId>`, with every character outside `[a-zA-Z0-9_-]` replaced by `_`. Cloudflare Workflows rejects event types outside that set in production, and local miniflare does not check it. No timer or in-memory waiter exists in the DO. Each wait lasts at most 5 minutes, and after each one the Workflow reads Think's submission status. After 72 checks (6 hours) with no end, it fails the run with `turn_timed_out`.
 6. **Wake.** When a submission ends, Think calls the facet's `onSubmissionStatus` override. The facet reads the run id from metadata and sends the event to the Workflow instance.
-7. **Close the turn.** The Workflow calls `AgentDO.completeRunTurn` or `completeAutomationRunTurn`. The facet inspects the submission and writes the product status. An `error` or `skipped` submission fails the run. An `aborted` submission cancels the run if cancel was requested and fails it otherwise.
-8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input` or `waiting_for_approval`) makes the Workflow wait for a `run-control` event. An automation turn that returns `waitingOn: { kind: "decide_analysis", decideRunId }` makes the Workflow wait for `decide-analysis-finished:<decideRunId>`, bounded by `DECIDE_ANALYSIS_OWNER_WAIT_MS`, then run the next turn in resume mode. See [Decide](../features/decide.md#in-an-automation-the-run-pauses-and-resumes). Any other status ends the Workflow as is.
+7. **Close the turn.** The Workflow calls `AgentDO.completeRunTurn` or `completeAutomationRunTurn`. The facet inspects the submission and writes the product status. An `error` or `skipped` submission fails the run. An `aborted` submission cancels the run if cancel was requested and fails it otherwise. A `completed` submission that leaves the run `queued` or `running`, with no Decide wait, fails the run with cause `turn_ended_without_resolution` and an `issue_run:failed` event. This covers a turn that stopped on a failed resolution tool, such as a `revise_work_product` database error (FLO-150).
+8. **Branch on the status.** A terminal status (`succeeded`, `completed`, `failed`, `cancelled`, `blocked`, or `skipped`) ends the Workflow. An awaiting status (`waiting_for_input`, or `waiting_for_approval`, which no code writes yet) makes the Workflow wait for a `run-control` event. An automation turn that returns `waitingOn: { kind: "decide_analysis", decideRunId }` makes the Workflow wait for `decide-analysis-finished:<decideRunId>`, bounded by `DECIDE_ANALYSIS_OWNER_WAIT_MS`, then run the next turn in resume mode. See [Decide](../features/decide.md#in-an-automation-the-run-pauses-and-resumes). Any other status means the run row is still live: the Workflow fails the run with cause `workflow_ended_with_live_run` before it ends, so an instance never completes while its run looks in progress.
+
 9. **Hit the cap.** After 200 turns with no end, the Workflow reports `max_turns_exceeded`.
+
+## Failure data stays typed at each boundary
+
+Issue-run callers pass a `RunFailure` to `forceCloseFailed` and `failRunTurn`. The issue ledger stores the cause code in `issue_run.error` and the public failure in the event payload as `{ failure: PublicRunFailure }`. Raw runtime text stays in server logs. `toIssueRun` parses legacy row values and returns `failure: PublicRunFailure | null`; old unknown text becomes `unknown` copy. A `mark_blocked` resolution returns its agent-authored `blocked_reason` separately and does not create a failure.
+
+## Token budget
+
+A run may spend at most `RUN_TOKEN_BUDGET` total tokens (input plus output) across all of its turns. The constant lives in `packages/agent-runtime/src/run-token-budget.ts`. A per-step output cap does not bound a run with many steps, and each step re-sends the whole context as input, so input grows with step count.
+
+The facet enforces the budget in two places:
+
+- **Between steps.** A stop condition adds the tokens of earlier turns, read from the run's `usage_json`, to the steps of the current turn. Once the sum reaches the budget, the turn stops and the run fails with reason `run_token_budget_exceeded`. The AI SDK checks stop conditions only when the model asks to continue, so a turn that ends on its own, or on a terminal tool such as `create_work_product`, settles normally. A run can overshoot the budget by at most one step.
+- **Before a turn.** The boundary guards fail a run whose recorded usage already meets the budget before a resumed turn starts.
+
+`usage_json` is cumulative for the whole run. Each turn starts from the recorded usage instead of zero.
+The shared `runUsageSnapshotSchema` validates every non-null value. A malformed value returns a run error, so the budget guard does not count it as zero spend.
+
+The budget is 2,000,000 tokens. Ten local issue runs on DeepSeek V4.1 Flash through an OpenRouter endpoint, with no connectors, used 48k to 203k tokens each, with a median near 130k, in 2 to 8 steps. Each step sent about 22k to 25k input tokens. One full 30-step turn of a connector-heavy run comes to about 1.2M tokens. The budget is about ten times the largest measured run, so it stops a runaway loop but leaves room for a full turn plus a resume. At list price, 2M input tokens cost about $0.60.
+
+## Output cap
+
+Each issue and automation run step can generate at most 16,000 tokens. Thinking tokens count toward this cap. A 300-token cap produced an empty answer with finish reason `length` in the [step output measurements](../../../packages/agent-runtime/benchmarks/step-output/2026-11-26-deepseek-v4.1-flash-high.jsonl).
+
+The largest measured normal step used 3,439 tokens. The [Agent SDK call budget test](../../../packages/agent-sdk-call-budget/README.md) measured 2.02 root Durable Object calls per streamed chunk. The step output measurements averaged about 3.5 output tokens per chunk. Cloudflare's 10,000-call limit allows about 4,950 chunks. At 3.5 output tokens per chunk, that gives a ceiling of about 17,300 tokens. The 16,000-token cap stays below that ceiling and above the largest measured normal step.
+
+Recheck this cap after the Agents SDK 0.34 upgrade. The current call measurement uses Agents SDK 0.17.3.
 
 ## Two ledgers share one engine
 
 The two surfaces keep separate ledgers and status words:
 
-| Surface | Ledger | Statuses | Pauses for people |
-| --- | --- | --- | --- |
-| Issues | `issue_run` | `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, `blocked` | Yes. A run can pause on a question, `mark_blocked`, or an approval gate. |
-| Automations | `automation_run` | `pending`, `queued`, `running`, `completed`, `failed`, `cancelled`, `skipped` | Not for people. A run can pause while a Decide analysis it started runs, and resumes when Decide finishes. |
+| Surface     | Ledger           | Statuses                                                                                                        | Pauses for people                                                                                          |
+| ----------- | ---------------- | --------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| Issues      | `issue_run`      | `queued`, `running`, `waiting_for_input`, `waiting_for_approval`, `succeeded`, `failed`, `cancelled`, `blocked` | Yes, on a question (`waiting_for_input`). `mark_blocked` ends the run. A connector approval request fails the turn with `turn_ended_without_resolution`. |
+| Automations | `automation_run` | `pending`, `queued`, `running`, `completed`, `failed`, `cancelled`, `skipped`                                   | Not for people. A run can pause while a Decide analysis it started runs, and resumes when Decide finishes. |
+
+`pending` is only the `automation_run` column default. Runs are inserted as `queued` or `skipped`.
 
 `TERMINAL_RUN_STATUSES` and `AWAITING_RUN_STATUSES` in `run-workflow.ts` are the union of both ledgers. One generic loop is simpler, but it means the Workflow does not check which statuses fit which run kind. Database check constraints and each facet's `completeWorkflowTurn` enforce that.
 
 An automation run never creates an issue, never appears on the kanban, and never routes through `issue_run`. If an automation's task needs to touch issues, the automation does that through its own tools.
+
+![Run states](../../diagrams/run-states.drawio.svg)
+
+Each run moves through its own ledger's statuses. Agent tools write issue outcomes, and the automation facet or trigger writes automation outcomes.
 
 ## Resume and cancel are Workflow events
 
@@ -67,8 +91,8 @@ Both controls go to the Workflow instance keyed by the run id:
 ```ts
 const instance = await env.RUN_WORKFLOW.get(runId)
 await instance.sendEvent({
-	type: 'run-control',
-	payload: { kind: 'resume' },
+  type: 'run-control',
+  payload: { kind: 'resume' },
 })
 ```
 
@@ -106,3 +130,5 @@ These rules keep the split between Workflow and facet intact:
 - Keep issue-run code and automation code separate. Share only product-neutral parts: `RunWorkflow`, model and tool setup, and MCP controller patterns.
 
 Open work on the engine, such as the staging lifecycle proof and the `queue` policy, is tracked in [known gaps](../../reference/known-gaps.md).
+
+The [agent SDK call budget test](../../../packages/agent-sdk-call-budget/README.md) counts root Durable Object calls for streamed text chunks with and without a viewer.

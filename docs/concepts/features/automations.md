@@ -3,7 +3,7 @@ title: Automations are their own product surface with their own run ledger
 description: How automations are modeled, how a trigger becomes a durable run, which concurrency policies work, and the rules that keep automations apart from issues.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-27
 ---
 
 An automation is a standing instruction for an agent: a prompt, an assignee agent, and one or more triggers. Each time a trigger fires, Garden records an `automation_run` and runs the agent through the same durable engine that issue runs use. The UI calls automations Workflows and shows them at `/workflows`.
@@ -30,7 +30,7 @@ automation_run.status: pending | queued | running | completed | failed | cancell
 
 ## Every trigger converges on one run path
 
-Runs start in two ways. `AutomationTriggerDO` (`packages/agent-runtime/src/automation-trigger-do.ts`) owns scheduled triggers. Its `scheduleAutomationTrigger` method uses Agents SDK schedules to set one-time alarms for timezone-aware cron expressions, then schedules the next one. Manual, webhook, and API starts call the run service directly.
+Runs start in two ways. `AutomationTriggerDO` (`packages/agent-runtime/src/automation-trigger-do.ts`) owns scheduled triggers. Its `scheduleAutomationTrigger` method uses Agents SDK schedules to set one-time alarms for timezone-aware cron expressions, then schedules the next one. Manual and API starts go through `POST /api/automations/$id/trigger`, which calls `dispatchAutomation` in `apps/web/src/lib/server/automations.ts`. It applies the same concurrency policy, then calls the run service. No route receives webhook triggers yet.
 
 Both paths reach the same engine:
 
@@ -41,9 +41,13 @@ Both paths reach the same engine:
 
 The [run engine](../architecture/run-engine.md) page explains resume, cancel, and the shared status model.
 
+![Automation run](../../diagrams/automation-run.drawio.svg)
+
+Every trigger, scheduled or manual, becomes one `automation_run` row and one `RunWorkflow` instance that runs the agent in `AutomationRunSubAgent`. No issue or `issue_run` is created.
+
 ## Only `skip` and `replace` concurrency work today
 
-`AutomationTriggerDO` applies the automation's concurrency policy before it starts the next scheduled run. `skip` is the safe default: a new run is skipped while one is active. `replace` is also accepted. The schema allows `queue`, but `parseConcurrencyPolicy` rejects it with the `unsupported_policy` error "Automation queue concurrency policy is not implemented." Do not expose `queue` in the product until the runtime implements it end to end.
+`AutomationTriggerDO` applies the automation's concurrency policy before it starts the next scheduled run, and `dispatchAutomation` applies it before a manual or API run. `skip` is the safe default: a new run is skipped while one is active. `replace` is also accepted. The schema allows `queue`, but `parseConcurrencyPolicy` rejects it with the `unsupported_policy` error "Automation queue concurrency policy is not implemented." Do not expose `queue` in the product until the runtime implements it end to end.
 
 ## The code is spread across four packages
 

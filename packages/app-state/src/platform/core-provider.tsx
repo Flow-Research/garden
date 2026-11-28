@@ -39,6 +39,13 @@ function initCore(
   configureAuthStore({ api, onLogout })
   configureWorkspaceStore(api)
 
+  // Workspace query keys are not account keys. Drop cached private data when a
+  // signed-in account changes; transport invalidation rejects late reads.
+  useAuthStore.subscribe((state, previous) => {
+    if (previous.user && state.user?.id !== previous.user.id)
+      queryClient.clear()
+  })
+
   initialized = true
 }
 

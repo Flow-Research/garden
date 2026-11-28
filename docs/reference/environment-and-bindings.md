@@ -3,7 +3,7 @@ title: Environment variables and Worker bindings
 description: Every binding and environment variable the Garden web Worker uses, with its type, purpose, and where the code reads it.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-26
 ---
 
 The Garden web Worker is declared twice. `apps/web/wrangler.jsonc` configures local development. `alchemy.run.ts` provisions the deployed Worker for each target in `deploy-targets.mjs`. The runtime type for both is `AppEnv` in `apps/web/src/lib/server/env.ts`. Node tooling validates a subset through `parseServerEnv` and `getServerEnv` in `packages/env/src/index.ts`.
@@ -37,7 +37,7 @@ Deployed Workflow names come from `workflowName`, `decideAnalysisWorkflowName`, 
 
 | Binding          | Type       | Local resource                   | Purpose                                     | Read in                                                     |
 | ---------------- | ---------- | -------------------------------- | ------------------------------------------- | ----------------------------------------------------------- |
-| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database.   | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
+| `HYPERDRIVE`     | Hyperdrive | placeholder id                   | Connection pool to the Postgres database. Query caching is disabled in `alchemy.run.ts` so reads see the Worker's own writes. | `packages/server/src/issues/run-service.ts`, `packages/server/src/automations/run-service.ts` |
 | `EXECUTOR_DB`    | D1         | `garden-executor-local`          | Executor connector state.                   | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `EXECUTOR_BLOBS` | R2         | `garden-executor-blobs-local`    | Executor blob storage.                      | `apps/web/src/lib/server/executor-runtime.ts`               |
 | `FILES`          | R2         | `garden-files-local`             | Uploads, attachments, and run files.        | `packages/agent-runtime/src/agent-tools/read-attachment.ts`  |
@@ -57,9 +57,10 @@ Deployed resource names come from `deploy-targets.mjs`. See [Deploy targets](./d
 
 | Schedule        | Handler                                    | Purpose                                                       |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------- |
-| `0 */12 * * *`  | `scheduled` in `apps/web/src/server.ts`    | Calls `reconcile(env)` to repair stale issue-run ledger state. |
+| `0 */12 * * *`  | `scheduledJobs` in `apps/web/src/server.ts` | Calls `reconcile(env)` to repair stale issue-run ledger state. |
+| `0 8 * * *`     | `scheduledJobs` in `apps/web/src/server.ts` | Calls `runModelHealthCheck(env)`. See [Model health check](../concepts/features/model-health-check.md). |
 
-The same schedule is set in `apps/web/wrangler.jsonc` and `alchemy.run.ts`.
+The same schedules are set in `apps/web/wrangler.jsonc` and `alchemy.run.ts`. `apps/web/src/server.test.ts` fails when either list differs from `scheduledJobs`. A Cron pattern with no job logs `scheduled.unknown_cron` and runs nothing.
 
 ## Runtime variables and secrets
 
@@ -68,6 +69,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | Name                          | Kind   | Required             | Purpose                                                             | Read in                                                  |
 | ----------------------------- | ------ | -------------------- | ------------------------------------------------------------------- | -------------------------------------------------------- |
 | `DATABASE_URL`                | Secret | Yes                  | Postgres connection string. Must start with `postgres://` or `postgresql://`. | `packages/db/src/client.ts`, `packages/env/src/index.ts` |
+| `DEV_DATABASE_URL`            | Build secret | Dev deploys only | Dev Neon branch connection string. `scripts/deploy-dev.mjs` copies it into `DATABASE_URL` for migrations, Hyperdrive, and the Worker secret. | `deploy-targets.mjs`, `scripts/deploy-dev.mjs` |
 | `BETTER_AUTH_SECRET`          | Secret | Yes                  | Better Auth signing secret.                                         | `apps/web/src/auth.ts`                                   |
 | `BETTER_AUTH_URL`             | Var    | Yes                  | Public origin. Alchemy sets it to the Worker URL.                   | `apps/web/src/auth.ts`                                   |
 | `ENVIRONMENT`                 | Var    | Yes                  | `development`, `test`, `staging`, or `production`.                  | `packages/env/src/index.ts`, `packages/agent-runtime/src/model.ts` |
@@ -76,6 +78,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | `HELIX_API_KEY`               | Secret | Yes in deployed Workers | Org Brain HelixDB key.                                           | `apps/web/src/routes/api/brain/`                         |
 | `GOOGLE_AUTH_CLIENT_ID`       | Var    | Pair, optional       | Google sign-in client id.                                           | `apps/web/src/lib/auth/instance.ts`                      |
 | `GOOGLE_AUTH_CLIENT_SECRET`   | Secret | Pair, optional       | Google sign-in client secret.                                       | `apps/web/src/lib/auth/instance.ts`                      |
+| `WORKSTREAM_MCP_CLIENT_ID`   | Var    | No                   | Public Flow Identity client registered for this target’s exact Garden callback; Workstream MCP only. | `apps/web/src/lib/server/executor-engine/auth-contract.ts` |
 | `GOOGLE_CLIENT_ID`            | Var    | Yes in deployed Workers | Gmail and Google Drive connector OAuth client id.                | `packages/connectors/src/oauth.ts`                       |
 | `GOOGLE_CLIENT_SECRET`        | Secret | Yes in deployed Workers | Gmail and Google Drive connector OAuth client secret.            | `packages/connectors/src/oauth.ts`                       |
 | `GITHUB_CLIENT_ID`            | Var    | No                   | GitHub OAuth client id.                                             | `packages/connectors/src/oauth.ts`                       |
@@ -92,6 +95,7 @@ The Required column means the Worker fails to deploy or validate without the val
 | `DISCORD_PUBLIC_KEY`          | Var    | No                   | Discord interaction signature key.                                  | `apps/web/src/lib/server/env.ts`                         |
 | `DISCORD_BOT_PERMISSIONS`     | Var    | No                   | Permission integer for the Discord install link.                    | `apps/web/src/lib/server/discord-install.ts`             |
 | `RESEND_API_KEY`              | Secret | Yes in deployed Workers | Sends email, such as issue-assignment mail.                     | `apps/web/src/lib/server/email/issue-assignment.ts`      |
+| `GARDEN_ALERT_EMAIL`          | Var    | No                   | Comma-separated team addresses for operational alerts, such as a failed [model health check](../concepts/features/model-health-check.md). Bound only when the deploy environment sets it. Without it, failures are only logged. | `apps/web/src/lib/server/model-health-check.ts` |
 | `EXA_API_KEY`                 | Secret | No                   | Web search for agent web tools. Without it, the tools report an unconfigured error. | `packages/agent-runtime/src/agent-tools/web.ts` |
 | `AI_GATEWAY_ID`               | Var    | Yes in deployed Workers | AI Gateway that routes Workers AI calls. Set from `aiGatewayId` in `deploy-targets.mjs`. | `packages/agent-runtime/src/run-sub-agent-base.ts` |
 | `SANDBOX_TRANSPORT`           | Var    | Yes                  | Sandbox transport. Default `rpc`.                                   | `apps/web/src/lib/server/env.ts`                         |
@@ -102,9 +106,21 @@ The Required column means the Worker fails to deploy or validate without the val
 
 "Pair, optional" means `optionalCredentialPairIsConfigured` in `deploy-env.mjs` requires both values or neither. "No" GitHub and Slack values are bound only when the deploy environment sets them. `alchemy.run.ts` does not bind the `DISCORD_*` values.
 
+## GitHub App URLs per environment
+
+Each deployed environment needs three URLs in the GitHub App settings (**Settings → Developer settings → GitHub Apps → the App → General**). Replace `<origin>` with the environment's web origin, for example `https://garden-dev.flow-research.workers.dev`.
+
+| App setting | Value | Used by |
+| --- | --- | --- |
+| Identifying and authorizing users → **Redirect URI** | `<origin>/api/github/callback` | Link with GitHub (`apps/web/src/routes/api/github/identity/`). Without it, GitHub rejects the sign-in with a `redirect_uri` error. |
+| Post installation → **Setup URL** | `<origin>/api/github/callback` | App installation from Connectors (`apps/web/src/routes/api/github/setup.ts`). |
+| Webhook → **Webhook URL** | `<origin>/api/github/webhook` | Issue and pull request sync (`apps/web/src/routes/api/github/webhook.ts`). |
+
+Leave **Request user authorization (OAuth) during installation** off. Linking a member's GitHub account is a separate step in Settings → Account.
+
 ## Offline model variables
 
-`apps/web/wrangler.jsonc` declares these as empty `vars` so that `pnpm dev:offline` can pass them through. Deployed Workers do not set them. `packages/agent-runtime/src/model.ts` reads them.
+`apps/web/wrangler.jsonc` declares these as empty `vars` so that `pnpm dev:offline` can pass them through. Deployed Workers do not set them. `packages/agent-runtime/src/model.ts` reads them, and the daily model health check probes whichever model they select.
 
 | Name                                 | Purpose                                                |
 | ------------------------------------ | ------------------------------------------------------ |
@@ -142,3 +158,7 @@ These variables are read by deploy tooling, not by the Worker at runtime.
 - `ENVIRONMENT=development`
 
 Generate `BETTER_AUTH_SECRET` and `EXECUTOR_SECRET_KEY` with `openssl rand -base64 32`.
+
+## Structured log correlation
+
+Structured logs preserve complete UUID values for run and workspace correlation. Secret field names remain redacted, including when their value is a UUID. Bearer credentials and token-shaped text remain redacted. A hexadecimal UUID segment that starts with `cf` does not make the complete UUID a Cloudflare token.

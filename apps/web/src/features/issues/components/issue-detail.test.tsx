@@ -6,7 +6,7 @@ import {
   type ComponentProps,
 } from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Issue, TimelineEntry } from '@garden/core/types'
 import { WorkspaceIdProvider } from '@garden/app-state/hooks'
@@ -14,7 +14,6 @@ import type {
   MockContentEditorHandle,
   MockEditorProps,
   MockSelector,
-  MockTitleEditorHandle,
 } from '@/test/mock-props'
 
 // ---------------------------------------------------------------------------
@@ -94,6 +93,8 @@ vi.mock('@/lib/workspace/queries', () => ({
   }),
 }))
 
+const navigationSearch = vi.hoisted(() => ({ value: '' }))
+
 // Mock navigation
 vi.mock('../../navigation', () => ({
   AppLink: ({ children, href, ...props }: ComponentProps<'a'>) => (
@@ -104,7 +105,7 @@ vi.mock('../../navigation', () => ({
   useNavigation: () => ({
     push: vi.fn(),
     pathname: '/issues/issue-1',
-    searchParams: new URLSearchParams(),
+    searchParams: new URLSearchParams(navigationSearch.value),
     getShareableUrl: undefined,
   }),
   useNavigationActions: () => ({ push: vi.fn() }),
@@ -144,32 +145,6 @@ vi.mock('../../editor', () => ({
           }}
           placeholder={placeholder}
           data-testid="rich-text-editor"
-        />
-      )
-    },
-  ),
-  TitleEditor: forwardRef<MockTitleEditorHandle, MockEditorProps>(
-    function MockTitleEditor(
-      { defaultValue, placeholder, onBlur, onChange },
-      ref,
-    ) {
-      const valueRef = useRef(defaultValue || '')
-      const [value, setValue] = useState(defaultValue || '')
-      useImperativeHandle(ref, () => ({
-        getText: () => valueRef.current,
-        focus: () => {},
-      }))
-      return (
-        <input
-          value={value}
-          onChange={(e) => {
-            valueRef.current = e.target.value
-            setValue(e.target.value)
-            onChange?.(e.target.value)
-          }}
-          onBlur={() => onBlur?.(valueRef.current)}
-          placeholder={placeholder}
-          data-testid="title-editor"
         />
       )
     },
@@ -239,97 +214,6 @@ const mockApiObj = vi.hoisted(() => ({
 vi.mock('@/lib/api', () => ({
   api: mockApiObj,
   getApi: () => mockApiObj,
-}))
-
-// Mock issue config
-vi.mock('@garden/core/issues/config', () => ({
-  ALL_STATUSES: [
-    'todo',
-    'in_progress',
-    'in_review',
-    'done',
-    'blocked',
-    'cancelled',
-  ],
-  BOARD_STATUSES: ['blocked', 'todo', 'in_progress', 'in_review', 'done'],
-  STATUS_ORDER: [
-    'todo',
-    'in_progress',
-    'in_review',
-    'done',
-    'blocked',
-    'cancelled',
-  ],
-  STATUS_CONFIG: {
-    todo: {
-      label: 'Todo',
-      iconColor: 'text-muted-foreground',
-      hoverBg: 'hover:bg-accent',
-    },
-    in_progress: {
-      label: 'In Progress',
-      iconColor: 'text-warning',
-      hoverBg: 'hover:bg-warning/10',
-    },
-    in_review: {
-      label: 'In Review',
-      iconColor: 'text-success',
-      hoverBg: 'hover:bg-success/10',
-    },
-    done: {
-      label: 'Done',
-      iconColor: 'text-info',
-      hoverBg: 'hover:bg-info/10',
-    },
-    blocked: {
-      label: 'Blocked',
-      iconColor: 'text-destructive',
-      hoverBg: 'hover:bg-destructive/10',
-    },
-    cancelled: {
-      label: 'Cancelled',
-      iconColor: 'text-muted-foreground',
-      hoverBg: 'hover:bg-accent',
-    },
-  },
-  PRIORITY_ORDER: ['urgent', 'high', 'medium', 'low', 'none'],
-  PRIORITY_CONFIG: {
-    urgent: {
-      label: 'Urgent',
-      bars: 4,
-      color: 'text-destructive',
-      badgeBg: 'bg-destructive/10',
-      badgeText: 'text-destructive',
-    },
-    high: {
-      label: 'High',
-      bars: 3,
-      color: 'text-warning',
-      badgeBg: 'bg-warning/10',
-      badgeText: 'text-warning',
-    },
-    medium: {
-      label: 'Medium',
-      bars: 2,
-      color: 'text-warning',
-      badgeBg: 'bg-warning/10',
-      badgeText: 'text-warning',
-    },
-    low: {
-      label: 'Low',
-      bars: 1,
-      color: 'text-info',
-      badgeBg: 'bg-info/10',
-      badgeText: 'text-info',
-    },
-    none: {
-      label: 'No priority',
-      bars: 0,
-      color: 'text-muted-foreground',
-      badgeBg: 'bg-muted',
-      badgeText: 'text-muted-foreground',
-    },
-  },
 }))
 
 // Mock recent issues store
@@ -466,6 +350,7 @@ function commentBox() {
 }
 
 async function findCommentBox() {
+  fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
   await screen.findByRole('button', { name: 'Submit comment' })
   return commentBox()
 }
@@ -476,13 +361,14 @@ function renderIssueDetail(
 ) {
   const queryClient = createTestQueryClient()
   seed?.(queryClient)
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <WorkspaceIdProvider wsId="ws-1">
         <IssueDetail issueId={issueId} />
       </WorkspaceIdProvider>
     </QueryClientProvider>,
   )
+  return { ...view, queryClient }
 }
 
 // ---------------------------------------------------------------------------
@@ -492,6 +378,7 @@ function renderIssueDetail(
 describe('IssueDetail (shared)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    navigationSearch.value = ''
     // Default: issue loads successfully
     mockApiObj.getIssue.mockResolvedValue(mockIssue)
     mockApiObj.listTimeline.mockResolvedValue(mockTimeline)
@@ -537,6 +424,157 @@ describe('IssueDetail (shared)', () => {
     expect(
       screen.getByDisplayValue('Add JWT auth to the backend'),
     ).toBeInTheDocument()
+  })
+
+  it('saves a wrapping title on blur and uses Enter to finish editing', async () => {
+    mockApiObj.updateIssue.mockResolvedValue({
+      ...mockIssue,
+      title: 'A long task title that remains editable on a narrow screen',
+    })
+    renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    expect(title.tagName).toBe('TEXTAREA')
+    fireEvent.change(title, {
+      target: {
+        value: 'A long task title that remains editable on a narrow screen',
+      },
+    })
+    title.focus()
+    fireEvent.keyDown(title, { key: 'Enter' })
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({
+          title: 'A long task title that remains editable on a narrow screen',
+        }),
+      ),
+    )
+    expect(title).not.toHaveFocus()
+  })
+
+  it('discards the title draft on Escape and permits a later save', async () => {
+    renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    title.focus()
+    fireEvent.change(title, { target: { value: 'Discard this title' } })
+    fireEvent.keyDown(title, { key: 'Escape' })
+    expect(title).not.toHaveFocus()
+    expect(title).toHaveValue(mockIssue.title)
+    expect(mockApiObj.updateIssue).not.toHaveBeenCalled()
+    title.focus()
+    fireEvent.change(title, { target: { value: 'Keep this title' } })
+    fireEvent.keyDown(title, { key: 'Enter' })
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ title: 'Keep this title' }),
+      ),
+    )
+  })
+
+  it('keeps the comment draft when the task is assigned to an agent', async () => {
+    const { queryClient } = renderIssueDetail()
+    const composer = await findCommentBox()
+    fireEvent.change(composer, {
+      target: { value: 'A draft for the new assignee' },
+    })
+    await act(async () => {
+      queryClient.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+        ...mockIssue,
+        assignee_type: 'agent',
+        assignee_id: 'agent-1',
+      })
+    })
+    await screen.findByPlaceholderText(/Redirect Garden/)
+    expect(commentBox()).toBe(composer)
+    expect(commentBox()).toHaveValue('A draft for the new assignee')
+  })
+
+  it('keeps editing the title when Enter confirms IME composition', async () => {
+    renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    title.focus()
+    fireEvent.change(title, { target: { value: '認証を実装' } })
+    fireEvent.keyDown(title, { key: 'Enter', isComposing: true })
+    fireEvent.keyDown(title, { key: 'Enter', keyCode: 229 })
+    expect(title).toHaveFocus()
+    expect(mockApiObj.updateIssue).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(title, { key: 'Enter' })
+    expect(title).not.toHaveFocus()
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ title: '認証を実装' }),
+      ),
+    )
+  })
+
+  it('shows a title changed elsewhere and does not overwrite it on blur', async () => {
+    const { queryClient } = renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    fireEvent.focus(title)
+    // React Query notifies observers on a later tick; flush it inside act.
+    await act(async () => {
+      queryClient.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+        ...mockIssue,
+        title: 'Renamed by someone else',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(title).toHaveValue('Renamed by someone else')
+    fireEvent.blur(title)
+    expect(mockApiObj.updateIssue).not.toHaveBeenCalled()
+  })
+
+  it('keeps the title draft while editing when the title changes elsewhere', async () => {
+    const { queryClient } = renderIssueDetail()
+    const title = await screen.findByRole('textbox', { name: 'Issue title' })
+    await waitFor(() => expect(queryClient.isFetching()).toBe(0))
+    fireEvent.focus(title)
+    fireEvent.change(title, { target: { value: 'My draft title' } })
+    // React Query notifies observers on a later tick; flush it inside act.
+    await act(async () => {
+      queryClient.setQueryData(issueKeys.detail('ws-1', 'issue-1'), {
+        ...mockIssue,
+        title: 'Renamed by someone else',
+      })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    expect(title).toHaveValue('My draft title')
+    fireEvent.blur(title)
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ title: 'My draft title' }),
+      ),
+    )
+  })
+
+  it('opens and closes task properties in a mobile sheet', async () => {
+    const mediaQuery = window.matchMedia('(max-width: 767px)')
+    const media = vi
+      .spyOn(window, 'matchMedia')
+      .mockImplementation((query) => ({
+        ...mediaQuery,
+        media: query,
+        matches: query === '(max-width: 767px)',
+      }))
+    renderIssueDetail()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Toggle properties' }),
+    )
+    const sheet = await screen.findByRole('dialog', { name: 'Task properties' })
+    expect(sheet).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('dialog', { name: 'Task properties' }),
+      ).toBeNull(),
+    )
+    media.mockRestore()
   })
 
   it('fetches the issue even when the list already has a copy of it', async () => {
@@ -673,14 +711,14 @@ describe('IssueDetail (shared)', () => {
     })
   })
 
-  it('renders workspace name as breadcrumb link', async () => {
+  it('renders Tasks as breadcrumb link', async () => {
     renderIssueDetail()
 
     await waitFor(() => {
-      expect(screen.getByText('Test WS')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Tasks' })).toBeInTheDocument()
     })
 
-    expect(screen.getByText('Test WS')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tasks' })).toBeInTheDocument()
   })
 
   it('renders properties sidebar with status, priority, assignee, due date', async () => {
@@ -781,6 +819,7 @@ describe('IssueDetail (shared)', () => {
 
   it('renders comments from timeline', async () => {
     renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
 
     await waitFor(() => {
       expect(screen.getByText('Started working on this')).toBeInTheDocument()
@@ -799,9 +838,170 @@ describe('IssueDetail (shared)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }))
 
     expect(
-      await screen.findByText('Started working on this'),
+      await screen.findByRole('button', { name: /replied/ }),
     ).toBeInTheDocument()
     expect(screen.queryByText('Could not load activity.')).toBeNull()
+  })
+
+  it('keeps collapse and expand available in the comment menu', async () => {
+    renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Comment actions' }),
+    )
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Collapse thread' }),
+    )
+    expect(screen.queryByTestId('readonly-content')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }))
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Expand thread' }),
+    )
+    expect(screen.getByTestId('readonly-content')).toHaveTextContent(
+      'Started working on this',
+    )
+    expect(screen.getByRole('button', { name: 'Reply' })).toBeVisible()
+  })
+
+  it('expands a collapsed thread when editing its comment', async () => {
+    renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Comment actions' }),
+    )
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: 'Collapse thread' }),
+    )
+    expect(screen.queryByTestId('readonly-content')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comment actions' }))
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    expect(await screen.findByPlaceholderText('Edit comment...')).toBeVisible()
+  })
+
+  it('opens Comments for a focused comment link', async () => {
+    navigationSearch.value = 'focus=comment:comment-1'
+    const scroll = vi
+      .spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+    renderIssueDetail()
+    expect(
+      await screen.findByRole('tab', { name: 'Comments' }),
+    ).toHaveAttribute('aria-selected', 'true')
+    expect(await screen.findByText('Started working on this')).toBeVisible()
+    await waitFor(() => expect(scroll).toHaveBeenCalled())
+    scroll.mockRestore()
+  })
+
+  it('splits system activity and comments across tabs', async () => {
+    mockApiObj.listTimeline.mockResolvedValue([
+      ...mockTimeline,
+      {
+        type: 'activity',
+        id: 'activity-1',
+        actor_type: 'member',
+        actor_id: 'user-1',
+        action: 'created',
+        created_at: '2026-01-15T00:00:00Z',
+      },
+    ])
+    renderIssueDetail()
+    expect(await screen.findByText('created this issue')).toBeVisible()
+    expect(screen.getByText('Started working on this')).not.toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+    expect(screen.getByRole('heading', { name: 'Comments (2)' })).toBeVisible()
+    expect(screen.queryByText('created this issue')).toBeNull()
+    expect(screen.getByText('Started working on this')).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+    expect(screen.getByText('created this issue')).toBeVisible()
+  })
+
+  it('links each agent reply from Activity and keeps it in Comments', async () => {
+    const scroll = vi
+      .spyOn(Element.prototype, 'scrollIntoView')
+      .mockImplementation(() => {})
+    renderIssueDetail()
+    const row = await screen.findByRole('button', { name: /replied/ })
+    expect(screen.getAllByRole('button', { name: /replied/ })).toHaveLength(1)
+    expect(screen.getByText('I can help with this')).not.toBeVisible()
+    fireEvent.click(row)
+    expect(screen.getByRole('tab', { name: 'Comments' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    )
+    expect(screen.getByText('I can help with this')).toBeVisible()
+    expect(scroll).toHaveBeenCalled()
+    scroll.mockRestore()
+  })
+
+  it('retains a comment draft across tab switches', async () => {
+    renderIssueDetail()
+    fireEvent.change(await findCommentBox(), {
+      target: { value: 'Draft to keep' },
+    })
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+    expect(commentBox()).toHaveValue('Draft to keep')
+    expect(mockApiObj.createComment).not.toHaveBeenCalled()
+    expect(
+      screen.queryByText(
+        'Sending starts a fresh turn with this as the trigger.',
+      ),
+    ).toBeNull()
+  })
+
+  it('keeps an unfinished comment edit across tab switches and saves it', async () => {
+    mockApiObj.updateComment.mockResolvedValue({
+      ...mockTimeline[0],
+      content: 'Edited after switching tabs',
+    })
+    renderIssueDetail()
+    fireEvent.click(await screen.findByRole('tab', { name: 'Comments' }))
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Comment actions' }),
+    )
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Edit' }))
+    fireEvent.change(await screen.findByPlaceholderText('Edit comment...'), {
+      target: { value: 'Edited after switching tabs' },
+    })
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Activity' }))
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+
+    expect(screen.getByPlaceholderText('Edit comment...')).toHaveValue(
+      'Edited after switching tabs',
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    await waitFor(() =>
+      expect(mockApiObj.updateComment).toHaveBeenCalledWith(
+        'comment-1',
+        'Edited after switching tabs',
+      ),
+    )
+  })
+
+  it('shows task-specific empty states without sample automation content', async () => {
+    mockApiObj.listTimeline.mockResolvedValue([])
+    renderIssueDetail()
+    expect(await screen.findByText('No activity yet')).toBeVisible()
+    fireEvent.click(screen.getByRole('tab', { name: 'Comments' }))
+    expect(screen.getByText('No comments yet')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Comments (0)' })).toBeVisible()
+  })
+
+  it('updates task status from the inline badge', async () => {
+    mockApiObj.updateIssue.mockResolvedValue({ ...mockIssue, status: 'done' })
+    renderIssueDetail()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Status: In Progress' }),
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Done' }))
+    await waitFor(() =>
+      expect(mockApiObj.updateIssue).toHaveBeenCalledWith(
+        'issue-1',
+        expect.objectContaining({ status: 'done' }),
+      ),
+    )
   })
 
   it('disables approval actions when the preview has no request id', async () => {
@@ -822,7 +1022,8 @@ describe('IssueDetail (shared)', () => {
         result_json: null,
         usage_json: null,
         usage: null,
-        error: null,
+        failure: null,
+        blocked_reason: null,
         started_at: '2026-01-20T00:00:00Z',
         finished_at: null,
         created_at: '2026-01-20T00:00:00Z',
@@ -857,6 +1058,7 @@ describe('IssueDetail (shared)', () => {
 describe('IssueDetail parent and sub-issue pickers', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    navigationSearch.value = ''
     mockApiObj.getIssue.mockResolvedValue(mockIssue)
     mockApiObj.listTimeline.mockResolvedValue(mockTimeline)
     mockApiObj.listIssueReactions.mockResolvedValue([])

@@ -102,7 +102,6 @@ describe('executor tool lifecycle logging', () => {
         name: EXECUTOR_TOOL,
         serverId: 'executor',
       },
-      undefined,
       {
         timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
         maxTotalTimeout: mcpRuntimeConfig.executorToolCallTimeoutMs,

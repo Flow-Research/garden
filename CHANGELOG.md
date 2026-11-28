@@ -2,6 +2,24 @@
 
 All notable changes to Garden are recorded here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Web/native client roadmap and API/auth boundary documentation. Native clients, framework selection and direct external-host launch remain future work (#307).
+- Chat-agent Team issue creation with Team membership and assignee checks; Team issues can remain unassigned (#343, #310).
+
+### Fixed
+- Team visibility checks for chat issue tools and pending-approval reads; malformed GitHub assignee values are rejected (#306, #339, #342).
+- GitHub and Discord installation callbacks recheck current workspace connection-management permission (#340).
+- Default-agent recovery requires current agent-management permission, serializes concurrent repair and rolls back failed grant writes. Chat listing is read-only (#345).
+- Cancellation finalizes runs whose Workflow instance is missing or terminal; Hyperdrive query caching is disabled (#311, #341).
+
+### Maintainer changes
+- Dev uses its own configured database and migrates before deployment; DB-backed runtime tests run in CI (#303, #308).
+- Dependabot PR-contract handling and Zod/MCP SDK dependency updates (#304, #305).
+
+No numbered release or release date is assigned. These entries describe merged source; deployment and live acceptance require separate evidence. The dated known-issue list under 0.1.0 is historical. Current gaps remain in `docs/reference/known-gaps.md` and the open issue tracker.
+
 ## [0.1.0] - 2026-11-08
 
 First release. Covers 72 pull requests merged to `dev` since `main` was last updated on 2026-09-25.

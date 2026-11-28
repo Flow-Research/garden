@@ -159,75 +159,75 @@ async function responseBodyPreview(response: Response) {
  * returned `Response` objects), TanStack Router `isNotFound` / `isRedirect`, and
  * Cloudflare Workers structured JSON logging.
  */
-export const apiRequestLoggingMiddleware = createMiddleware().server(
-  async ({ next, pathname, request, serverFnMeta }) => {
-    const startedAt = performance.now()
-    const fields = requestFields(request)
-    const logger = apiRequestLogger.child({
-      ...fields,
-      pathname,
-      ...(serverFnMeta?.name ? { serverFnName: serverFnMeta.name } : {}),
-    })
+export const apiRequestLoggingMiddleware = createMiddleware({
+  type: 'request',
+}).server(async ({ next, pathname, request, serverFnMeta }) => {
+  const startedAt = performance.now()
+  const fields = requestFields(request)
+  const logger = apiRequestLogger.child({
+    ...fields,
+    pathname,
+    ...(serverFnMeta?.name ? { serverFnName: serverFnMeta.name } : {}),
+  })
 
-    return await Promise.resolve(next()).then(
-      async (result) => {
-        const response = result.response
-        if (response.status >= 500 && response.status <= 599) {
-          logger.error('api.request.response_error', {
-            ...responseFields(response, startedAt),
-            ...(await responseBodyPreview(response)),
+  return await Promise.resolve(next()).then(
+    async (result) => {
+      const response = result.response
+      if (response.status >= 500 && response.status <= 599) {
+        logger.error('api.request.response_error', {
+          ...responseFields(response, startedAt),
+          ...(await responseBodyPreview(response)),
+        })
+        if (!response.headers.has('x-garden-error-capture')) {
+          await captureApiException({
+            error: new ReturnedApiResponseError({
+              status: response.status,
+              path: fields.path,
+              requestId: fields.requestId,
+            }),
+            event: 'api.request.response_error',
+            fields,
+            logger,
           })
-          if (!response.headers.has('x-garden-error-capture')) {
-            await captureApiException({
-              error: new ReturnedApiResponseError({
-                status: response.status,
-                path: fields.path,
-                requestId: fields.requestId,
-              }),
-              event: 'api.request.response_error',
-              fields,
-              logger,
-            })
-          }
         }
+      }
 
-        return result
-      },
-      async (error) => {
-        if (isRedirect(error)) throw error
+      return result
+    },
+    async (error) => {
+      if (isRedirect(error)) throw error
 
-        if (pathname.startsWith('/api/')) {
-          const apiResponse = responseForApiThrow(error, fields.requestId)
-          if (apiResponse instanceof Response) return apiResponse
+      if (pathname.startsWith('/api/')) {
+        const apiResponse = responseForApiThrow(error, fields.requestId)
+        if (apiResponse instanceof Response) return apiResponse
 
-          logger[apiResponse.level]('api.request.thrown', {
-            status: apiResponse.status,
-            handled: true,
-            durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
-            ...errorFields(error),
-          })
-          if (apiResponse.status >= 500) {
-            await captureApiException({
-              error,
-              event: 'api.request.thrown',
-              fields,
-              logger,
-            })
-          }
-
-          return Response.json(apiResponse.body, { status: apiResponse.status })
-        }
-
-        logger.error('api.request.thrown', {
-          handled: false,
+        logger[apiResponse.level]('api.request.thrown', {
+          status: apiResponse.status,
+          handled: true,
           durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
           ...errorFields(error),
         })
-        throw error
-      },
-    )
-  },
-)
+        if (apiResponse.status >= 500) {
+          await captureApiException({
+            error,
+            event: 'api.request.thrown',
+            fields,
+            logger,
+          })
+        }
+
+        return Response.json(apiResponse.body, { status: apiResponse.status })
+      }
+
+      logger.error('api.request.thrown', {
+        handled: false,
+        durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+        ...errorFields(error),
+      })
+      throw error
+    },
+  )
+})
 
 /**
  * Logs background or typed Result failures without changing caller control flow.

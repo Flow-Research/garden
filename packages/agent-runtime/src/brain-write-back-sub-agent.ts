@@ -1,3 +1,8 @@
+import { AgentDO } from './agent-do'
+import {
+  authorizeBrainRunTool,
+  type BrainRunOrigin,
+} from './brain-run-authority'
 import {
   Session,
   Think,
@@ -6,8 +11,10 @@ import {
 } from '@cloudflare/think'
 import type { LanguageModel, ToolSet, UIMessage } from 'ai'
 import { Effect, Schema } from 'effect'
+import { Result } from 'better-result'
 import { createAgentModel } from './model'
 import { configureThinkCompaction } from './think-compaction'
+import { thinkTurnTelemetry } from './think-telemetry'
 import {
   BRAIN_WRITE_BACK_SYSTEM_PROMPT,
   BRAIN_WRITE_BACK_TOOL_NAMES,
@@ -30,7 +37,10 @@ type AgentRuntimeEnv = Cloudflare.Env & {
   VITE_PUBLIC_POSTHOG_PROJECT_TOKEN?: string
 }
 
-type BrainWriteBackConfig = ReturnType<typeof brainWriteBackToolContext>
+type BrainWriteBackConfig = ReturnType<typeof brainWriteBackToolContext> & {
+  origin: BrainRunOrigin
+  originGeneration: number
+}
 
 const THINK_TURN_MAX_RETRIES = 1
 const THINK_TURN_TELEMETRY_FUNCTION_ID = 'garden.brain-write-back.turn'
@@ -86,11 +96,81 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       ai: this.env.AI,
       files: this.env.BRAIN_FILES,
       databaseUrl: this.env.HYPERDRIVE.connectionString,
-      getContext: () => this.getConfig<BrainWriteBackConfig>(),
+      /**
+       * Deduplication can overlap a grant change. Both proposal entry and
+       * persistence require fresh provenance from the originating facet.
+       */
+      getContext: async (toolName) => {
+        const config = this.getConfig<BrainWriteBackConfig>()
+        if (!config?.origin) return null
+        const authority = await authorizeBrainRunTool(
+          this.env.HYPERDRIVE.connectionString,
+          config.origin,
+          toolName,
+        )
+        const context = await authority.andThenAsync((context) =>
+          Result.tryPromise(async () => {
+            const parent = await this.parentAgent(AgentDO)
+            await parent.validateBrainWriteBackOrigin({
+              runKind: config.origin.runKind,
+              runId: config.origin.runId,
+              originObjectId: config.origin.objectId,
+              originGeneration: config.originGeneration,
+            })
+            return { ...context, runId: config.runId }
+          }),
+        )
+        return context.match({ ok: (value) => value, err: () => null })
+      },
     })
   }
 
   override async beforeTurn(_ctx: TurnContext): Promise<TurnConfig> {
+    const config = this.getConfig<BrainWriteBackConfig>()
+    if (!config?.origin)
+      throw new BrainWriteBackTurnError({
+        operation: 'authorize write-back',
+        message: 'Brain run authority is unavailable.',
+      })
+    const authority = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      config.origin,
+      'add_to_brain',
+    )
+    if (authority.isErr())
+      throw new BrainWriteBackTurnError({
+        operation: 'authorize write-back',
+        message: 'Brain run authority is unavailable.',
+      })
+    // The summary can contain retrieved Brain content and proposals perform a
+    // dedupe read. Both grants must remain valid before another model sees it.
+    const readAuthority = await authorizeBrainRunTool(
+      this.env.HYPERDRIVE.connectionString,
+      config.origin,
+      'brain_search',
+    )
+    if (readAuthority.isErr())
+      throw new BrainWriteBackTurnError({
+        operation: 'authorize write-back read',
+        message: 'Brain run authority is unavailable.',
+      })
+    // This is a new submission after the origin returned its summary. Re-read
+    // the origin's durable provenance here; a supplied empty grant list cannot
+    // erase earlier neighborhood/private exposure during the handoff.
+    const parent = await this.parentAgent(AgentDO)
+    const origin = await Result.tryPromise(() =>
+      parent.validateBrainWriteBackOrigin({
+        runKind: config.origin.runKind,
+        runId: config.origin.runId,
+        originObjectId: config.origin.objectId,
+        originGeneration: config.originGeneration,
+      }),
+    )
+    if (origin.isErr())
+      throw new BrainWriteBackTurnError({
+        operation: 'validate write-back origin',
+        message: 'Brain origin authority is unavailable.',
+      })
     return Effect.runPromise(
       Effect.suspend(() => {
         const config = this.getConfig<BrainWriteBackConfig>()
@@ -105,16 +185,13 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
 
         return Effect.succeed({
           model: this.getModel(),
-          experimental_telemetry: {
+          experimental_telemetry: thinkTurnTelemetry({
             functionId: THINK_TURN_TELEMETRY_FUNCTION_ID,
-            isEnabled: true,
             metadata: {
               agentClass: 'BrainWriteBackSubAgent',
               runId: config.runId,
             },
-            recordInputs: false,
-            recordOutputs: false,
-          },
+          }),
           activeTools: [...BRAIN_WRITE_BACK_TOOL_NAMES],
           maxRetries: THINK_TURN_MAX_RETRIES,
           maxSteps: this.maxSteps,
@@ -131,6 +208,16 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
       Effect.sync(() => {
         this.configure<BrainWriteBackConfig>({
           ...brainWriteBackToolContext(input),
+          origin: {
+            runtimeName: this.parentPath.at(-1)?.name ?? '',
+            objectId: input.originObjectId,
+            runId: input.runId,
+            runKind: input.runKind,
+            agentId: input.agentId,
+            workspaceId: input.workspaceId,
+            ownerUserId: input.ownerUserId,
+          },
+          originGeneration: input.originGeneration,
           ...(input.runKind === 'issue'
             ? { readAudience: 'org' as const }
             : {}),
@@ -145,11 +232,10 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
         Effect.andThen((message) =>
           Effect.tryPromise({
             try: () => this.saveMessages([message]),
-            catch: (cause) =>
+            catch: () =>
               new BrainWriteBackTurnError({
                 operation: 'save write-back messages',
                 message: 'Brain write-back turn failed.',
-                cause,
               }),
           }),
         ),
@@ -160,7 +246,7 @@ export class BrainWriteBackSubAgent extends Think<AgentRuntimeEnv> {
           return Effect.fail(
             new BrainWriteBackTurnError({
               operation: 'complete write-back turn',
-              message: `Brain write-back turn ${result.status}${result.error ? `: ${result.error}` : ''}`,
+              message: `Brain write-back turn ${result.status}`,
             }),
           )
         }),

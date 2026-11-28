@@ -3,10 +3,72 @@ title: Skills load on demand from R2 through Think skill sources
 description: Where skills are stored, how an agent sees only its assigned skills, and why a skill write never touches existing chat threads.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-15
 ---
 
 A skill is a `SKILL.md` bundle of instructions and supporting files that teaches an agent a task. Skills belong to a workspace and are assigned to agents. An agent sees a catalog of its assigned skills and loads one only when a task calls for it.
+
+## Browse and edit the library on any screen
+
+The Skills page shows one pane at a time below the `md` breakpoint. It opens
+with a full-width library. Selecting a skill opens its detail; **Skills** returns
+to the library with the search and scroll position preserved.
+The `?focus=<skillId>` search parameter opens a skill directly. Desktop keeps
+the library beside the selected skill.
+At exactly 768px, the detail toolbar uses two rows: the breadcrumb and actions
+menu sit above compact Preview, Source, and Edit controls. Save controls wrap
+when needed so they remain reachable in the narrow detail pane.
+
+Mobile shows one continuous list with names and descriptions, without category
+filters, headings, rules between rows, or a rounded background enclosing the list.
+Only the selected or hovered row has a background. Search matches names and
+descriptions across the library.
+Desktop groups show compact names with categories from `config.metadata.category`.
+Skills without a category appear without a group heading on desktop.
+Skill details show a category badge only when the skill has a category.
+The Add control is a plus icon with a subtle hover background and an **Add skill** tooltip.
+
+Each bundle file is reachable through a horizontally scrolling file bar on
+both mobile and desktop. **Preview** renders Markdown, **Source** shows the
+complete saved or draft document, and **Edit** enables changes. On mobile the
+source control is labeled **SKILL.md**, or **Source** for a supporting file.
+Frontmatter is collapsed by default and can be expanded without losing fields.
+Desktop previews include an **On this page** outline built from rendered
+headings. As the active heading changes, the outline scrolls within its own
+panel just enough to keep that entry visible, without moving the document.
+Clicking an outline entry selects it immediately and keeps it selected throughout
+the scroll. Jumps are instant when reduced motion is enabled and smooth otherwise.
+Native scroll completion releases that selection for reading position tracking.
+An instant jump that leaves the reader in place releases it immediately because
+no scroll completion event occurs. Wheel, touch, pointer, or navigation-key input
+interrupts the jump and resumes tracking immediately.
+Long identifiers wrap; code blocks and wide tables scroll inside
+their own containers.
+
+Create, community import, source sync, file addition/removal, skill deletion,
+and keyboard save remain available. Leaving a dirty editor, including returning
+to the mobile library, asks before discarding changes. Failed saves keep the
+draft. A save from a discarded editor still updates the cached bundle, but cannot
+replace a newer dirty draft after that skill is reopened. Each dirty editor keeps
+its starting bundle until its own save succeeds or the draft is discarded.
+Within one browser tab, saves for the same workspace skill run in submission
+order, even when the editor is discarded and reopened. Each queued save waits
+for the previous request and its cache update to settle, including failed saves.
+Different skills can save independently. This ordering uses TanStack Query's
+shared mutation scope; timestamps are not used as bundle versions.
+Saving the main document does not replace supporting files unless those
+files changed. Adding a file is blocked while a save is pending, including
+the Add file dialog's button and Enter shortcut if the dialog was already open.
+A failed save keeps the dialog's path and allows adding the file again.
+These presentation changes use the existing Skills API and do
+not require Cloudflare credentials in local offline development.
+
+Supporting-file paths use the same canonical form in the Add file dialog and
+server validation. After rejecting absolute paths and parent traversal, they
+remove `.` and empty segments. Duplicate checks use that canonical path, and
+an empty path or any case variant of the root `SKILL.md` is rejected. For
+example, `./notes.md` conflicts with `notes.md`; `./SKILL.md` cannot be added
+as a supporting file.
 
 The reasons for this design, and the eager design it replaced, are in the decision record [Think-native skills](../../decisions/2026-06-think-native-skills.md).
 
@@ -50,3 +112,22 @@ This splits errors cleanly:
 - Should built-in document skills stay always available, or become assigned skills like the rest?
 - Should an old chat show the skill catalog it had at the time, for reproducibility, or always the latest assignment?
 - How should Garden gate skill scripts if it enables Think's `run_skill_script` later?
+
+## Read the catalog through an explicit client session
+
+The shared client slice uses the existing `GardenSkillsApi` list contract. Its
+client instance binds one API origin, workspace and session identity to an
+injected Fetch transport. It does not import React, browser storage, Node services
+or Cloudflare bindings. The host supplies credentials; client identity is a local
+scope marker and never grants server authority.
+
+Garden web supplies its cookie transport and invalidates the instance when the
+account, workspace or API configuration changes. Invalidated instances reject
+late responses and cannot clear a newer session after an old 401. Cancellation
+aborts the read. A 403 reports denied access without signing the member out.
+An explicit workspace parameter must match the active workspace.
+
+This slice covers the skills list only. It does not implement native sign-in,
+offline storage, direct execution-host launch or outside executable plugins.
+The [execution-host contract proposal](../../proposals/execution-host-contract.md)
+defines the later launch boundary separately.

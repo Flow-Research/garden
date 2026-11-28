@@ -12,6 +12,7 @@ import {
   requestFields,
 } from '@garden/observability/logger'
 import type { User, Workspace } from '@garden/core/types'
+import { z } from 'zod'
 
 const bootstrapLogger = createGardenLogger({
   service: 'garden-staging',
@@ -32,8 +33,9 @@ export interface AuthBootstrap {
  * organization reads makes the workspace landing deterministic. Reference:
  * Better Auth organization plugin and TanStack Start server context.
  */
-const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
-  async ({ context }) => {
+const rawGetAuthBootstrap = createServerFn({ method: 'GET' })
+  .inputValidator(z.object({ workspaceId: z.string().optional() }))
+  .handler(async ({ context, data }) => {
     const appContext = requireAppRequestContext(context)
 
     // Wrap the whole bootstrap so infra failures degrade to an unauthenticated
@@ -59,9 +61,10 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
         const organizations = await auth.api.listOrganizations({
           headers: appContext.request.headers,
         })
-        const requestedWorkspaceId = new URL(
-          appContext.request.url,
-        ).searchParams.get('workspace_id')
+        // Client server-function URLs do not carry the browser route search.
+        // Pass the destination explicitly so parallel invite/bootstrap requests
+        // cannot leave the old active organization selected after acceptance.
+        const requestedWorkspaceId = data.workspaceId ?? null
         const activeOrganizationId =
           session.session.activeOrganizationId ?? null
         const preferredWorkspaceId = resolvePreferredWorkspaceId(
@@ -131,8 +134,7 @@ const rawGetAuthBootstrap = createServerFn({ method: 'GET' }).handler(
     }
 
     return result.value
-  },
-)
+  })
 
 /**
  * Chooses which workspace the authenticated shell should open.
@@ -169,5 +171,9 @@ export function resolvePreferredWorkspaceId(
   return organizations[0]?.id ?? null
 }
 
-export const getAuthBootstrap: () => Promise<AuthBootstrap | null> = () =>
-  rawGetAuthBootstrap() as Promise<AuthBootstrap | null>
+export const getAuthBootstrap: (
+  workspaceId?: string,
+) => Promise<AuthBootstrap | null> = (workspaceId) =>
+  rawGetAuthBootstrap({
+    data: { workspaceId },
+  }) as Promise<AuthBootstrap | null>

@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { getPooledDb } from '@garden/db/runtime'
-import type { ContextProvider } from 'agents/experimental/memory/session'
+import type { ContextProvider } from 'agents/context'
 import * as schema from '@garden/db/schema'
 import {
   FOUNDATION_SECTION_ORDER,

@@ -49,18 +49,6 @@ Upstream: https://github.com/material-extensions/vscode-material-icon-theme
 Material Icon Theme is licensed under the MIT License. The complete upstream
 license is included at `third_party/material-icon-theme/LICENSE`.
 
-## Cloudflare Agents
-
-Garden carries `patches/agents@0.17.3.patch`, which modifies Cloudflare Agents
-distribution files used by the MCP session runtime. The patch changes replay,
-delivery acknowledgement, Durable Object storage handling, SSE rotation, and
-priming-event behavior.
-
-Upstream: https://github.com/cloudflare/agents
-
-The upstream MIT license, NOTICE, and third-party license inventory are
-included unchanged under `third_party/cloudflare-agents/`.
-
 ## Executor
 
 Garden uses Executor v1.5.40 from upstream commit

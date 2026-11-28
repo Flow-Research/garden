@@ -1,5 +1,11 @@
 import type { MCPClientManager, MCPServerFilter } from 'agents/mcp/client'
-import { jsonSchema, tool, type ModelMessage, type ToolSet } from 'ai'
+import {
+  jsonSchema,
+  tool,
+  type ModelMessage,
+  type Tool,
+  type ToolSet,
+} from 'ai'
 import { Effect } from 'effect'
 import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
@@ -41,6 +47,8 @@ import {
   type GardenLogger,
 } from '@garden/observability/logger'
 import { upsertPermissionRequestInbox } from '@garden/db/inbox'
+import { teamApprovalRequirement } from '@garden/core/teams/agent-policy'
+import { loadTeamAgentPolicyForUser } from '@garden/core/teams/agent-policy-store'
 import {
   extractThreadIdFromAgentName,
   type ActiveConnectorBinding,
@@ -209,6 +217,19 @@ export const EXECUTOR_TOOL_KEY_PREFIX = buildMcpAiToolKey(
   '',
 )
 
+/**
+ * Approval context shown in the Inbox. When several Teams' rules require the
+ * same approval, the context names every Team whose policy held the call.
+ */
+function permissionRequestContext(
+  toolLabel: string,
+  teams: readonly { teamName: string }[],
+) {
+  if (teams.length <= 1) return toolLabel
+  const names = teams.map((team) => team.teamName).join(', ')
+  return `${toolLabel} (required by ${names} Team policies)`
+}
+
 export class RuntimeMcpError extends TaggedError('RuntimeMcpError')<{
   code:
     | 'connector_not_found'
@@ -236,7 +257,7 @@ export type ThreadRuntimeIdentity = {
  *
  * Before this scope was explicit, every runtime used `rpc:executor`. Agents
  * maps that name to one Durable Object, so the first initialized Executor
- * runtime could serve later workspaces or users. The installed agents@0.17.3
+ * runtime could serve later workspaces or users. The installed agents@0.34.0
  * `addMcpServer()` and PartyServer `getServerByName()` implementations use the
  * remote name for Durable Object addressing. This name therefore includes the
  * opaque Garden workspace, member, agent, thread, and run identifiers.
@@ -302,8 +323,12 @@ export type McpToolRecord = {
 }
 
 type McpCallToolParams = Parameters<MCPClientManager['callTool']>[0]
-type McpCallToolResultSchema = Parameters<MCPClientManager['callTool']>[1]
-type McpCallToolOptions = Parameters<MCPClientManager['callTool']>[2]
+type McpCallToolOptions = {
+  readonly timeout?: number
+  readonly maxTotalTimeout?: number
+  readonly resetTimeoutOnProgress?: boolean
+  readonly signal?: AbortSignal
+}
 
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0]
 
@@ -319,7 +344,6 @@ export type McpClientFacade = {
   getAITools: (filter?: MCPServerFilter) => ToolSet
   callTool: (
     params: McpCallToolParams,
-    resultSchema?: McpCallToolResultSchema,
     options?: McpCallToolOptions,
   ) => Promise<unknown>
   listTools: (filter?: MCPServerFilter) => McpToolRecord[]
@@ -377,11 +401,11 @@ export type McpHost = {
     ResultValue<ThreadRuntimeIdentity, RuntimeMcpError>
   >
   /**
-   * The Decide owner this host's `decide_analyze` calls belong to. Omitted
-   * means a chat facet, whose name is the thread key. Run facets supply it
-   * so an automation's analysis is owned by its run, never by a chat.
+   * The Decide owner this host's `decide_analyze` calls belong to, read per
+   * call. Omitted or null means the facet name is the chat thread key. Run
+   * facets supply it so an automation's analysis is owned by its run.
    */
-  decideAnalysisOwner?: () => DecideAnalysisOwner
+  decideAnalysisOwner?: () => DecideAnalysisOwner | null
 }
 
 export function isMcpDiscoveryCancellation(message: string | undefined) {
@@ -397,15 +421,29 @@ type ActiveNativeConnectorAccount = {
   status: 'connected' | 'degraded'
 }
 
-function requestedGithubAssignees(input: unknown): string[] {
-  return typeof input === 'object' &&
-    input !== null &&
-    'assignees' in input &&
-    Array.isArray(input.assignees)
-    ? input.assignees.filter(
-        (login): login is string => typeof login === 'string',
-      )
-    : []
+type GithubAssigneesInput =
+  | { kind: 'absent' }
+  | { kind: 'invalid' }
+  | { kind: 'valid'; logins: readonly string[] }
+
+/**
+ * Classifies the `assignees` field of an `issue_write` call so the gate can
+ * tell "not provided" from "provided but malformed".
+ * Before (#294): anything other than an array read as no assignees, and
+ * non-string entries were filtered out, so a string, object, or mixed array
+ * skipped the linked-login check and reached GitHub.
+ * After: a present value that is not `string[]` is `invalid` and rejected.
+ */
+function parseGithubAssignees(input: unknown): GithubAssigneesInput {
+  if (!hasAssigneesKey(input)) return { kind: 'absent' }
+  const value = input.assignees
+  if (
+    !Array.isArray(value) ||
+    !value.every((login): login is string => typeof login === 'string')
+  ) {
+    return { kind: 'invalid' }
+  }
+  return { kind: 'valid', logins: value }
 }
 
 /**
@@ -414,7 +452,7 @@ function requestedGithubAssignees(input: unknown): string[] {
  * on update clears every assignee.
  * Ref: github/github-mcp-server pkg/github/issues.go (AssigneesProvided)
  */
-function hasAssigneesKey(input: unknown): boolean {
+function hasAssigneesKey(input: unknown): input is { assignees: unknown } {
   return typeof input === 'object' && input !== null && 'assignees' in input
 }
 
@@ -525,7 +563,9 @@ export class RuntimeMcpController {
 
         if (!connectorId) {
           const baseExecute = rawTool.execute
-          acc[rawToolKey] = {
+          // Provider-defined MCP tools pin `description` to `undefined` in
+          // the Tool union; rebuild as a plain function tool after wrapping.
+          const executorTool = {
             ...rawTool,
             ...(baseExecute
               ? {
@@ -579,7 +619,6 @@ export class RuntimeMcpController {
                               ? {}
                               : { _meta: gardenMeta }),
                           },
-                          undefined,
                           {
                             timeout: mcpRuntimeConfig.executorToolCallTimeoutMs,
                             maxTotalTimeout:
@@ -657,7 +696,7 @@ export class RuntimeMcpController {
               options: {
                 toolCallId: string
                 messages: ModelMessage[]
-                experimental_context?: unknown
+                context: unknown
               },
             ) =>
               this.ensureExecutorToolNeedsApproval({
@@ -665,7 +704,8 @@ export class RuntimeMcpController {
                 toolArgs: input,
                 shouldAutoApprove: wrapOptions?.shouldAutoApprove,
               }),
-          }
+          } as Tool
+          acc[rawToolKey] = executorTool
           return acc
         }
 
@@ -673,7 +713,9 @@ export class RuntimeMcpController {
 
         const baseNeedsApproval = rawTool.needsApproval
         const baseExecute = rawTool.execute
-        acc[toolKey] = {
+        // Provider-defined MCP tools pin `description` to `undefined` in
+        // the Tool union; rebuild as a plain function tool after wrapping.
+        const wrappedTool = {
           ...rawTool,
           ...(baseExecute
             ? {
@@ -715,7 +757,7 @@ export class RuntimeMcpController {
             options: {
               toolCallId: string
               messages: ModelMessage[]
-              experimental_context?: unknown
+              context: unknown
             },
           ) => {
             const baseApproval =
@@ -740,7 +782,8 @@ export class RuntimeMcpController {
 
             return approvalResult.value
           },
-        }
+        } as Tool
+        acc[toolKey] = wrappedTool
         return acc
       }, {})
 
@@ -847,6 +890,9 @@ export class RuntimeMcpController {
    * Ref: https://docs.github.com/en/rest/issues/assignees#add-assignees-to-an-issue
    * Ref: https://github.com/github/github-mcp-server (issue_write method=update)
    *
+   * A present `assignees` that is not `string[]` is rejected on both
+   * surfaces (#294); before, it skipped the login check and reached GitHub.
+   *
    * Returns the rejection message, or null to proceed.
    */
   private async rejectGithubIssueWrite(
@@ -862,9 +908,13 @@ export class RuntimeMcpController {
     ) {
       return 'github-mcp.issue_write cannot set assignees on update: it replaces existing assignees. Use github.issue_write, which adds assignees without removing current ones.'
     }
-    const requested = requestedGithubAssignees(input)
-    if (requested.length === 0) return null
-    return this.rejectUnlinkedGithubAssignees(requested)
+    const assignees = parseGithubAssignees(input)
+    if (assignees.kind === 'absent') return null
+    if (assignees.kind === 'invalid') {
+      return `${toolName} rejected: assignees must be an array of GitHub login strings (string[]).`
+    }
+    if (assignees.logins.length === 0) return null
+    return this.rejectUnlinkedGithubAssignees(assignees.logins)
   }
 
   /**
@@ -1289,7 +1339,32 @@ export class RuntimeMcpController {
     if (!capability) {
       return Result.ok(false)
     }
+
+    // Team policy can only add approvals, so it is read before any rule that
+    // skips one. Loaded per decision so a saved policy applies immediately.
+    const teamPolicyResult = await Result.tryPromise({
+      try: () =>
+        loadTeamAgentPolicyForUser(db, {
+          workspaceId: identityResult.value.workspaceId,
+          userId: identityResult.value.userId,
+        }),
+      catch: (cause) =>
+        new RuntimeMcpError({
+          code: 'database_failed',
+          message:
+            cause instanceof Error
+              ? cause.message
+              : 'Failed to load Team agent policy',
+        }),
+    })
+    if (teamPolicyResult.isErr()) return teamPolicyResult
+    const teamApproval = teamApprovalRequirement(
+      teamPolicyResult.value,
+      capability.riskClass,
+    )
+
     if (
+      !teamApproval &&
       args.shouldAutoApprove?.({
         connectorId: args.connectorId,
         toolName: args.toolName,
@@ -1406,7 +1481,7 @@ export class RuntimeMcpController {
       connectionTrust: connectionGrantResult.value[0]?.trustLevel,
       riskClass: capability.riskClass,
     })
-    if (trustLevel !== 'ask') {
+    if (trustLevel !== 'ask' && !teamApproval) {
       return Result.ok(false)
     }
 
@@ -1417,6 +1492,8 @@ export class RuntimeMcpController {
             argsJson: schema.permissionRequest.argsJson,
             resolvedAt: schema.permissionRequest.resolvedAt,
             status: schema.permissionRequest.status,
+            teamId: schema.permissionRequest.teamId,
+            context: schema.permissionRequest.context,
           })
           .from(schema.permissionRequest)
           .where(
@@ -1447,6 +1524,15 @@ export class RuntimeMcpController {
       }
 
       return (
+        request.teamId ===
+          (teamApproval?.otherTeams.length
+            ? null
+            : (teamApproval?.team.teamId ?? null)) &&
+        request.context ===
+          permissionRequestContext(
+            `${args.connectorId}.${args.toolName}`,
+            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
+          ) &&
         Date.now() - request.resolvedAt.getTime() <=
           PERMISSION_APPROVAL_REUSE_WINDOW_MS &&
         canonicalJsonString(request.argsJson) === toolArgsSignature
@@ -1464,7 +1550,13 @@ export class RuntimeMcpController {
           agentId: identityResult.value.agentId,
           capabilityId: capability.id,
           runId: identityResult.value.runId ?? null,
-          context: `${args.connectorId}.${args.toolName}`,
+          context: permissionRequestContext(
+            `${args.connectorId}.${args.toolName}`,
+            teamApproval ? [teamApproval.team, ...teamApproval.otherTeams] : [],
+          ),
+          teamId: teamApproval?.otherTeams.length
+            ? null
+            : (teamApproval?.team.teamId ?? null),
           issueId: identityResult.value.issueId ?? null,
           argsJson: args.toolArgs as object,
           toolCallId: args.toolCallId,

@@ -1,0 +1,205 @@
+{
+  "diagrams": {
+    "garden-components": {
+      "title": "Garden components",
+      "watches": [
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/agent-runtime/src/brain-run-authority.ts",
+        "packages/server/src/issues/run-service.ts",
+        "apps/web/wrangler.jsonc"
+      ]
+    },
+    "garden-deployment": {
+      "title": "Deployment and storage",
+      "watches": [
+        "apps/web/wrangler.jsonc",
+        "alchemy.run.ts"
+      ]
+    },
+    "garden-issue-run": {
+      "title": "Garden run and context",
+      "watches": [
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/agent-runtime/src/run-sub-agent-base.ts",
+        "packages/agent-runtime/src/brain-run-authority.ts"
+      ]
+    },
+    "garden-member-connector": {
+      "title": "Member connector access",
+      "watches": [
+        "apps/web/src/lib/server/executor-engine/"
+      ]
+    },
+    "garden-host-launch": {
+      "title": "Host launch protocol",
+      "watches": [
+        "packages/server/src/execution-hosts/"
+      ]
+    },
+    "garden-host-intervention": {
+      "title": "Intervention and recovery",
+      "watches": [
+        "packages/server/src/execution-hosts/"
+      ]
+    },
+    "garden-overview": {
+      "title": "Garden overview",
+      "watches": [
+        "apps/web/wrangler.jsonc",
+        "apps/web/src/server.ts",
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/workspace-realtime-do.ts",
+        "packages/agent-runtime/src/automation-trigger-do.ts",
+        "packages/agent-runtime/src/run-workflow.ts",
+        "apps/web/src/lib/server/executor-engine/mcp.ts",
+        "apps/web/src/lib/server/executor-engine/direct-decide-mcp.ts",
+        "apps/web/src/lib/server/permission-request.ts"
+      ]
+    },
+    "agent-runtime": {
+      "title": "AgentDO and its Think facets",
+      "watches": [
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/issue-run-sub-agent.ts",
+        "packages/agent-runtime/src/automation-run-sub-agent.ts",
+        "packages/agent-runtime/src/run-sub-agent-base.ts",
+        "packages/agent-runtime/src/brain-audit-sub-agent.ts",
+        "packages/agent-runtime/src/brain-write-back-sub-agent.ts",
+        "packages/agent-runtime/src/brain-write-back-runner.ts",
+        "packages/agent-runtime/src/issue-agent-context.ts"
+      ]
+    },
+    "run-engine-turns": {
+      "title": "RunWorkflow turn loop",
+      "watches": [
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/agent-runtime/src/run-workflow-turn-wait.ts",
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/run-sub-agent-base.ts",
+        "packages/agent-runtime/src/issue-run-sub-agent.ts",
+        "packages/agent-runtime/src/automation-run-sub-agent.ts"
+      ]
+    },
+    "run-states": {
+      "title": "Run states",
+      "watches": [
+        "packages/db/src/schema/issue-values.ts",
+        "packages/db/src/schema/automation-values.ts",
+        "packages/agent-runtime/src/issue-run-sub-agent.ts",
+        "packages/agent-runtime/src/automation-run-sub-agent.ts",
+        "packages/agent-runtime/src/automation-trigger-do.ts",
+        "packages/agent-runtime/src/agent-tools/",
+        "packages/server/src/issues/run-service.ts",
+        "packages/server/src/automations/run-service.ts"
+      ]
+    },
+    "issue-states": {
+      "title": "Issue and issue run states",
+      "watches": [
+        "packages/db/src/schema/issue-values.ts",
+        "packages/core/src/issues/run-sync.ts",
+        "packages/agent-runtime/src/issue-run-sub-agent.ts",
+        "packages/agent-runtime/src/agent-tools/",
+        "packages/server/src/issues/run-service.ts",
+        "apps/web/src/lib/server/work-products.ts",
+        "apps/web/src/lib/server/issue-mutation-effects.ts"
+      ]
+    },
+    "work-product-flow": {
+      "title": "Work product review flow",
+      "watches": [
+        "apps/web/src/lib/server/work-products.ts",
+        "packages/agent-runtime/src/agent-tools/create-work-product.ts",
+        "packages/agent-runtime/src/agent-tools/revise-work-product.ts",
+        "packages/core/src/issues/work-product-pr-target.ts",
+        "packages/core/src/issues/work-product-saved-file.ts"
+      ]
+    },
+    "automation-run": {
+      "title": "Automation run",
+      "watches": [
+        "packages/agent-runtime/src/automation-trigger-do.ts",
+        "packages/agent-runtime/src/automation-run-sub-agent.ts",
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/server/src/automations/run-service.ts",
+        "apps/web/src/lib/server/automations.ts",
+        "apps/web/src/routes/api/automations/$id/trigger.ts",
+        "packages/db/src/schema/automation-values.ts"
+      ]
+    },
+    "permission-decision": {
+      "title": "Permission decision",
+      "watches": [
+        "packages/agent-runtime/src/runtime-mcp-controller.ts",
+        "packages/agent-runtime/src/chat-permissions.ts",
+        "packages/connectors/src/capabilities.ts",
+        "packages/core/src/agents/permissions.ts",
+        "packages/core/src/teams/agent-policy.ts",
+        "apps/web/src/lib/server/permission-request.ts",
+        "apps/web/src/routes/api/permission-requests/$id/resolve.ts"
+      ]
+    },
+    "brain-flow": {
+      "title": "Brain flow",
+      "watches": [
+        "packages/brain/src/services/Brain.ts",
+        "packages/brain/src/services/write-back.ts",
+        "packages/brain/src/domain/scope.ts",
+        "packages/agent-runtime/src/brain-write-back.ts",
+        "packages/agent-runtime/src/brain-injection.ts",
+        "packages/agent-runtime/src/agent-tools/brain.ts",
+        "apps/web/src/lib/server/brain-file-ingestion.ts",
+        "apps/web/src/routes/api/brain/proposals/"
+      ]
+    },
+    "connectors": {
+      "title": "Connector call path",
+      "watches": [
+        "packages/agent-runtime/src/runtime-mcp-controller.ts",
+        "packages/connectors/src/capabilities.ts",
+        "apps/web/src/lib/server/executor-engine/mcp.ts",
+        "apps/web/src/lib/server/executor-engine/plugins.ts",
+        "apps/web/src/lib/server/executor-engine/direct-decide-mcp.ts",
+        "apps/web/wrangler.jsonc",
+        "packages/core/src/teams/"
+      ]
+    },
+    "realtime": {
+      "title": "Realtime paths",
+      "watches": [
+        "packages/agent-runtime/src/workspace-realtime-do.ts",
+        "packages/agent-runtime/src/realtime-audience.ts",
+        "apps/web/src/lib/server/realtime.ts",
+        "apps/web/src/lib/realtime/",
+        "apps/web/src/features/chat/chat-runtime-provider.tsx",
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/run-workflow.ts",
+        "packages/core/src/types/events.ts"
+      ]
+    },
+    "chat-turn": {
+      "title": "One chat turn",
+      "watches": [
+        "apps/web/src/features/chat/chat-runtime-provider.tsx",
+        "apps/web/src/server.ts",
+        "packages/agent-runtime/src/agent-do.ts",
+        "packages/agent-runtime/src/chat-sub-agent-tools.ts",
+        "packages/agent-runtime/src/chat-permissions.ts"
+      ]
+    },
+    "execution-runtimes": {
+      "title": "Execution runtimes",
+      "watches": [
+        "packages/agent-runtime/src/chat-sub-agent-tools.ts",
+        "packages/agent-runtime/src/sandbox-tools.ts",
+        "packages/agent-runtime/src/automation-run-sub-agent.ts",
+        "packages/agent-runtime/src/issue-run-sub-agent.ts",
+        "packages/agent-runtime/src/run-sub-agent-base.ts",
+        "packages/agent-runtime/src/agent-do.ts",
+        "apps/web/wrangler.jsonc"
+      ]
+    }
+  }
+}

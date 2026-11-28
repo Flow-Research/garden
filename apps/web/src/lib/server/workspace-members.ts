@@ -1,5 +1,5 @@
-import { and, eq, inArray } from 'drizzle-orm'
-import { Result, TaggedError } from 'better-result'
+import { and, eq } from 'drizzle-orm'
+import { Result, TaggedError, type Result as ResultValue } from 'better-result'
 import { isWorkspaceManager } from '@/lib/server/team-access'
 import { schema, type Db } from '@/lib/server/db'
 
@@ -77,42 +77,10 @@ export async function readWorkspaceMember(args: {
 
 /**
  * Hydrates Better Auth listMembers rows with github_* from Garden's member
- * table. Phase 1 returned hardcoded nulls; without this join, linked identities
- * would never appear on GET /members.
+ * table. SQL lives in `queries/workspaces`; re-exported here for callers that
+ * already import from this module (`members/$memberId`, tests).
  */
-export async function githubIdentityByMemberId(args: {
-  db: Db
-  workspaceId: string
-  memberIds: string[]
-}) {
-  if (args.memberIds.length === 0) {
-    return new Map<
-      string,
-      { githubUserId: string | null; githubLogin: string | null }
-    >()
-  }
-
-  const rows = await args.db
-    .select({
-      id: schema.member.id,
-      githubUserId: schema.member.githubUserId,
-      githubLogin: schema.member.githubLogin,
-    })
-    .from(schema.member)
-    .where(
-      and(
-        eq(schema.member.organizationId, args.workspaceId),
-        inArray(schema.member.id, args.memberIds),
-      ),
-    )
-
-  return new Map(
-    rows.map((row) => [
-      row.id,
-      { githubUserId: row.githubUserId, githubLogin: row.githubLogin },
-    ]),
-  )
-}
+export { githubIdentityByMemberId } from '@/lib/server/queries/workspaces/members-github'
 
 /** The caller's role in this workspace, or null when they are not a member. */
 export async function readActorWorkspaceRole(args: {
@@ -138,8 +106,9 @@ export async function readActorWorkspaceRole(args: {
  * Only workspace owners/admins may link, change, or unlink a member's GitHub
  * identity, their own row included. Before: members could self-link any id,
  * and admins could unlink an owner and claim the owner's GitHub id. Now an
- * owner's row needs an owner, the same rule role edits use. Self-serve returns
- * once Garden verifies ownership via GitHub OAuth (docs/reference/known-gaps.md).
+ * owner's row needs an owner, the same rule role edits use. Members link their
+ * own row through GitHub's sign-in instead (`lib/server/github-identity.ts`),
+ * which proves ownership; this rule covers editing by hand.
  */
 export function canEditMemberGithubIdentity(args: {
   actorRole: string | null
@@ -296,6 +265,9 @@ export async function refreshMemberGithubLoginByUserId(args: {
 /**
  * Link, unlink, or refresh login for a membership. When the member is already
  * linked to the same github_user_id, only login is refreshed (rename-safe).
+ * The return type is explicit: inferred, it is a union of `Ok`/`Err` shapes
+ * whose `mapError` overloads TypeScript sometimes cannot call (TS2349 in
+ * `setOwnGitHubIdentity`, depending on check order across the program).
  */
 export async function linkOrRefreshMemberGithubIdentity(args: {
   db: Db
@@ -304,7 +276,9 @@ export async function linkOrRefreshMemberGithubIdentity(args: {
   existingGithubUserId: string | null
   githubUserId: string | null
   githubLogin: string | null
-}) {
+}): Promise<
+  ResultValue<{ kind: GithubIdentityWriteKind }, WorkspaceMemberGithubError>
+> {
   const kind = classifyGithubIdentityWrite({
     existingGithubUserId: args.existingGithubUserId,
     nextGithubUserId: args.githubUserId,

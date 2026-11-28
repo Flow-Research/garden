@@ -3,12 +3,12 @@ title: The agent runtime gives each chat and run its own Think facet
 description: Why Garden runs one AgentDO per agent with a Think sub-agent per chat, issue, and automation run, and where each piece of state lives.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-27
 ---
 
 Garden runs agents on Cloudflare Agents and `@cloudflare/think` 0.10.0. Durable Objects give each agent an identity. Cloudflare Workflows keep long-running work alive. Postgres stays the queryable control plane that lists chats, issues, and runs.
 
-The core choice is one parent `AgentDO` per agent, with one Think sub-agent (a facet) per unit of work. Each chat thread, issue run, and automation run gets its own facet and its own SQLite scope. This page explains that shape and the rules that protect it.
+The core choice is one parent `AgentDO` per agent, with one Think sub-agent (a facet) per unit of work. Each chat thread, issue run, and automation run gets its own facet and its own SQLite scope. Brain audit and Brain write-back passes get one-shot facets that are deleted when the pass ends. This page explains that shape and the rules that protect it.
 
 ## One parent, many facets
 
@@ -18,12 +18,16 @@ The runtime splits into the pieces below. All classes live in `packages/agent-ru
 | --- | --- | --- |
 | Agent identity and RPC parent | `AgentDO extends Agent` in `agent-do.ts` | `agent.hostName` or the agent id |
 | Chat conversation | `ChatSubAgent extends Think` in `agent-do.ts` | chat thread `runtime_key` |
-| Issue work | `IssueRunSubAgent` in `issue-run-sub-agent.ts` | issue id |
+| Issue work | `IssueRunSubAgent` in `issue-run-sub-agent.ts` | `issueRunFacetName(issueId, generation)`: the issue id, plus a generation suffix after a context reset |
 | Automation work | `AutomationRunSubAgent` in `automation-run-sub-agent.ts` | automation run id |
 | Durable run coordination | `RunWorkflow` in `run-workflow.ts` | run id as the Workflow instance id |
 | Schedule trigger state | `AutomationTriggerDO` in `automation-trigger-do.ts` | automation |
 
-`IssueRunSubAgent` and `AutomationRunSubAgent` both extend `RunSubAgentBase` in `run-sub-agent-base.ts`. The parent creates and routes every facet with `this.subAgent(ChildClass, name)`. The Durable Object and Workflow bindings are declared in `apps/web/wrangler.jsonc`. See the [architecture map](../../reference/architecture-map.md) for the full binding list.
+`IssueRunSubAgent` and `AutomationRunSubAgent` both extend `RunSubAgentBase` in `run-sub-agent-base.ts`. The parent creates every facet with `this.subAgent(ChildClass, name)`. Browser connections can reach only chat, issue, and automation facets. Brain facets are reached only through parent RPC. The Durable Object and Workflow bindings are declared in `apps/web/wrangler.jsonc`. See the [architecture map](../../reference/architecture-map.md) for the full binding list.
+
+![AgentDO and its Think facets](../../diagrams/agent-runtime.drawio.svg)
+
+One `AgentDO` per agent creates a separate Think facet, with its own SQLite scope, for each chat thread, issue run, automation run, and one-shot Brain pass.
 
 ## Chats are facets, not sessions
 
@@ -86,6 +90,8 @@ Issue and automation runs (`RunSubAgentBase.configureSession`) use these layers:
 1. `foundation`.
 2. A run-specific context: `issue-interaction` for issues, which uses the bundled skill in `packages/agent-runtime/src/skills/issue-interaction/`, or `automation-run` for automations.
 3. Assigned skills from `getSkills()`.
+
+The per-run issue context opens with the trigger line from `issue-run-trigger.ts`. For comment and mention runs it states the comment's request as the run's whole task and says that outside actions (opening PRs, GitHub writes, sending messages) need a person's request or approval; the issue's "Done when" line is the goal, not permission. Connector writes still pause for approval through the `send_external` gate.
 
 Keep prompt text stable so the cached prompt stays valid. Expose changing capability state through bounded tools instead.
 

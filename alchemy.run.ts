@@ -58,6 +58,10 @@ const executorBlobs = Cloudflare.R2.Bucket(deployTarget.executorBlobsId, {
 
 const database = Cloudflare.Hyperdrive.Connection(deployTarget.databaseId, {
   name: deployTarget.databaseName,
+  // Hyperdrive caches reads for 60s by default, and writes do not invalidate
+  // the cache. With it on, a cancelled run still showed as the issue's live
+  // active run after the cancel returned 200.
+  caching: { disabled: true },
   origin: postgresOriginFromEnv(deployTarget.databaseUrlEnv),
 })
 
@@ -170,10 +174,9 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
       persist: true,
     },
   },
-  // The reconciler performs ledger cleanup without a durable deadline, so a
-  // 12-hour cadence avoids unnecessary database wakeups while still repairing
-  // stale product state.
-  crons: ['0 */12 * * *'],
+  // Must match `triggers.crons` in apps/web/wrangler.jsonc: the 12-hour
+  // issue-run reconciler and the daily model health check.
+  crons: ['0 */12 * * *', '0 8 * * *'],
   // Use the stable script name here. Passing the Worker declaration can
   // resolve to `undefined` while Alchemy plans another direct resource.
   tailConsumers: [deployTarget.tailWorkerName],
@@ -193,7 +196,10 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
     HYPERDRIVE: database,
     HELIX_URL: plainEnv('HELIX_URL'),
     HELIX_API_KEY: Config.redacted('HELIX_API_KEY'),
-    DATABASE_URL: Config.redacted('DATABASE_URL'),
+    // Same env var as the Hyperdrive origin above, so a target's Worker secret
+    // and its Hyperdrive always point at one database (dev reads
+    // DEV_DATABASE_URL even when deploy:dev:alchemy runs without deploy-dev.mjs).
+    DATABASE_URL: Config.redacted(deployTarget.databaseUrlEnv),
     BETTER_AUTH_SECRET: Config.redacted('BETTER_AUTH_SECRET'),
     RESEND_API_KEY: Config.redacted('RESEND_API_KEY'),
     // Cloudflare does not expose existing Worker secret values. Omitting EXA
@@ -229,10 +235,12 @@ export const web = Cloudflare.Website.Vite(deployTarget.workerId, {
       'GOOGLE_AUTH_CLIENT_SECRET',
     ),
     ...optionalPlainBindings([
+      'WORKSTREAM_MCP_CLIENT_ID',
       'GITHUB_CLIENT_ID',
       'GITHUB_APP_ID',
       'GITHUB_APP_SLUG',
       'SLACK_CLIENT_ID',
+      'GARDEN_ALERT_EMAIL',
     ]),
     GOOGLE_CLIENT_SECRET: Config.redacted('GOOGLE_CLIENT_SECRET'),
     ...optionalSecretBindings([

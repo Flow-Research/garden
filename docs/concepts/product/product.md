@@ -49,7 +49,11 @@ You work in one authenticated shell, `AppShell` in `apps/web/src/components/shel
 - Connectors (`/connectors`)
 - Teams (`/teams`), with an admin-only Issues child at `/teams/issues`
 
+On a wide screen the sidebar can collapse to icons (`AppSidebar` `collapsed`). Hovering or focusing an icon shows that tab's name beside the rail. The same name is the control's accessible name while the tooltip is closed. Small screens keep the labeled drawer instead of the icon rail.
+
 Settings opens as a dialog from `apps/web/src/features/settings`. It is not a sidebar page.
+
+Switching workspace keeps you on the same page. On a page for one item, such as `/agents/<id>` or `/tasks/<id>`, you go to that item's section instead (`/agents`), because the item belongs to the old workspace. Garden clears search parameters and closes local selections, including file previews, when the workspace changes. `workspaceSwitchTarget` in `apps/web/src/components/shell/workspace-switch-target.ts` picks the destination.
 
 ## Each product primitive has one source of truth
 

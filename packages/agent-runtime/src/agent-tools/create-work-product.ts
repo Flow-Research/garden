@@ -23,7 +23,12 @@ export const createWorkProductInputSchema = z
     type: issueWorkProductTypeSchema,
     title: z.string().trim().min(1).max(240),
     body: z.string().trim().min(1).max(200_000),
-    payload: z.record(z.string(), z.unknown()).optional(),
+    payload: z
+      .record(z.string(), z.unknown())
+      .optional()
+      .describe(
+        'Optional metadata. For a draft meant to become a repository file, set pr_target: { repository: "owner/repo", path: "repo/relative/file.md", base_branch?: "dev" } so a reviewer can Apply as PR. The repository must be linked to the issue Team.',
+      ),
   })
   .strict()
 

@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { diagramFailures } from './diagram-contract.mjs'
+import { evidenceFailures } from './pr-evidence.mjs'
 
 const REQUIRED_HEADINGS = [
   '## What changed',
@@ -72,10 +74,12 @@ function hasCheckedItem(body, item) {
 /**
  * Read changed paths from the checked-out base and head commits.
  */
-function changedFiles(baseSha, headSha) {
+function changedFiles(baseSha, headSha, { includeRemoved = false } = {}) {
   const result = spawnSync(
     'git',
-    ['diff', '--name-only', '--diff-filter=ACMRT', baseSha, headSha],
+    includeRemoved
+      ? ['diff', '--name-only', '-z', '--no-renames', baseSha + '...' + headSha]
+      : ['diff', '--name-only', '-z', '--diff-filter=ACMRT', baseSha, headSha],
     { encoding: 'utf8' },
   )
 
@@ -87,8 +91,7 @@ function changedFiles(baseSha, headSha) {
     return []
   }
 
-  const output = result.stdout.trim()
-  return output ? output.split('\n') : []
+  return result.stdout.split('\0').filter(Boolean)
 }
 
 /**
@@ -109,6 +112,17 @@ function writeUsage() {
     'Usage: pnpm verify:pr [--event <path>]\n' +
       'Checks the pull-request contract used by Garden CI.\n',
   )
+}
+
+/**
+ * Dependency bots (Dependabot) open version bumps with their own title and
+ * body and, for security updates, always against the default branch (main).
+ * Before this check, every bump failed the contract on its template and base
+ * branch even when CI passed and a maintainer approved it. The contract is
+ * for human-authored changes; bumps are still gated by Verify and review.
+ */
+function isDependencyBot(pullRequest) {
+  return pullRequest.user?.login === 'dependabot[bot]'
 }
 
 /**
@@ -142,6 +156,13 @@ function main() {
       return
     }
     fail('the GitHub event is not a pull_request event')
+    return
+  }
+
+  if (isDependencyBot(pullRequest)) {
+    process.stdout.write(
+      `PR contract skipped for dependency update by ${pullRequest.user.login}.\n`,
+    )
     return
   }
 
@@ -220,6 +241,30 @@ function main() {
         'behavior changes need a documentation change or a documented reason that docs are not needed',
       )
     }
+
+    failures.push(
+      ...evidenceFailures({
+        files,
+        body,
+        prNumber: pullRequest.number,
+        verification,
+      }),
+    )
+
+    failures.push(
+      ...diagramFailures({
+        files: changedFiles(pullRequest.base.sha, pullRequest.head.sha, {
+          includeRemoved: true,
+        }),
+        body,
+        manifest: JSON.parse(
+          readFileSync(
+            new URL('../docs/diagrams/manifest.json', import.meta.url),
+            'utf8',
+          ),
+        ),
+      }),
+    )
   }
 
   if (failures.length > 0) {

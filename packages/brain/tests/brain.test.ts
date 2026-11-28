@@ -43,6 +43,41 @@ layer(BrainTestLive, { excludeTestServices: true })('brain', (it) => {
   )
 
   it.effect.skipIf(skipHelixIntegration)(
+    'returns an existing file without changing its owner or stored metadata',
+    () =>
+      Effect.gen(function* () {
+        const brain = yield* Brain
+        const canonical = {
+          type: 'file',
+          value: `one-file-${crypto.randomUUID()}`,
+        }
+        const first = yield* brain.addItem(
+          note({
+            canonical,
+            label: 'Original',
+            sizeBytes: 12,
+            r2Key: 'original',
+          }),
+        )
+        const other = yield* brain.addItem(
+          note({
+            canonical,
+            label: 'Revision',
+            sizeBytes: 25,
+            r2Key: 'revision',
+            origin: { actor: { _tag: 'Human', userId: 'second-member' }, at },
+          }),
+          'return',
+        )
+        expect(other.id).toBe(first.id)
+        expect(other.origin).toEqual(first.origin)
+        expect(other.label).toBe('Original')
+        expect(other.sizeBytes).toBe(12)
+        expect(other.r2Key).toBe('original')
+      }),
+  )
+
+  it.effect.skipIf(skipHelixIntegration)(
     'treats canonical duplicates as the same item',
     () =>
       Effect.gen(function* () {
@@ -100,6 +135,36 @@ layer(BrainTestLive, { excludeTestServices: true })('brain', (it) => {
         expect(hit?.item.kind).toBe(Kind.make('decision'))
         expect(hit?.score).toBeGreaterThan(0)
         expect(hit?.score).toBeLessThanOrEqual(6 * (1 / (RRF_K + 1)))
+      }),
+  )
+
+  it.effect.skipIf(skipHelixIntegration)(
+    'converges concurrent canonical text writes on one item',
+    () =>
+      Effect.gen(function* () {
+        const brain = yield* Brain
+        yield* brain.ensureIndexes()
+        const input = {
+          tenantId: workspaceId,
+          label: 'Canonical write-back',
+          body: 'Use D1 for durable workflow state.',
+          kind: Kind.make('decision'),
+          canonical: {
+            type: 'brain-write-back-claim',
+            value: `write-back-${crypto.randomUUID()}`,
+          },
+          actor: {
+            _tag: 'Agent' as const,
+            agentId: 'test-agent',
+            runId: 'test-run',
+          },
+        }
+        const [first, retry] = yield* Effect.all(
+          [brain.addText(input), brain.addText(input)],
+          { concurrency: 'unbounded' },
+        )
+
+        expect(retry.id).toBe(first.id)
       }),
   )
 

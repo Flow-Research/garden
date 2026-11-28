@@ -8,6 +8,7 @@ import type {
   IssueRunEvent,
   IssueWorkProduct,
 } from '@garden/core/types'
+import { describeRunFailure } from '@garden/core/runs/failure'
 import { getConnectorById } from '@garden/connectors'
 import { api } from '@/lib/api'
 import { executorOAuthStartUrl } from '@/lib/api/executor'
@@ -287,7 +288,9 @@ function WorkProductInboxAction({
   workProduct,
   connectorId,
   reviewMutation,
+  canSaveFiles,
 }: {
+  canSaveFiles: boolean
   workProduct: IssueWorkProduct
   connectorId?: string | null
   reviewMutation: ReturnType<typeof useReviewWorkProduct>
@@ -302,12 +305,17 @@ function WorkProductInboxAction({
   return (
     <WorkProductCard
       workProduct={workProduct}
+      onRetryFiles={canSaveFiles ? () => review('retry_files') : undefined}
       connectorId={connectorId}
       pendingAction={pending}
       onApprove={() => review('approve')}
+      onApproveAndClose={() => review('approve_and_close')}
       onRequestChanges={() => review('request_changes')}
       onApply={() =>
         reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply' })
+      }
+      onApplyPr={() =>
+        reviewMutation.mutateAsync({ id: workProduct.id, action: 'apply_pr' })
       }
     />
   )
@@ -416,6 +424,7 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
       {item.type === 'wp_review' && selectedWorkProduct && (
         <WorkProductInboxAction
           workProduct={selectedWorkProduct}
+          canSaveFiles={issue?.team_id === null}
           connectorId={connectorId}
           reviewMutation={reviewMutation}
         />
@@ -439,9 +448,10 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
                 usage: run.usage ?? null,
               }}
             />
-            {run.error && (
-              <p className="mt-2 break-words font-mono text-xs text-destructive">
-                {run.error}
+            {run.failure && (
+              <p className="mt-2 break-words text-xs text-destructive">
+                {describeRunFailure(run.failure).title}{' '}
+                {describeRunFailure(run.failure).nextStep}
               </p>
             )}
           </div>
@@ -454,14 +464,25 @@ export function InboxControlPlane({ item }: { item: InboxItem }) {
           </h3>
           <WorkProductList
             workProducts={remainingWorkProducts}
+            onRetryFiles={
+              issue?.team_id === null
+                ? (id) => reviewMutation.mutate({ id, action: 'retry_files' })
+                : undefined
+            }
             connectorId={connectorId}
             pending={reviewMutation.isPending ? reviewMutation.variables : null}
             onApprove={(id) => reviewMutation.mutate({ id, action: 'approve' })}
+            onApproveAndClose={(id) =>
+              reviewMutation.mutate({ id, action: 'approve_and_close' })
+            }
             onRequestChanges={(id) =>
               reviewMutation.mutate({ id, action: 'request_changes' })
             }
             onApply={(id) =>
               reviewMutation.mutateAsync({ id, action: 'apply' })
+            }
+            onApplyPr={(id) =>
+              reviewMutation.mutateAsync({ id, action: 'apply_pr' })
             }
           />
         </div>

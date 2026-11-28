@@ -81,6 +81,18 @@ describe('useChatRuntimeConnection first send', () => {
     sockets = []
   })
 
+  it('warms the owned facet without passing a thread identifier to the parent', async () => {
+    renderHook(
+      () =>
+        useChatRuntimeConnection({ session, updateSessionPreview: vi.fn() }),
+      { wrapper },
+    )
+    await waitFor(() =>
+      expect(sockets[1]?.call).toHaveBeenCalledWith('warmRuntime', []),
+    )
+    expect(sockets[0]?.call).not.toHaveBeenCalled()
+  })
+
   it('keeps the first message when the connect history lands after an early send', async () => {
     const { result } = renderHook(
       () =>

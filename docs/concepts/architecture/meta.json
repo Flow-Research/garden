@@ -1,1 +1,1 @@
-{ "title": "Architecture", "pages": ["how-garden-is-built", "agent-runtime", "run-engine", "execution-runtimes", "connectors", "realtime", "http-api", "brain"] }
+{ "title": "Architecture", "pages": ["how-garden-is-built", "diagrams", "agent-runtime", "run-engine", "execution-runtimes", "connectors", "realtime", "http-api", "brain"] }

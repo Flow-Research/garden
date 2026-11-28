@@ -1,3 +1,4 @@
+import type { WorkProductReviewInput } from '@/lib/server/work-products'
 import { useState, useCallback } from 'react'
 import {
   useMutation,
@@ -8,6 +9,7 @@ import { Result } from 'better-result'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
 import { inboxKeys } from '@/lib/inbox/queries'
+import { brainFileKeys, brainFolderKeys } from '@/features/brain/queries'
 import { issueKeys, CLOSED_PAGE_SIZE } from './queries'
 import { useWorkspaceId } from '@garden/app-state/hooks'
 import type { Issue, IssueReaction } from '@garden/core/types'
@@ -754,15 +756,61 @@ export function useIssueActionInvalidation(issueId: string | null) {
   }, [issueId, queryClient, wsId])
 }
 
-export type WorkProductReviewAction = 'approve' | 'request_changes' | 'apply'
+/**
+ * Review actions the UI offers. `approve` keeps the issue open for follow-up
+ * runs; `approve_and_close` also moves it to done. Both map to the API's
+ * `approve` action with an explicit `close_issue` flag.
+ */
+export type WorkProductReviewAction =
+  | 'approve'
+  | 'approve_and_close'
+  | 'request_changes'
+  | 'apply'
+  | 'apply_pr'
+  | 'retry_files'
 
-/** Approve, request changes on, or apply a work product. */
+/** Maps a UI review action to the review endpoint's request body. */
+function reviewRequestBody(
+  action: WorkProductReviewAction,
+): WorkProductReviewInput {
+  switch (action) {
+    case 'approve':
+      return { action: 'approve', close_issue: false }
+    case 'approve_and_close':
+      return { action: 'approve', close_issue: true }
+    case 'request_changes':
+      return { action: 'request_changes' }
+    case 'apply':
+      return { action: 'apply' }
+    case 'retry_files':
+      return { action: 'retry_files' }
+    case 'apply_pr':
+      return { action: 'apply_pr' }
+  }
+}
+
+/** Approve, approve and close, request changes on, or apply a work product. */
 export function useReviewWorkProduct(issueId: string | null) {
   const invalidate = useIssueActionInvalidation(issueId)
+  const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (vars: { id: string; action: WorkProductReviewAction }) =>
-      api.reviewWorkProduct(vars.id, { action: vars.action }),
-    onSuccess: invalidate,
+      api.reviewWorkProduct(vars.id, reviewRequestBody(vars.action)),
+    onSuccess: (outcome) => {
+      invalidate()
+      if (outcome.action !== 'approve' && outcome.action !== 'retry_files')
+        return
+      // Approval saves documents to Files; a failed save keeps the approval.
+      if (outcome.files.status === 'failed') {
+        toast.error(
+          `Approved, but saving to Files failed: ${outcome.files.message}`,
+        )
+      }
+      if (outcome.files.status === 'saved') {
+        void queryClient.invalidateQueries({ queryKey: brainFileKeys.all })
+        void queryClient.invalidateQueries({ queryKey: brainFolderKeys.all })
+      }
+    },
     onError: () => toast.error('Failed to update work product'),
   })
 }

@@ -1,12 +1,12 @@
 import type { Team, TeamMember } from '@garden/core/types'
 import { TeamSummaryCard, TeamSummaryMenu } from './team-summary-card'
-import { TeamMembersTable, memberRoleLabel } from './team-members-table'
+import { TeamMembersTable } from './team-members-table'
 
 /**
- * Members tab of the Team detail page, matched to the Penpot design: three
- * bordered summary cards (Total members / Total Roles / Total Activity) with
- * ⋯ menus, then the member table. Totals are Team-wide; the table below shows
- * the searched/role-filtered member set.
+ * Members tab of the Team detail page, matched to design 30: three bordered
+ * summary cards (Total members / Total Assigned Tasks / Total Activity), each
+ * with a ⋮ menu, then the member table. Totals are Team-wide; the table
+ * shows the searched and role-filtered member set.
  */
 export function TeamMembersPanel({
   team,
@@ -15,6 +15,9 @@ export function TeamMembersPanel({
   canManage,
   search,
   onRemove,
+  onAddMember,
+  onAgentSettings,
+  onSeeIssues,
 }: {
   team: Team
   members: TeamMember[]
@@ -22,16 +25,45 @@ export function TeamMembersPanel({
   canManage: boolean
   search: string
   onRemove: (member: TeamMember) => void
+  onAddMember: () => void
+  onAgentSettings: () => void
+  /** Omitted where the Team's Issues tab is not shown, which hides the link. */
+  onSeeIssues?: () => void
 }) {
-  const roleCount = new Set(
-    members.map((member) => memberRoleLabel(member, team.owner_user_id)),
-  ).size
+  const assignedTasks = members.reduce(
+    (sum, member) => sum + member.assigned_issue_count,
+    0,
+  )
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex gap-3">
-        <TeamSummaryCard label="Total members" value={team.member_count} />
-        <TeamSummaryCard label="Total Roles" value={roleCount} />
+      <div className="grid grid-cols-1 gap-3 @lg:grid-cols-3">
+        <TeamSummaryCard
+          label="Total members"
+          value={team.member_count}
+          action={
+            <TeamSummaryMenu
+              items={[
+                {
+                  label: 'Add a team member',
+                  disabled: !canManage,
+                  onSelect: onAddMember,
+                },
+              ]}
+            />
+          }
+        />
+        <TeamSummaryCard
+          label="Total Assigned Tasks"
+          value={assignedTasks}
+          action={
+            onSeeIssues ? (
+              <TeamSummaryMenu
+                items={[{ label: 'See issues', onSelect: onSeeIssues }]}
+              />
+            ) : undefined
+          }
+        />
         <TeamSummaryCard
           label="Total Activity"
           value={team.activity_count}
@@ -46,6 +78,7 @@ export function TeamMembersPanel({
       <TeamMembersTable
         canManage={canManage}
         members={visibleMembers}
+        onAgentSettings={onAgentSettings}
         onRemove={onRemove}
         ownerUserId={team.owner_user_id}
         search={search}

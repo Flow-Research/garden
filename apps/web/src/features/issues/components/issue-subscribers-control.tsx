@@ -1,5 +1,6 @@
-import { Users } from 'lucide-react'
+import { BellRing, Users } from 'lucide-react'
 import { AvatarGroup, AvatarGroupCount } from '@garden/ui/components/ui/avatar'
+import { Button } from '@garden/ui/components/ui/button'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
 import {
   Command,
@@ -56,15 +57,23 @@ export function IssueSubscribersControl({
   agents: IssueDetailData['agents']
 }) {
   return (
-    <>
-      <button
+    <div className="inline-flex items-center gap-2">
+      <Button
+        size="sm"
+        aria-pressed={isSubscribed}
         onClick={onToggleSubscribe}
-        className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="gap-1.5 text-xs max-sm:size-7 max-sm:px-0"
       >
-        {isSubscribed ? 'Unsubscribe' : 'Subscribe'}
-      </button>
+        <BellRing className="size-3.5" />
+        <span className="max-sm:sr-only">
+          {isSubscribed ? 'Unsubscribe' : 'Subscribe'}
+        </span>
+      </Button>
       <Popover>
-        <PopoverTrigger className="cursor-pointer hover:opacity-80 transition-opacity">
+        <PopoverTrigger
+          aria-label="Manage subscribers"
+          className="cursor-pointer hover:opacity-80 transition-opacity"
+        >
           {subscribers.length > 0 ? (
             <AvatarGroup>
               {subscribers.slice(0, 4).map((sub) => (
@@ -172,6 +181,6 @@ export function IssueSubscribersControl({
           </Command>
         </PopoverContent>
       </Popover>
-    </>
+    </div>
   )
 }

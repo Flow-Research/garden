@@ -4,6 +4,7 @@ import {
   isTerminalSubmissionStatus,
   objectOrNull,
   operationFailedMessage,
+  unresolvedSettledTurnReason,
 } from './runtime-utils'
 
 describe('agentSandboxId', () => {
@@ -65,5 +66,50 @@ describe('runtime helpers', () => {
     expect(objectOrNull([1])).toBeNull()
     expect(objectOrNull('x')).toBeNull()
     expect(objectOrNull(null)).toBeNull()
+  })
+})
+
+describe('unresolvedSettledTurnReason', () => {
+  it('names a completed turn that left the run running (FLO-150)', () => {
+    expect(
+      unresolvedSettledTurnReason({
+        submissionStatus: 'completed',
+        runStatus: 'running',
+        waiting: false,
+      }),
+    ).toBe('turn_ended_without_resolution')
+    expect(
+      unresolvedSettledTurnReason({
+        submissionStatus: 'completed',
+        runStatus: 'queued',
+        waiting: false,
+      }),
+    ).toBe('turn_ended_without_resolution')
+  })
+
+  it('accepts runs the turn resolved, paused, or handed to the user', () => {
+    for (const runStatus of [
+      'succeeded',
+      'failed',
+      'blocked',
+      'cancelled',
+      'waiting_for_input',
+      'waiting_for_approval',
+    ]) {
+      expect(
+        unresolvedSettledTurnReason({
+          submissionStatus: 'completed',
+          runStatus,
+          waiting: false,
+        }),
+      ).toBeNull()
+    }
+    expect(
+      unresolvedSettledTurnReason({
+        submissionStatus: 'completed',
+        runStatus: 'running',
+        waiting: true,
+      }),
+    ).toBeNull()
   })
 })

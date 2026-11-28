@@ -3,7 +3,7 @@ title: The roadmap puts a dependable beta before portability
 description: What Garden works on now, what comes next and later, and what is deliberately deferred or out of scope.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-10
 ---
 
 Garden is a shared workspace where people and AI agents chat, manage work, use tools, create documents, and ask for approval before sensitive actions. It runs mainly on Cloudflare and is preparing for a small beta. The current horizon is a dependable beta for a small group of users and internal testers.
@@ -59,6 +59,33 @@ Garden must work reliably for a small group without leaking data, getting stuck,
 - [ ] Approval and audit paths are trustworthy for risky tools.
 - [ ] Backup, restore, release, and rollback procedures are tested.
 - [ ] A tester can complete the loop: connect a tool, chat, create an issue, run an agent, approve an action, and review the output.
+
+## Parallel delivery: web and native clients
+
+Scope agreed on 2026-11-10 adds an explicit client track alongside the existing beta and platform work. Contract mapping and prototypes can proceed while beta hardening continues. Client releases must pass the applicable access, approval and recovery gates above. Native clients do not require a backend rewrite or a private-deployment release first.
+
+Keep client surface, execution host, execution runtime and user choices independent. A phone can control an authorized remote run without running a coding agent on the phone. Garden's existing managed execution paths remain valid.
+
+| Client target | First intended scope | Current evidence and release gate |
+| --- | --- | --- |
+| Desktop web | Existing workspace experience plus shared contribution controls. | Web implementation exists; beta and contribution-journey gates remain. |
+| Mobile web | Chat, tasks, approvals, launch and run status with responsive controls. | Existing web code is a starting point; require physical iPhone/Safari and Android/Chrome acceptance. |
+| Native iOS | Chat, tasks, approvals, launch and run status. | No native client is established by this roadmap. Require physical-device, secure-session, accessibility and lifecycle evidence. |
+| Native Android | Same first mobile scope, with Android-specific lifecycle behavior. | No native client is established. Qualify Android separately. |
+| Native macOS, Windows and Linux | Packaged web UI with proper native sign-in, secure storage, notifications, deep links and lifecycle support. | All three OS targets belong to the first desktop release. Each needs installer, lifecycle, accessibility and update/rollback evidence. Supported OS versions, architectures and Linux distributions remain open. |
+
+First offline behavior is private cached reading and drafts. Consequential actions require reconnection and current authority. Broader offline writes, conflicts and local/edge execution remain in the later operation track below.
+
+The first shared capability is the contribution workflow: inspect WorkStream tasks, select an enrolled Harnessy host and registered repository, inspect agent/permissions/budget, launch directly from Garden, and follow status and proof. Outside executable plugins and host-rendered forms/actions/status cards are required. Cross-host installation, isolation and direct transport still need implementation and conformance evidence. WorkStream keeps task and acceptance ownership. Proof/payment work continues in parallel; Jarvis record export must not block it.
+
+Delivery order within the client track:
+
+1. Map the current API/auth boundary and record target acceptance tests.
+2. Improve web/mobile web and prove the smallest portable API/session interface.
+3. Test native candidates, then record the framework decision. React Native/Expo for mobile and Tauri for desktop are recommendations, not adopted dependencies.
+4. Qualify the first iOS/Android release and the three-OS desktop release against their own gates. Real launch acceptance depends on the shared contribution capability and host transport.
+
+The [client architecture proposal](../../proposals/cross-platform-clients.md) contains source paths, framework trade-offs, lifecycle rules and exact delivery evidence. It records the agreed scope and proposed implementation. It makes no delivery-date, budget, app-store or current-support claim. Cross-project sequencing remains with the platform consolidation programme; this roadmap owns Garden's product scope.
 
 ## Next: earn portability from real use
 
@@ -126,7 +153,7 @@ The items below are deliberate decisions, not oversights. Open defects in built 
 | In-flow skill recommender | Needs stronger skill usage and memory signals. |
 | Memory synthesis pipeline | The prompt carries agent, workspace, and skill context. Shared user and agent memory needs a parent-backed or separately modeled store, not inference from thread sessions. |
 | Slack-native assistants | Needs a stable runtime across Slack invocation surfaces. |
-| Headless mode and mobile approvals | Needs push notifications and a mobile approval flow. |
+| Headless mode | Needs its own interface and lifecycle contract. Mobile approvals are now explicit in the client track above; shipping them requires current server authority and native/physical-device proof. |
 | Cross-workspace skill marketplace | Skills are workspace-scoped. |
 | Browser automation as an agent capability | The runtime focuses on typed connectors, workspace and document tools, codemode, and Cloudflare Sandbox. |
 | Sync between the Think workspace and the Sandbox `/workspace` | They are separate stores. An explicit bridge must exist before Garden promises shared files. |

@@ -3,7 +3,7 @@ title: How Garden is built
 description: Three planes, what each one owns, and why the boundaries sit where they do.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-03
+last_reviewed: 2026-11-27
 ---
 
 Garden runs as one Cloudflare Worker, but its state lives in three places. Most design questions in Garden come down to one question: which plane owns this state?
@@ -13,6 +13,10 @@ Garden runs as one Cloudflare Worker, but its state lives in three places. Most 
 | Control   | Records the product lists and audits  | Postgres, Drizzle, R2              |
 | Agent     | Live conversations                    | Durable Objects, Agents SDK, Think |
 | Execution | Work that runs outside a conversation | Workflows, codemode, Sandbox, MCP  |
+
+![Garden overview](../../diagrams/garden-overview.drawio.svg)
+
+The overview shows Garden running as one Worker. Postgres and R2 keep the record, Durable Objects hold live conversations, and Workflows and tool runtimes do the work.
 
 ## Postgres is the record
 
@@ -56,8 +60,8 @@ An issue run crosses all three planes:
 1. The API calls `startIssueRun()`, which writes the `issue_run` row to Postgres.
 2. `AgentDO` starts `RUN_WORKFLOW` with the run ID as the instance ID.
 3. The Workflow calls back into `AgentDO`, which passes the turn to `IssueRunSubAgent`.
-4. The agent calls tools. Each call passes a permission check and is written to `tool_call_audit`.
+4. The agent calls tools. Each call passes a permission check. When a person approves or denies a connector write, the decision is written to `tool_call_audit`.
 5. Results are written to Postgres. The browser polls the active run while it runs.
-6. The Workflow marks the run finished. Only the run that owns the issue can finish it.
+6. The Workflow asks `AgentDO` to complete the turn, and the facet writes the run's final status. Only the run that owns the issue can finish it.
 
 For file-level detail, read the [architecture map](../../reference/architecture-map.md).

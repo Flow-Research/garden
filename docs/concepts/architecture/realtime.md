@@ -3,7 +3,7 @@ title: Realtime keeps three live channels apart
 description: How Garden splits durable data, AI streaming, and the workspace realtime hub, and why the hub only tells clients to refetch.
 status: current
 owner: "@Umoren"
-last_reviewed: 2026-11-07
+last_reviewed: 2026-11-28
 ---
 
 Garden has three kinds of live behavior, and each has its own channel:
@@ -27,18 +27,9 @@ The table lists what each layer owns.
 | `RunWorkflow` | Durable retry, wait, resume, and cancel between Think turns |
 | `WorkspaceRealtimeDO` | Live workspace sockets and event fan-out |
 
-```mermaid
-flowchart LR
-  Browser --> Query[TanStack Query]
-  Query --> Routes[TanStack Start routes]
-  Routes --> DB[(Postgres)]
-  Routes -->|publishWorkspaceEvent| Hub[WorkspaceRealtimeDO]
-  Hub -->|envelope| Browser
-  Browser --> ChatWS[Agents and Think WebSocket]
-  ChatWS --> AgentDO[AgentDO]
-  Routes --> Workflow[RunWorkflow]
-  Workflow --> AgentDO
-```
+![Realtime paths](../../diagrams/realtime.drawio.svg)
+
+Routes write to Postgres and signal the workspace hub, browsers refetch on that signal, and chat and runs go through AgentDO on their own path.
 
 ## Chat streams on its own socket
 
@@ -72,7 +63,7 @@ A write follows these steps:
 
 Clients never render the payload. That keeps the hub out of the business of deciding what a user may see. The access-checked API decides that on every refetch.
 
-The hub publishes team, team member, issue, and comment events today. The routes that publish are the Teams routes under `apps/web/src/routes/api/teams/`, `apps/web/src/routes/api/issues.ts`, `apps/web/src/routes/api/issues/$id.ts`, and the comment routes. Inbox and run events can use the same hub once they are wired.
+The hub publishes team, team member, team policy, issue, and comment events today. The routes that publish are the Teams routes under `apps/web/src/routes/api/teams/`, `apps/web/src/routes/api/issues.ts`, `apps/web/src/routes/api/issues/$id.ts`, and the comment routes. Inbox and run events can use the same hub once they are wired.
 
 ## Audience rules decide who hears what
 

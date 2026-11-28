@@ -1,9 +1,10 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { User, Workspace } from '@garden/core/types'
 import { useAuthStore } from '@garden/app-state/auth'
 import { useWorkspaceStore } from '@garden/app-state/workspace'
+import { workspaceKeys } from '@/lib/workspace/queries'
 import { AppShell } from './app-shell'
 
 const viewport = vi.hoisted(() => ({ mobile: false, navigate: vi.fn() }))
@@ -14,7 +15,11 @@ vi.mock('@garden/ui/hooks/use-mobile', () => ({
 vi.mock('@tanstack/react-router', () => ({
   Outlet: () => <div>page</div>,
   useNavigate: () => viewport.navigate,
-  useRouter: () => ({ invalidate: vi.fn(), clearCache: vi.fn() }),
+  useRouter: () => ({
+    state: { matches: [{ fullPath: '/agents/$agentId' }] },
+    invalidate: vi.fn(),
+    clearCache: vi.fn(),
+  }),
   useRouterState: ({ select }: { select: (state: object) => unknown }) =>
     select({ location: { pathname: '/home' }, matches: [] }),
 }))
@@ -44,12 +49,11 @@ vi.mock('@/features/navigation/use-surface-navigation', () => ({
 }))
 vi.mock('./chat-tabs', () => ({ ChatTabsStrip: () => null }))
 vi.mock('./task-tabs', () => ({ TaskTabsStrip: () => null }))
-vi.mock('./user-card', () => ({ UserCard: () => null }))
 vi.mock('./workspace-menu', () => ({ WorkspaceMenu: () => null }))
 
-function renderShell() {
+function renderShell(client = new QueryClient()) {
   return render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <AppShell />
     </QueryClientProvider>,
   )
@@ -104,6 +108,18 @@ describe('AppShell sidebar', () => {
     expect(viewport.navigate).toHaveBeenCalled()
     expect(drawer()).toHaveClass('-translate-x-full')
   })
+
+  it('opens the Settings page from the account menu and closes the drawer', async () => {
+    viewport.mobile = true
+    renderShell()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle sidebar' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Settings' }))
+
+    expect(viewport.navigate).toHaveBeenCalledWith({ to: '/settings' })
+    expect(drawer()).toHaveClass('-translate-x-full')
+  })
 })
 
 describe('AppShell nav links', () => {
@@ -128,4 +144,36 @@ describe('AppShell nav links', () => {
     fireEvent.click(inbox)
     expect(viewport.navigate).toHaveBeenCalledWith({ to: '/inbox' })
   })
+})
+
+it('finishes leaving the item page before it changes workspace', async () => {
+  const next = { id: 'new', name: 'New team' } as Workspace
+  const client = new QueryClient()
+  client.setQueryData(workspaceKeys.list(), [next])
+  const switchWorkspace = vi.fn().mockResolvedValue(undefined)
+  const original = useWorkspaceStore.getState().switchWorkspace
+  useAuthStore.setState({ user: { id: 'user-1', name: 'Ada' } as User })
+  useWorkspaceStore.setState({
+    workspace: { id: 'old', name: 'Old' } as Workspace,
+    switchWorkspace,
+  })
+  let finishNavigation: () => void = () => {}
+  viewport.navigate.mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      finishNavigation = resolve
+    }),
+  )
+  try {
+    renderShell(client)
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Workspaces' }))
+    fireEvent.click(await screen.findByRole('button', { name: next.name }))
+    expect(viewport.navigate).toHaveBeenCalledWith({ href: '/agents' })
+    expect(switchWorkspace).not.toHaveBeenCalled()
+    await act(async () => finishNavigation())
+    await waitFor(() => expect(switchWorkspace).toHaveBeenCalledWith(next))
+  } finally {
+    useWorkspaceStore.setState({ switchWorkspace: original })
+    client.clear()
+  }
 })

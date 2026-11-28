@@ -6,6 +6,11 @@ import type {
   TimelineEntry,
 } from '@garden/core/types'
 import { PRIORITY_CONFIG, STATUS_CONFIG } from '@garden/core/issues/config'
+import {
+  formatRunFailure,
+  parseRunFailure,
+  runFailure,
+} from '@garden/core/runs/failure'
 import { formatShortDate, timeAgo } from '@garden/core/format'
 import {
   Tooltip,
@@ -73,12 +78,13 @@ function formatActivity(
     case 'issue_run:queued':
       return 'queued an agent run'
     case 'issue_run:failed': {
-      const error =
-        detailString('error') ??
-        detailString('message') ??
-        entry.event?.message ??
-        'Agent run failed'
-      return `agent run failed: ${error}`
+      const failure = parseRunFailure(
+        details.failure ?? entry.event?.payload ?? details,
+      ).match({
+        ok: (value) => value,
+        err: () => runFailure('unknown'),
+      })
+      return `agent run stopped: ${formatRunFailure(failure)}`
     }
     default:
       return entry.event?.message ?? entry.action ?? ''
@@ -137,12 +143,14 @@ function RunEventDebugDetails({ entry }: { entry: TimelineEntry }) {
 }
 
 /**
- * The issue's activity feed: comments (with threaded replies), agent status
- * entries and coalesced activity rows. Run telemetry is hidden unless it is a
- * user-visible failure or debug mode is on.
+ * The issue's feed. `activity` shows coalesced system activity rows plus one
+ * "replied" row per agent comment, linking to it in Comments. `comments` shows
+ * every comment, agent replies included, with threaded replies. Run telemetry
+ * is hidden unless it is a user-visible failure or debug mode is on.
  */
 export function IssueActivityTimeline({
   timeline,
+  view = 'activity',
   debugMode,
   highlightedId,
   issueId,
@@ -152,8 +160,11 @@ export function IssueActivityTimeline({
   onEdit,
   onDelete,
   onToggleReaction,
+  onOpenComment,
 }: {
   timeline: TimelineEntry[]
+  view?: 'activity' | 'comments'
+  onOpenComment?: (commentId: string) => void
   debugMode: boolean
   highlightedId: string | null
   issueId: string
@@ -165,6 +176,11 @@ export function IssueActivityTimeline({
   onToggleReaction: CommentCardProps['onToggleReaction']
 }): ReactNode {
   const topLevel = timeline
+    .filter((entry) =>
+      view === 'activity'
+        ? entry.type === 'activity'
+        : entry.type === 'comment',
+    )
     .filter((e) => e.type === 'activity' || !e.parent_id)
     // Most run events are noisy runtime telemetry.
     // Failures are product-visible because they tell
@@ -211,13 +227,27 @@ export function IssueActivityTimeline({
     coalesced.push(entry)
   }
 
+  // Agent replies live in Comments; Activity links to each one by time.
+  const feed =
+    view === 'activity'
+      ? [
+          ...coalesced,
+          ...timeline.filter(
+            (entry) => entry.type === 'comment' && entry.actor_type === 'agent',
+          ),
+        ].sort(
+          (a, b) =>
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        )
+      : coalesced
+
   // Group consecutive activities together so the connector line works
   const groups: {
     type: 'activities' | 'comment'
     entries: TimelineEntry[]
   }[] = []
-  for (const entry of coalesced) {
-    if (entry.type === 'activity') {
+  for (const entry of feed) {
+    if (entry.type === 'activity' || view === 'activity') {
       const last = groups[groups.length - 1]
       if (last?.type === 'activities') {
         last.entries.push(entry)
@@ -233,6 +263,21 @@ export function IssueActivityTimeline({
         entries: [entry],
       })
     }
+  }
+
+  if (groups.length === 0) {
+    return (
+      <div className="flex min-h-[156px] flex-col items-center justify-center gap-2 px-4 text-center text-xs">
+        <p className="font-semibold">
+          {view === 'comments' ? 'No comments yet' : 'No activity yet'}
+        </p>
+        <p className="max-w-56 text-muted-foreground">
+          {view === 'comments'
+            ? 'Start a conversation about this task.'
+            : 'Task updates and agent activity will appear here.'}
+        </p>
+      </div>
+    )
   }
 
   return groups.map((group) => {
@@ -274,8 +319,18 @@ export function IssueActivityTimeline({
     if (!first) return null
 
     return (
-      <div key={first.id} className="mb-4 last:mb-0 px-4 flex flex-col gap-3">
+      <div key={first.id} className="mb-4 last:mb-0 flex flex-col gap-3">
         {group.entries.map((entry, _idx) => {
+          if (entry.type === 'comment') {
+            return (
+              <AgentReplyRow
+                key={entry.id}
+                entry={entry}
+                getActorName={getActorName}
+                onOpen={onOpenComment}
+              />
+            )
+          }
           const details = (entry.details ?? {}) as Record<string, string>
           const isStatusChange = entry.action === 'status_changed'
           const isPriorityChange = entry.action === 'priority_changed'
@@ -326,17 +381,17 @@ export function IssueActivityTimeline({
                 <div className="mr-2 flex w-4 shrink-0 justify-center">
                   {leadIcon}
                 </div>
-                <div className="flex min-w-0 flex-1 items-center gap-1">
-                  <span className="shrink-0 font-medium">
+                <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1 gap-y-0.5 [overflow-wrap:anywhere]">
+                  <span className="min-w-0 max-w-full font-medium text-foreground">
                     {getActorName(entry.actor_type, entry.actor_id ?? '')}
                   </span>
-                  <span className="truncate">
+                  <span className="min-w-0">
                     {formatActivity(entry, getActorName)}
                   </span>
                   <Tooltip>
                     <TooltipTrigger
                       render={
-                        <span className="ml-auto shrink-0 cursor-default">
+                        <span className="shrink-0 cursor-default">
                           {timeAgo(entry.created_at)}
                         </span>
                       }
@@ -354,4 +409,37 @@ export function IssueActivityTimeline({
       </div>
     )
   })
+}
+
+function AgentReplyRow({
+  entry,
+  getActorName,
+  onOpen,
+}: {
+  entry: TimelineEntry
+  getActorName: (type: string, id: string) => string
+  onOpen?: (commentId: string) => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onOpen?.(entry.id)}
+      className="flex w-full items-center rounded-sm text-left text-xs text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <div className="mr-2 flex w-4 shrink-0 justify-center">
+        <ActorAvatar
+          actorType={entry.actor_type}
+          actorId={entry.actor_id}
+          size={16}
+        />
+      </div>
+      <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1 gap-y-0.5 [overflow-wrap:anywhere]">
+        <span className="min-w-0 max-w-full font-medium text-foreground">
+          {getActorName(entry.actor_type, entry.actor_id ?? '')}
+        </span>
+        <span className="min-w-0">replied</span>
+        <span className="shrink-0">· {timeAgo(entry.created_at)}</span>
+      </div>
+    </button>
+  )
 }

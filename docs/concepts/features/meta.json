@@ -10,7 +10,10 @@
     "artifacts",
     "skills",
     "teams",
+    "settings",
     "permissions",
-    "handbook"
+    "handbook",
+    "database-load-testing",
+    "model-health-check"
   ]
 }
