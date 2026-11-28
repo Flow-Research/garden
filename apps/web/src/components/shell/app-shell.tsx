@@ -31,8 +31,11 @@ import {
   memberListOptions,
   skillListOptions,
 } from '@/lib/workspace/queries'
-import { useSettingsDialogStore } from '@/features/settings'
-import { SettingsDialog } from '@/features/settings'
+import {
+  InviteMembersDialog,
+  SettingsDialog,
+  useSettingsDialogStore,
+} from '@/features/settings'
 import { SearchCommand } from '@/features/search'
 import { ChatRuntimeProvider } from '@/features/chat/chat-runtime-provider'
 import { CreateWorkspaceModal } from '@/features/modals/create-workspace'
@@ -149,6 +152,9 @@ export function AppShell() {
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [drawerOpen])
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false)
+  const [inviteOpening, setInviteOpening] = useState<{
+    workspaceId: string
+  } | null>(null)
   const [expandedNavIds, setExpandedNavIds] = useState<string[]>(() =>
     pathname.startsWith('/teams/') ? ['teams'] : [],
   )
@@ -169,6 +175,19 @@ export function AppShell() {
         ?.role ?? null,
     [memberListQuery.data, user?.id],
   )
+  const canManageTeams =
+    currentMemberRole === 'owner' || currentMemberRole === 'admin'
+  const inviteOpen =
+    inviteOpening !== null &&
+    inviteOpening.workspaceId === workspaceId &&
+    canManageTeams
+  if (inviteOpening !== null && !inviteOpen) setInviteOpening(null)
+  const openInviteMembers = canManageTeams
+    ? () => {
+        setMobileNavOpen(false)
+        setInviteOpening({ workspaceId })
+      }
+    : undefined
 
   const unreadInboxItems = useMemo(
     () => deduplicateInboxItems(rawInboxItems).filter((item) => !item.read),
@@ -231,8 +250,6 @@ export function AppShell() {
     [tabbedNav, surfaceTabs, tabStep.current, openChatSession, openIssue],
   )
 
-  const canManageTeams =
-    currentMemberRole === 'owner' || currentMemberRole === 'admin'
   const activeTeamChildId = teamNavChildForPathname(pathname)?.id ?? null
 
   const navItems = useMemo(
@@ -349,7 +366,7 @@ export function AppShell() {
                 header={
                   <WorkspaceMenu
                     collapsed={sidebarCollapsed}
-                    onInviteMembers={() => openSettingsDialog('members')}
+                    onInviteMembers={openInviteMembers}
                     // "Workspace settings" used to land on the Profile tab.
                     onOpenSettings={() => openSettingsDialog('workspace')}
                     onOpenMembers={() => openSettingsDialog('members')}
@@ -378,7 +395,7 @@ export function AppShell() {
                       setMobileNavOpen(false)
                       void navigate({ to: '/settings' })
                     }}
-                    onInviteMembers={() => openSettingsDialog('members')}
+                    onInviteMembers={openInviteMembers}
                     onLogout={() => void handleLogout()}
                     onSwitchWorkspace={handleSwitchWorkspace}
                     onCreateWorkspace={() => setCreateWorkspaceOpen(true)}
@@ -423,6 +440,16 @@ export function AppShell() {
             </div>
             <SearchCommand />
             <SettingsDialog />
+            {inviteOpen ? (
+              <InviteMembersDialog
+                workspaceId={inviteOpening.workspaceId}
+                onClose={() =>
+                  setInviteOpening((current) =>
+                    current === inviteOpening ? null : current,
+                  )
+                }
+              />
+            ) : null}
           </ChatRuntimeProvider>
         </>
       ) : (

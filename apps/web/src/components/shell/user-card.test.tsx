@@ -43,7 +43,7 @@ const clients: QueryClient[] = []
  * Connects the real account menu to its production workspace query. The menu
  * previously displayed the indefinitely cached snapshot without any refresh.
  */
-function AccountMenu() {
+function AccountMenu({ onInviteMembers }: { onInviteMembers?: () => void }) {
   const query = useQuery(workspaceListOptions())
   const memberRole: MemberRole = 'member'
   return (
@@ -53,7 +53,7 @@ function AccountMenu() {
       workspaces={query.data ?? []}
       currentWorkspaceId={existing.id}
       onAccount={vi.fn()}
-      onInviteMembers={vi.fn()}
+      onInviteMembers={onInviteMembers}
       onLogout={vi.fn()}
       onSwitchWorkspace={vi.fn()}
       onCreateWorkspace={vi.fn()}
@@ -115,5 +115,35 @@ describe('account workspace menu', () => {
       expect(expand).toHaveAttribute('aria-expanded', 'false'),
     )
     expect(api.listWorkspaces).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows Invite members only when the role can invite', () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { staleTime: Infinity, retry: false } },
+    })
+    clients.push(queryClient)
+    queryClient.setQueryData(workspaceKeys.list(), [existing])
+    const onInviteMembers = vi.fn()
+    const { rerender } = render(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AccountMenu />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Account' }))
+    expect(
+      screen.queryByRole('button', { name: 'Invite members' }),
+    ).not.toBeInTheDocument()
+
+    rerender(
+      <QueryClientProvider client={queryClient}>
+        <ThemeProvider>
+          <AccountMenu onInviteMembers={onInviteMembers} />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Invite members' }))
+    expect(onInviteMembers).toHaveBeenCalledTimes(1)
   })
 })

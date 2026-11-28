@@ -60,7 +60,8 @@ export function UserCard({
   currentWorkspaceId?: string | null
   collapsed?: boolean
   onAccount: () => void
-  onInviteMembers: () => void
+  /** Omitted for roles that cannot invite, which hides the action. */
+  onInviteMembers?: () => void
   onLogout: () => void
   onSwitchWorkspace: (workspace: Workspace) => void
   onCreateWorkspace: () => void
@@ -183,14 +184,16 @@ export function UserCard({
             <Settings className="size-4 text-icon-neutral-secondary" />
             Settings
           </button>
-          <button
-            type="button"
-            onClick={runAndClose(onInviteMembers)}
-            className="cursor-pointer flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-background-main-default text-sm whitespace-nowrap text-text-neutral-default shadow-1 transition-colors hover:bg-background-main-secondary"
-          >
-            <Send className="size-4 text-icon-neutral-secondary" />
-            Invite members
-          </button>
+          {onInviteMembers ? (
+            <button
+              type="button"
+              onClick={runAndClose(onInviteMembers)}
+              className="cursor-pointer flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-background-main-default text-sm whitespace-nowrap text-text-neutral-default shadow-1 transition-colors hover:bg-background-main-secondary"
+            >
+              <Send className="size-4 text-icon-neutral-secondary" />
+              Invite members
+            </button>
+          ) : null}
         </div>
 
         {/* Theme */}

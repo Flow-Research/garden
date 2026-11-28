@@ -3,10 +3,14 @@ title: Settings page rollout
 description: The routed Settings shell, its sections, User Management's Members and Team sub-tabs, and the separate modal entry during design rollout.
 status: current
 owner: '@Umoren'
-last_reviewed: 2026-11-23
+last_reviewed: 2026-11-27
 ---
 
 Select **Settings** in the account menu to open the authenticated `/settings` page. The workspace menu opens the Settings modal.
+
+**Invite members** in the workspace menu and the account menu opens the Add a Team Member dialog directly, without the Settings modal behind it. Only owners and admins see it, because only they can create invitations. If the workspace changes or the inviter loses that role, Garden closes the dialog and discards its unsent rows.
+
+Closing and reopening the invitation dialog starts a new draft. A completed send closes only the dialog opening that started it, so an earlier send cannot close the reopened draft.
 
 ## Page shell
 
