@@ -105,10 +105,10 @@ export const ListRow = memo(function ListRow({
               href={href}
               onClick={handleOpen}
               className={cn(
-                'flex min-w-0 max-w-full items-center border-[0.5px] border-border-default bg-background-main-default px-3',
+                'flex min-w-0 max-w-full items-center rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3',
                 isTodo
-                  ? 'basis-full gap-2 rounded-md py-2 text-text-secondary'
-                  : 'h-[30px] gap-1.5 rounded-pill text-text-default',
+                  ? 'basis-full gap-2 py-2 text-text-secondary'
+                  : 'h-[30px] gap-1.5 text-text-default',
               )}
             >
               <FileText aria-hidden className="size-4 shrink-0" />
