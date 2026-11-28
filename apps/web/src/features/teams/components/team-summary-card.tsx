@@ -11,8 +11,7 @@ import {
  * The Teams design's summary card (label over value, optional trailing
  * action/menu), shared by the admin overview and the Team detail tabs so the
  * two surfaces stay pixel-identical: 113px tall, 0.5px border, radius 16.
- * Values below 10 are zero-padded ("05") and larger values are grouped
- * ("3,029") per the design frames.
+ * Values are grouped ("3,029") per the design frames and never zero-padded.
  */
 export function TeamSummaryCard({
   label,
@@ -33,7 +32,7 @@ export function TeamSummaryCard({
       </span>
       <div className="flex min-h-11 items-center justify-between gap-3">
         <span className="text-3xl font-semibold tracking-tight tabular-nums">
-          {value < 10 ? `0${value}` : value.toLocaleString()}
+          {value.toLocaleString()}
         </span>
         {action}
       </div>

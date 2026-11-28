@@ -90,7 +90,7 @@ describe('TeamRepositoriesPanel', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText('Flow-Research/garden')).toBeNull()
     expect(screen.getByText('Total Repositories')).toBeInTheDocument()
-    expect(screen.getByText('02')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
     expect(screen.getByText('12')).toBeInTheDocument()
     expect(screen.getByText('3,029')).toBeInTheDocument()
     view.unmount()

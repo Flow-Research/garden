@@ -692,7 +692,7 @@ describe('teams UI', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Total Teams')).toBeInTheDocument()
     expect(screen.getByText('Total Members')).toBeInTheDocument()
-    expect(screen.getByText('04')).toBeInTheDocument()
+    expect(screen.getByText('4')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'See issues' })).toHaveAttribute(
       'href',
       '/teams/issues',
@@ -960,8 +960,9 @@ describe('teams UI', () => {
     expect(screen.getByText('Total members')).toBeInTheDocument()
     expect(screen.getByText('Total Assigned Tasks')).toBeInTheDocument()
     expect(screen.getByText('Total Activity')).toBeInTheDocument()
-    expect(screen.getAllByText('02')).toHaveLength(2)
-    expect(screen.getByText('07')).toBeInTheDocument()
+    // Two summary cards plus the owner's Assigned Tasks cell.
+    expect(screen.getAllByText('2')).toHaveLength(3)
+    expect(screen.getByText('7')).toBeInTheDocument()
   })
 
   it('links Total Assigned Tasks to Issues only where the Issues tab exists', async () => {
@@ -1226,7 +1227,7 @@ describe('teams UI', () => {
     for (const label of ['Todo', 'In Progress', 'In Review', 'Done']) {
       expect(screen.getByText(label)).toBeInTheDocument()
     }
-    expect(screen.getByText('02')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Filter/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Export Data' })).toBeNull()
     expect(screen.queryByRole('button', { name: /New Issue/ })).toBeNull()
