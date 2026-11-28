@@ -4,7 +4,6 @@ import { ExternalLink, FileText } from 'lucide-react'
 import { formatShortDate } from '@garden/core/format'
 import { Badge } from '@garden/ui/components/ui/badge'
 import { Checkbox } from '@garden/ui/components/ui/checkbox'
-import { cn } from '@garden/ui/lib/utils'
 import { ActorAvatar } from '../../common/actor-avatar'
 import { useIssueSelectionStore } from '@garden/app-state/issues/stores/selection-store'
 import { PriorityIcon } from './priority-icon'
@@ -68,33 +67,19 @@ export const ListRow = memo(function ListRow({
   )
 
   if (variant === 'team') {
-    const isTodo = issue.status === 'todo'
     const href = issuePath(issue.id)
     return (
-      <div
-        className={cn(
-          'flex min-h-[54px] items-center gap-3 px-6 py-3 text-sm',
-          isTodo && 'max-xl:items-start max-xl:py-4 max-sm:px-4',
-        )}
-      >
+      <div className="flex min-h-[54px] items-center gap-3 px-6 py-3 text-sm max-xl:items-start max-xl:py-4 max-sm:px-4">
         <StatusIcon
           status={issue.status}
-          className={cn(
-            'size-4.5 shrink-0 text-icon-secondary',
-            isTodo && 'max-xl:mt-0.5 max-xl:size-5',
-          )}
+          className="size-4.5 shrink-0 text-icon-secondary max-xl:mt-0.5 max-xl:size-5"
           inheritColor
         />
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <a
             href={href}
             onClick={handleOpen}
-            className={cn(
-              'min-w-0 grow basis-48 text-text-default',
-              isTodo
-                ? 'max-xl:basis-full max-xl:wrap-break-word max-xl:font-semibold xl:truncate'
-                : 'truncate',
-            )}
+            className="min-w-0 grow basis-48 text-text-default max-xl:basis-full max-xl:wrap-break-word max-xl:font-semibold xl:truncate"
           >
             {issue.title}
           </a>
@@ -104,19 +89,10 @@ export const ListRow = memo(function ListRow({
             <a
               href={href}
               onClick={handleOpen}
-              className={cn(
-                'flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-text-default',
-                isTodo &&
-                  'max-xl:h-auto max-xl:basis-full max-xl:gap-2 max-xl:py-2 max-xl:text-text-secondary',
-              )}
+              className="flex h-[30px] min-w-0 max-w-full items-center gap-1.5 rounded-pill border-[0.5px] border-border-default bg-background-main-default px-3 text-text-default max-xl:h-auto max-xl:basis-full max-xl:gap-2 max-xl:py-2 max-xl:text-text-secondary"
             >
               <FileText aria-hidden className="size-4 shrink-0" />
-              <span
-                className={cn(
-                  'min-w-0 flex-1 truncate',
-                  isTodo ? 'xl:max-w-80' : 'max-w-80',
-                )}
-              >
+              <span className="min-w-0 flex-1 truncate xl:max-w-80">
                 {issue.description}
               </span>
               <ExternalLink aria-hidden className="size-4 shrink-0" />
