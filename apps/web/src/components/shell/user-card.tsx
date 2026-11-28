@@ -20,10 +20,11 @@ import {
   Check,
   Copy,
   Settings,
-  Send,
   Plus,
   LogOut,
 } from 'lucide-react'
+import { AddTeam02Icon } from '@hugeicons/core-free-icons'
+import { HugeiconsIcon } from '@hugeicons/react'
 import type { MemberRole } from '@garden/core/types'
 
 /**
@@ -188,7 +189,10 @@ export function UserCard({
             onClick={runAndClose(onInviteMembers)}
             className="cursor-pointer flex h-8 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-default bg-background-main-default text-sm whitespace-nowrap text-text-neutral-default shadow-1 transition-colors hover:bg-background-main-secondary"
           >
-            <Send className="size-4 text-icon-neutral-secondary" />
+            <HugeiconsIcon
+              icon={AddTeam02Icon}
+              className="size-4 text-icon-neutral-secondary"
+            />
             Invite members
           </button>
         </div>
