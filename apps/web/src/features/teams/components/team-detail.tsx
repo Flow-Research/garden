@@ -412,7 +412,7 @@ export function TeamDetailCard({
                 <TabsList
                   className={cn(
                     TEAM_TABS_LIST_CLASS,
-                    'max-w-full overflow-x-auto',
+                    'max-w-full justify-start overflow-x-auto',
                   )}
                 >
                   {TAB_ITEMS.map((item) => (
