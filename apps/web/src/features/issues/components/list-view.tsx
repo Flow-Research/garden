@@ -253,7 +253,7 @@ export function ListView({
 
               {isTeam ? (
                 <Accordion.Panel>
-                  <div className="-mt-1 rounded-b-xl border-[0.5px] border-border-default bg-background-main-default">
+                  <div className="-mt-1 rounded-b-xl border-[0.5px] border-border-default bg-background-main-default max-xl:divide-y max-xl:divide-border-default/60">
                     {rows}
                   </div>
                 </Accordion.Panel>
