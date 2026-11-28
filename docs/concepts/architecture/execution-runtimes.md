@@ -20,7 +20,7 @@ The document tools read existing document versions through the facet's Shell ind
 
 Codemode fits tasks such as "read these docs, update three workspace files, and summarize what changed".
 
-Codemode is not a computer. It cannot run native binaries, install packages, host a preview server, or keep a process alive. Tool calls made inside codemode are inner RPC calls, not outer AI SDK tool calls. That means a tool that needs user approval cannot rely on the normal AI SDK approval step inside codemode. Approval has to be enforced where the call is dispatched, or the tool has to stay out of the codemode surface. Garden passes codemode no tools today, so its code reaches only the workspace through `state.*`.
+Codemode is not a computer. It cannot run native binaries, install packages, host a preview server, or keep a process alive. Tool calls made inside codemode are inner RPC calls, not outer AI SDK tool calls. That means a tool that needs user approval cannot rely on the normal AI SDK approval step inside codemode. Approval has to be enforced where the call is dispatched, or the tool has to stay out of the codemode surface. Garden passes codemode only the workspace file tools (`read`, `ls`, `find`, `grep`, `write`, `edit`, and `delete`), so its code reaches only the workspace.
 
 ## The container sandbox is a real machine
 
