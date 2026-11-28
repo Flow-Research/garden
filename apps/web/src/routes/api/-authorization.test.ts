@@ -23,6 +23,9 @@ const PERMISSION_CHECKS = [
   'updateIssueSubscription(',
   'requireTeamManage(',
   'requireTeamOwnerTransfer(',
+  // Member effects require fresh permission; signed host delivery requires current operator administration.
+  'handleExecutionHostAction(',
+  'handleExecutionHostRun(',
 ]
 
 const MEMBER_LEVEL_ROUTES: Record<string, string> = {

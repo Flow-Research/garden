@@ -21,6 +21,7 @@ const serverSchema = {
   GOOGLE_AUTH_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_AUTH_CLIENT_SECRET: z.string().min(1).optional(),
   WORKSTREAM_MCP_CLIENT_ID: z.string().min(1).optional(),
+  ENGINEERING_PILOT_OPERATOR_ID: z.string().uuid().optional(),
   GOOGLE_CLIENT_ID: z.string().min(1).optional(),
   GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
   SLACK_CLIENT_ID: z.string().min(1).optional(),

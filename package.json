@@ -34,6 +34,7 @@
     "verify:diagrams": "node scripts/diagrams.mjs check",
     "diagrams:export": "node scripts/diagrams.mjs export",
     "verify:code-policy": "node scripts/verify-code-policy.mjs",
+    "verify:host-contract": "node scripts/sync-harnessy-host-contract.mjs --check",
     "smoke": "node scripts/smoke.mjs",
     "test:smoke": "node --test scripts/smoke.test.mjs",
     "test:pr-contract": "node --test scripts/pr-evidence.test.mjs scripts/diagram-contract.test.mjs scripts/diagrams.test.mjs",

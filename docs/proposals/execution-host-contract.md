@@ -3,14 +3,17 @@ title: Garden launches contribution work through an enrolled execution host
 description: Proposed authority, launch identity and recovery contract for the shared contribution capability.
 status: proposal
 owner: Unassigned
-last_reviewed: 2026-11-11
+last_reviewed: 2026-11-21
 ---
 
-This is a contract proposal for the next shared contribution capability. This
-change does not implement enrollment, remote launch, a wire transport or an agent
-adapter. Harnessy owns the execution contract. Garden owns the client and server
-integration described here. Review the contract in both repositories before
-implementation. Do not infer an existing interoperable protocol from this page.
+This page defines the full contribution-host contract.
+The bounded pilot now has local receiver source, signed delivery and member HTTP routes.
+The [implementation page](../concepts/features/external-execution-hosts.md) records that narrower scope.
+The [receiver decision](../decisions/2026-11-external-execution-hosts.md) records its ownership and authority checks.
+
+No deployed direct launch, complete agent adapter, intervention journey or outside-package interoperability is established.
+Harnessy owns execution. Garden owns member authority and delivery.
+WorkStream retains task policy and acceptance.
 
 ## Keep two interfaces separate
 
@@ -46,8 +49,8 @@ The host operator registers repository aliases and allowed agents locally.
 Enrollment grants no arbitrary path access and no unrestricted shell credential.
 
 Use authenticated, encrypted transport. Prefer an outbound host connection so a
-personal computer does not need a public listener. The concrete transport and
-key-store implementation remain decisions for the implementation slice. Require
+personal computer does not need a public listener. The bounded pilot uses host-signed requests over HTTPS.
+Production key custody and complete runtime qualification remain release work. Require
 mutual endpoint authentication, key rotation, bounded replay windows and a durable
 launch ledger before calling any transport qualified. Do not forward a browser
 cookie to the host. Keep credentials in host storage; send scoped credential
