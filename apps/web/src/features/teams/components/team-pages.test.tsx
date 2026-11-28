@@ -944,16 +944,14 @@ describe('teams UI', () => {
     expect(screen.getByText('Team Owner')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Agent settings' })).toBeNull()
 
-    for (const header of ['User', 'Role', 'Assigned Tasks', 'Activity']) {
+    for (const header of ['User', 'Role', 'Assigned Tasks', 'Action']) {
       expect(
         screen.getByRole('columnheader', { name: header }),
       ).toBeInTheDocument()
     }
     expect(screen.getByText('casey@test.com')).toBeInTheDocument()
     expect(screen.getByText('None')).toBeInTheDocument()
-    const viewAll = screen.getAllByRole('button', { name: 'View all' })
-    expect(viewAll).toHaveLength(2)
-    for (const button of viewAll) expect(button).toBeDisabled()
+    expect(screen.queryByRole('button', { name: 'View all' })).toBeNull()
     expect(screen.getByRole('button', { name: 'Export Data' })).toBeEnabled()
     expect(
       screen.queryByRole('button', { name: 'Remove Owner' }),

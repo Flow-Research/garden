@@ -16,14 +16,12 @@ export function memberRoleLabel(
 }
 
 /**
- * The Teams design's member table (User / Role / Assigned Tasks / Activity)
- * from designs 30 and 33. The owner's role renders as the blue "Team Owner"
- * badge; everyone else gets the gray badge.
- * Remove is absent from the design but must stay reachable, so removable rows
- * keep a ghost trash action after View all. The Activity column gets a fixed
- * width so all three actions fit inside the cell; below a 40rem minimum the
- * frame scrolls sideways instead of crushing the other columns. View all stays disabled
- * (no activity history surface exists yet) and says so via its wrapper title.
+ * The Teams design's member table (User / Role / Assigned Tasks / Action).
+ * The owner's role renders as the blue "Team Owner" badge; everyone else gets
+ * the gray badge. Managers get a ghost trash action on every row except the
+ * owner's. The design's per-member View all is left out because no member
+ * activity history exists yet. Below a 40rem minimum the frame scrolls
+ * sideways instead of crushing the columns.
  */
 export function TeamMembersTable({
   members,
@@ -55,8 +53,8 @@ export function TeamMembersTable({
             <th className="border-l border-border-default px-6 py-4 text-center font-semibold text-text-default">
               Assigned Tasks
             </th>
-            <th className="w-[18rem] border-l border-border-default px-4 py-4 text-center font-semibold text-text-default">
-              Activity
+            <th className="w-[10rem] border-l border-border-default px-4 py-4 text-center font-semibold text-text-default">
+              Action
             </th>
           </tr>
         </thead>
@@ -97,15 +95,6 @@ export function TeamMembersTable({
                 </td>
                 <td className="border-l border-border-default px-4 py-4">
                   <span className="flex items-center justify-center gap-2 whitespace-nowrap">
-                    <span title="Member activity history is not available yet">
-                      <Button
-                        className="h-8 rounded-md px-3 shadow-1"
-                        disabled
-                        variant="outline"
-                      >
-                        View all
-                      </Button>
-                    </span>
                     {canManage ? (
                       removable ? (
                         <Button
